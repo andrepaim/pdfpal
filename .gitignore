@@ -1,6 +1,9 @@
 node_modules/
 frontend/dist/
 backend/.env
+backend/pdfpal.db
 __pycache__/
 *.pyc
 .env
+*.db
+.omc/
