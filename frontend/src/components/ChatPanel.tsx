@@ -1,0 +1,271 @@
+import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
+import ReactMarkdown from 'react-markdown'
+
+interface Message {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+interface Props {
+  pdfText: string
+  pdfUrl: string
+  disabled: boolean
+}
+
+export default function ChatPanel({ pdfText, pdfUrl, disabled }: Props) {
+  const [messages, setMessages] = useState<Message[]>([])
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [webSearch, setWebSearch] = useState(true)
+  const [error, setError] = useState('')
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, loading])
+
+  const send = async () => {
+    if (!input.trim() || loading || disabled) return
+    const userMsg = input.trim()
+    setInput('')
+    setError('')
+
+    const newHistory: Message[] = [...messages, { role: 'user', content: userMsg }]
+    setMessages(newHistory)
+    setLoading(true)
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: userMsg,
+          pdf_text: pdfText,
+          pdf_url: pdfUrl,
+          conversation_history: messages,
+          search_web: webSearch,
+        }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.detail || 'Chat request failed')
+      }
+
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let assistantText = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const payload = line.slice(6)
+            if (payload === '[DONE]') break
+            try {
+              const parsed = JSON.parse(payload)
+              if (parsed.error) throw new Error(parsed.error)
+              if (parsed.text) assistantText = parsed.text
+            } catch (e: any) {
+              if (e.message !== 'Unexpected token [') throw e
+            }
+          }
+        }
+      }
+
+      setMessages([...newHistory, { role: 'assistant', content: assistantText }])
+    } catch (e: any) {
+      setError(e.message || 'Something went wrong')
+      setMessages(newHistory) // keep user message
+    } finally {
+      setLoading(false)
+      textareaRef.current?.focus()
+    }
+  }
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      send()
+    }
+  }
+
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100%',
+      background: 'var(--panel)',
+    }}>
+      {/* Chat header */}
+      <div style={{
+        padding: '12px 16px',
+        borderBottom: '1px solid var(--border)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexShrink: 0,
+      }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: '#d1d5db' }}>AI Chat</span>
+        <button
+          onClick={() => setWebSearch(v => !v)}
+          title="Toggle web search"
+          style={{
+            background: webSearch ? '#1e2a1e' : '#1a1a1a',
+            border: `1px solid ${webSearch ? '#4ade80' : 'var(--border)'}`,
+            borderRadius: 6,
+            padding: '4px 10px',
+            fontSize: 12,
+            color: webSearch ? '#4ade80' : '#6b7280',
+            cursor: 'pointer',
+            transition: 'all 0.15s',
+          }}
+        >
+          🔍 Web Search {webSearch ? 'ON' : 'OFF'}
+        </button>
+      </div>
+
+      {/* Messages */}
+      <div style={{
+        flex: 1,
+        overflow: 'auto',
+        padding: '16px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+      }}>
+        {messages.length === 0 && !loading && (
+          <div style={{
+            color: '#4b5563',
+            fontSize: 14,
+            textAlign: 'center',
+            marginTop: 40,
+          }}>
+            {disabled
+              ? 'Load a PDF to start chatting'
+              : 'Ask anything about the document…'}
+          </div>
+        )}
+
+        {messages.map((msg, i) => (
+          <div
+            key={i}
+            style={{
+              display: 'flex',
+              justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
+            }}
+          >
+            <div
+              style={{
+                maxWidth: '85%',
+                padding: '10px 14px',
+                borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                background: msg.role === 'user' ? 'var(--accent)' : '#252525',
+                color: msg.role === 'user' ? '#fff' : 'var(--text)',
+                fontSize: 14,
+                lineHeight: 1.6,
+              }}
+            >
+              {msg.role === 'assistant' ? (
+                <div className="prose">
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                </div>
+              ) : (
+                msg.content
+              )}
+            </div>
+          </div>
+        ))}
+
+        {loading && (
+          <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+            <div style={{
+              padding: '12px 16px',
+              background: '#252525',
+              borderRadius: '16px 16px 16px 4px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              color: '#6b7280',
+              fontSize: 14,
+            }}>
+              <span className="spinner" />
+              Thinking…
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div style={{
+            background: '#2d1515',
+            color: '#f87171',
+            padding: '10px 14px',
+            borderRadius: 8,
+            fontSize: 13,
+          }}>
+            ⚠️ {error}
+          </div>
+        )}
+
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input area */}
+      <div style={{
+        padding: '12px 16px',
+        borderTop: '1px solid var(--border)',
+        display: 'flex',
+        gap: 8,
+        flexShrink: 0,
+      }}>
+        <textarea
+          ref={textareaRef}
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          disabled={disabled || loading}
+          placeholder={disabled ? 'Load a PDF first…' : 'Ask something… (Enter to send, Shift+Enter for newline)'}
+          rows={2}
+          style={{
+            flex: 1,
+            background: '#0f0f0f',
+            border: '1px solid var(--border)',
+            borderRadius: 10,
+            padding: '10px 14px',
+            color: 'var(--text)',
+            fontSize: 14,
+            resize: 'none',
+            outline: 'none',
+            fontFamily: 'inherit',
+            lineHeight: 1.5,
+            opacity: disabled ? 0.5 : 1,
+          }}
+        />
+        <button
+          onClick={send}
+          disabled={disabled || loading || !input.trim()}
+          style={{
+            background: disabled || !input.trim() ? '#2a2a2a' : 'var(--accent)',
+            color: disabled || !input.trim() ? '#6b7280' : '#fff',
+            border: 'none',
+            borderRadius: 10,
+            padding: '0 16px',
+            fontSize: 18,
+            cursor: disabled || loading || !input.trim() ? 'not-allowed' : 'pointer',
+            transition: 'background 0.15s',
+            alignSelf: 'stretch',
+          }}
+        >
+          {loading ? <span className="spinner" /> : '↑'}
+        </button>
+      </div>
+    </div>
+  )
+}
