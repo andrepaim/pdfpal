@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import PdfViewer from './components/PdfViewer'
 import ChatPanel from './components/ChatPanel'
 
@@ -12,7 +12,25 @@ export default function App() {
   const [extracting, setExtracting] = useState(false)
   const [pdfPages, setPdfPages] = useState(0)
   const [pdfLabel, setPdfLabel] = useState('')
+  const [selectedText, setSelectedText] = useState('')
+  const [splitPct, setSplitPct] = useState(55)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const splitRef = useRef<HTMLDivElement>(null)
+  const dragging = useRef(false)
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!dragging.current || !splitRef.current) return
+      const container = splitRef.current.parentElement!
+      const rect = container.getBoundingClientRect()
+      const pct = Math.min(75, Math.max(25, ((e.clientX - rect.left) / rect.width) * 100))
+      setSplitPct(pct)
+    }
+    const onUp = () => { dragging.current = false; document.body.style.cursor = '' }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+  }, [])
 
   const resetState = () => {
     setExtractError('')
@@ -20,6 +38,7 @@ export default function App() {
     setExtracting(true)
     setPdfPages(0)
     setPdfLabel('')
+    setSelectedText('')
     if (localObjectUrl) {
       URL.revokeObjectURL(localObjectUrl)
       setLocalObjectUrl('')
@@ -58,7 +77,7 @@ export default function App() {
     } finally {
       setExtracting(false)
     }
-  }, [pdfUrl, localObjectUrl])
+  }, [pdfUrl])
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -97,10 +116,9 @@ export default function App() {
       setExtractError(e.message || 'Network error')
     } finally {
       setExtracting(false)
-      // reset input so same file can be re-selected
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
-  }, [localObjectUrl])
+  }, [])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') handleLoad()
@@ -111,9 +129,9 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)' }}>
-      {/* Header / URL bar */}
+      {/* Header */}
       <div style={{
-        padding: '12px 16px',
+        padding: '10px 16px',
         borderBottom: '1px solid var(--border)',
         background: 'var(--panel)',
         display: 'flex',
@@ -121,7 +139,7 @@ export default function App() {
         gap: 10,
         flexShrink: 0,
       }}>
-        <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.5px', color: '#e5e7eb', whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.5px', color: '#e5e7eb', whiteSpace: 'nowrap' }}>
           📄 pdfpal
         </div>
         <input
@@ -135,7 +153,7 @@ export default function App() {
             background: '#0f0f0f',
             border: '1px solid var(--border)',
             borderRadius: 8,
-            padding: '8px 14px',
+            padding: '7px 14px',
             color: 'var(--text)',
             fontSize: 14,
             outline: 'none',
@@ -145,32 +163,23 @@ export default function App() {
           onClick={handleLoad}
           disabled={extracting || !pdfUrl.trim()}
           style={{
-            background: extracting ? '#3a3a3a' : 'var(--accent)',
+            background: extracting && !localFile ? '#3a3a3a' : 'var(--accent)',
             color: '#fff',
             border: 'none',
             borderRadius: 8,
-            padding: '8px 18px',
+            padding: '7px 16px',
             fontSize: 14,
             fontWeight: 600,
             cursor: extracting ? 'not-allowed' : 'pointer',
             whiteSpace: 'nowrap',
-            transition: 'background 0.15s',
           }}
         >
           {extracting && !localFile ? <span className="spinner" /> : 'Load'}
         </button>
 
-        {/* Divider */}
-        <div style={{ color: '#3a3a3a', fontSize: 20, userSelect: 'none' }}>|</div>
+        <div style={{ color: '#3a3a3a', userSelect: 'none' }}>|</div>
 
-        {/* Local file button */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="application/pdf"
-          style={{ display: 'none' }}
-          onChange={handleFileChange}
-        />
+        <input ref={fileInputRef} type="file" accept="application/pdf" style={{ display: 'none' }} onChange={handleFileChange} />
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={extracting}
@@ -180,20 +189,18 @@ export default function App() {
             color: '#d1d5db',
             border: '1px solid var(--border)',
             borderRadius: 8,
-            padding: '8px 14px',
+            padding: '7px 13px',
             fontSize: 14,
             cursor: extracting ? 'not-allowed' : 'pointer',
             whiteSpace: 'nowrap',
             display: 'flex',
             alignItems: 'center',
             gap: 6,
-            transition: 'background 0.15s',
           }}
         >
           {extracting && localFile ? <span className="spinner" /> : '📂 Open file'}
         </button>
 
-        {/* Filename label */}
         {pdfLabel && !extracting && (
           <div style={{
             fontSize: 12,
@@ -203,7 +210,7 @@ export default function App() {
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
           }} title={pdfLabel}>
-            {pdfLabel}
+            {pdfPages > 0 ? `${pdfLabel} · ${pdfPages}p` : pdfLabel}
           </div>
         )}
       </div>
@@ -211,36 +218,43 @@ export default function App() {
       {/* Error banner */}
       {extractError && (
         <div style={{
-          background: '#2d1515',
-          color: '#f87171',
-          padding: '10px 16px',
-          fontSize: 13,
-          borderBottom: '1px solid #4d2020',
-          flexShrink: 0,
+          background: '#2d1515', color: '#f87171',
+          padding: '10px 16px', fontSize: 13,
+          borderBottom: '1px solid #4d2020', flexShrink: 0,
         }}>
           ⚠️ {extractError}
         </div>
       )}
 
-      {/* Main split */}
+      {/* Resizable split panels */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* PDF panel — 55% */}
-        <div style={{
-          width: '55%',
-          borderRight: '1px solid var(--border)',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-        }}>
-          <PdfViewer url={viewerUrl} pages={pdfPages} />
+        <div style={{ width: `${splitPct}%`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <PdfViewer url={viewerUrl} pages={pdfPages} onTextSelected={setSelectedText} />
         </div>
 
-        {/* Chat panel — 45% */}
-        <div style={{ width: '45%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Drag handle */}
+        <div
+          ref={splitRef}
+          onMouseDown={() => { dragging.current = true; document.body.style.cursor = 'col-resize' }}
+          style={{
+            width: 5,
+            flexShrink: 0,
+            background: 'var(--border)',
+            cursor: 'col-resize',
+            transition: 'background 0.15s',
+            userSelect: 'none',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.background = '#4a4a4a')}
+          onMouseLeave={e => { if (!dragging.current) e.currentTarget.style.background = 'var(--border)' }}
+        />
+
+        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <ChatPanel
             pdfText={pdfText}
             pdfUrl={chatPdfUrl}
             disabled={!pdfText}
+            selectedText={selectedText}
+            onSelectedTextUsed={() => setSelectedText('')}
           />
         </div>
       </div>
