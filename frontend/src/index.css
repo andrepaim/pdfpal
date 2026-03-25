@@ -47,6 +47,10 @@ body {
 .prose a { color: #818cf8; text-decoration: underline; }
 .prose blockquote { border-left: 3px solid #3a3a3a; padding-left: 1em; color: var(--muted); margin: 0.5em 0; }
 .prose strong { color: #f3f4f6; }
+.prose table { border-collapse: collapse; width: 100%; margin: 0.75em 0; font-size: 0.85em; }
+.prose th, .prose td { border: 1px solid #3a3a3a; padding: 6px 12px; text-align: left; }
+.prose th { background: #2a2a2a; font-weight: 600; color: #e5e7eb; }
+.prose tr:nth-child(even) td { background: #1f1f1f; }
 
 .spinner {
   width: 18px; height: 18px;

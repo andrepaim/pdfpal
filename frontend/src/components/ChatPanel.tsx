@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -220,7 +221,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
               whiteSpace: msg.role === 'user' ? 'pre-wrap' : undefined,
             }}>
               {msg.role === 'assistant' ? (
-                <div className="prose"><ReactMarkdown>{msg.content}</ReactMarkdown></div>
+                <div className="prose"><ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown></div>
               ) : msg.content}
             </div>
           </div>
