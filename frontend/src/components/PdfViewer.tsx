@@ -80,7 +80,7 @@ export default function PdfViewer({ url, onTextSelected }: Props) {
 
   return (
     <div ref={containerRef} style={{ height: '100%', overflow: 'hidden', position: 'relative' }}>
-      <Worker workerUrl={new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()}>
+      <Worker workerUrl={new URL('pdfjs-dist/build/pdf.worker.min.js', import.meta.url).toString()}>
         {/* 
           The text layer needs user-select: text.
           @react-pdf-viewer sets opacity: 0.2 on .rpv-core__text-layer by default
