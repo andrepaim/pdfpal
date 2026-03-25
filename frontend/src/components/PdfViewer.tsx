@@ -20,47 +20,43 @@ export default function PdfViewer({ url, onTextSelected }: Props) {
 
   useEffect(() => {
     const handleMouseUp = (e: MouseEvent) => {
-      // Small delay so selection is finalized
       setTimeout(() => {
         const selection = window.getSelection()
-        if (!selection || selection.isCollapsed) {
-          setBubble(null)
-          return
-        }
+        if (!selection || selection.isCollapsed) return
+
         const text = selection.toString().trim()
-        if (!text || text.length < 3) {
-          setBubble(null)
-          return
-        }
-        // Show bubble near the mouse position
+        if (!text || text.length < 3) return
+
+        // Only trigger if the selection is inside our PDF viewer container
         const container = containerRef.current
         if (!container) return
+        const anchor = selection.anchorNode
+        if (!anchor || !container.contains(anchor)) return
+
         const rect = container.getBoundingClientRect()
         setBubble({
           x: e.clientX - rect.left,
           y: e.clientY - rect.top,
           text,
         })
-      }, 50)
+      }, 80)
     }
 
     const handleMouseDown = (e: MouseEvent) => {
-      // Hide bubble if clicking outside of it
       const target = e.target as HTMLElement
       if (!target.closest('[data-ask-bubble]')) {
         setBubble(null)
       }
     }
 
-    const container = containerRef.current
-    if (!container) return
-    container.addEventListener('mouseup', handleMouseUp)
-    container.addEventListener('mousedown', handleMouseDown)
+    // Listen on document to catch events from the text layer regardless of nesting
+    document.addEventListener('mouseup', handleMouseUp)
+    document.addEventListener('mousedown', handleMouseDown)
     return () => {
-      container.removeEventListener('mouseup', handleMouseUp)
-      container.removeEventListener('mousedown', handleMouseDown)
+      document.removeEventListener('mouseup', handleMouseUp)
+      document.removeEventListener('mousedown', handleMouseDown)
     }
-  }, [])
+  }, [onTextSelected])
 
   const handleAsk = () => {
     if (!bubble) return
@@ -85,6 +81,26 @@ export default function PdfViewer({ url, onTextSelected }: Props) {
   return (
     <div ref={containerRef} style={{ height: '100%', overflow: 'hidden', position: 'relative' }}>
       <Worker workerUrl={new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()}>
+        {/* 
+          The text layer needs user-select: text.
+          @react-pdf-viewer sets opacity: 0.2 on .rpv-core__text-layer by default
+          which makes text invisible but still selectable.
+          We override z-index to ensure it's above the canvas layer.
+        */}
+        <style>{`
+          .rpv-core__text-layer {
+            user-select: text !important;
+            -webkit-user-select: text !important;
+            pointer-events: auto !important;
+            z-index: 2 !important;
+          }
+          .rpv-core__text-layer-text {
+            cursor: text !important;
+          }
+          .rpv-core__canvas-layer {
+            z-index: 1 !important;
+          }
+        `}</style>
         <div style={{ height: '100%' }}>
           <Viewer
             fileUrl={url}
@@ -95,15 +111,14 @@ export default function PdfViewer({ url, onTextSelected }: Props) {
         </div>
       </Worker>
 
-      {/* Floating "Ask" bubble on text selection */}
       {bubble && (
         <div
           data-ask-bubble="1"
           onClick={handleAsk}
           style={{
             position: 'absolute',
-            left: Math.min(bubble.x, (containerRef.current?.clientWidth ?? 400) - 160),
-            top: bubble.y - 48,
+            left: Math.min(bubble.x, (containerRef.current?.clientWidth ?? 400) - 180),
+            top: Math.max(bubble.y - 48, 8),
             background: 'var(--accent)',
             color: '#fff',
             padding: '6px 14px',
