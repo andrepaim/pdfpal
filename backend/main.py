@@ -403,7 +403,16 @@ PDF Content:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await proc.communicate(input=full_prompt.encode())
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    proc.communicate(input=full_prompt.encode()),
+                    timeout=300  # 5 min hard cap
+                )
+            except asyncio.TimeoutError:
+                proc.kill()
+                yield f"data: {json.dumps({'text': '⚠️ Request timed out. Try a shorter question or smaller PDF.'})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
             assistant_text = stdout.decode().strip()
             stderr_text = stderr.decode().strip()
 
