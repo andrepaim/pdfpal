@@ -1,21 +1,36 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import PdfViewer from './components/PdfViewer'
 import ChatPanel from './components/ChatPanel'
 
 export default function App() {
   const [pdfUrl, setPdfUrl] = useState('')
   const [loadedUrl, setLoadedUrl] = useState('')
+  const [localFile, setLocalFile] = useState<File | null>(null)
+  const [localObjectUrl, setLocalObjectUrl] = useState('')
   const [pdfText, setPdfText] = useState('')
   const [extractError, setExtractError] = useState('')
   const [extracting, setExtracting] = useState(false)
   const [pdfPages, setPdfPages] = useState(0)
+  const [pdfLabel, setPdfLabel] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const handleLoad = useCallback(async () => {
-    if (!pdfUrl.trim()) return
+  const resetState = () => {
     setExtractError('')
     setPdfText('')
     setExtracting(true)
     setPdfPages(0)
+    setPdfLabel('')
+    if (localObjectUrl) {
+      URL.revokeObjectURL(localObjectUrl)
+      setLocalObjectUrl('')
+    }
+    setLocalFile(null)
+    setLoadedUrl('')
+  }
+
+  const handleLoad = useCallback(async () => {
+    if (!pdfUrl.trim()) return
+    resetState()
 
     try {
       const res = await fetch('/api/extract', {
@@ -26,27 +41,73 @@ export default function App() {
       const data = await res.json()
       if (!res.ok) {
         const detail = data.detail
-        if (typeof detail === 'object' && detail?.message) {
-          setExtractError(detail.message)
-        } else {
-          setExtractError(typeof detail === 'string' ? detail : 'Failed to extract PDF')
-        }
+        setExtractError(
+          typeof detail === 'object' && detail?.message
+            ? detail.message
+            : typeof detail === 'string' ? detail : 'Failed to extract PDF'
+        )
         setExtracting(false)
         return
       }
       setPdfText(data.text)
       setPdfPages(data.pages)
+      setPdfLabel(data.title || pdfUrl.trim().split('/').pop() || 'PDF')
       setLoadedUrl(pdfUrl.trim())
     } catch (e: any) {
       setExtractError(e.message || 'Network error')
     } finally {
       setExtracting(false)
     }
-  }, [pdfUrl])
+  }, [pdfUrl, localObjectUrl])
+
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    resetState()
+    setPdfUrl('')
+
+    const objUrl = URL.createObjectURL(file)
+    setLocalObjectUrl(objUrl)
+    setLocalFile(file)
+    setPdfLabel(file.name)
+
+    const formData = new FormData()
+    formData.append('file', file)
+
+    try {
+      const res = await fetch('/api/extract-upload', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        const detail = data.detail
+        setExtractError(
+          typeof detail === 'object' && detail?.message
+            ? detail.message
+            : typeof detail === 'string' ? detail : 'Failed to extract PDF'
+        )
+        setExtracting(false)
+        return
+      }
+      setPdfText(data.text)
+      setPdfPages(data.pages)
+      if (data.title) setPdfLabel(data.title)
+    } catch (e: any) {
+      setExtractError(e.message || 'Network error')
+    } finally {
+      setExtracting(false)
+      // reset input so same file can be re-selected
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }, [localObjectUrl])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') handleLoad()
   }
+
+  const viewerUrl = localObjectUrl || (loadedUrl ? `/api/proxy-pdf?url=${encodeURIComponent(loadedUrl)}` : '')
+  const chatPdfUrl = localFile ? `local:${localFile.name}` : loadedUrl
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)' }}>
@@ -68,7 +129,7 @@ export default function App() {
           value={pdfUrl}
           onChange={e => setPdfUrl(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Paste a PDF URL and press Enter or click Load…"
+          placeholder="Paste a PDF URL…"
           style={{
             flex: 1,
             background: '#0f0f0f',
@@ -96,8 +157,55 @@ export default function App() {
             transition: 'background 0.15s',
           }}
         >
-          {extracting ? <span className="spinner" /> : 'Load'}
+          {extracting && !localFile ? <span className="spinner" /> : 'Load'}
         </button>
+
+        {/* Divider */}
+        <div style={{ color: '#3a3a3a', fontSize: 20, userSelect: 'none' }}>|</div>
+
+        {/* Local file button */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/pdf"
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={extracting}
+          title="Open local PDF file"
+          style={{
+            background: '#2a2a2a',
+            color: '#d1d5db',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            padding: '8px 14px',
+            fontSize: 14,
+            cursor: extracting ? 'not-allowed' : 'pointer',
+            whiteSpace: 'nowrap',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            transition: 'background 0.15s',
+          }}
+        >
+          {extracting && localFile ? <span className="spinner" /> : '📂 Open file'}
+        </button>
+
+        {/* Filename label */}
+        {pdfLabel && !extracting && (
+          <div style={{
+            fontSize: 12,
+            color: '#6b7280',
+            maxWidth: 180,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }} title={pdfLabel}>
+            {pdfLabel}
+          </div>
+        )}
       </div>
 
       {/* Error banner */}
@@ -124,17 +232,14 @@ export default function App() {
           display: 'flex',
           flexDirection: 'column',
         }}>
-          <PdfViewer
-            url={loadedUrl ? `/api/proxy-pdf?url=${encodeURIComponent(loadedUrl)}` : ''}
-            pages={pdfPages}
-          />
+          <PdfViewer url={viewerUrl} pages={pdfPages} />
         </div>
 
         {/* Chat panel — 45% */}
         <div style={{ width: '45%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <ChatPanel
             pdfText={pdfText}
-            pdfUrl={loadedUrl}
+            pdfUrl={chatPdfUrl}
             disabled={!pdfText}
           />
         </div>

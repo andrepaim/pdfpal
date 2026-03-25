@@ -7,7 +7,7 @@ from pathlib import Path
 import httpx
 import pdfplumber
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -60,6 +60,35 @@ async def proxy_pdf(url: str):
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Failed to fetch PDF: {e}")
     return Response(content=r.content, media_type="application/pdf")
+
+
+@app.post("/extract-upload")
+async def extract_upload(file: UploadFile = File(...)):
+    pdf_bytes = await file.read()
+    try:
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            page_count = len(pdf.pages)
+            if page_count > 50:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "PDF too large",
+                        "message": f"PDFs with more than 50 pages are not supported yet. This PDF has {page_count} pages.",
+                    },
+                )
+            text_parts = []
+            for i, page in enumerate(pdf.pages):
+                page_text = page.extract_text() or ""
+                if page_text.strip():
+                    text_parts.append(f"[Page {i+1}]\n{page_text}")
+            title = pdf.metadata.get("Title", "") if pdf.metadata else ""
+            full_text = "\n\n".join(text_parts)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to parse PDF: {e}")
+
+    return {"text": full_text, "pages": page_count, "title": title, "filename": file.filename}
 
 
 @app.post("/extract")
