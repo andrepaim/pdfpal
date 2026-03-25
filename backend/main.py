@@ -405,8 +405,13 @@ PDF Content:
             )
             stdout, stderr = await proc.communicate(input=full_prompt.encode())
             assistant_text = stdout.decode().strip()
-            if not assistant_text and stderr:
-                assistant_text = f"Error: {stderr.decode().strip()}"
+            stderr_text = stderr.decode().strip()
+
+            # Detect Claude API errors in stdout (it prints JSON error objects)
+            if '"type":"error"' in assistant_text or '"api_error"' in assistant_text:
+                assistant_text = "⚠️ Claude API returned an error (likely a transient server issue). Please try again."
+            elif not assistant_text and stderr_text:
+                assistant_text = f"Error: {stderr_text}"
 
             # Save assistant message
             if req.session_id and assistant_text:
