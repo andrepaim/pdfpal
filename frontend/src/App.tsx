@@ -7,7 +7,9 @@ import type { SessionDetail } from './hooks/useSession'
 
 const LAST_SESSION_KEY = 'pdfpal_last_session'
 
-export default function App() {
+interface User { email: string; name: string; picture: string }
+
+export default function App({ user }: { user: User }) {
   const [pdfUrl, setPdfUrl] = useState('')
   const [loadedUrl, setLoadedUrl] = useState('')
   const [localFile, setLocalFile] = useState<File | null>(null)
@@ -241,6 +243,15 @@ export default function App() {
             {pdfPages > 0 ? `${pdfLabel} · ${pdfPages}p` : pdfLabel}
           </div>
         )}
+
+        {/* User avatar + logout */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          {user.picture && <img src={user.picture} alt="" style={{ width: 28, height: 28, borderRadius: '50%' }} />}
+          <button
+            onClick={async () => { await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); location.reload() }}
+            style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 12, cursor: 'pointer', padding: '3px 8px' }}
+          >Sign out</button>
+        </div>
       </div>
 
       {extractError && (

@@ -10,7 +10,7 @@ from pathlib import Path
 import httpx
 import pdfplumber
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, UploadFile, File, APIRouter
+from fastapi import FastAPI, HTTPException, UploadFile, File, APIRouter, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -22,6 +22,34 @@ load_dotenv()
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 CLAUDE_BIN = os.getenv("CLAUDE_BIN", "/root/.local/bin/claude")
 DB_PATH = Path(__file__).parent / "pdfpal.db"
+
+# Auth imports
+from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi.responses import JSONResponse as _JSONResponse, RedirectResponse as _RedirectResponse
+from auth import verify_session_token, SESSION_COOKIE, router as auth_router
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    # Paths that don't require auth
+    PUBLIC_PREFIXES = ["/auth/", "/assets/", "/favicon"]
+    PUBLIC_EXACT = ["/", "/login"]
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if (any(path.startswith(p) for p in self.PUBLIC_PREFIXES)
+                or path in self.PUBLIC_EXACT
+                or path.startswith("/assets")):
+            return await call_next(request)
+
+        token = request.cookies.get(SESSION_COOKIE)
+        user = verify_session_token(token) if token else None
+        if not user:
+            # Browser navigation → redirect to login page
+            if "text/html" in request.headers.get("accept", ""):
+                return _RedirectResponse(url="/?login=1", status_code=302)
+            return _JSONResponse({"detail": "Unauthorized"}, status_code=401)
+
+        request.state.user = user
+        return await call_next(request)
 
 # ---------------------------------------------------------------------------
 # Database
@@ -65,10 +93,12 @@ app = FastAPI(title="pdfpal")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://pdfpal.duckdns.org"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(AuthMiddleware)
 
 router = APIRouter()
 
@@ -390,7 +420,11 @@ PDF Content:
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
-# Register under both /api and /
+# Auth routes — registered under both /auth and /api/auth
+app.include_router(auth_router)
+app.include_router(auth_router, prefix="/api")
+
+# API routes under both /api and /
 app.include_router(router, prefix="/api")
 app.include_router(router, prefix="")
 
