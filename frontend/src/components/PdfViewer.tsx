@@ -23,14 +23,16 @@ export default function PdfViewer({ url, onTextSelected }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Measure container width for fit-width mode
+  // Measure the scroll area width (excludes scrollbar) for fit-width
   useEffect(() => {
-    const el = containerRef.current
+    const el = scrollRef.current
     if (!el) return
-    const obs = new ResizeObserver(entries => {
-      const w = entries[0]?.contentRect.width
-      if (w) setContainerWidth(w - 32) // subtract padding
-    })
+    const measure = () => {
+      // clientWidth excludes scrollbar; subtract padding (16px each side)
+      setContainerWidth(el.clientWidth - 32)
+    }
+    measure()
+    const obs = new ResizeObserver(measure)
     obs.observe(el)
     return () => obs.disconnect()
   }, [])
@@ -80,8 +82,15 @@ export default function PdfViewer({ url, onTextSelected }: Props) {
   const setFit = () => setFitWidth(true)
   const setZoomLevel = (z: number) => { setFitWidth(false); setScale(z) }
 
-  const pageWidth = fitWidth ? containerWidth : undefined
+  // Always pass width in fit mode; pass scale only in manual zoom mode
+  const pageWidth = fitWidth ? containerWidth || undefined : undefined
   const pageScale = fitWidth ? undefined : scale
+
+  // Reset to fit-width on new PDF
+  useEffect(() => {
+    setFitWidth(true)
+    setNumPages(0)
+  }, [url])
 
   if (!url) {
     return (
