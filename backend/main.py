@@ -7,12 +7,12 @@ from pathlib import Path
 import httpx
 import pdfplumber
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List
 
 load_dotenv()
 
@@ -28,13 +28,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Router handles all API endpoints — registered under both / and /api/
+router = APIRouter()
+
 
 class ExtractRequest(BaseModel):
     url: str
 
 
 class ChatMessage(BaseModel):
-    role: str  # "user" or "assistant"
+    role: str
     content: str
 
 
@@ -46,12 +49,12 @@ class ChatRequest(BaseModel):
     search_web: bool = True
 
 
-@app.get("/health")
+@router.get("/health")
 def health():
     return {"status": "ok"}
 
 
-@app.get("/proxy-pdf")
+@router.get("/proxy-pdf")
 async def proxy_pdf(url: str):
     async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
         try:
@@ -62,7 +65,7 @@ async def proxy_pdf(url: str):
     return Response(content=r.content, media_type="application/pdf")
 
 
-@app.post("/extract-upload")
+@router.post("/extract-upload")
 async def extract_upload(file: UploadFile = File(...)):
     pdf_bytes = await file.read()
     try:
@@ -91,7 +94,7 @@ async def extract_upload(file: UploadFile = File(...)):
     return {"text": full_text, "pages": page_count, "title": title, "filename": file.filename}
 
 
-@app.post("/extract")
+@router.post("/extract")
 async def extract(req: ExtractRequest):
     async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
         try:
@@ -117,7 +120,6 @@ async def extract(req: ExtractRequest):
                 page_text = page.extract_text() or ""
                 if page_text.strip():
                     text_parts.append(f"[Page {i+1}]\n{page_text}")
-
             title = pdf.metadata.get("Title", "") if pdf.metadata else ""
             full_text = "\n\n".join(text_parts)
     except HTTPException:
@@ -150,14 +152,14 @@ async def tavily_search(query: str) -> str:
         return ""
 
 
-@app.post("/chat")
+@router.post("/chat")
 async def chat(req: ChatRequest):
     web_context = ""
     if req.search_web:
         web_context = await tavily_search(req.message)
 
     history_text = ""
-    for msg in req.conversation_history[-10:]:  # last 10 messages
+    for msg in req.conversation_history[-10:]:
         prefix = "User" if msg.role == "user" else "Assistant"
         history_text += f"{prefix}: {msg.content}\n\n"
 
@@ -170,7 +172,6 @@ PDF Content:
 {req.pdf_text[:80000]}
 ---
 """
-
     if web_context:
         system_prompt += f"\n{web_context}\n"
 
@@ -199,6 +200,10 @@ PDF Content:
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
+
+# Register routes under both /api (production via Apache) and / (direct access)
+app.include_router(router, prefix="/api")
+app.include_router(router, prefix="")
 
 # Serve frontend static files (must be last)
 frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
