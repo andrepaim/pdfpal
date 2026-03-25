@@ -102,7 +102,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
               if (parsed.error) throw new Error(parsed.error)
               if (parsed.text) assistantText = parsed.text
             } catch (e: any) {
-              if (e.message !== 'Unexpected token [') throw e
+              // ignore JSON parse errors for [DONE] and other non-JSON payloads
             }
           }
         }
