@@ -12,16 +12,25 @@ interface Props {
   disabled: boolean
   selectedText?: string
   onSelectedTextUsed?: () => void
+  sessionId?: string | null
+  initialMessages?: { role: string; content: string }[]
 }
 
-export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onSelectedTextUsed }: Props) {
-  const [messages, setMessages] = useState<Message[]>([])
+export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onSelectedTextUsed, sessionId, initialMessages }: Props) {
+  const [messages, setMessages] = useState<Message[]>(initialMessages?.map(m => ({ role: m.role as 'user'|'assistant', content: m.content })) ?? [])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [webSearch, setWebSearch] = useState(true)
   const [error, setError] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Sync messages when session is restored
+  useEffect(() => {
+    if (initialMessages) {
+      setMessages(initialMessages.map(m => ({ role: m.role as 'user'|'assistant', content: m.content })))
+    }
+  }, [sessionId])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -63,6 +72,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
           pdf_url: pdfUrl,
           conversation_history: messages,
           search_web: webSearch,
+          session_id: sessionId ?? null,
         }),
       })
 
