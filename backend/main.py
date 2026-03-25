@@ -30,7 +30,7 @@ from auth import verify_session_token, SESSION_COOKIE, router as auth_router
 
 class AuthMiddleware(BaseHTTPMiddleware):
     # Paths that don't require auth
-    PUBLIC_PREFIXES = ["/auth/", "/assets/", "/favicon"]
+    PUBLIC_PREFIXES = ["/auth/", "/assets/", "/favicon", "/pdf.worker"]
     PUBLIC_EXACT = ["/", "/login"]
 
     async def dispatch(self, request: Request, call_next):
