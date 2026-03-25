@@ -255,8 +255,14 @@ def _extract_pdf_bytes(pdf_bytes: bytes) -> dict:
             page_text = page.extract_text() or ""
             if page_text.strip():
                 text_parts.append(f"[Page {i+1}]\n{page_text}")
-        title = (pdf.metadata or {}).get("Title", "")
-        return {"text": "\n\n".join(text_parts), "pages": page_count, "title": title}
+        meta_title = (pdf.metadata or {}).get("Title", "").strip()
+        # If no metadata title, grab first non-empty line from page 1
+        if not meta_title and text_parts:
+            lines = [l.strip() for l in text_parts[0].split("\n") if l.strip()]
+            # Skip "[Page 1]" marker
+            candidates = [l for l in lines if not l.startswith("[Page")]
+            meta_title = candidates[0][:120] if candidates else ""
+        return {"text": "\n\n".join(text_parts), "pages": page_count, "title": meta_title}
 
 
 @router.post("/extract-upload")
@@ -315,7 +321,7 @@ async def extract(req: ExtractRequest):
         with get_db() as conn:
             conn.execute(
                 "UPDATE sessions SET title=?, pdf_url=?, pdf_text=?, pages=?, accessed_at=? WHERE id=?",
-                (result["title"] or req.url.split("/")[-1], req.url, result["text"], result["pages"], now_iso(), req.session_id)
+                (result["title"] or _url_fallback_title(req.url), req.url, result["text"], result["pages"], now_iso(), req.session_id)
             )
         result["session_id"] = req.session_id
     else:
@@ -324,7 +330,7 @@ async def extract(req: ExtractRequest):
         with get_db() as conn:
             conn.execute(
                 "INSERT INTO sessions (id, title, pdf_url, pdf_text, pages, created_at, accessed_at) VALUES (?,?,?,?,?,?,?)",
-                (sid, result["title"] or req.url.split("/")[-1], req.url, result["text"], result["pages"], ts, ts)
+                (sid, result["title"] or _url_fallback_title(req.url), req.url, result["text"], result["pages"], ts, ts)
             )
         result["session_id"] = sid
 
@@ -333,6 +339,14 @@ async def extract(req: ExtractRequest):
 # ---------------------------------------------------------------------------
 # Chat
 # ---------------------------------------------------------------------------
+
+def _url_fallback_title(url: str) -> str:
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    # e.g. "arxiv.org · 2403.02545v1"
+    path_part = parsed.path.rstrip("/").split("/")[-1]
+    return f"{parsed.netloc} · {path_part}" if path_part else parsed.netloc
+
 
 async def tavily_search(query: str) -> str:
     if not TAVILY_API_KEY:
