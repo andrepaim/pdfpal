@@ -1,8 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
-import { Worker, Viewer, SpecialZoomLevel } from '@react-pdf-viewer/core'
-import { defaultLayoutPlugin } from '@react-pdf-viewer/default-layout'
-import '@react-pdf-viewer/core/lib/styles/index.css'
-import '@react-pdf-viewer/default-layout/lib/styles/index.css'
+import { useState, useRef, useEffect } from 'react'
+import { Document, Page, pdfjs } from 'react-pdf'
+import 'react-pdf/dist/Page/AnnotationLayer.css'
+import 'react-pdf/dist/Page/TextLayer.css'
+
+// Use react-pdf's own bundled pdfjs worker
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.mjs',
+  import.meta.url,
+).toString()
 
 interface Props {
   url: string
@@ -10,53 +15,55 @@ interface Props {
   onTextSelected?: (text: string) => void
 }
 
+const ZOOM_LEVELS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
+
 export default function PdfViewer({ url, onTextSelected }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null)
+  const [numPages, setNumPages] = useState(0)
+  const [scale, setScale] = useState(1.0)
+  const [fitWidth, setFitWidth] = useState(true)
+  const [containerWidth, setContainerWidth] = useState(800)
   const [bubble, setBubble] = useState<{ x: number; y: number; text: string } | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
 
-  const defaultLayout = defaultLayoutPlugin({
-    sidebarTabs: () => [],
-  })
+  // Measure container width for fit-width mode
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const obs = new ResizeObserver(entries => {
+      const w = entries[0]?.contentRect.width
+      if (w) setContainerWidth(w - 32) // subtract padding
+    })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
 
+  // Text selection bubble
   useEffect(() => {
     const handleMouseUp = (e: MouseEvent) => {
       setTimeout(() => {
         const selection = window.getSelection()
         if (!selection || selection.isCollapsed) return
-
         const text = selection.toString().trim()
         if (!text || text.length < 3) return
-
-        // Only trigger if the selection is inside our PDF viewer container
         const container = containerRef.current
         if (!container) return
         const anchor = selection.anchorNode
         if (!anchor || !container.contains(anchor)) return
-
         const rect = container.getBoundingClientRect()
-        setBubble({
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-          text,
-        })
+        setBubble({ x: e.clientX - rect.left, y: e.clientY - rect.top, text })
       }, 80)
     }
-
     const handleMouseDown = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
-      if (!target.closest('[data-ask-bubble]')) {
-        setBubble(null)
-      }
+      if (!(e.target as HTMLElement).closest('[data-ask-bubble]')) setBubble(null)
     }
-
-    // Listen on document to catch events from the text layer regardless of nesting
     document.addEventListener('mouseup', handleMouseUp)
     document.addEventListener('mousedown', handleMouseDown)
     return () => {
       document.removeEventListener('mouseup', handleMouseUp)
       document.removeEventListener('mousedown', handleMouseDown)
     }
-  }, [onTextSelected])
+  }, [])
 
   const handleAsk = () => {
     if (!bubble) return
@@ -64,6 +71,20 @@ export default function PdfViewer({ url, onTextSelected }: Props) {
     setBubble(null)
     window.getSelection()?.removeAllRanges()
   }
+
+  const zoomIn = () => {
+    setFitWidth(false)
+    setScale(s => Math.min(2.0, +(s + 0.25).toFixed(2)))
+  }
+  const zoomOut = () => {
+    setFitWidth(false)
+    setScale(s => Math.max(0.5, +(s - 0.25).toFixed(2)))
+  }
+  const setFit = () => setFitWidth(true)
+  const setZoomLevel = (z: number) => { setFitWidth(false); setScale(z) }
+
+  const pageWidth = fitWidth ? containerWidth : undefined
+  const pageScale = fitWidth ? undefined : scale
 
   if (!url) {
     return (
@@ -79,38 +100,56 @@ export default function PdfViewer({ url, onTextSelected }: Props) {
   }
 
   return (
-    <div ref={containerRef} style={{ height: '100%', overflow: 'hidden', position: 'relative' }}>
-      <Worker workerUrl={new URL('pdfjs-dist/build/pdf.worker.min.js', import.meta.url).toString()}>
-        {/* 
-          The text layer needs user-select: text.
-          @react-pdf-viewer sets opacity: 0.2 on .rpv-core__text-layer by default
-          which makes text invisible but still selectable.
-          We override z-index to ensure it's above the canvas layer.
-        */}
-        <style>{`
-          .rpv-core__text-layer {
-            user-select: text !important;
-            -webkit-user-select: text !important;
-            pointer-events: auto !important;
-            z-index: 2 !important;
-          }
-          .rpv-core__text-layer-text {
-            cursor: text !important;
-          }
-          .rpv-core__canvas-layer {
-            z-index: 1 !important;
-          }
-        `}</style>
-        <div style={{ height: '100%' }}>
-          <Viewer
-            fileUrl={url}
-            plugins={[defaultLayout]}
-            defaultScale={SpecialZoomLevel.PageWidth}
-            theme="dark"
-          />
-        </div>
-      </Worker>
+    <div ref={containerRef} style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', position: 'relative' }}>
+      {/* Toolbar */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
+        background: 'var(--panel)', borderBottom: '1px solid var(--border)',
+        flexShrink: 0, flexWrap: 'wrap',
+      }}>
+        <button onClick={zoomOut} title="Zoom out" style={btnStyle}>−</button>
+        <select
+          value={fitWidth ? 'fit' : String(scale)}
+          onChange={e => e.target.value === 'fit' ? setFit() : setZoomLevel(parseFloat(e.target.value))}
+          style={{ background: '#0f0f0f', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px', fontSize: 13, cursor: 'pointer' }}
+        >
+          <option value="fit">Fit width</option>
+          {ZOOM_LEVELS.map(z => (
+            <option key={z} value={z}>{Math.round(z * 100)}%</option>
+          ))}
+        </select>
+        <button onClick={zoomIn} title="Zoom in" style={btnStyle}>+</button>
+        {numPages > 0 && (
+          <span style={{ marginLeft: 8, fontSize: 12, color: '#6b7280' }}>{numPages} pages</span>
+        )}
+      </div>
 
+      {/* PDF scroll area */}
+      <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: '16px 0' }}>
+        <Document
+          file={url}
+          onLoadSuccess={({ numPages }) => setNumPages(numPages)}
+          onLoadError={err => console.error('PDF load error:', err)}
+          loading={<LoadingPage />}
+          error={<ErrorPage />}
+        >
+          {Array.from({ length: numPages }, (_, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
+              <Page
+                pageNumber={i + 1}
+                width={pageWidth}
+                scale={pageScale}
+                renderTextLayer={true}
+                renderAnnotationLayer={true}
+                loading={<LoadingPage />}
+                error={<ErrorPage />}
+              />
+            </div>
+          ))}
+        </Document>
+      </div>
+
+      {/* Selection bubble */}
       {bubble && (
         <div
           data-ask-bubble="1"
@@ -119,25 +158,37 @@ export default function PdfViewer({ url, onTextSelected }: Props) {
             position: 'absolute',
             left: Math.min(bubble.x, (containerRef.current?.clientWidth ?? 400) - 180),
             top: Math.max(bubble.y - 48, 8),
-            background: 'var(--accent)',
-            color: '#fff',
-            padding: '6px 14px',
-            borderRadius: 20,
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: 'pointer',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-            zIndex: 9999,
-            userSelect: 'none',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            whiteSpace: 'nowrap',
+            background: 'var(--accent)', color: '#fff',
+            padding: '6px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600,
+            cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+            zIndex: 9999, userSelect: 'none', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
           }}
         >
           💬 Ask about selection
         </div>
       )}
+    </div>
+  )
+}
+
+const btnStyle: React.CSSProperties = {
+  background: '#2a2a2a', border: '1px solid var(--border)', color: 'var(--text)',
+  borderRadius: 6, width: 28, height: 28, fontSize: 16, cursor: 'pointer',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+}
+
+function LoadingPage() {
+  return (
+    <div style={{ width: 600, height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4b5563' }}>
+      <span className="spinner" />
+    </div>
+  )
+}
+
+function ErrorPage() {
+  return (
+    <div style={{ width: 600, padding: 16, color: '#f87171', background: '#2d1515', borderRadius: 8, textAlign: 'center' }}>
+      ⚠️ Failed to render page
     </div>
   )
 }
