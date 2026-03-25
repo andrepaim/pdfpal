@@ -23,19 +23,21 @@ export default function PdfViewer({ url, onTextSelected }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Measure the scroll area width (excludes scrollbar) for fit-width
+  // Measure scroll area width for fit-width
   useEffect(() => {
-    const el = scrollRef.current
-    if (!el) return
     const measure = () => {
-      // clientWidth excludes scrollbar; subtract padding (16px each side)
-      setContainerWidth(el.clientWidth - 32)
+      const el = scrollRef.current
+      if (!el) return
+      // clientWidth excludes scrollbar; subtract 2px for border/rounding
+      const w = el.clientWidth - 2
+      if (w > 100) setContainerWidth(w)
     }
-    measure()
+    // Measure after paint
+    requestAnimationFrame(() => requestAnimationFrame(measure))
     const obs = new ResizeObserver(measure)
-    obs.observe(el)
+    if (scrollRef.current) obs.observe(scrollRef.current)
     return () => obs.disconnect()
-  }, [])
+  }, [url]) // re-measure when URL changes (panel might have resized)
 
   // Text selection bubble
   useEffect(() => {
