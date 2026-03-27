@@ -34,10 +34,14 @@ from pdf_resolver import resolve_pdf_url
 class AuthMiddleware(BaseHTTPMiddleware):
     # Paths that don't require auth
     PUBLIC_PREFIXES = ["/auth/", "/assets/", "/favicon", "/pdf.worker"]
-    PUBLIC_EXACT = ["/", "/login"]
+    PUBLIC_EXACT = ["/"]
 
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
+        # Only protect /api/* paths — everything else passes through to SPA/static
+        if not path.startswith("/api/") and not path.startswith("/auth/"):
+            return await call_next(request)
+
         if (any(path.startswith(p) for p in self.PUBLIC_PREFIXES)
                 or path in self.PUBLIC_EXACT
                 or path.startswith("/assets")):
@@ -542,16 +546,33 @@ def get_source_chat(project_id: str, source_id: str):
 app.include_router(auth_router)
 app.include_router(auth_router, prefix="/api")
 
-# v2 project routes
+# v2 project routes (only under /api — not at root to avoid clashing with SPA routes)
 from routes.projects import router as projects_router
 app.include_router(projects_router, prefix="/api")
-app.include_router(projects_router, prefix="")
 
 # API routes under both /api and /
 app.include_router(router, prefix="/api")
 app.include_router(router, prefix="")
 
-# Serve frontend
+# SPA catch-all — serve index.html for all non-API routes (react-router handles them)
+from fastapi.responses import FileResponse as _FileResponse
+
 frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
 if frontend_dist.exists():
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str, request: Request):
+        # Static assets (JS, CSS, images, fonts) — try to serve from dist directly
+        static_extensions = ('.js', '.css', '.png', '.svg', '.ico', '.woff', '.woff2', '.mjs', '.json', '.webmanifest', '.txt', '.map')
+        if any(full_path.endswith(ext) for ext in static_extensions):
+            file_path = frontend_dist / full_path
+            if file_path.exists():
+                return _FileResponse(str(file_path))
+            from fastapi.responses import Response as _Response
+            return _Response(status_code=404)
+        # Everything else → SPA index.html
+        index = frontend_dist / "index.html"
+        if index.exists():
+            return _FileResponse(str(index), media_type="text/html")
+        return _JSONResponse({"detail": "Not Found"}, status_code=404)
+
     app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="static")
