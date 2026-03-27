@@ -23,6 +23,8 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 CLAUDE_BIN = os.getenv("CLAUDE_BIN", "/root/.local/bin/claude")
 DB_PATH = Path(__file__).parent / "pdfpal.db"
 
+from db import get_db as _get_db_shared
+
 # Auth imports
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import JSONResponse as _JSONResponse, RedirectResponse as _RedirectResponse
@@ -111,7 +113,9 @@ router = APIRouter()
 
 class ExtractRequest(BaseModel):
     url: str
-    session_id: Optional[str] = None  # if provided, update existing session
+    session_id: Optional[str] = None   # legacy v1
+    project_id: Optional[str] = None   # v2: create source in this project
+    source_id: Optional[str] = None    # v2: update existing source
 
 class ChatMessage(BaseModel):
     role: str
@@ -320,22 +324,49 @@ async def extract(req: ExtractRequest):
 
     result["pdf_url"] = canonical_url
     result["original_url"] = req.url
+    title = result["title"] or _url_fallback_title(canonical_url)
+    ts = now_iso()
 
-    # Create or update session
+    # ── v2: project-based flow ────────────────────────────────────────────────
+    if req.project_id:
+        if req.source_id:
+            # Update existing source
+            with get_db() as conn:
+                conn.execute(
+                    "UPDATE sources SET title=?, url=?, pdf_text=?, pages=?, accessed_at=? WHERE id=? AND project_id=?",
+                    (title, canonical_url, result["text"], result["pages"], ts, req.source_id, req.project_id)
+                )
+            result["source_id"] = req.source_id
+            result["project_id"] = req.project_id
+        else:
+            # Create new source in project
+            sid = str(uuid.uuid4())
+            with get_db() as conn:
+                conn.execute(
+                    "INSERT INTO sources (id, project_id, type, url, title, pdf_text, pages, created_at, accessed_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?)",
+                    (sid, req.project_id, "pdf", canonical_url, title, result["text"], result["pages"], ts, ts)
+                )
+                # Touch the project's accessed_at
+                conn.execute("UPDATE projects SET accessed_at=? WHERE id=?", (ts, req.project_id))
+            result["source_id"] = sid
+            result["project_id"] = req.project_id
+        return result
+
+    # ── v1 legacy: session-based flow (keep working) ─────────────────────────
     if req.session_id:
         with get_db() as conn:
             conn.execute(
                 "UPDATE sessions SET title=?, pdf_url=?, pdf_text=?, pages=?, accessed_at=? WHERE id=?",
-                (result["title"] or _url_fallback_title(canonical_url), canonical_url, result["text"], result["pages"], now_iso(), req.session_id)
+                (title, canonical_url, result["text"], result["pages"], ts, req.session_id)
             )
         result["session_id"] = req.session_id
     else:
         sid = str(uuid.uuid4())
-        ts = now_iso()
         with get_db() as conn:
             conn.execute(
                 "INSERT INTO sessions (id, title, pdf_url, pdf_text, pages, created_at, accessed_at) VALUES (?,?,?,?,?,?,?)",
-                (sid, result["title"] or _url_fallback_title(canonical_url), canonical_url, result["text"], result["pages"], ts, ts)
+                (sid, title, canonical_url, result["text"], result["pages"], ts, ts)
             )
         result["session_id"] = sid
 
@@ -461,6 +492,11 @@ PDF Content:
 # Auth routes — registered under both /auth and /api/auth
 app.include_router(auth_router)
 app.include_router(auth_router, prefix="/api")
+
+# v2 project routes
+from routes.projects import router as projects_router
+app.include_router(projects_router, prefix="/api")
+app.include_router(projects_router, prefix="")
 
 # API routes under both /api and /
 app.include_router(router, prefix="/api")

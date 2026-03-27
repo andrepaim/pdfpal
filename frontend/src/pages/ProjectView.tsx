@@ -1,0 +1,246 @@
+import { useState, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { projectsApi, sourcesApi, notesApi, artifactsApi, type Project, type Source, type Note, type Artifact } from '../lib/api'
+
+type Tab = 'sources' | 'notes' | 'artifacts' | 'chats'
+
+function timeAgo(iso: string) {
+  const diff = Date.now() - new Date(iso + 'Z').getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1) return 'just now'
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  return `${Math.floor(h / 24)}d ago`
+}
+
+// ── Add URL modal ─────────────────────────────────────────────────────────────
+function AddUrlModal({ projectId, onClose, onAdded }: { projectId: string; onClose: () => void; onAdded: (s: Source) => void }) {
+  const [url, setUrl] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleAdd = async () => {
+    if (!url.trim()) return
+    setLoading(true); setError('')
+    try {
+      const result = await sourcesApi.addUrl(projectId, url.trim())
+      onAdded({ id: result.source_id, project_id: projectId, type: 'pdf', url: result.pdf_url, title: result.title, pages: result.pages, created_at: new Date().toISOString(), accessed_at: new Date().toISOString() })
+    } catch (e: any) { setError(e.message) }
+    finally { setLoading(false) }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={onClose}>
+      <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, width: 480 }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ color: '#fff', margin: '0 0 4px', fontSize: 15 }}>Add a source</h3>
+        <p style={{ color: '#6b7280', fontSize: 12, margin: '0 0 16px' }}>Paste a PDF URL or any academic page (arXiv, OpenReview, ACL, Nature…)</p>
+        <input
+          autoFocus value={url} onChange={e => setUrl(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleAdd()}
+          placeholder="https://arxiv.org/abs/1234.56789"
+          style={{ width: '100%', background: '#0f0f0f', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', color: '#e5e7eb', fontSize: 13, marginBottom: 14, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' }}
+        />
+        {error && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>⚠️ {error}</div>}
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ background: 'none', border: '1px solid var(--border)', color: '#9ca3af', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+          <button onClick={handleAdd} disabled={loading || !url.trim()} style={{ background: loading ? '#3a3a3a' : 'var(--accent)', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            {loading ? <><span className="spinner" style={{ width: 14, height: 14, marginRight: 8 }} />Fetching…</> : 'Add Source'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Sources tab ───────────────────────────────────────────────────────────────
+function SourcesTab({ projectId }: { projectId: string }) {
+  const navigate = useNavigate()
+  const [sources, setSources] = useState<Source[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showAdd, setShowAdd] = useState(false)
+
+  useEffect(() => { sourcesApi.list(projectId).then(setSources).finally(() => setLoading(false)) }, [projectId])
+
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation()
+    if (!confirm('Remove this source?')) return
+    await sourcesApi.delete(projectId, id)
+    setSources(s => s.filter(x => x.id !== id))
+  }
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--panel)', flexShrink: 0 }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>Sources</span>
+        <button onClick={() => setShowAdd(true)} style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>＋ Add URL</button>
+      </div>
+      <div style={{ flex: 1, overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {loading && <div style={{ color: '#4b5563', textAlign: 'center', paddingTop: 40 }}><div className="spinner" style={{ margin: '0 auto 12px' }} /></div>}
+        {!loading && sources.length === 0 && (
+          <div style={{ textAlign: 'center', paddingTop: 60, color: '#4b5563' }}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>📄</div>
+            <div>No sources yet. Add a PDF URL to get started.</div>
+          </div>
+        )}
+        {sources.map(s => (
+          <div key={s.id} onClick={() => navigate(`/projects/${projectId}/sources/${s.id}`)}
+            style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer', position: 'relative' }}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = '#3a3a3a')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+          >
+            <div style={{ fontSize: 20, flexShrink: 0 }}>📄</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }}>
+                {s.title || s.url || 'Untitled'}
+              </div>
+              <div style={{ fontSize: 11, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.url}</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
+              {s.pages > 0 && <span style={{ background: '#212121', border: '1px solid var(--border)', borderRadius: 6, padding: '2px 8px', fontSize: 10, color: '#6b7280' }}>{s.pages}p</span>}
+              <span style={{ background: '#1e1b4b', border: '1px solid #312e81', borderRadius: 6, padding: '2px 8px', fontSize: 10, color: '#818cf8' }}>PDF</span>
+              <button onClick={e => handleDelete(e, s.id)} style={{ background: 'none', border: 'none', color: '#4b5563', cursor: 'pointer', fontSize: 14, padding: 2, opacity: 0 }}
+                onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                onMouseLeave={e => (e.currentTarget.style.opacity = '0')}
+              >✕</button>
+            </div>
+          </div>
+        ))}
+        <div onClick={() => setShowAdd(true)} style={{ border: '2px dashed #333', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: '#4b5563', cursor: 'pointer', padding: '14px 0', fontSize: 12 }}>
+          <span>🔗</span><span>Paste a URL to add a source…</span>
+        </div>
+      </div>
+      {showAdd && <AddUrlModal projectId={projectId} onClose={() => setShowAdd(false)} onAdded={s => { setSources(prev => [s, ...prev]); setShowAdd(false) }} />}
+    </div>
+  )
+}
+
+// ── Notes tab ─────────────────────────────────────────────────────────────────
+function NotesTab({ projectId }: { projectId: string }) {
+  const navigate = useNavigate()
+  const [notes, setNotes] = useState<Note[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => { notesApi.list(projectId).then(setNotes).finally(() => setLoading(false)) }, [projectId])
+
+  const handleCreate = async () => {
+    const { id } = await notesApi.create(projectId, { title: 'Untitled Note', content: '' })
+    navigate(`/projects/${projectId}/notes/${id}`)
+  }
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--panel)', flexShrink: 0 }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>Notes</span>
+        <button onClick={handleCreate} style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>＋ New Note</button>
+      </div>
+      <div style={{ flex: 1, overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {loading ? <div style={{ textAlign: 'center', paddingTop: 40, color: '#4b5563' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+          : notes.length === 0 ? <div style={{ textAlign: 'center', paddingTop: 60, color: '#4b5563' }}><div style={{ fontSize: 36, marginBottom: 12 }}>📝</div>No notes yet.</div>
+          : notes.map(n => (
+            <div key={n.id} onClick={() => navigate(`/projects/${projectId}/notes/${n.id}`)}
+              style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', cursor: 'pointer' }}>
+              <div style={{ fontWeight: 600, color: '#fff', fontSize: 13, marginBottom: 4 }}>{n.title}</div>
+              <div style={{ color: '#6b7280', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.preview || 'Empty note'}</div>
+              <div style={{ color: '#4b5563', fontSize: 10, marginTop: 6 }}>{timeAgo(n.updated_at)}</div>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  )
+}
+
+// ── Artifacts tab ─────────────────────────────────────────────────────────────
+function ArtifactsTab({ projectId }: { projectId: string }) {
+  const navigate = useNavigate()
+  const [artifacts, setArtifacts] = useState<Artifact[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => { artifactsApi.list(projectId).then(setArtifacts).finally(() => setLoading(false)) }, [projectId])
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--panel)', flexShrink: 0 }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>Artifacts</span>
+      </div>
+      <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+        {loading ? <div style={{ textAlign: 'center', paddingTop: 40, color: '#4b5563' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+          : artifacts.length === 0 ? <div style={{ textAlign: 'center', paddingTop: 60, color: '#4b5563' }}><div style={{ fontSize: 36, marginBottom: 12 }}>✨</div>No artifacts yet. Generate one from Project Chat.</div>
+          : artifacts.map(a => (
+            <div key={a.id} onClick={() => navigate(`/projects/${projectId}/artifacts/${a.id}`)}
+              style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', cursor: 'pointer', marginBottom: 10 }}>
+              <div style={{ fontWeight: 600, color: '#fff', fontSize: 13, marginBottom: 4 }}>✨ {a.title}</div>
+              <div style={{ color: '#6b7280', fontSize: 11 }}>{timeAgo(a.updated_at)}</div>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  )
+}
+
+// ── Main ProjectView ──────────────────────────────────────────────────────────
+export default function ProjectView() {
+  const { projectId } = useParams<{ projectId: string }>()
+  const navigate = useNavigate()
+  const [project, setProject] = useState<Project | null>(null)
+  const [tab, setTab] = useState<Tab>('sources')
+
+  useEffect(() => {
+    if (projectId) projectsApi.get(projectId).then(setProject)
+  }, [projectId])
+
+  if (!projectId) return null
+
+  const navItem = (t: Tab, icon: string, label: string, count?: number) => (
+    <div onClick={() => setTab(t)} style={{
+      display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+      borderRadius: 8, cursor: 'pointer', fontSize: 13, marginBottom: 2,
+      background: tab === t ? '#1e1b4b' : 'transparent',
+      color: tab === t ? '#a5b4fc' : '#9ca3af',
+      fontWeight: tab === t ? 600 : 400,
+    }}>
+      <span>{icon}</span>
+      <span style={{ flex: 1 }}>{label}</span>
+      {count !== undefined && count > 0 && (
+        <span style={{ background: 'var(--border)', borderRadius: 10, padding: '1px 7px', fontSize: 10, color: '#6b7280' }}>{count}</span>
+      )}
+    </div>
+  )
+
+  return (
+    <div style={{ display: 'flex', height: '100vh', background: 'var(--bg)' }}>
+      {/* Sidebar */}
+      <div style={{ width: 220, flexShrink: 0, background: '#111', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '12px 12px 8px', borderBottom: '1px solid var(--border)' }}>
+          <button onClick={() => navigate('/')} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 11, padding: 0, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 4 }}>← All projects</button>
+          <div style={{ fontSize: 14, fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {project?.title || '…'}
+          </div>
+          {project?.description && (
+            <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project.description}</div>
+          )}
+        </div>
+        <div style={{ flex: 1, padding: 8 }}>
+          {navItem('sources', '📄', 'Sources', project?.source_count)}
+          {navItem('notes', '📝', 'Notes', project?.note_count)}
+          {navItem('artifacts', '✨', 'Artifacts', project?.artifact_count)}
+        </div>
+        <div style={{ padding: 12, borderTop: '1px solid var(--border)' }}>
+          <button
+            onClick={() => navigate(`/projects/${projectId}/chat`)}
+            style={{ width: '100%', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 8, padding: '10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+          >💬 Project Chat</button>
+        </div>
+      </div>
+
+      {/* Main content */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {tab === 'sources' && <SourcesTab projectId={projectId} />}
+        {tab === 'notes' && <NotesTab projectId={projectId} />}
+        {tab === 'artifacts' && <ArtifactsTab projectId={projectId} />}
+      </div>
+    </div>
+  )
+}
