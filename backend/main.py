@@ -27,6 +27,7 @@ DB_PATH = Path(__file__).parent / "pdfpal.db"
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import JSONResponse as _JSONResponse, RedirectResponse as _RedirectResponse
 from auth import verify_session_token, SESSION_COOKIE, router as auth_router
+from pdf_resolver import resolve_pdf_url
 
 class AuthMiddleware(BaseHTTPMiddleware):
     # Paths that don't require auth
@@ -230,13 +231,13 @@ def update_session(session_id: str, req: CreateSessionRequest):
 
 @router.get("/proxy-pdf")
 async def proxy_pdf(url: str):
-    async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
-        try:
-            r = await client.get(url)
-            r.raise_for_status()
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to fetch PDF: {e}")
-    return Response(content=r.content, media_type="application/pdf")
+    try:
+        pdf_bytes, _ = await resolve_pdf_url(url)
+        return Response(content=pdf_bytes, media_type="application/pdf")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to fetch PDF: {e}")
 
 
 def _extract_pdf_bytes(pdf_bytes: bytes) -> dict:
@@ -300,28 +301,32 @@ async def extract_upload(file: UploadFile = File(...), session_id: Optional[str]
 
 @router.post("/extract")
 async def extract(req: ExtractRequest):
-    async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
-        try:
-            r = await client.get(req.url)
-            r.raise_for_status()
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to fetch PDF: {e}")
+    try:
+        pdf_bytes, resolved_url = await resolve_pdf_url(req.url)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to fetch PDF: {e}")
+
+    # Use resolved URL for session storage (the actual PDF URL, not the abstract page)
+    canonical_url = resolved_url
 
     try:
-        result = _extract_pdf_bytes(r.content)
+        result = _extract_pdf_bytes(pdf_bytes)
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to parse PDF: {e}")
 
-    result["pdf_url"] = req.url
+    result["pdf_url"] = canonical_url
+    result["original_url"] = req.url
 
     # Create or update session
     if req.session_id:
         with get_db() as conn:
             conn.execute(
                 "UPDATE sessions SET title=?, pdf_url=?, pdf_text=?, pages=?, accessed_at=? WHERE id=?",
-                (result["title"] or _url_fallback_title(req.url), req.url, result["text"], result["pages"], now_iso(), req.session_id)
+                (result["title"] or _url_fallback_title(canonical_url), canonical_url, result["text"], result["pages"], now_iso(), req.session_id)
             )
         result["session_id"] = req.session_id
     else:
@@ -330,7 +335,7 @@ async def extract(req: ExtractRequest):
         with get_db() as conn:
             conn.execute(
                 "INSERT INTO sessions (id, title, pdf_url, pdf_text, pages, created_at, accessed_at) VALUES (?,?,?,?,?,?,?)",
-                (sid, result["title"] or _url_fallback_title(req.url), req.url, result["text"], result["pages"], ts, ts)
+                (sid, result["title"] or _url_fallback_title(canonical_url), canonical_url, result["text"], result["pages"], ts, ts)
             )
         result["session_id"] = sid
 
