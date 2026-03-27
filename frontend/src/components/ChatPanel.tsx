@@ -13,11 +13,15 @@ interface Props {
   disabled: boolean
   selectedText?: string
   onSelectedTextUsed?: () => void
+  // v2
+  projectId?: string | null
+  sourceId?: string | null
+  // v1 legacy
   sessionId?: string | null
   initialMessages?: { role: string; content: string }[]
 }
 
-export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onSelectedTextUsed, sessionId, initialMessages }: Props) {
+export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onSelectedTextUsed, projectId, sourceId, sessionId, initialMessages }: Props) {
   const [messages, setMessages] = useState<Message[]>(initialMessages?.map(m => ({ role: m.role as 'user'|'assistant', content: m.content })) ?? [])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -26,12 +30,23 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Sync messages when session is restored
+  // Load chat history when source changes
   useEffect(() => {
-    if (initialMessages) {
-      setMessages(initialMessages.map(m => ({ role: m.role as 'user'|'assistant', content: m.content })))
+    setMessages([])
+    if (projectId && sourceId) {
+      fetch(`/api/projects/${projectId}/sources/${sourceId}/chat`, { credentials: 'include' })
+        .then(r => r.ok ? r.json() : { messages: [] })
+        .then(data => {
+          if (data.messages?.length > 0) {
+            setMessages(data.messages.map((m: { role: string; content: string }) => ({
+              role: m.role as 'user' | 'assistant',
+              content: m.content
+            })))
+          }
+        })
+        .catch(() => {})
     }
-  }, [sessionId])
+  }, [sourceId, sessionId])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -73,6 +88,8 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
           pdf_url: pdfUrl,
           conversation_history: messages,
           search_web: webSearch,
+          project_id: projectId ?? null,
+          source_id: sourceId ?? null,
           session_id: sessionId ?? null,
         }),
       })

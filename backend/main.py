@@ -125,7 +125,9 @@ class ChatRequest(BaseModel):
     message: str
     pdf_text: str
     pdf_url: str
-    session_id: Optional[str] = None
+    session_id: Optional[str] = None       # v1 legacy
+    project_id: Optional[str] = None       # v2
+    source_id: Optional[str] = None        # v2
     conversation_history: List[ChatMessage] = []
     search_web: bool = True
 
@@ -434,8 +436,31 @@ PDF Content:
         full_prompt += f"\nConversation so far:\n{history_text}"
     full_prompt += f"\nUser: {req.message}\n\nAssistant:"
 
-    # Save user message to session
-    if req.session_id:
+    # ── Persist user message ─────────────────────────────────────────────────
+    chat_session_id = None
+
+    if req.project_id and req.source_id:
+        # v2: find or create a chat_session for this source
+        ts = now_iso()
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT id FROM chat_sessions WHERE project_id=? AND source_id=? ORDER BY created_at DESC LIMIT 1",
+                (req.project_id, req.source_id)
+            ).fetchone()
+            if row:
+                chat_session_id = row["id"]
+            else:
+                chat_session_id = str(uuid.uuid4())
+                conn.execute(
+                    "INSERT INTO chat_sessions (id, project_id, source_id, title, created_at, accessed_at) VALUES (?,?,?,?,?,?)",
+                    (chat_session_id, req.project_id, req.source_id, "Chat", ts, ts)
+                )
+            conn.execute(
+                "INSERT INTO chat_messages (session_id, role, content, sources_used, created_at) VALUES (?,?,?,?,?)",
+                (chat_session_id, "user", req.message, "[]", ts)
+            )
+    elif req.session_id:
+        # v1 legacy
         ts = now_iso()
         with get_db() as conn:
             conn.execute(
@@ -473,12 +498,20 @@ PDF Content:
                 assistant_text = f"Error: {stderr_text}"
 
             # Save assistant message
-            if req.session_id and assistant_text:
-                with get_db() as conn:
-                    conn.execute(
-                        "INSERT INTO messages (session_id, role, content, created_at) VALUES (?,?,?,?)",
-                        (req.session_id, "assistant", assistant_text, now_iso())
-                    )
+            if assistant_text:
+                ts2 = now_iso()
+                if chat_session_id:
+                    with get_db() as conn:
+                        conn.execute(
+                            "INSERT INTO chat_messages (session_id, role, content, sources_used, created_at) VALUES (?,?,?,?,?)",
+                            (chat_session_id, "assistant", assistant_text, "[]", ts2)
+                        )
+                elif req.session_id:
+                    with get_db() as conn:
+                        conn.execute(
+                            "INSERT INTO messages (session_id, role, content, created_at) VALUES (?,?,?,?)",
+                            (req.session_id, "assistant", assistant_text, ts2)
+                        )
 
             yield f"data: {json.dumps({'text': assistant_text})}\n\n"
             yield "data: [DONE]\n\n"
@@ -488,6 +521,22 @@ PDF Content:
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
+
+# ── v2 source chat history ────────────────────────────────────────────────────
+@router.get("/projects/{project_id}/sources/{source_id}/chat")
+def get_source_chat(project_id: str, source_id: str):
+    with get_db() as conn:
+        session = conn.execute(
+            "SELECT id FROM chat_sessions WHERE project_id=? AND source_id=? ORDER BY created_at DESC LIMIT 1",
+            (project_id, source_id)
+        ).fetchone()
+        if not session:
+            return {"messages": []}
+        messages = conn.execute(
+            "SELECT role, content, created_at FROM chat_messages WHERE session_id=? ORDER BY id ASC",
+            (session["id"],)
+        ).fetchall()
+    return {"messages": [dict(m) for m in messages]}
 
 # Auth routes — registered under both /auth and /api/auth
 app.include_router(auth_router)
