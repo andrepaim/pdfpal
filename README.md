@@ -1,6 +1,6 @@
 # 📄 pdfpal
 
-> An AI-powered research workspace. Organize papers into projects, chat across multiple sources, take notes, and generate artifacts — all self-hosted.
+> An AI-powered research workspace. Organize papers into projects, chat across multiple sources, take notes, explore citations — all self-hosted.
 
 Powered by your local [Claude CLI](https://claude.ai/code) — no API costs beyond your Claude subscription.
 
@@ -8,17 +8,29 @@ Powered by your local [Claude CLI](https://claude.ai/code) — no API costs beyo
 
 ## Features
 
-- **Projects** — organize PDFs into research workspaces; rename, search, delete
+### Sources
 - **Smart PDF resolver** — paste any URL: arXiv, OpenReview, ACL Anthology, PMLR, Nature, Springer, DOI links, or a direct `.pdf` URL; tracking params stripped automatically
-- **Open-access fallback** — for paywalled URLs, automatically queries Semantic Scholar and Unpaywall for a free copy
-- **Per-source chat** — read a PDF and chat with it in a split-pane viewer; conversation persists across sessions
-- **Project chat** — chat across multiple sources simultaneously; toggle which sources are in context
-- **Notes** — markdown editor with live preview, auto-save; scoped to a project
-- **Artifacts** — save AI-generated outputs (summaries, analyses, etc.) as reusable documents
-- **Chat history** — all conversations (per-source and project-level) are persisted and browsable from the Chats tab
-- **Web search** — toggleable Tavily-powered search injects live results into every conversation
-- **Text selection → chat** — select text in the PDF viewer, click to pre-fill the chat input
+- **Open-access fallback** — for paywalled URLs, queries Semantic Scholar and Unpaywall for a free copy
 - **Inline renaming** — rename projects and sources in-place
+- **Failed source detection** — sources with no extracted text show a `⚠ Failed` badge with a one-click retry
+
+### Reading & Chat
+- **Split-pane reader** — PDF viewer on the left, chat/notes/related on the right
+- **Per-source chat** — persistent conversation history per paper, restored across sessions
+- **Source notes** — markdown notes scoped to a specific paper; auto-save, live preview
+- **Related papers** — References and Citations from Semantic Scholar; one click to add any paper to the project
+- **Text selection → chat** — select text in the PDF viewer to pre-fill the chat input
+
+### Projects
+- **Project chat** — chat across multiple sources simultaneously; toggle which sources are in context
+- **Notes** — project-level markdown notes with auto-save and live preview
+- **Artifacts** — save AI-generated outputs as reusable documents; export as `.md`
+- **Chats tab** — browse all chat sessions (per-source and project-level) in one place
+- **Clear chat** — wipe a conversation from both UI and DB
+
+### Infrastructure
+- **Web search** — toggleable Tavily-powered search injects live results into every conversation
+- **Chat persistence** — all conversations persisted in SQLite, restored on reload
 - **Google OAuth** — private by default; only allowlisted emails can log in
 - **Dark theme** — easy on the eyes
 
@@ -36,6 +48,7 @@ Powered by your local [Claude CLI](https://claude.ai/code) — no API costs beyo
 | PDF extraction | pdfplumber |
 | AI | Claude CLI (`claude --print`) |
 | Web search | [Tavily](https://tavily.com) |
+| Related papers | [Semantic Scholar API](https://www.semanticscholar.org/product/api) |
 | Auth | Google OAuth2 + JWT session cookie |
 
 ---
@@ -44,29 +57,33 @@ Powered by your local [Claude CLI](https://claude.ai/code) — no API costs beyo
 
 ```
 Browser (React SPA)
-├── ProjectsPage       — list/create/delete projects
+├── ProjectsPage       — list/create/delete/search projects
 ├── ProjectView        — sources / notes / artifacts / chats tabs
-│   ├── SourcesTab     — add URLs, rename, delete sources
-│   ├── NotesTab       — markdown notes with auto-save
-│   ├── ArtifactsTab   — saved AI outputs
+│   ├── SourcesTab     — add URLs, inline rename, failed badge + retry
+│   ├── NotesTab       — project-level markdown notes
+│   ├── ArtifactsTab   — saved AI outputs + .md export
 │   └── ChatsTab       — all chat sessions for this project
-├── PaperReader        — split-pane PDF viewer + source chat
+├── PaperReader        — split-pane PDF viewer
+│   ├── Chat tab       — persistent per-source conversation
+│   ├── Notes tab      — source-scoped markdown notes
+│   └── Related tab    — Semantic Scholar references + citations
 └── ProjectChat        — multi-source chat with source toggles
          │
          ▼
    FastAPI backend (port 8200)
          │
-   ├── POST /extract                 → resolve URL + extract PDF text → save source
-   ├── GET  /proxy-pdf?url=...       → CORS-safe PDF proxy
-   ├── POST /chat                    → Tavily search + Claude CLI → SSE stream
-   ├── GET  /projects                → CRUD for projects, sources, notes, artifacts
-   ├── GET  /projects/{id}/chat      → project-level chat history
-   ├── GET  /projects/{id}/chats     → list all chat sessions
-   ├── GET  /projects/{id}/sources/{sid}/chat → source chat history
-   ├── GET  /auth/google             → OAuth redirect
-   ├── GET  /auth/google/callback    → OAuth callback + session cookie
-   ├── GET  /auth/me                 → current user
-   └── POST /auth/logout             → clear cookie
+   ├── POST /extract                         → resolve URL + extract PDF → save source
+   ├── GET  /proxy-pdf?url=...               → CORS-safe PDF proxy
+   ├── POST /chat                            → Tavily search + Claude CLI → SSE stream
+   ├── GET|DELETE /projects/{id}/chat        → project-level chat history / clear
+   ├── GET        /projects/{id}/chats       → list all chat sessions
+   ├── GET|DELETE /projects/{id}/sources/{sid}/chat   → source chat history / clear
+   ├── GET        /projects/{id}/sources/{sid}/related → Semantic Scholar lookup (cached)
+   ├── GET  /projects                        → CRUD: projects, sources, notes, artifacts
+   ├── GET  /auth/google                     → OAuth redirect
+   ├── GET  /auth/google/callback            → OAuth callback + session cookie
+   ├── GET  /auth/me                         → current user
+   └── POST /auth/logout                     → clear cookie
 ```
 
 ---
@@ -203,19 +220,23 @@ bash deploy.sh
 1. Sign in with your allowlisted Google account
 2. Create a **Project** for your research topic
 3. Add sources by pasting a PDF URL (arXiv, DOI, direct PDF, etc.)
-4. Click a source to open the **PDF viewer + chat**
-5. Use **Project Chat** to ask questions across multiple sources at once
-6. Take **Notes** in markdown — auto-saved
-7. Save AI responses as **Artifacts** for later reference
+4. Click a source to open the **PDF reader**:
+   - **💬 Chat** — ask questions about the paper; history persists
+   - **📝 Notes** — take markdown notes scoped to this paper
+   - **🔗 Related** — browse references and citations; add any paper to the project in one click
+5. Use **💬 Project Chat** to ask questions across multiple sources at once
+6. Take project-level **Notes** in markdown — auto-saved
+7. Save AI responses as **Artifacts**, then export as `.md`
 8. Browse all past conversations in the **Chats** tab
 
 ---
 
 ## Limitations
 
-- PDFs with more than **50 pages** are truncated
+- PDFs with more than **50 pages** are not supported (truncation planned)
 - **Scanned PDFs** (image-only, no text layer) return empty text — OCR not implemented
-- Some publishers (ACM, Elsevier) block automated access; the resolver tries Semantic Scholar and Unpaywall as fallbacks but cannot bypass paywalls with no open-access version
+- Some publishers (ACM, Elsevier) block automated access; the resolver tries Semantic Scholar and Unpaywall as fallbacks but cannot bypass paywalls with no open-access copy
+- Semantic Scholar Related Papers requires a recognizable arXiv ID or DOI in the source URL
 - Claude CLI response is buffered — no true token-by-token streaming
 
 ---
@@ -224,8 +245,8 @@ bash deploy.sh
 
 - [ ] RAG chunking for large PDFs (>50 pages)
 - [ ] OCR for scanned PDFs (Claude vision)
+- [ ] Global search across all projects and sources
 - [ ] Highlight PDF passages cited in answers
-- [ ] Export conversation as markdown
 - [ ] True streaming (replace `claude --print` with direct API)
 - [ ] Local LLM support (Ollama)
 
