@@ -239,7 +239,10 @@ export default function ProjectChat() {
             </button>
           )}
           {messages.length > 0 && (
-            <button onClick={() => { setMessages([]); setError('') }} style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 12, cursor: 'pointer', padding: '3px 8px' }}>Clear</button>
+            <button onClick={async () => {
+              setMessages([]); setError('')
+              try { if (projectId) await chatApi.clearProjectChat(projectId) } catch { /* non-fatal */ }
+            }} style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 12, cursor: 'pointer', padding: '3px 8px' }}>Clear</button>
           )}
           <button
             onClick={() => setWebSearch(v => !v)}

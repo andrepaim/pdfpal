@@ -139,6 +139,17 @@ def delete_source(project_id: str, source_id: str):
     return {"ok": True}
 
 
+@router.get("/{project_id}/sources/{source_id}/notes")
+def list_source_notes(project_id: str, source_id: str):
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT id, project_id, source_id, title, substr(content,1,200) as preview, created_at, updated_at "
+            "FROM notes WHERE project_id=? AND source_id=? ORDER BY updated_at DESC",
+            (project_id, source_id)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 # ── Notes ─────────────────────────────────────────────────────────────────────
 
 class NoteCreate(BaseModel):

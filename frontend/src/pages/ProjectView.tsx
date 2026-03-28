@@ -128,7 +128,10 @@ function SourcesTab({ projectId }: { projectId: string }) {
             </div>
             <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
               {s.pages > 0 && <span style={{ background: '#212121', border: '1px solid var(--border)', borderRadius: 6, padding: '2px 8px', fontSize: 10, color: '#6b7280' }}>{s.pages}p</span>}
-              <span style={{ background: '#1e1b4b', border: '1px solid #312e81', borderRadius: 6, padding: '2px 8px', fontSize: 10, color: '#818cf8' }}>PDF</span>
+              {s.pages === 0
+                ? <span style={{ background: '#7f1d1d', border: '1px solid #991b1b', borderRadius: 6, padding: '2px 8px', fontSize: 10, color: '#fca5a5' }}>⚠ Failed</span>
+                : <span style={{ background: '#1e1b4b', border: '1px solid #312e81', borderRadius: 6, padding: '2px 8px', fontSize: 10, color: '#818cf8' }}>PDF</span>
+              }
               <button
                 onClick={e => startEdit(e, s)}
                 title="Rename"

@@ -44,6 +44,17 @@ export default function ArtifactViewer() {
           <>
             <button onClick={() => setEditing(true)} style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: '#9ca3af', borderRadius: 8, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>✏️ Edit</button>
             <button onClick={handleCopy} style={{ background: 'none', border: '1px solid var(--border)', color: '#9ca3af', borderRadius: 8, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>Copy</button>
+            <button
+              onClick={() => {
+                const blob = new Blob([`# ${title}\n\n${content}`], { type: 'text/markdown' })
+                const a = document.createElement('a')
+                a.href = URL.createObjectURL(blob)
+                a.download = `${title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.md`
+                a.click()
+                URL.revokeObjectURL(a.href)
+              }}
+              style={{ background: 'none', border: '1px solid var(--border)', color: '#9ca3af', borderRadius: 8, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}
+            >↓ Export</button>
           </>
         )}
       </div>

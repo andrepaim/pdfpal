@@ -593,6 +593,34 @@ def get_project_chat(project_id: str):
     return {"messages": rows}
 
 
+@router.delete("/projects/{project_id}/sources/{source_id}/chat")
+def clear_source_chat(project_id: str, source_id: str):
+    """Delete all messages for the source's chat session."""
+    with get_db() as conn:
+        session = conn.execute(
+            "SELECT id FROM chat_sessions WHERE project_id=? AND source_id=? ORDER BY created_at DESC LIMIT 1",
+            (project_id, source_id)
+        ).fetchone()
+        if session:
+            conn.execute("DELETE FROM chat_messages WHERE session_id=?", (session["id"],))
+            conn.execute("DELETE FROM chat_sessions WHERE id=?", (session["id"],))
+    return {"ok": True}
+
+
+@router.delete("/projects/{project_id}/chat")
+def clear_project_chat(project_id: str):
+    """Delete the project-level chat session and all messages."""
+    with get_db() as conn:
+        session = conn.execute(
+            "SELECT id FROM chat_sessions WHERE project_id=? AND source_id IS NULL ORDER BY accessed_at DESC LIMIT 1",
+            (project_id,)
+        ).fetchone()
+        if session:
+            conn.execute("DELETE FROM chat_messages WHERE session_id=?", (session["id"],))
+            conn.execute("DELETE FROM chat_sessions WHERE id=?", (session["id"],))
+    return {"ok": True}
+
+
 @router.get("/projects/{project_id}/chats")
 def list_project_chats(project_id: str):
     """List all chat sessions for a project (source + project-level)."""

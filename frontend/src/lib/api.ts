@@ -97,6 +97,8 @@ export const sourcesApi = {
 
 export const notesApi = {
   list: (projectId: string) => apiFetch<Note[]>(`/projects/${projectId}/notes`),
+  listBySource: (projectId: string, sourceId: string) =>
+    apiFetch<Note[]>(`/projects/${projectId}/sources/${sourceId}/notes`),
   create: (projectId: string, data: { title?: string; content?: string; source_id?: string }) =>
     apiFetch<{ id: string }>(`/projects/${projectId}/notes`, { method: 'POST', body: JSON.stringify(data) }),
   get: (projectId: string, noteId: string) =>
@@ -132,6 +134,10 @@ export const chatApi = {
     apiFetch<{ messages: ChatMessage[] }>(`/projects/${projectId}/sources/${sourceId}/chat`),
   listSessions: (projectId: string) =>
     apiFetch<ChatSession[]>(`/projects/${projectId}/chats`),
+  clearProjectChat: (projectId: string) =>
+    apiFetch(`/projects/${projectId}/chat`, { method: 'DELETE' }),
+  clearSourceChat: (projectId: string, sourceId: string) =>
+    apiFetch(`/projects/${projectId}/sources/${sourceId}/chat`, { method: 'DELETE' }),
 }
 
 export const artifactsApi = {

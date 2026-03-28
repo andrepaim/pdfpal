@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { chatApi } from '../lib/api'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -158,7 +159,12 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {messages.length > 0 && (
             <button
-              onClick={() => { setMessages([]); setError('') }}
+              onClick={async () => {
+                setMessages([]); setError('')
+                try {
+                  if (projectId && sourceId) await chatApi.clearSourceChat(projectId, sourceId)
+                } catch { /* non-fatal */ }
+              }}
               title="Clear conversation"
               style={{
                 background: 'none', border: 'none', color: '#6b7280',
