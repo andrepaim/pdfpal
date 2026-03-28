@@ -10,10 +10,94 @@ Strategy:
 import re
 from urllib.parse import urljoin, urlparse
 import httpx
+import json
 
 # ---------------------------------------------------------------------------
 # Rewrite rules for known sites
 # ---------------------------------------------------------------------------
+
+def strip_tracking_params(url: str) -> str:
+    """Strip utm_* and other tracking query params."""
+    from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+    parsed = urlparse(url)
+    qs = {k: v for k, v in parse_qs(parsed.query, keep_blank_values=True).items()
+          if not k.startswith('utm_') and k not in ('ref', 'source', 'campaign')}
+    cleaned = urlunparse(parsed._replace(query=urlencode(qs, doseq=True)))
+    return cleaned
+
+
+def extract_doi(url: str) -> str | None:
+    """Extract a DOI from a URL."""
+    # doi.org/10.xxxx/...
+    m = re.search(r'(?:doi\.org|/doi/(?:pdf/)?)/(10\.\d{4,}/[^\s?#&]+)', url)
+    if m:
+        return m.group(1)
+    return None
+
+
+async def resolve_via_unpaywall(doi: str, client: httpx.AsyncClient) -> tuple[bytes, str] | None:
+    """
+    Look up a DOI in Unpaywall and fetch the best open-access PDF.
+    Returns (pdf_bytes, url) or None.
+    """
+    try:
+        r = await client.get(
+            f"https://api.unpaywall.org/v2/{doi}",
+            params={"email": "pdfpal@pdfpal.app"},
+            timeout=10,
+        )
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        locs = data.get("oa_locations", [])
+        # Prefer repository/green OA, skip ACM/publisher-only links
+        for loc in locs:
+            pdf_url = loc.get("url_for_pdf") or loc.get("url")
+            if not pdf_url:
+                continue
+            if "dl.acm.org" in pdf_url or "acm.org" in pdf_url:
+                continue  # blocked
+            if pdf_url.startswith("http"):
+                try:
+                    r2 = await client.get(rewrite_url(pdf_url), timeout=30)
+                    r2.raise_for_status()
+                    if r2.content.startswith(b"%PDF"):
+                        return r2.content, str(r2.url)
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return None
+
+
+async def resolve_via_semantic_scholar(doi: str, client: httpx.AsyncClient) -> tuple[bytes, str] | None:
+    """
+    Look up a DOI in Semantic Scholar and attempt to fetch an open-access PDF.
+    Returns (pdf_bytes, url) or None.
+    """
+    try:
+        r = await client.get(
+            f"https://api.semanticscholar.org/graph/v1/paper/DOI:{doi}",
+            params={"fields": "openAccessPdf,title"},
+            timeout=10,
+        )
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        oa = data.get("openAccessPdf")
+        if not oa or not oa.get("url"):
+            return None
+        pdf_url = oa["url"]
+        # Rewrite through our own rewriter in case it's arxiv etc.
+        pdf_url = rewrite_url(pdf_url)
+        r2 = await client.get(pdf_url, timeout=30)
+        r2.raise_for_status()
+        if r2.content.startswith(b"%PDF"):
+            return r2.content, str(r2.url)
+    except Exception:
+        pass
+    return None
+
 
 def rewrite_url(url: str) -> str:
     """
@@ -53,6 +137,11 @@ def rewrite_url(url: str) -> str:
 
     # NeurIPS: /paper_files/paper/YYYY/hash/XXX-Paper.pdf pattern already direct
     # Nature, Springer, Elsevier — no simple rewrite, need scraping
+
+    # ACM DL: strip tracking params from /doi/pdf/ URLs (bot challenge, but clean URL helps sometimes)
+    m = re.match(r'(https?://dl\.acm\.org/doi/(?:pdf/)?)([^\s?#]+)', url)
+    if m:
+        return m.group(1) + m.group(2)  # strip query params; fallback to S2 will handle it
 
     return url
 
@@ -102,7 +191,8 @@ async def resolve_pdf_url(url: str) -> tuple[bytes, str]:
     Returns (pdf_bytes, resolved_url).
     Raises ValueError with a user-friendly message on failure.
     """
-    # Step 1: rewrite known patterns
+    # Step 1: strip tracking params, then rewrite known patterns
+    url = strip_tracking_params(url)
     rewritten = rewrite_url(url)
 
     async with httpx.AsyncClient(follow_redirects=True, timeout=30, headers=HEADERS, verify=False) as client:
@@ -111,8 +201,9 @@ async def resolve_pdf_url(url: str) -> tuple[bytes, str]:
             r = await client.get(rewritten)
             r.raise_for_status()
         except httpx.HTTPStatusError as e:
+            status = e.response.status_code
             # For arxiv versioned URLs that 404, try without version
-            if e.response.status_code == 404 and "arxiv.org/pdf/" in rewritten:
+            if status == 404 and "arxiv.org/pdf/" in rewritten:
                 clean = re.sub(r'v\d+$', '', rewritten)
                 if clean != rewritten:
                     try:
@@ -121,12 +212,23 @@ async def resolve_pdf_url(url: str) -> tuple[bytes, str]:
                         rewritten = clean
                     except Exception:
                         pass
-                    else:
-                        pass  # r is now the clean URL response
-                else:
-                    raise ValueError(f"HTTP {e.response.status_code} fetching URL")
+            elif status in (403, 401, 429):
+                # Blocked — try open-access fallbacks
+                doi = extract_doi(url)
+                if doi:
+                    result = await resolve_via_semantic_scholar(doi, client)
+                    if result:
+                        return result
+                    result = await resolve_via_unpaywall(doi, client)
+                    if result:
+                        return result
+                raise ValueError(
+                    f"Access denied (HTTP {status}). "
+                    f"This publisher blocks automated access. "
+                    f"Try finding a preprint version (e.g. on arXiv or the authors' website)."
+                )
             else:
-                raise ValueError(f"HTTP {e.response.status_code} fetching URL")
+                raise ValueError(f"HTTP {status} fetching URL")
         except Exception as e:
             raise ValueError(f"Failed to fetch URL: {e}")
 
@@ -154,7 +256,16 @@ async def resolve_pdf_url(url: str) -> tuple[bytes, str]:
                 except Exception:
                     pass
 
-            # No PDF link found — give a helpful error
+            # No PDF link found — try open-access fallbacks via DOI
+            doi = extract_doi(url)
+            if doi:
+                result = await resolve_via_semantic_scholar(doi, client)
+                if result:
+                    return result
+                result = await resolve_via_unpaywall(doi, client)
+                if result:
+                    return result
+
             raise ValueError(
                 f"No PDF found at this URL. "
                 f"The page loaded as HTML. "
