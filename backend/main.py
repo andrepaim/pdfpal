@@ -268,12 +268,44 @@ def _extract_pdf_bytes(pdf_bytes: bytes) -> dict:
             if page_text.strip():
                 text_parts.append(f"[Page {i+1}]\n{page_text}")
         meta_title = (pdf.metadata or {}).get("Title", "").strip()
-        # If no metadata title, grab first non-empty line from page 1
+        # Filter out garbage metadata titles (e.g. "Microsoft Word - paper.docx")
+        if meta_title and (
+            meta_title.lower().startswith("microsoft word")
+            or meta_title.lower().startswith("untitled")
+            or len(meta_title) > 200
+        ):
+            meta_title = ""
+
+        # If no usable metadata title, extract from page text
         if not meta_title and text_parts:
             lines = [l.strip() for l in text_parts[0].split("\n") if l.strip()]
-            # Skip "[Page 1]" marker
-            candidates = [l for l in lines if not l.startswith("[Page")]
-            meta_title = candidates[0][:120] if candidates else ""
+            # Skip [Page N] markers and boilerplate lines
+            candidates = []
+            for l in lines:
+                if l.startswith("[Page"):
+                    continue
+                # Skip boilerplate: no spaces (run-together words), all-caps short, URLs, emails
+                has_spaces = " " in l
+                looks_like_url = l.startswith("http") or "@" in l
+                is_runon = not has_spaces and len(l) > 20
+                is_too_long = len(l) > 150
+                is_legal = any(kw in l.lower() for kw in [
+                    "permission", "reproduce", "copyright", "©", "licens",
+                    "doi:", "arxiv:", "preprint", "all rights reserved",
+                ])
+                if looks_like_url or is_runon or is_too_long or is_legal:
+                    continue
+                candidates.append(l)
+
+            # Prefer a line that looks like a title: mixed case, reasonable length
+            title_candidate = ""
+            for l in candidates[:10]:
+                word_count = len(l.split())
+                if 2 <= word_count <= 20 and len(l) <= 120:
+                    title_candidate = l
+                    break
+            meta_title = title_candidate[:120] if title_candidate else (candidates[0][:120] if candidates else "")
+
         return {"text": "\n\n".join(text_parts), "pages": page_count, "title": meta_title}
 
 
