@@ -281,10 +281,26 @@ export default function ProjectView() {
   const navigate = useNavigate()
   const [project, setProject] = useState<Project | null>(null)
   const [tab, setTab] = useState<Tab>('sources')
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState('')
 
   useEffect(() => {
     if (projectId) projectsApi.get(projectId).then(setProject)
   }, [projectId])
+
+  const startTitleEdit = () => {
+    setTitleDraft(project?.title || '')
+    setEditingTitle(true)
+  }
+
+  const commitTitleEdit = async () => {
+    const title = titleDraft.trim()
+    if (title && title !== project?.title && projectId) {
+      await projectsApi.update(projectId, { title })
+      setProject(prev => prev ? { ...prev, title } : prev)
+    }
+    setEditingTitle(false)
+  }
 
   if (!projectId) return null
 
@@ -310,9 +326,26 @@ export default function ProjectView() {
       <div style={{ width: 220, flexShrink: 0, background: '#111', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '12px 12px 8px', borderBottom: '1px solid var(--border)' }}>
           <button onClick={() => navigate('/')} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 11, padding: 0, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 4 }}>← All projects</button>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {project?.title || '…'}
-          </div>
+          {editingTitle ? (
+            <input
+              autoFocus
+              value={titleDraft}
+              onChange={e => setTitleDraft(e.target.value)}
+              onBlur={commitTitleEdit}
+              onKeyDown={e => { if (e.key === 'Enter') commitTitleEdit(); if (e.key === 'Escape') setEditingTitle(false) }}
+              style={{ width: '100%', background: '#0f0f0f', border: '1px solid var(--accent)', borderRadius: 6, padding: '4px 8px', color: '#fff', fontSize: 14, fontWeight: 700, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+            />
+          ) : (
+            <div
+              onClick={startTitleEdit}
+              title="Click to rename"
+              style={{ fontSize: 14, fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'text', borderRadius: 4, padding: '2px 4px', margin: '-2px -4px' }}
+              onMouseEnter={e => (e.currentTarget.style.background = '#1a1a1a')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
+              {project?.title || '…'}
+            </div>
+          )}
           {project?.description && (
             <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project.description}</div>
           )}
