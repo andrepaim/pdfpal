@@ -10,10 +10,11 @@ import ChatPanel from './components/ChatPanel'
 import { sourcesApi, notesApi, type Source, type Note } from './lib/api'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import RelatedPanel from './components/RelatedPanel'
 
 interface User { email: string; name: string; picture: string }
 
-type RightPanel = 'chat' | 'notes'
+type RightPanel = 'chat' | 'notes' | 'related'
 
 // ── Inline source note editor ─────────────────────────────────────────────────
 function SourceNotePanel({ projectId, sourceId }: { projectId: string; sourceId: string }) {
@@ -307,6 +308,7 @@ export default function App({ user }: { user: User }) {
           <div style={{ height: 36, borderBottom: '1px solid var(--border)', background: 'var(--panel)', display: 'flex', alignItems: 'stretch', flexShrink: 0, paddingLeft: 4 }}>
             {tabBtn('chat', '💬 Chat')}
             {tabBtn('notes', '📝 Notes')}
+            {tabBtn('related', '🔗 Related')}
           </div>
 
           {rightPanel === 'chat' && (
@@ -322,6 +324,9 @@ export default function App({ user }: { user: User }) {
           )}
           {rightPanel === 'notes' && projectId && sourceId && (
             <SourceNotePanel projectId={projectId} sourceId={sourceId} />
+          )}
+          {rightPanel === 'related' && projectId && sourceId && source && (
+            <RelatedPanel projectId={projectId} sourceId={sourceId} sourceUrl={source.url || ''} />
           )}
         </div>
       </div>

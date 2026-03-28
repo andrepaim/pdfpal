@@ -670,6 +670,56 @@ def list_project_chats(project_id: str):
         ).fetchall()
     return [dict(s) for s in sessions]
 
+# ── Related papers (Semantic Scholar) ────────────────────────────────────────
+
+@router.get("/projects/{project_id}/sources/{source_id}/related")
+async def get_related_papers(project_id: str, source_id: str, refresh: bool = False):
+    from semantic_scholar import fetch_related
+
+    # Load source URL
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT url FROM sources WHERE id=? AND project_id=?", (source_id, project_id)
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Source not found")
+        source_url = row["url"] or ""
+
+        # Check cache (skip if refresh=true or no cached rows)
+        if not refresh:
+            cached = conn.execute(
+                "SELECT * FROM source_related WHERE source_id=? ORDER BY relation, id",
+                (source_id,)
+            ).fetchall()
+            if cached:
+                references = [dict(r) for r in cached if r["relation"] == "reference"]
+                citations = [dict(r) for r in cached if r["relation"] == "citation"]
+                return {"references": references, "citations": citations, "cached": True}
+
+    # Fetch from Semantic Scholar
+    result = await fetch_related(source_url)
+
+    if result.get("references") or result.get("citations"):
+        ts = now_iso()
+        with get_db() as conn:
+            conn.execute("DELETE FROM source_related WHERE source_id=?", (source_id,))
+            for item in result.get("references", []) + result.get("citations", []):
+                import json as _json
+                conn.execute(
+                    "INSERT INTO source_related (source_id, s2_paper_id, title, authors, year, arxiv_url, pdf_url, relation, fetched_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?)",
+                    (source_id, item["s2_paper_id"], item["title"], item["authors"],
+                     item["year"], item["arxiv_url"], item["pdf_url"], item["relation"], ts)
+                )
+
+    return {
+        "references": result.get("references", []),
+        "citations": result.get("citations", []),
+        "cached": False,
+        "paper_id": result.get("paper_id"),
+        "error": result.get("error"),
+    }
+
 # Auth routes — registered under both /auth and /api/auth
 app.include_router(auth_router)
 app.include_router(auth_router, prefix="/api")

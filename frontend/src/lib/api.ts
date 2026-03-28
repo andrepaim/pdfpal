@@ -127,6 +127,30 @@ export interface ChatSession {
   accessed_at: string
 }
 
+export interface RelatedPaper {
+  id?: number
+  s2_paper_id?: string
+  title: string
+  authors: string
+  year?: number
+  arxiv_url?: string
+  pdf_url?: string
+  relation: 'reference' | 'citation'
+}
+
+export interface RelatedResult {
+  references: RelatedPaper[]
+  citations: RelatedPaper[]
+  cached: boolean
+  paper_id?: string
+  error?: string
+}
+
+export const relatedApi = {
+  get: (projectId: string, sourceId: string, refresh = false) =>
+    apiFetch<RelatedResult>(`/projects/${projectId}/sources/${sourceId}/related${refresh ? '?refresh=true' : ''}`),
+}
+
 export const chatApi = {
   getProjectChat: (projectId: string) =>
     apiFetch<{ messages: ChatMessage[] }>(`/projects/${projectId}/chat`),
