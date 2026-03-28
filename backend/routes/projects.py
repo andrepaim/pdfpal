@@ -115,6 +115,23 @@ def get_source(project_id: str, source_id: str):
     return dict(row)
 
 
+class SourceUpdate(BaseModel):
+    title: Optional[str] = None
+
+
+@router.patch("/{project_id}/sources/{source_id}")
+def update_source(project_id: str, source_id: str, req: SourceUpdate):
+    if not req.title:
+        raise HTTPException(status_code=400, detail="title required")
+    title = req.title
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE sources SET title=? WHERE id=? AND project_id=?",
+            (req.title.strip(), source_id, project_id)
+        )
+    return {"ok": True}
+
+
 @router.delete("/{project_id}/sources/{source_id}")
 def delete_source(project_id: str, source_id: str):
     with get_db() as conn:

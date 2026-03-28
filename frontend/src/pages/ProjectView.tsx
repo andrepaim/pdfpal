@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { projectsApi, sourcesApi, notesApi, artifactsApi, type Project, type Source, type Note, type Artifact } from '../lib/api'
+import { projectsApi, sourcesApi, notesApi, artifactsApi, chatApi, type Project, type Source, type Note, type Artifact, type ChatSession } from '../lib/api'
 
 type Tab = 'sources' | 'notes' | 'artifacts' | 'chats'
 
@@ -59,6 +59,8 @@ function SourcesTab({ projectId }: { projectId: string }) {
   const [sources, setSources] = useState<Source[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingTitle, setEditingTitle] = useState('')
 
   useEffect(() => { sourcesApi.list(projectId).then(setSources).finally(() => setLoading(false)) }, [projectId])
 
@@ -67,6 +69,21 @@ function SourcesTab({ projectId }: { projectId: string }) {
     if (!confirm('Remove this source?')) return
     await sourcesApi.delete(projectId, id)
     setSources(s => s.filter(x => x.id !== id))
+  }
+
+  const startEdit = (e: React.MouseEvent, s: Source) => {
+    e.stopPropagation()
+    setEditingId(s.id)
+    setEditingTitle(s.title || s.url || '')
+  }
+
+  const commitEdit = async (id: string) => {
+    const title = editingTitle.trim()
+    if (title) {
+      await sourcesApi.updateTitle(projectId, id, title)
+      setSources(prev => prev.map(s => s.id === id ? { ...s, title } : s))
+    }
+    setEditingId(null)
   }
 
   return (
@@ -84,21 +101,41 @@ function SourcesTab({ projectId }: { projectId: string }) {
           </div>
         )}
         {sources.map(s => (
-          <div key={s.id} onClick={() => navigate(`/projects/${projectId}/sources/${s.id}`)}
-            style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer', position: 'relative' }}
+          <div key={s.id}
+            onClick={() => editingId !== s.id && navigate(`/projects/${projectId}/sources/${s.id}`)}
+            style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 14, cursor: editingId === s.id ? 'default' : 'pointer', position: 'relative' }}
             onMouseEnter={e => (e.currentTarget.style.borderColor = '#3a3a3a')}
             onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
           >
             <div style={{ fontSize: 20, flexShrink: 0 }}>📄</div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }}>
-                {s.title || s.url || 'Untitled'}
-              </div>
+              {editingId === s.id ? (
+                <input
+                  autoFocus
+                  value={editingTitle}
+                  onChange={e => setEditingTitle(e.target.value)}
+                  onBlur={() => commitEdit(s.id)}
+                  onKeyDown={e => { if (e.key === 'Enter') commitEdit(s.id); if (e.key === 'Escape') setEditingId(null) }}
+                  onClick={e => e.stopPropagation()}
+                  style={{ width: '100%', background: '#0f0f0f', border: '1px solid var(--accent)', borderRadius: 6, padding: '4px 8px', color: '#fff', fontSize: 13, fontWeight: 600, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+                />
+              ) : (
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }}>
+                  {s.title || s.url || 'Untitled'}
+                </div>
+              )}
               <div style={{ fontSize: 11, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.url}</div>
             </div>
             <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
               {s.pages > 0 && <span style={{ background: '#212121', border: '1px solid var(--border)', borderRadius: 6, padding: '2px 8px', fontSize: 10, color: '#6b7280' }}>{s.pages}p</span>}
               <span style={{ background: '#1e1b4b', border: '1px solid #312e81', borderRadius: 6, padding: '2px 8px', fontSize: 10, color: '#818cf8' }}>PDF</span>
+              <button
+                onClick={e => startEdit(e, s)}
+                title="Rename"
+                style={{ background: 'none', border: 'none', color: '#4b5563', cursor: 'pointer', fontSize: 13, padding: 2, opacity: 0 }}
+                onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+                onMouseLeave={e => (e.currentTarget.style.opacity = '0')}
+              >✏️</button>
               <button onClick={e => handleDelete(e, s.id)} style={{ background: 'none', border: 'none', color: '#4b5563', cursor: 'pointer', fontSize: 14, padding: 2, opacity: 0 }}
                 onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
                 onMouseLeave={e => (e.currentTarget.style.opacity = '0')}
@@ -180,6 +217,64 @@ function ArtifactsTab({ projectId }: { projectId: string }) {
   )
 }
 
+// ── Chats tab ─────────────────────────────────────────────────────────────────
+function ChatsTab({ projectId }: { projectId: string }) {
+  const navigate = useNavigate()
+  const [sessions, setSessions] = useState<ChatSession[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => { chatApi.listSessions(projectId).then(setSessions).finally(() => setLoading(false)) }, [projectId])
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--panel)', flexShrink: 0 }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>Chat History</span>
+      </div>
+      <div style={{ flex: 1, overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {loading ? (
+          <div style={{ textAlign: 'center', paddingTop: 40, color: '#4b5563' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+        ) : sessions.length === 0 ? (
+          <div style={{ textAlign: 'center', paddingTop: 60, color: '#4b5563' }}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>💬</div>
+            <div>No chats yet. Start a conversation from a source or Project Chat.</div>
+          </div>
+        ) : sessions.map(session => {
+          const isProjectChat = !session.source_id
+          const target = isProjectChat
+            ? `/projects/${projectId}/chat`
+            : `/projects/${projectId}/sources/${session.source_id}`
+          return (
+            <div key={session.id}
+              onClick={() => navigate(target)}
+              style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', cursor: 'pointer' }}
+              onMouseEnter={e => (e.currentTarget.style.borderColor = '#3a3a3a')}
+              onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span style={{ fontSize: 14 }}>{isProjectChat ? '💬' : '📄'}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#fff', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {isProjectChat ? 'Project Chat' : (session.source_title || 'Source Chat')}
+                </span>
+                <span style={{ fontSize: 10, color: '#4b5563', flexShrink: 0 }}>
+                  {session.message_count} msg{session.message_count !== 1 ? 's' : ''}
+                </span>
+              </div>
+              {session.first_message && (
+                <div style={{ fontSize: 11, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingLeft: 22 }}>
+                  {session.first_message}
+                </div>
+              )}
+              <div style={{ fontSize: 10, color: '#4b5563', marginTop: 4, paddingLeft: 22 }}>
+                {timeAgo(session.accessed_at)}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ── Main ProjectView ──────────────────────────────────────────────────────────
 export default function ProjectView() {
   const { projectId } = useParams<{ projectId: string }>()
@@ -226,6 +321,7 @@ export default function ProjectView() {
           {navItem('sources', '📄', 'Sources', project?.source_count)}
           {navItem('notes', '📝', 'Notes', project?.note_count)}
           {navItem('artifacts', '✨', 'Artifacts', project?.artifact_count)}
+          {navItem('chats', '💬', 'Chats', project?.chat_count || undefined)}
         </div>
         <div style={{ padding: 12, borderTop: '1px solid var(--border)' }}>
           <button
@@ -240,6 +336,7 @@ export default function ProjectView() {
         {tab === 'sources' && <SourcesTab projectId={projectId} />}
         {tab === 'notes' && <NotesTab projectId={projectId} />}
         {tab === 'artifacts' && <ArtifactsTab projectId={projectId} />}
+        {tab === 'chats' && <ChatsTab projectId={projectId} />}
       </div>
     </div>
   )

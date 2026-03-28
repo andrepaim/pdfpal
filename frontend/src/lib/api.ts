@@ -78,6 +78,8 @@ export const sourcesApi = {
     apiFetch<Source>(`/projects/${projectId}/sources/${sourceId}`),
   delete: (projectId: string, sourceId: string) =>
     apiFetch(`/projects/${projectId}/sources/${sourceId}`, { method: 'DELETE' }),
+  updateTitle: (projectId: string, sourceId: string, title: string) =>
+    apiFetch(`/projects/${projectId}/sources/${sourceId}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
   addUrl: async (projectId: string, url: string) => {
     const res = await fetch(`${BASE}/extract`, {
       method: 'POST',
@@ -103,6 +105,33 @@ export const notesApi = {
     apiFetch(`/projects/${projectId}/notes/${noteId}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (projectId: string, noteId: string) =>
     apiFetch(`/projects/${projectId}/notes/${noteId}`, { method: 'DELETE' }),
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+  sources_used?: string[]
+  created_at?: string
+}
+
+export interface ChatSession {
+  id: string
+  source_id: string | null
+  title: string
+  source_title?: string
+  message_count: number
+  first_message?: string
+  created_at: string
+  accessed_at: string
+}
+
+export const chatApi = {
+  getProjectChat: (projectId: string) =>
+    apiFetch<{ messages: ChatMessage[] }>(`/projects/${projectId}/chat`),
+  getSourceChat: (projectId: string, sourceId: string) =>
+    apiFetch<{ messages: ChatMessage[] }>(`/projects/${projectId}/sources/${sourceId}/chat`),
+  listSessions: (projectId: string) =>
+    apiFetch<ChatSession[]>(`/projects/${projectId}/chats`),
 }
 
 export const artifactsApi = {

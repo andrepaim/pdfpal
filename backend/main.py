@@ -132,6 +132,7 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = None       # v1 legacy
     project_id: Optional[str] = None       # v2
     source_id: Optional[str] = None        # v2
+    active_source_ids: Optional[List[str]] = None  # v2 project-level chat
     conversation_history: List[ChatMessage] = []
     search_web: bool = True
 
@@ -463,6 +464,28 @@ PDF Content:
                 "INSERT INTO chat_messages (session_id, role, content, sources_used, created_at) VALUES (?,?,?,?,?)",
                 (chat_session_id, "user", req.message, "[]", ts)
             )
+    elif req.project_id and not req.source_id:
+        # v2: project-level chat (source_id=NULL)
+        ts = now_iso()
+        source_ids_json = json.dumps(list(req.active_source_ids or []))
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT id FROM chat_sessions WHERE project_id=? AND source_id IS NULL ORDER BY accessed_at DESC LIMIT 1",
+                (req.project_id,)
+            ).fetchone()
+            if row:
+                chat_session_id = row["id"]
+                conn.execute("UPDATE chat_sessions SET accessed_at=? WHERE id=?", (ts, chat_session_id))
+            else:
+                chat_session_id = str(uuid.uuid4())
+                conn.execute(
+                    "INSERT INTO chat_sessions (id, project_id, source_id, title, created_at, accessed_at) VALUES (?,?,?,?,?,?)",
+                    (chat_session_id, req.project_id, None, "Project Chat", ts, ts)
+                )
+            conn.execute(
+                "INSERT INTO chat_messages (session_id, role, content, sources_used, created_at) VALUES (?,?,?,?,?)",
+                (chat_session_id, "user", req.message, source_ids_json, ts)
+            )
     elif req.session_id:
         # v1 legacy
         ts = now_iso()
@@ -505,10 +528,11 @@ PDF Content:
             if assistant_text:
                 ts2 = now_iso()
                 if chat_session_id:
+                    sources_tag = json.dumps(list(req.active_source_ids or [])) if (req.project_id and not req.source_id) else "[]"
                     with get_db() as conn:
                         conn.execute(
                             "INSERT INTO chat_messages (session_id, role, content, sources_used, created_at) VALUES (?,?,?,?,?)",
-                            (chat_session_id, "assistant", assistant_text, "[]", ts2)
+                            (chat_session_id, "assistant", assistant_text, sources_tag, ts2)
                         )
                 elif req.session_id:
                     with get_db() as conn:
@@ -526,7 +550,8 @@ PDF Content:
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
-# ── v2 source chat history ────────────────────────────────────────────────────
+# ── v2 chat history ───────────────────────────────────────────────────────────
+
 @router.get("/projects/{project_id}/sources/{source_id}/chat")
 def get_source_chat(project_id: str, source_id: str):
     with get_db() as conn:
@@ -537,10 +562,53 @@ def get_source_chat(project_id: str, source_id: str):
         if not session:
             return {"messages": []}
         messages = conn.execute(
-            "SELECT role, content, created_at FROM chat_messages WHERE session_id=? ORDER BY id ASC",
+            "SELECT role, content, sources_used, created_at FROM chat_messages WHERE session_id=? ORDER BY id ASC",
             (session["id"],)
         ).fetchall()
     return {"messages": [dict(m) for m in messages]}
+
+
+@router.get("/projects/{project_id}/chat")
+def get_project_chat(project_id: str):
+    """Project-level chat history (source_id IS NULL)."""
+    with get_db() as conn:
+        session = conn.execute(
+            "SELECT id FROM chat_sessions WHERE project_id=? AND source_id IS NULL ORDER BY accessed_at DESC LIMIT 1",
+            (project_id,)
+        ).fetchone()
+        if not session:
+            return {"messages": []}
+        messages = conn.execute(
+            "SELECT role, content, sources_used, created_at FROM chat_messages WHERE session_id=? ORDER BY id ASC",
+            (session["id"],)
+        ).fetchall()
+    rows = []
+    for m in messages:
+        d = dict(m)
+        try:
+            d["sources_used"] = json.loads(d["sources_used"] or "[]")
+        except Exception:
+            d["sources_used"] = []
+        rows.append(d)
+    return {"messages": rows}
+
+
+@router.get("/projects/{project_id}/chats")
+def list_project_chats(project_id: str):
+    """List all chat sessions for a project (source + project-level)."""
+    with get_db() as conn:
+        sessions = conn.execute(
+            "SELECT cs.id, cs.source_id, cs.title, cs.created_at, cs.accessed_at, "
+            "  s.title as source_title, "
+            "  (SELECT COUNT(*) FROM chat_messages WHERE session_id=cs.id) as message_count, "
+            "  (SELECT content FROM chat_messages WHERE session_id=cs.id AND role='user' ORDER BY id LIMIT 1) as first_message "
+            "FROM chat_sessions cs "
+            "LEFT JOIN sources s ON s.id=cs.source_id "
+            "WHERE cs.project_id=? "
+            "ORDER BY cs.accessed_at DESC",
+            (project_id,)
+        ).fetchall()
+    return [dict(s) for s in sessions]
 
 # Auth routes — registered under both /auth and /api/auth
 app.include_router(auth_router)
