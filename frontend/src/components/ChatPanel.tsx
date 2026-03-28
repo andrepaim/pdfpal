@@ -145,7 +145,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--panel)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', background: 'var(--panel)' }}>
       {/* Chat header */}
       <div style={{
         padding: '10px 16px',
