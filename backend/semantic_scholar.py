@@ -74,19 +74,58 @@ def format_authors(paper: dict) -> str:
     return ", ".join(names)
 
 
-async def fetch_related(source_url: str, limit: int = 20) -> dict:
+async def search_paper_by_title(title: str, client: httpx.AsyncClient) -> Optional[str]:
     """
-    Fetch references and citations for a paper given its source URL.
+    Search Semantic Scholar by title and return the best-matching paper ID.
+    Returns an S2 paper ID string or None.
+    """
+    import asyncio
+    for attempt in range(3):
+        try:
+            r = await client.get(
+                f"{S2_BASE}/paper/search",
+                params={"query": title, "fields": "title,paperId", "limit": 3},
+                timeout=10,
+            )
+            if r.status_code == 429:
+                await asyncio.sleep(2 ** attempt)  # 1s, 2s, 4s backoff
+                continue
+            if r.status_code != 200:
+                return None
+            data = r.json()
+            results = data.get("data", [])
+            if not results:
+                return None
+            # Pick the top result — S2 search is usually good enough for exact titles
+            return results[0].get("paperId")
+        except Exception:
+            return None
+    return None
+
+
+async def fetch_related(source_url: str, limit: int = 20, source_title: str = "") -> dict:
+    """
+    Fetch references and citations for a paper given its source URL (and optionally title).
     Returns {"references": [...], "citations": [...], "paper_id": str|None}
     Each item: {title, authors, year, arxiv_url, pdf_url, s2_paper_id, relation}
     """
     paper_id = paper_id_from_url(source_url)
-    if not paper_id:
+    if not paper_id and not source_title:
         return {"references": [], "citations": [], "paper_id": None, "error": "Could not identify paper from URL"}
 
     results = {"references": [], "citations": [], "paper_id": paper_id}
 
     async with httpx.AsyncClient(timeout=15, headers=S2_HEADERS) as client:
+        # No URL-based ID — try title search
+        if not paper_id and source_title:
+            s2_id = await search_paper_by_title(source_title, client)
+            if s2_id:
+                paper_id = s2_id  # bare S2 paper ID
+                results["paper_id"] = paper_id
+            else:
+                return {"references": [], "citations": [], "paper_id": None,
+                        "error": "Paper not found in Semantic Scholar (no arXiv/DOI in URL and title search returned no results)"}
+
         for relation in ("references", "citations"):
             try:
                 r = await client.get(
@@ -97,7 +136,7 @@ async def fetch_related(source_url: str, limit: int = 20) -> dict:
                     results["error"] = f"Paper not found in Semantic Scholar ({paper_id})"
                     continue
                 if r.status_code == 429:
-                    results["error"] = "Semantic Scholar rate limit hit — try again in a moment"
+                    results["error"] = "Semantic Scholar rate limit — click ↺ to retry in a moment"
                     continue
                 r.raise_for_status()
                 data = r.json()

@@ -679,11 +679,12 @@ async def get_related_papers(project_id: str, source_id: str, refresh: bool = Fa
     # Load source URL
     with get_db() as conn:
         row = conn.execute(
-            "SELECT url FROM sources WHERE id=? AND project_id=?", (source_id, project_id)
+            "SELECT url, title FROM sources WHERE id=? AND project_id=?", (source_id, project_id)
         ).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Source not found")
         source_url = row["url"] or ""
+        source_title = row["title"] or ""
 
         # Check cache (skip if refresh=true or no cached rows)
         if not refresh:
@@ -697,7 +698,7 @@ async def get_related_papers(project_id: str, source_id: str, refresh: bool = Fa
                 return {"references": references, "citations": citations, "cached": True}
 
     # Fetch from Semantic Scholar
-    result = await fetch_related(source_url)
+    result = await fetch_related(source_url, source_title=source_title)
 
     if result.get("references") or result.get("citations"):
         ts = now_iso()
