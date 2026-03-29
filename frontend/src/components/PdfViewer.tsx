@@ -136,6 +136,7 @@ export default function PdfViewer({ url, onTextSelected }: Props) {
       <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: '16px 0' }}>
         <Document
           file={url}
+          options={{ withCredentials: true }}
           onLoadSuccess={({ numPages }) => setNumPages(numPages)}
           onLoadError={err => console.error('PDF load error:', err)}
           loading={<LoadingPage />}
