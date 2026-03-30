@@ -128,9 +128,13 @@ async def search_papers(query: str, limit: int = 20) -> dict:
                     authors_list.append("et al.")
                 authors_str = ", ".join(authors_list)
 
-                # Extract PDF / arXiv URL
+                # Extract PDF / arXiv URL — filter known blocked publishers
+                BLOCKED = ("dl.acm.org", "acm.org/ft_gateway", "ieeexplore.ieee.org",
+                           "link.springer.com", "sciencedirect.com", "elsevier.com")
                 oa = work.get("open_access") or {}
                 oa_url = oa.get("oa_url") or ""
+                if any(b in oa_url for b in BLOCKED):
+                    oa_url = ""
                 pdf_url = oa_url if oa_url and oa_url.endswith(".pdf") else None
                 arx_url = None
                 arx_id = None
