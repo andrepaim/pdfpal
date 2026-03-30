@@ -135,13 +135,16 @@ function SourcesTab({ projectId }: { projectId: string }) {
               <button
                 onClick={e => startEdit(e, s)}
                 title="Rename"
-                style={{ background: 'none', border: 'none', color: '#4b5563', cursor: 'pointer', fontSize: 13, padding: 2, opacity: 0 }}
-                onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
-                onMouseLeave={e => (e.currentTarget.style.opacity = '0')}
+                style={{ background: 'none', border: '1px solid #3a3a3a', color: '#6b7280', cursor: 'pointer', fontSize: 11, padding: '2px 7px', borderRadius: 6 }}
+                onMouseEnter={e => { e.currentTarget.style.color = '#e5e7eb'; e.currentTarget.style.borderColor = '#555' }}
+                onMouseLeave={e => { e.currentTarget.style.color = '#6b7280'; e.currentTarget.style.borderColor = '#3a3a3a' }}
               >✏️</button>
-              <button onClick={e => handleDelete(e, s.id)} style={{ background: 'none', border: 'none', color: '#4b5563', cursor: 'pointer', fontSize: 14, padding: 2, opacity: 0 }}
-                onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
-                onMouseLeave={e => (e.currentTarget.style.opacity = '0')}
+              <button
+                onClick={e => handleDelete(e, s.id)}
+                title="Remove source"
+                style={{ background: 'none', border: '1px solid #3a3a3a', color: '#6b7280', cursor: 'pointer', fontSize: 11, padding: '2px 7px', borderRadius: 6 }}
+                onMouseEnter={e => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.borderColor = '#f87171' }}
+                onMouseLeave={e => { e.currentTarget.style.color = '#6b7280'; e.currentTarget.style.borderColor = '#3a3a3a' }}
               >✕</button>
             </div>
           </div>
