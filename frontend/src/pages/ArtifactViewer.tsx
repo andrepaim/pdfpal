@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
 import { artifactsApi, type Artifact } from '../lib/api'
 
 export default function ArtifactViewer() {
@@ -71,7 +73,7 @@ export default function ArtifactViewer() {
             Generated {artifact ? new Date(artifact.created_at + 'Z').toLocaleDateString() : ''}
           </div>
           <div className="prose">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{content}</ReactMarkdown>
           </div>
         </div>
       )}

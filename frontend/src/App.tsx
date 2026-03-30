@@ -10,6 +10,8 @@ import ChatPanel from './components/ChatPanel'
 import { sourcesApi, notesApi, type Source, type Note } from './lib/api'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
 import RelatedPanel from './components/RelatedPanel'
 
 interface User { email: string; name: string; picture: string }
@@ -133,7 +135,7 @@ function SourceNotePanel({ projectId, sourceId }: { projectId: string; sourceId:
         ) : (
           <div style={{ flex: 1, overflow: 'auto', padding: '12px 16px', background: 'var(--panel)' }}>
             <div className="prose" style={{ fontSize: 13 }}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{content || '*Nothing here yet…*'}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{content || '*Nothing here yet…*'}</ReactMarkdown>
             </div>
           </div>
         )}

@@ -2,6 +2,7 @@ import { StrictMode, useState, useEffect, Component, type ReactNode } from 'reac
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import './index.css'
+import 'katex/dist/katex.min.css'
 
 import ProjectsPage from './pages/ProjectsPage'
 import ProjectView from './pages/ProjectView'

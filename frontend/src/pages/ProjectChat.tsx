@@ -7,6 +7,8 @@ import { useState, useEffect, useRef, type KeyboardEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
 import { sourcesApi, artifactsApi, chatApi, type Source } from '../lib/api'
 
 interface Message {
@@ -280,7 +282,7 @@ export default function ProjectChat() {
                   whiteSpace: msg.role === 'user' ? 'pre-wrap' : undefined,
                 }}>
                   {msg.role === 'assistant'
-                    ? <div className="prose"><ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown></div>
+                    ? <div className="prose"><ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.content}</ReactMarkdown></div>
                     : msg.content
                   }
                 </div>

@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
 import { notesApi } from '../lib/api'
 
 export default function NoteEditor() {
@@ -75,7 +77,7 @@ export default function NoteEditor() {
           <div style={{ flex: 1, overflow: 'auto', padding: '20px 28px', background: 'var(--panel)' }}>
             <h1 style={{ color: '#fff', fontSize: 20, fontWeight: 800, marginBottom: 20 }}>{title || 'Untitled'}</h1>
             <div className="prose">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{content || '*Nothing here yet…*'}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{content || '*Nothing here yet…*'}</ReactMarkdown>
             </div>
           </div>
         )}
