@@ -9,9 +9,11 @@ Powered by your local [Claude CLI](https://claude.ai/code) — no API costs beyo
 ## Features
 
 ### Sources
+- **Paper search** — search Semantic Scholar + arXiv by title; results show authors, year, venue, citation count; one click to add to a project
 - **Smart PDF resolver** — paste any URL: arXiv, OpenReview, ACL Anthology, PMLR, Nature, Springer, DOI links, or a direct `.pdf` URL; tracking params stripped automatically
 - **Open-access fallback** — for paywalled URLs, queries Semantic Scholar and Unpaywall for a free copy
 - **Inline renaming** — rename projects and sources in-place
+- **Remove source** — delete a source from the project via the source list or directly from the reader header
 - **Failed source detection** — sources with no extracted text show a `⚠ Failed` badge with a one-click retry
 
 ### Reading & Chat
@@ -220,14 +222,15 @@ bash deploy.sh
 1. Sign in with your allowlisted Google account
 2. Create a **Project** for your research topic
 3. Add sources by pasting a PDF URL (arXiv, DOI, direct PDF, etc.)
-4. Click a source to open the **PDF reader**:
+4. Click **＋ Add Source** to search by title or paste a URL directly
+5. Click a source to open the **PDF reader**:
    - **💬 Chat** — ask questions about the paper; history persists
    - **📝 Notes** — take markdown notes scoped to this paper
    - **🔗 Related** — browse references and citations; add any paper to the project in one click
-5. Use **💬 Project Chat** to ask questions across multiple sources at once
-6. Take project-level **Notes** in markdown — auto-saved
-7. Save AI responses as **Artifacts**, then export as `.md`
-8. Browse all past conversations in the **Chats** tab
+6. Use **💬 Project Chat** to ask questions across multiple sources at once
+7. Take project-level **Notes** in markdown — auto-saved
+8. Save AI responses as **Artifacts**, then export as `.md`
+9. Browse all past conversations in the **Chats** tab
 
 ---
 
@@ -246,6 +249,7 @@ bash deploy.sh
 - [ ] RAG chunking for large PDFs (>50 pages)
 - [ ] OCR for scanned PDFs (Claude vision)
 - [ ] Global search across all projects and sources
+- [ ] Semantic Scholar API key for higher rate limits
 - [ ] Highlight PDF passages cited in answers
 - [ ] True streaming (replace `claude --print` with direct API)
 - [ ] Local LLM support (Ollama)
