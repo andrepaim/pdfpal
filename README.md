@@ -9,7 +9,7 @@ Powered by your local [Claude CLI](https://claude.ai/code) — no API costs beyo
 ## Features
 
 ### Sources
-- **Paper search** — search Semantic Scholar + arXiv by title; results show authors, year, venue, citation count; one click to add to a project
+- **Paper search** — search OpenAlex + arXiv by title; results show authors, year, venue, citation count; one click to add to a project
 - **Smart PDF resolver** — paste any URL: arXiv, OpenReview, ACL Anthology, PMLR, Nature, Springer, DOI links, or a direct `.pdf` URL; tracking params stripped automatically
 - **Open-access fallback** — for paywalled URLs, queries Semantic Scholar and Unpaywall for a free copy
 - **Inline renaming** — rename projects and sources in-place
@@ -50,6 +50,7 @@ Powered by your local [Claude CLI](https://claude.ai/code) — no API costs beyo
 | PDF extraction | pdfplumber |
 | AI | Claude CLI (`claude --print`) |
 | Web search | [Tavily](https://tavily.com) |
+| Paper search | [OpenAlex API](https://openalex.org) + arXiv |
 | Related papers | [Semantic Scholar API](https://www.semanticscholar.org/product/api) |
 | Auth | Google OAuth2 + JWT session cookie |
 
@@ -249,7 +250,7 @@ bash deploy.sh
 - [ ] RAG chunking for large PDFs (>50 pages)
 - [ ] OCR for scanned PDFs (Claude vision)
 - [ ] Global search across all projects and sources
-- [ ] Semantic Scholar API key for higher rate limits
+- [ ] Semantic Scholar API key for higher rate limits on Related Papers lookup
 - [ ] Highlight PDF passages cited in answers
 - [ ] True streaming (replace `claude --print` with direct API)
 - [ ] Local LLM support (Ollama)
