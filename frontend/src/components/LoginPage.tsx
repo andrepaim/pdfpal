@@ -4,7 +4,7 @@ export default function LoginPage() {
       height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: 'var(--bg)', flexDirection: 'column', gap: 24,
     }}>
-      <div style={{ fontSize: 52 }}>📄</div>
+      <img src="/icon-192.png" alt="pdfpal" style={{ width: 96, height: 96, borderRadius: 20 }} />
       <div style={{ fontSize: 28, fontWeight: 700, color: '#e5e7eb', letterSpacing: '-1px' }}>pdfpal</div>
       <div style={{ color: '#6b7280', fontSize: 15 }}>Your AI-powered reading buddy</div>
       <a
