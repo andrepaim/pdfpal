@@ -185,7 +185,10 @@ export default function ProjectsPage({ user }: { user: User }) {
     <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
       <div style={{ background: '#111', borderBottom: '1px solid var(--border)', padding: '0 24px', height: 48, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontWeight: 800, fontSize: 16, color: '#fff', letterSpacing: '-0.5px' }}>📄 pdfpal</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <img src="/icon-192.png" alt="pdfpal" style={{ width: 28, height: 28, borderRadius: 6 }} />
+          <span style={{ fontWeight: 800, fontSize: 16, color: '#fff', letterSpacing: '-0.5px' }}>pdfpal</span>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {user.picture && <img src={user.picture} style={{ width: 28, height: 28, borderRadius: '50%' }} alt="" />}
           <span style={{ fontSize: 12, color: '#6b7280' }}>{user.email}</span>
