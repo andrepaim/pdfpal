@@ -33,7 +33,7 @@ from pdf_resolver import resolve_pdf_url
 
 class AuthMiddleware(BaseHTTPMiddleware):
     # Paths that don't require auth
-    PUBLIC_PREFIXES = ["/auth/", "/assets/", "/favicon", "/pdf.worker", "/icon-"]
+    PUBLIC_PREFIXES = ["/auth/", "/assets/", "/favicon", "/pdf.worker", "/icon-", "/logo.png"]
     PUBLIC_EXACT = ["/"]
 
     async def dispatch(self, request: Request, call_next):
