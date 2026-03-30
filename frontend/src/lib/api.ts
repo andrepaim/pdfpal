@@ -146,6 +146,21 @@ export interface RelatedResult {
   error?: string
 }
 
+export interface SearchResult {
+  s2_paper_id?: string
+  title: string
+  authors: string
+  year?: number
+  venue?: string
+  citation_count?: number
+  arxiv_url?: string
+  pdf_url?: string
+}
+
+export const searchApi = {
+  papers: (q: string) => apiFetch<{ results: SearchResult[]; error?: string }>(`/search/papers?q=${encodeURIComponent(q)}`),
+}
+
 export const relatedApi = {
   get: (projectId: string, sourceId: string, refresh = false) =>
     apiFetch<RelatedResult>(`/projects/${projectId}/sources/${sourceId}/related${refresh ? '?refresh=true' : ''}`),

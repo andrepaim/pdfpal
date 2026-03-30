@@ -670,6 +670,18 @@ def list_project_chats(project_id: str):
         ).fetchall()
     return [dict(s) for s in sessions]
 
+# ── Paper search ─────────────────────────────────────────────────────────────
+
+@router.get("/search/papers")
+async def search_papers(q: str, limit: int = 20):
+    """Search papers via Semantic Scholar + arXiv."""
+    from semantic_scholar import search_papers as _search
+    if not q or len(q.strip()) < 3:
+        raise HTTPException(status_code=400, detail="Query too short")
+    result = await _search(q.strip(), limit=min(limit, 30))
+    return result
+
+
 # ── Related papers (Semantic Scholar) ────────────────────────────────────────
 
 @router.get("/projects/{project_id}/sources/{source_id}/related")

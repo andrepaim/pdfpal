@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { projectsApi, sourcesApi, notesApi, artifactsApi, chatApi, type Project, type Source, type Note, type Artifact, type ChatSession } from '../lib/api'
+import SearchPaperModal from '../components/SearchPaperModal'
 
 type Tab = 'sources' | 'notes' | 'artifacts' | 'chats'
 
@@ -15,43 +16,6 @@ function timeAgo(iso: string) {
 }
 
 // ── Add URL modal ─────────────────────────────────────────────────────────────
-function AddUrlModal({ projectId, onClose, onAdded }: { projectId: string; onClose: () => void; onAdded: (s: Source) => void }) {
-  const [url, setUrl] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-
-  const handleAdd = async () => {
-    if (!url.trim()) return
-    setLoading(true); setError('')
-    try {
-      const result = await sourcesApi.addUrl(projectId, url.trim())
-      onAdded({ id: result.source_id, project_id: projectId, type: 'pdf', url: result.pdf_url, title: result.title, pages: result.pages, created_at: new Date().toISOString(), accessed_at: new Date().toISOString() })
-    } catch (e: any) { setError(e.message) }
-    finally { setLoading(false) }
-  }
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={onClose}>
-      <div style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, width: 480 }} onClick={e => e.stopPropagation()}>
-        <h3 style={{ color: '#fff', margin: '0 0 4px', fontSize: 15 }}>Add a source</h3>
-        <p style={{ color: '#6b7280', fontSize: 12, margin: '0 0 16px' }}>Paste a PDF URL or any academic page (arXiv, OpenReview, ACL, Nature…)</p>
-        <input
-          autoFocus value={url} onChange={e => setUrl(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleAdd()}
-          placeholder="https://arxiv.org/abs/1234.56789"
-          style={{ width: '100%', background: '#0f0f0f', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', color: '#e5e7eb', fontSize: 13, marginBottom: 14, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' }}
-        />
-        {error && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>⚠️ {error}</div>}
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={{ background: 'none', border: '1px solid var(--border)', color: '#9ca3af', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
-          <button onClick={handleAdd} disabled={loading || !url.trim()} style={{ background: loading ? '#3a3a3a' : 'var(--accent)', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-            {loading ? <><span className="spinner" style={{ width: 14, height: 14, marginRight: 8 }} />Fetching…</> : 'Add Source'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // ── Sources tab ───────────────────────────────────────────────────────────────
 function SourcesTab({ projectId }: { projectId: string }) {
@@ -90,7 +54,7 @@ function SourcesTab({ projectId }: { projectId: string }) {
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--panel)', flexShrink: 0 }}>
         <span style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>Sources</span>
-        <button onClick={() => setShowAdd(true)} style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>＋ Add URL</button>
+        <button onClick={() => setShowAdd(true)} style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>＋ Add Source</button>
       </div>
       <div style={{ flex: 1, overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {loading && <div style={{ color: '#4b5563', textAlign: 'center', paddingTop: 40 }}><div className="spinner" style={{ margin: '0 auto 12px' }} /></div>}
@@ -150,10 +114,10 @@ function SourcesTab({ projectId }: { projectId: string }) {
           </div>
         ))}
         <div onClick={() => setShowAdd(true)} style={{ border: '2px dashed #333', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: '#4b5563', cursor: 'pointer', padding: '14px 0', fontSize: 12 }}>
-          <span>🔗</span><span>Paste a URL to add a source…</span>
+          <span>🔍</span><span>Search or paste a URL to add a source…</span>
         </div>
       </div>
-      {showAdd && <AddUrlModal projectId={projectId} onClose={() => setShowAdd(false)} onAdded={s => { setSources(prev => [s, ...prev]); setShowAdd(false) }} />}
+      {showAdd && <SearchPaperModal projectId={projectId} onClose={() => setShowAdd(false)} onAdded={s => { setSources(prev => [s, ...prev]); setShowAdd(false) }} />}
     </div>
   )
 }
