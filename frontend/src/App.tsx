@@ -155,6 +155,7 @@ export default function App({ user }: { user: User }) {
   const [splitPct, setSplitPct] = useState(55)
   const [loading, setLoading] = useState(true)
   const [retrying, setRetrying] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
   const [rightPanel, setRightPanel] = useState<RightPanel>('chat')
 
@@ -265,6 +266,22 @@ export default function App({ user }: { user: User }) {
             </span>
           )}
         </div>
+
+        <button
+          onClick={async () => {
+            if (!confirm('Remove this source from the project?')) return
+            setDeleting(true)
+            try {
+              await sourcesApi.delete(projectId!, sourceId!)
+              navigate(`/projects/${projectId}`)
+            } catch { setDeleting(false) }
+          }}
+          disabled={deleting}
+          title="Remove source"
+          style={{ background: 'none', border: '1px solid #3a3a3a', color: '#6b7280', borderRadius: 8, padding: '4px 10px', fontSize: 11, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}
+        >
+          {deleting ? '…' : '🗑 Remove'}
+        </button>
 
         {user.picture && <img src={user.picture} alt="" style={{ width: 24, height: 24, borderRadius: '50%', flexShrink: 0 }} />}
       </div>
