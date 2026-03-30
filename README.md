@@ -1,4 +1,4 @@
-# 📄 pdfpal
+# pdfpal
 
 > An AI-powered research workspace. Organize papers into projects, chat across multiple sources, take notes, explore citations — all self-hosted.
 
