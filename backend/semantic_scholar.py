@@ -89,35 +89,84 @@ def format_paper(paper: dict, relation: Optional[str] = None) -> dict:
     }
 
 
+OPENALEX_BASE = "https://api.openalex.org"
+OPENALEX_EMAIL = "pdfpal@pdfpal.app"  # polite pool — 100K req/day
+
+
 async def search_papers(query: str, limit: int = 20) -> dict:
     """
-    Search Semantic Scholar and arXiv simultaneously.
+    Search OpenAlex (primary) and arXiv (secondary) simultaneously.
     Returns {"results": [...], "error": str|None}
     """
     import asyncio
 
-    async def search_s2(client: httpx.AsyncClient) -> list:
-        for attempt in range(3):
-            try:
-                r = await client.get(
-                    f"{S2_BASE}/paper/search",
-                    params={"query": query, "fields": S2_FIELDS, "limit": limit},
-                    timeout=12,
-                )
-                if r.status_code == 429:
-                    await asyncio.sleep(2 ** attempt)
-                    continue
-                if r.status_code != 200:
-                    return []
-                return [format_paper(p) for p in r.json().get("data", []) if p.get("title")]
-            except Exception:
+    async def search_openalex(client: httpx.AsyncClient) -> list:
+        try:
+            r = await client.get(
+                f"{OPENALEX_BASE}/works",
+                params={
+                    "search": query,
+                    "select": "title,authorships,publication_year,open_access,cited_by_count,doi,primary_location",
+                    "per-page": limit,
+                    "mailto": OPENALEX_EMAIL,
+                },
+                timeout=12,
+            )
+            if r.status_code != 200:
                 return []
-        return []
+            results = []
+            for work in r.json().get("results", []):
+                if not work.get("title"):
+                    continue
+                # Extract authors
+                authors_list = [
+                    a.get("author", {}).get("display_name", "")
+                    for a in (work.get("authorships") or [])[:3]
+                    if a.get("author", {}).get("display_name")
+                ]
+                if len(work.get("authorships") or []) > 3:
+                    authors_list.append("et al.")
+                authors_str = ", ".join(authors_list)
+
+                # Extract PDF / arXiv URL
+                oa = work.get("open_access") or {}
+                oa_url = oa.get("oa_url") or ""
+                pdf_url = oa_url if oa_url and oa_url.endswith(".pdf") else None
+                arx_url = None
+                arx_id = None
+
+                # Check DOI for arXiv
+                doi = work.get("doi") or ""
+                loc = work.get("primary_location") or {}
+                landing = loc.get("landing_page_url") or ""
+                for candidate in [oa_url, doi, landing]:
+                    m = re.search(r'arxiv\.org/(?:abs|pdf)/(\d{4}\.\d{4,5})', candidate or "", re.I)
+                    if m:
+                        arx_id = m.group(1)
+                        arx_url = f"https://arxiv.org/abs/{arx_id}"
+                        pdf_url = f"https://arxiv.org/pdf/{arx_id}"
+                        break
+
+                venue = (loc.get("source") or {}).get("display_name") or ""
+
+                results.append({
+                    "s2_paper_id": None,
+                    "title": work["title"],
+                    "authors": authors_str,
+                    "year": work.get("publication_year"),
+                    "venue": venue,
+                    "citation_count": work.get("cited_by_count"),
+                    "arxiv_url": arx_url,
+                    "pdf_url": pdf_url or oa_url or None,
+                    "relation": None,
+                })
+            return results
+        except Exception:
+            return []
 
     async def search_arxiv(client: httpx.AsyncClient) -> list:
         try:
             import xml.etree.ElementTree as ET
-            from urllib.parse import quote
             r = await client.get(
                 "https://export.arxiv.org/api/query",
                 params={
@@ -126,17 +175,16 @@ async def search_papers(query: str, limit: int = 20) -> dict:
                     "max_results": 10,
                     "sortBy": "relevance",
                 },
-                timeout=12,
+                timeout=15,
             )
-            if r.status_code != 200:
+            if r.status_code != 200 or not r.text.strip():
                 return []
-            ns = {"atom": "http://www.w3.org/2005/Atom",
-                  "arxiv": "http://arxiv.org/schemas/atom"}
+            ns = {"atom": "http://www.w3.org/2005/Atom"}
             root = ET.fromstring(r.text)
             results = []
             for entry in root.findall("atom:entry", ns):
-                title = (entry.find("atom:title", ns) or {})
-                title_text = title.text.strip().replace("\n", " ") if hasattr(title, "text") and title.text else ""
+                title_el = entry.find("atom:title", ns)
+                title_text = title_el.text.strip().replace("\n", " ") if title_el is not None and title_el.text else ""
                 if not title_text:
                     continue
                 arxiv_id = ""
@@ -146,7 +194,7 @@ async def search_papers(query: str, limit: int = 20) -> dict:
                     if m:
                         arxiv_id = re.sub(r'v\d+$', '', m.group(1))
                 authors_els = entry.findall("atom:author/atom:name", ns)
-                authors_list = [a.text for a in authors_els if a.text]
+                authors_list = [a.text for a in authors_els[:3] if a.text]
                 authors_str = ", ".join(authors_list[:3])
                 if len(authors_list) > 3:
                     authors_str += ", et al."
@@ -170,14 +218,14 @@ async def search_papers(query: str, limit: int = 20) -> dict:
             return []
 
     async with httpx.AsyncClient(timeout=15, headers=S2_HEADERS) as client:
-        s2_results, arxiv_results = await asyncio.gather(
-            search_s2(client),
+        openalex_results, arxiv_results = await asyncio.gather(
+            search_openalex(client),
             search_arxiv(client),
         )
 
-    # Merge: S2 first, then arXiv results not already covered (by title dedup)
-    seen_titles = {r["title"].lower()[:60] for r in s2_results}
-    merged = list(s2_results)
+    # Merge: OpenAlex first, then arXiv results not already covered (title dedup)
+    seen_titles = {r["title"].lower()[:60] for r in openalex_results}
+    merged = list(openalex_results)
     for r in arxiv_results:
         if r["title"].lower()[:60] not in seen_titles:
             merged.append(r)
