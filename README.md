@@ -18,7 +18,7 @@ Powered by your local [Claude CLI](https://claude.ai/code) — no API costs beyo
 
 ### Reading & Chat
 - **Split-pane reader** — PDF viewer on the left, chat/notes/related on the right
-- **Per-source chat** — persistent conversation history per paper, restored across sessions
+- **Per-source chat** — persistent conversation history per paper, restored across sessions; renders math equations (KaTeX)
 - **Source notes** — markdown notes scoped to a specific paper; auto-save, live preview
 - **Related papers** — References and Citations from Semantic Scholar; one click to add any paper to the project
 - **Text selection → chat** — select text in the PDF viewer to pre-fill the chat input
@@ -44,7 +44,7 @@ Powered by your local [Claude CLI](https://claude.ai/code) — no API costs beyo
 |---|---|
 | Frontend | React + TypeScript + Vite + Tailwind CSS |
 | PDF rendering | react-pdf (pdfjs) |
-| Markdown | react-markdown + remark-gfm |
+| Markdown | react-markdown + remark-gfm + KaTeX |
 | Backend | FastAPI + Python |
 | Database | SQLite |
 | PDF extraction | pdfplumber |
