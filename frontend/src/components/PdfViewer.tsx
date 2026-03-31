@@ -23,8 +23,9 @@ export default function PdfViewer({ url, onTextSelected }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Measure scroll area width for fit-width
+  // Measure scroll area width for fit-width (debounced to avoid canvas errors during drag resize)
   useEffect(() => {
+    let rafId: number | null = null
     const measure = () => {
       const el = scrollRef.current
       if (!el) return
@@ -32,11 +33,15 @@ export default function PdfViewer({ url, onTextSelected }: Props) {
       const w = el.clientWidth - 2
       if (w > 100) setContainerWidth(w)
     }
+    const debouncedMeasure = () => {
+      if (rafId !== null) cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(measure)
+    }
     // Measure after paint
     requestAnimationFrame(() => requestAnimationFrame(measure))
-    const obs = new ResizeObserver(measure)
+    const obs = new ResizeObserver(debouncedMeasure)
     if (scrollRef.current) obs.observe(scrollRef.current)
-    return () => obs.disconnect()
+    return () => { obs.disconnect(); if (rafId !== null) cancelAnimationFrame(rafId) }
   }, [url]) // re-measure when URL changes (panel might have resized)
 
   // Text selection bubble
