@@ -9,6 +9,7 @@ import ProjectView from './pages/ProjectView'
 import NoteEditor from './pages/NoteEditor'
 import ArtifactViewer from './pages/ArtifactViewer'
 import App from './App'  // legacy reader (now used as PaperReader)
+import ProjectChat from './pages/ProjectChat'
 import LoginPage from './components/LoginPage'
 
 // ── Error boundary ────────────────────────────────────────────────────────────
@@ -72,7 +73,7 @@ function Root() {
         <Route path="/projects/:projectId/sources/:sourceId" element={<App user={user} />} />
 
         {/* Project chat */}
-        <Route path="/projects/:projectId/chat" element={<div style={{color:'#fff',padding:40}}>Project Chat — coming in Phase 2</div>} />
+        <Route path="/projects/:projectId/chat" element={<ProjectChat />} />
 
         {/* Note editor */}
         <Route path="/projects/:projectId/notes/:noteId" element={<NoteEditor />} />

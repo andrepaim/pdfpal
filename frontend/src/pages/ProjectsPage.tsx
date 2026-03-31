@@ -24,7 +24,7 @@ function NewProjectModal({ onClose, onCreate }: NewProjectModalProps) {
   const [error, setError] = useState('')
 
   const handleCreate = async () => {
-    if (!title.trim()) return
+    if (!title.trim()) { setError('Project name is required'); return }
     setLoading(true)
     setError('')
     try {

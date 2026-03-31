@@ -741,9 +741,8 @@ app.include_router(auth_router, prefix="/api")
 from routes.projects import router as projects_router
 app.include_router(projects_router, prefix="/api")
 
-# API routes under both /api and /
+# API routes under /api only (root prefix removed — caused SPA route collisions)
 app.include_router(router, prefix="/api")
-app.include_router(router, prefix="")
 
 # SPA catch-all — serve index.html for all non-API routes (react-router handles them)
 from fastapi.responses import FileResponse as _FileResponse
