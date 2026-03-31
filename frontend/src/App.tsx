@@ -200,12 +200,19 @@ export default function App({ user }: { user: User }) {
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!dragging.current || !splitRef.current) return
-      const container = splitRef.current.parentElement!
+      const container = splitRef.current.parentElement
+      if (!container) return
       const rect = container.getBoundingClientRect()
       const pct = Math.min(75, Math.max(25, ((e.clientX - rect.left) / rect.width) * 100))
       setSplitPct(pct)
     }
-    const onUp = () => { dragging.current = false; document.body.style.cursor = '' }
+    const onUp = () => {
+      if (dragging.current) {
+        dragging.current = false
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+      }
+    }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
@@ -315,7 +322,7 @@ export default function App({ user }: { user: User }) {
         {/* Drag handle */}
         <div
           ref={splitRef}
-          onMouseDown={() => { dragging.current = true; document.body.style.cursor = 'col-resize' }}
+          onMouseDown={() => { dragging.current = true; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none' }}
           style={{ width: 5, flexShrink: 0, background: 'var(--border)', cursor: 'col-resize', userSelect: 'none' }}
           onMouseEnter={e => (e.currentTarget.style.background = '#4a4a4a')}
           onMouseLeave={e => { if (!dragging.current) e.currentTarget.style.background = 'var(--border)' }}
