@@ -9,12 +9,17 @@ pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
 interface Props {
   url: string
   pages: number
+  isResizing?: boolean
   onTextSelected?: (text: string) => void
 }
 
 const ZOOM_LEVELS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
 
-export default function PdfViewer({ url, onTextSelected }: Props) {
+// Module-level constant so react-pdf's loadDocument effect never sees a new
+// object reference, preventing spurious document destroy/reload cycles.
+const PDF_OPTIONS = { withCredentials: true }
+
+export default function PdfViewer({ url, isResizing, onTextSelected }: Props) {
   const [numPages, setNumPages] = useState(0)
   const [scale, setScale] = useState(1.0)
   const [fitWidth, setFitWidth] = useState(true)
@@ -22,10 +27,13 @@ export default function PdfViewer({ url, onTextSelected }: Props) {
   const [bubble, setBubble] = useState<{ x: number; y: number; text: string } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  // Use a ref so the ResizeObserver callback always sees the current value
+  // without needing to re-subscribe the observer on every drag start/end.
+  const isResizingRef = useRef(isResizing)
+  useEffect(() => { isResizingRef.current = isResizing }, [isResizing])
 
-  // Measure scroll area width for fit-width (debounced to avoid canvas errors during drag resize)
+  // Measure scroll area width for fit-width
   useEffect(() => {
-    let rafId: number | null = null
     const measure = () => {
       const el = scrollRef.current
       if (!el) return
@@ -33,16 +41,33 @@ export default function PdfViewer({ url, onTextSelected }: Props) {
       const w = el.clientWidth - 2
       if (w > 100) setContainerWidth(w)
     }
-    const debouncedMeasure = () => {
-      if (rafId !== null) cancelAnimationFrame(rafId)
-      rafId = requestAnimationFrame(measure)
-    }
     // Measure after paint
     requestAnimationFrame(() => requestAnimationFrame(measure))
-    const obs = new ResizeObserver(debouncedMeasure)
+    const obs = new ResizeObserver(() => {
+      // Skip pdfjs re-renders while the user is actively dragging the split handle.
+      // Measure once when drag ends (see isResizing effect below).
+      if (!isResizingRef.current) measure()
+    })
     if (scrollRef.current) obs.observe(scrollRef.current)
-    return () => { obs.disconnect(); if (rafId !== null) cancelAnimationFrame(rafId) }
-  }, [url]) // re-measure when URL changes (panel might have resized)
+    return () => obs.disconnect()
+  }, [url])
+
+  // When drag ends, take one final measurement so the PDF snaps to the new width.
+  // Defer the update by 200 ms so any in-flight pdfjs render tasks that were
+  // started at the old width have time to finish before we issue a new one.
+  // Firing synchronously on mouse-up races with those tasks and produces the
+  // "Cannot read properties of null (reading 'sendWithPromise')" crash.
+  useEffect(() => {
+    if (!isResizing) {
+      const timer = setTimeout(() => {
+        const el = scrollRef.current
+        if (!el) return
+        const w = el.clientWidth - 2
+        if (w > 100) setContainerWidth(w)
+      }, 200)
+      return () => clearTimeout(timer)
+    }
+  }, [isResizing])
 
   // Text selection bubble
   useEffect(() => {
@@ -140,8 +165,9 @@ export default function PdfViewer({ url, onTextSelected }: Props) {
       {/* PDF scroll area */}
       <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: '16px 0' }}>
         <Document
+          key={url}
           file={url}
-          options={{ withCredentials: true }}
+          options={PDF_OPTIONS}
           onLoadSuccess={({ numPages }) => setNumPages(numPages)}
           onLoadError={err => console.error('PDF load error:', err)}
           loading={<LoadingPage />}

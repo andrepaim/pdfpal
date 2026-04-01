@@ -160,6 +160,7 @@ export default function App({ user }: { user: User }) {
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
   const [rightPanel, setRightPanel] = useState<RightPanel>('chat')
+  const [isResizing, setIsResizing] = useState(false)
 
   const splitRef = useRef<HTMLDivElement>(null)
   const dragging = useRef(false)
@@ -211,6 +212,7 @@ export default function App({ user }: { user: User }) {
         dragging.current = false
         document.body.style.cursor = ''
         document.body.style.userSelect = ''
+        setIsResizing(false)
       }
     }
     window.addEventListener('mousemove', onMove)
@@ -316,13 +318,13 @@ export default function App({ user }: { user: User }) {
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* PDF panel */}
         <div style={{ width: `${splitPct}%`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <PdfViewer url={viewerUrl} pages={pdfPages} onTextSelected={setSelectedText} />
+          <PdfViewer url={viewerUrl} pages={pdfPages} isResizing={isResizing} onTextSelected={setSelectedText} />
         </div>
 
         {/* Drag handle */}
         <div
           ref={splitRef}
-          onMouseDown={() => { dragging.current = true; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none' }}
+          onMouseDown={() => { dragging.current = true; setIsResizing(true); document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none' }}
           style={{ width: 5, flexShrink: 0, background: 'var(--border)', cursor: 'col-resize', userSelect: 'none' }}
           onMouseEnter={e => (e.currentTarget.style.background = '#4a4a4a')}
           onMouseLeave={e => { if (!dragging.current) e.currentTarget.style.background = 'var(--border)' }}
