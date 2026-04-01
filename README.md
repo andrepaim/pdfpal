@@ -1,8 +1,24 @@
 # pdfpal
 
-> An AI-powered research workspace. Organize papers into projects, chat across multiple sources, take notes, explore citations — all self-hosted.
+> Read research papers and chat with them inline — PDF viewer and AI side by side, no tab-switching. Self-hosted, powered by your Claude subscription.
 
-Powered by your local [Claude CLI](https://claude.ai/code) — no API costs beyond your Claude subscription.
+---
+
+## Screenshots
+
+<div align="center">
+
+| PDF reader + AI chat | Related papers |
+|:---:|:---:|
+| ![Reader](screenshots/1-reader.png) | ![Related](screenshots/2-related.png) |
+| Read the paper and ask questions inline — no tab-switching | Browse references and citations from Semantic Scholar; add any paper in one click |
+
+| Paper search | Projects |
+|:---:|:---:|
+| ![Search](screenshots/3-search.png) | ![Projects](screenshots/4-projects.png) |
+| Search by title across OpenAlex + arXiv and add papers directly to your project | Organise your research into projects — each with sources, notes, artifacts, and chat |
+
+</div>
 
 ---
 
@@ -22,20 +38,19 @@ And there's one more thing no SaaS can offer: I have an OpenClaw agent running o
 
 ## Features
 
-### Sources
+### Reading & Chat
+- **Split-pane reader** — PDF viewer on the left, chat/notes/related on the right; resizable
+- **Per-source chat** — persistent conversation history per paper, restored across sessions; renders math equations (KaTeX)
+- **Text selection → chat** — select any text in the PDF to pre-fill the chat input
+- **Source notes** — markdown notes scoped to a specific paper; auto-save, live preview
+- **Related papers** — References and Citations from Semantic Scholar; one click to add any paper to the project
+
+### Sources & Search
 - **Paper search** — search OpenAlex + arXiv by title; results show authors, year, venue, citation count; one click to add to a project
 - **Smart PDF resolver** — paste any URL: arXiv, OpenReview, ACL Anthology, PMLR, Nature, Springer, DOI links, or a direct `.pdf` URL; tracking params stripped automatically
 - **Open-access fallback** — for paywalled URLs, queries Semantic Scholar and Unpaywall for a free copy
 - **Inline renaming** — rename projects and sources in-place
-- **Remove source** — delete a source from the project via the source list or directly from the reader header
 - **Failed source detection** — sources with no extracted text show a `⚠ Failed` badge with a one-click retry
-
-### Reading & Chat
-- **Split-pane reader** — PDF viewer on the left, chat/notes/related on the right
-- **Per-source chat** — persistent conversation history per paper, restored across sessions; renders math equations (KaTeX)
-- **Source notes** — markdown notes scoped to a specific paper; auto-save, live preview
-- **Related papers** — References and Citations from Semantic Scholar; one click to add any paper to the project
-- **Text selection → chat** — select text in the PDF viewer to pre-fill the chat input
 
 ### Projects
 - **Project chat** — chat across multiple sources simultaneously; toggle which sources are in context
