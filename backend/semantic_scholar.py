@@ -267,17 +267,56 @@ async def search_paper_by_title(title: str, client: httpx.AsyncClient) -> Option
     return None
 
 
-async def fetch_related(source_url: str, limit: int = 20, source_title: str = "") -> dict:
+def order_references_by_pdf(references: list, pdf_text: str) -> list:
+    """
+    Reorder a list of reference dicts to match the order they appear in the
+    paper's reference section. Uses fuzzy title matching against the raw PDF text.
+    Papers not found in the text are appended at the end in their original order.
+    """
+    if not pdf_text or not references:
+        return references
+
+    # Find the references section — look for a heading like "References", "Bibliography"
+    ref_section_match = re.search(
+        r'\n\s*(?:References|REFERENCES|Bibliography|BIBLIOGRAPHY)\s*\n',
+        pdf_text
+    )
+    ref_text = pdf_text[ref_section_match.start():] if ref_section_match else pdf_text
+
+    def title_position(title: str) -> int:
+        """Return the character position of a title in ref_text, or a large sentinel."""
+        if not title:
+            return 10 ** 9
+        # Use first 40 chars of title, lowercased, with special chars stripped
+        snippet = re.sub(r'[^a-z0-9 ]', '', title.lower())[:40].strip()
+        if not snippet:
+            return 10 ** 9
+        # Build a loose regex: allow any whitespace between words (PDF text extraction
+        # sometimes inserts line breaks mid-title)
+        words = snippet.split()
+        if not words:
+            return 10 ** 9
+        pattern = r'\s*'.join(re.escape(w) for w in words[:6])
+        m = re.search(pattern, ref_text, re.IGNORECASE)
+        return m.start() if m else 10 ** 9
+
+    return sorted(references, key=lambda p: title_position(p.get("title", "")))
+
+
+async def fetch_related(source_url: str, ref_limit: int = 60, cite_limit: int = 20,
+                        source_title: str = "", pdf_text: str = "") -> dict:
     """
     Fetch references and citations for a paper given its source URL (and optionally title).
     Returns {"references": [...], "citations": [...], "paper_id": str|None}
     Each item: {title, authors, year, arxiv_url, pdf_url, s2_paper_id, relation}
+    References are ordered to match their appearance in the paper's reference section.
     """
     paper_id = paper_id_from_url(source_url)
     if not paper_id and not source_title:
         return {"references": [], "citations": [], "paper_id": None, "error": "Could not identify paper from URL"}
 
     results = {"references": [], "citations": [], "paper_id": paper_id}
+    limits = {"references": ref_limit, "citations": cite_limit}
 
     async with httpx.AsyncClient(timeout=15, headers=S2_HEADERS) as client:
         # No URL-based ID — try title search
@@ -294,7 +333,7 @@ async def fetch_related(source_url: str, limit: int = 20, source_title: str = ""
             try:
                 r = await client.get(
                     f"{S2_BASE}/paper/{paper_id}/{relation}",
-                    params={"fields": S2_FIELDS, "limit": limit},
+                    params={"fields": S2_FIELDS, "limit": limits[relation]},
                 )
                 if r.status_code == 404:
                     results["error"] = f"Paper not found in Semantic Scholar ({paper_id})"
@@ -323,5 +362,9 @@ async def fetch_related(source_url: str, limit: int = 20, source_title: str = ""
                 pass
             except Exception as e:
                 results["error"] = str(e)
+
+    # Order references to match their position in the paper's reference section
+    if pdf_text and results["references"]:
+        results["references"] = order_references_by_pdf(results["references"], pdf_text)
 
     return results

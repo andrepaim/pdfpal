@@ -686,17 +686,18 @@ async def search_papers(q: str, limit: int = 20):
 
 @router.get("/projects/{project_id}/sources/{source_id}/related")
 async def get_related_papers(project_id: str, source_id: str, refresh: bool = False):
-    from semantic_scholar import fetch_related
+    from semantic_scholar import fetch_related, order_references_by_pdf
 
-    # Load source URL
+    # Load source URL and pdf_text for reference ordering
     with get_db() as conn:
         row = conn.execute(
-            "SELECT url, title FROM sources WHERE id=? AND project_id=?", (source_id, project_id)
+            "SELECT url, title, pdf_text FROM sources WHERE id=? AND project_id=?", (source_id, project_id)
         ).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Source not found")
         source_url = row["url"] or ""
         source_title = row["title"] or ""
+        pdf_text = row["pdf_text"] or ""
 
         # Check cache (skip if refresh=true or no cached rows)
         if not refresh:
@@ -707,10 +708,11 @@ async def get_related_papers(project_id: str, source_id: str, refresh: bool = Fa
             if cached:
                 references = [dict(r) for r in cached if r["relation"] == "reference"]
                 citations = [dict(r) for r in cached if r["relation"] == "citation"]
+                references = order_references_by_pdf(references, pdf_text)
                 return {"references": references, "citations": citations, "cached": True}
 
     # Fetch from Semantic Scholar
-    result = await fetch_related(source_url, source_title=source_title)
+    result = await fetch_related(source_url, source_title=source_title, pdf_text=pdf_text)
 
     if result.get("references") or result.get("citations"):
         ts = now_iso()
