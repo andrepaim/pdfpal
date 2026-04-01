@@ -6,6 +6,20 @@ Powered by your local [Claude CLI](https://claude.ai/code) — no API costs beyo
 
 ---
 
+## Why I Built This
+
+I was looking for a tool to chat with research papers — something with an inline reader so I wouldn't have to context-switch between a PDF tab and an AI tab. Tools like [ChatPDF](https://www.chatpdf.com/) do exactly that. They work well.
+
+But every option I found follows the same pattern: a free tier that's too restrictive for real use, and a paid tier that adds another monthly subscription on top of the VPS and Claude Max subscription I'm already paying for. And even then, you're locked into whatever model and feature set they've decided to ship.
+
+So I cut out the middleman.
+
+pdfpal runs entirely on your own server. Every chat, every cross-paper query, every question goes through the Claude CLI using your existing subscription. No extra monthly fee, no usage caps, no feature gates.
+
+And there's one more thing no SaaS can offer: I have an OpenClaw agent running on the same VPS. Any feature I want, any workflow quirk — I can just ask it to build it. Finding the perfect research app is impossible. Building it iteratively, exactly the way I want it, isn't.
+
+---
+
 ## Features
 
 ### Sources
