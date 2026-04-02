@@ -1,0 +1,11 @@
+node_modules
+frontend/node_modules
+frontend/dist
+backend/__pycache__
+backend/pdfpal.db
+*.pyc
+__pycache__
+.git
+.omc
+.env
+data/

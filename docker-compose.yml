@@ -1,0 +1,16 @@
+services:
+  pdfpal:
+    build: .
+    ports:
+      - "${PORT:-8200}:8200"
+    volumes:
+      - pdfpal-data:/app/data
+      - ${CLAUDE_CONFIG:-~/.claude}:/root/.claude:ro
+    env_file:
+      - .env
+    environment:
+      - PDFPAL_DB=/app/data/pdfpal.db
+    restart: unless-stopped
+
+volumes:
+  pdfpal-data:

@@ -2,6 +2,33 @@
 
 PDF reading and research assistant with AI chat, annotations, paper search, and project organization.
 
+## Quick start
+
+### Option A — Docker
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+### Option B — Local
+
+```bash
+cp .env.example .env
+make install
+make run
+```
+
+Edit `.env` before starting — at minimum set `CLAUDE_BIN` and `TAVILY_API_KEY`.
+
+Auth is optional: when `GOOGLE_CLIENT_ID` is left empty, authentication is disabled (suitable for local / solo use).
+
+### CLI usage
+
+```bash
+cd backend && python3 cli.py --db ~/my.db --port 8200
+```
+
 ## Tech stack
 
 - **Backend:** Python 3 / FastAPI / uvicorn, SQLite (WAL mode), pdfplumber, httpx, authlib, python-jose
@@ -30,8 +57,8 @@ Backend serves on port 8200. The app initializes the SQLite DB (`backend/pdfpal.
 
 ```bash
 cd frontend
-/home/openclaw/.nvm/versions/node/v24.14.1/bin/npm install
-/home/openclaw/.nvm/versions/node/v24.14.1/bin/npm run dev
+npm install
+npm run dev
 ```
 
 Vite dev server proxies `/api` requests to `http://localhost:8200` (with path rewrite stripping the `/api` prefix -- see `vite.config.ts`).
@@ -55,16 +82,16 @@ systemctl restart pdfpal
 
 ## Environment variables
 
-Defined in `/etc/pdfpal.env` (mode 600, owned by root). Referenced by the systemd service via `EnvironmentFile=`.
+Configured via `.env` (local) or `/etc/pdfpal.env` (production, mode 600, owned by root). See `.env.example` for all options.
 
 - `TAVILY_API_KEY` -- web search for chat context
-- `CLAUDE_BIN` -- path to claude CLI binary (default: `/root/.local/bin/claude`)
-- `GOOGLE_CLIENT_ID` -- Google OAuth
+- `CLAUDE_BIN` -- path to claude CLI binary (default: `/usr/local/bin/claude`)
+- `GOOGLE_CLIENT_ID` -- Google OAuth (leave empty to disable auth)
 - `GOOGLE_CLIENT_SECRET` -- Google OAuth
 - `ALLOWED_EMAILS` -- comma-separated email allowlist
 - `SESSION_SECRET` -- JWT signing secret
 - `SESSION_MAX_AGE` -- session TTL in seconds (default: 30 days)
-- `PUBLIC_URL` -- public base URL (default: `https://pdfpal.duckdns.org`)
+- `PUBLIC_URL` -- public base URL (default: `http://localhost:8200`)
 
 ## Architecture
 

@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "pdfpal.db"
+from db import DB_PATH
 
 def migrate():
     conn = sqlite3.connect(DB_PATH)

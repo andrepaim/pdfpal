@@ -2,7 +2,6 @@ import asyncio
 import io
 import os
 import json
-import sqlite3
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -21,15 +20,19 @@ load_dotenv()
 
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 CLAUDE_BIN = os.getenv("CLAUDE_BIN", "/root/.local/bin/claude")
-DB_PATH = Path(__file__).parent / "pdfpal.db"
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 
-from db import get_db as _get_db_shared
+from db import get_db
 
 # Auth imports
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import JSONResponse as _JSONResponse, RedirectResponse as _RedirectResponse
-from auth import verify_session_token, SESSION_COOKIE, router as auth_router
 from pdf_resolver import resolve_pdf_url
+
+_AUTH_ENABLED = bool(GOOGLE_CLIENT_ID)
+
+if _AUTH_ENABLED:
+    from auth import verify_session_token, SESSION_COOKIE, router as auth_router
 
 class AuthMiddleware(BaseHTTPMiddleware):
     # Paths that don't require auth
@@ -58,20 +61,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
         request.state.user = user
         return await call_next(request)
 
-# ---------------------------------------------------------------------------
-# Database
-# ---------------------------------------------------------------------------
-
-def get_db():
-    conn = sqlite3.connect(DB_PATH, timeout=10, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    return conn
+class _LocalUserMiddleware(BaseHTTPMiddleware):
+    """When auth is disabled, set a default local user on every request."""
+    async def dispatch(self, request: Request, call_next):
+        request.state.user = {"email": "local@localhost", "name": "Local User"}
+        return await call_next(request)
 
 def init_db():
     with get_db() as conn:
         conn.executescript("""
+            -- v1 legacy tables
             CREATE TABLE IF NOT EXISTS sessions (
                 id TEXT PRIMARY KEY,
                 title TEXT,
@@ -90,6 +89,65 @@ def init_db():
                 created_at TEXT,
                 FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
             );
+
+            -- v2 tables
+            CREATE TABLE IF NOT EXISTS projects (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL DEFAULT 'Untitled Project',
+                description TEXT DEFAULT '',
+                created_at TEXT NOT NULL,
+                accessed_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS sources (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                type TEXT NOT NULL DEFAULT 'pdf',
+                url TEXT,
+                title TEXT,
+                pdf_text TEXT,
+                pages INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                accessed_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                source_id TEXT,
+                title TEXT DEFAULT 'Chat',
+                created_at TEXT NOT NULL,
+                accessed_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                FOREIGN KEY (source_id) REFERENCES sources(id) ON DELETE SET NULL
+            );
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                sources_used TEXT DEFAULT '[]',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS notes (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                source_id TEXT,
+                title TEXT DEFAULT 'Untitled Note',
+                content TEXT DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS artifacts (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                title TEXT DEFAULT 'Untitled Artifact',
+                content TEXT DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
             CREATE TABLE IF NOT EXISTS annotations (
                 id TEXT PRIMARY KEY,
                 source_id TEXT NOT NULL,
@@ -104,7 +162,21 @@ def init_db():
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (source_id) REFERENCES sources(id) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS source_related (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_id TEXT NOT NULL,
+                s2_paper_id TEXT,
+                title TEXT,
+                authors TEXT,
+                year INTEGER,
+                arxiv_url TEXT,
+                pdf_url TEXT,
+                relation TEXT,
+                fetched_at TEXT,
+                FOREIGN KEY (source_id) REFERENCES sources(id) ON DELETE CASCADE
+            );
             CREATE INDEX IF NOT EXISTS idx_annotations_source ON annotations(source_id, page_number);
+            CREATE INDEX IF NOT EXISTS idx_source_related_source ON source_related(source_id);
         """)
 
 init_db()
@@ -117,12 +189,15 @@ app = FastAPI(title="pdfpal")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://pdfpal.duckdns.org"],
+    allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.add_middleware(AuthMiddleware)
+if _AUTH_ENABLED:
+    app.add_middleware(AuthMiddleware)
+else:
+    app.add_middleware(_LocalUserMiddleware)
 
 router = APIRouter()
 
@@ -751,8 +826,9 @@ async def get_related_papers(project_id: str, source_id: str, refresh: bool = Fa
     }
 
 # Auth routes — registered under both /auth and /api/auth
-app.include_router(auth_router)
-app.include_router(auth_router, prefix="/api")
+if _AUTH_ENABLED:
+    app.include_router(auth_router)
+    app.include_router(auth_router, prefix="/api")
 
 # v2 project routes (only under /api — not at root to avoid clashing with SPA routes)
 from routes.projects import router as projects_router
