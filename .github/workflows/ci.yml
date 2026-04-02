@@ -32,7 +32,7 @@ jobs:
         with:
           node-version: '22'
       - name: Install backend deps
-        run: pip install -r backend/requirements.txt
+        run: pip install -r backend/requirements.txt python-multipart
       - name: Install frontend deps
         run: cd frontend && npm ci
       - name: Build frontend
