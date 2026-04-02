@@ -134,4 +134,4 @@ SQLite at `backend/pdfpal.db`. Two schema generations coexist:
 - PDF extraction is limited to 50 pages max
 - Chat streams responses via SSE (`text/event-stream`)
 - The chat endpoint shells out to `claude --print` with a 5-minute timeout
-- CORS is restricted to `https://pdfpal.duckdns.org` in production
+- CORS is configurable via `CORS_ORIGINS` env var (defaults to `*`; production sets `https://pdfpal.duckdns.org`)

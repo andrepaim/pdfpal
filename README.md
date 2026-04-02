@@ -122,85 +122,49 @@ Browser (React SPA)
 
 ## Self-hosting
 
-### Requirements
-
-- Python 3.10+
-- Node.js 18+
-- [Claude CLI](https://claude.ai/code) installed and authenticated
-- A Google Cloud project with OAuth 2.0 credentials
-- (Optional) [Tavily API key](https://tavily.com) for web search
-
----
-
-### 1. Clone
+### Quick start (Docker)
 
 ```bash
 git clone https://github.com/andrepaim/pdfpal.git
 cd pdfpal
+cp .env.example .env        # edit with your API keys
+docker compose up --build
 ```
 
----
+Open [http://localhost:8200](http://localhost:8200).
 
-### 2. Set up Google OAuth
-
-1. Go to [console.cloud.google.com](https://console.cloud.google.com)
-2. Create or select a project
-3. Navigate to **APIs & Services → Credentials**
-4. Click **+ Create Credentials → OAuth 2.0 Client ID**
-5. Application type: **Web application**
-6. Under **Authorized redirect URIs**, add:
-   ```
-   https://your-domain.com/auth/google/callback
-   ```
-7. Note your **Client ID** and **Client Secret**
+Auth is optional -- leave `GOOGLE_CLIENT_ID` empty to skip Google OAuth (suitable for local/solo use).
 
 ---
 
-### 3. Configure environment
+### Quick start (local)
+
+#### Requirements
+
+- Python 3.10+
+- Node.js 18+
+- [Claude CLI](https://claude.ai/code) installed and authenticated
+- (Optional) [Tavily API key](https://tavily.com) for web search
+- (Optional) Google Cloud OAuth 2.0 credentials for auth
 
 ```bash
-cp backend/.env.example backend/.env
+git clone https://github.com/andrepaim/pdfpal.git
+cd pdfpal
+cp .env.example .env        # edit with your API keys
+make install
+make run
 ```
 
-Edit `backend/.env`:
+#### CLI with custom database path
 
-```env
-# AI
-CLAUDE_BIN=/usr/local/bin/claude       # path to claude CLI binary
-
-# Web search (optional)
-TAVILY_API_KEY=your_tavily_key_here    # leave empty to disable web search
-
-# Google OAuth
-GOOGLE_CLIENT_ID=your_client_id_here
-GOOGLE_CLIENT_SECRET=your_client_secret_here
-ALLOWED_EMAILS=you@gmail.com           # comma-separated allowlist
-
-# Session
-SESSION_SECRET=generate-a-random-secret-here   # openssl rand -hex 32
-PUBLIC_URL=https://your-domain.com
+```bash
+cd backend && python3 cli.py --db ~/research.db --port 8200
 ```
 
 ---
 
-### 4. Install dependencies
+### Development (hot reload)
 
-```bash
-pip install -r backend/requirements.txt
-
-cd frontend && npm install && npm run build && cd ..
-```
-
----
-
-### 5. Run
-
-**Production:**
-```bash
-cd backend && uvicorn main:app --host 0.0.0.0 --port 8200
-```
-
-**Development (hot reload):**
 ```bash
 # Terminal 1
 cd backend && uvicorn main:app --reload --port 8200
@@ -211,18 +175,58 @@ cd frontend && npm run dev
 
 ---
 
-### 6. Systemd service (Linux)
+### Google OAuth (optional)
+
+Only needed if you want to restrict access with Google sign-in.
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com)
+2. Create or select a project
+3. Navigate to **APIs & Services > Credentials**
+4. Click **+ Create Credentials > OAuth 2.0 Client ID**
+5. Application type: **Web application**
+6. Under **Authorized redirect URIs**, add:
+   ```
+   https://your-domain.com/auth/google/callback
+   ```
+7. Add your **Client ID**, **Client Secret**, and allowed emails to `.env`
+
+---
+
+### Environment variables
+
+Copy `.env.example` to `.env` and edit. See the file for all options:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `CLAUDE_BIN` | Yes | Path to claude CLI binary |
+| `TAVILY_API_KEY` | No | Enables web search in chat |
+| `GOOGLE_CLIENT_ID` | No | Enables Google OAuth (leave empty to disable auth) |
+| `GOOGLE_CLIENT_SECRET` | No | Google OAuth secret |
+| `ALLOWED_EMAILS` | No | Comma-separated email allowlist |
+| `SESSION_SECRET` | No | JWT signing secret |
+| `PUBLIC_URL` | No | Public base URL (default: `http://localhost:8200`) |
+| `PDFPAL_DB` | No | SQLite database path (default: `backend/pdfpal.db`) |
+| `CORS_ORIGINS` | No | Comma-separated origins (default: `*`) |
+
+---
+
+### Deploy (systemd)
 
 ```bash
-sudo cp clawd-reader.service /etc/systemd/system/
+sudo cp pdfpal.service /etc/systemd/system/
 # Edit User, Group, and paths in the service file
 sudo systemctl daemon-reload
-sudo systemctl enable --now clawd-reader
+sudo systemctl enable --now pdfpal
+```
+
+Update:
+```bash
+bash deploy.sh
 ```
 
 ---
 
-### 7. Reverse proxy (Apache)
+### Reverse proxy (Apache)
 
 ```apache
 <VirtualHost *:443>
@@ -235,14 +239,6 @@ sudo systemctl enable --now clawd-reader
     ProxyPass        / http://127.0.0.1:8200/
     ProxyPassReverse / http://127.0.0.1:8200/
 </VirtualHost>
-```
-
----
-
-### Deploy updates
-
-```bash
-bash deploy.sh
 ```
 
 ---
