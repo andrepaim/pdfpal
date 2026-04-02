@@ -7,7 +7,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import PdfViewer from './components/PdfViewer'
 import ChatPanel from './components/ChatPanel'
-import { sourcesApi, notesApi, type Source, type Note } from './lib/api'
+import { sourcesApi, notesApi, annotationsApi, type Source, type Note, type Annotation } from './lib/api'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -154,6 +154,7 @@ export default function App({ user }: { user: User }) {
   const [pdfPages, setPdfPages] = useState(0)
   const [pdfLabel, setPdfLabel] = useState('')
   const [selectedText, setSelectedText] = useState('')
+  const [annotations, setAnnotations] = useState<Annotation[]>([])
   const [splitPct, setSplitPct] = useState(55)
   const [loading, setLoading] = useState(true)
   const [retrying, setRetrying] = useState(false)
@@ -169,12 +170,16 @@ export default function App({ user }: { user: User }) {
     if (!projectId || !sourceId) return
     setLoading(true)
     setError('')
-    sourcesApi.get(projectId, sourceId)
-      .then(s => {
+    Promise.all([
+      sourcesApi.get(projectId, sourceId),
+      annotationsApi.list(projectId, sourceId),
+    ])
+      .then(([s, anns]) => {
         setSource(s)
         setPdfText(s.pdf_text || '')
         setPdfPages(s.pages || 0)
         setPdfLabel(s.title || s.url || 'PDF')
+        setAnnotations(anns)
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
@@ -219,6 +224,17 @@ export default function App({ user }: { user: User }) {
     window.addEventListener('mouseup', onUp)
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
   }, [])
+
+  const handleHighlightCreate = async (data: Omit<Annotation, 'id' | 'source_id' | 'project_id' | 'created_at'>) => {
+    if (!projectId || !sourceId) return
+    const ann = await annotationsApi.create(projectId, sourceId, data)
+    setAnnotations(prev => [...prev, ann])
+  }
+
+  const handleHighlightClick = (ann: Annotation) => {
+    setSelectedText(ann.text)
+    setRightPanel('chat')
+  }
 
   const viewerUrl = source?.url ? `/api/proxy-pdf?url=${encodeURIComponent(source.url)}` : ''
   const hasPdfText = !!pdfText.trim()
@@ -318,7 +334,15 @@ export default function App({ user }: { user: User }) {
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* PDF panel */}
         <div style={{ width: `${splitPct}%`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <PdfViewer url={viewerUrl} pages={pdfPages} isResizing={isResizing} onTextSelected={setSelectedText} />
+          <PdfViewer
+            url={viewerUrl}
+            pages={pdfPages}
+            isResizing={isResizing}
+            onTextSelected={setSelectedText}
+            annotations={annotations}
+            onHighlightCreate={handleHighlightCreate}
+            onHighlightClick={handleHighlightClick}
+          />
         </div>
 
         {/* Drag handle */}

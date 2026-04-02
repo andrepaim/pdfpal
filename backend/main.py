@@ -90,6 +90,21 @@ def init_db():
                 created_at TEXT,
                 FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS annotations (
+                id TEXT PRIMARY KEY,
+                source_id TEXT NOT NULL,
+                project_id TEXT NOT NULL,
+                page_number INTEGER NOT NULL,
+                x1 REAL NOT NULL,
+                y1 REAL NOT NULL,
+                x2 REAL NOT NULL,
+                y2 REAL NOT NULL,
+                text TEXT NOT NULL,
+                color TEXT NOT NULL DEFAULT 'yellow',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (source_id) REFERENCES sources(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_annotations_source ON annotations(source_id, page_number);
         """)
 
 init_db()
@@ -742,6 +757,8 @@ app.include_router(auth_router, prefix="/api")
 # v2 project routes (only under /api — not at root to avoid clashing with SPA routes)
 from routes.projects import router as projects_router
 app.include_router(projects_router, prefix="/api")
+from routes.annotations import router as annotations_router
+app.include_router(annotations_router, prefix="/api")
 
 # API routes under /api only (root prefix removed — caused SPA route collisions)
 app.include_router(router, prefix="/api")

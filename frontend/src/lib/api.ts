@@ -179,6 +179,35 @@ export const chatApi = {
     apiFetch(`/projects/${projectId}/sources/${sourceId}/chat`, { method: 'DELETE' }),
 }
 
+export interface Annotation {
+  id: string
+  source_id: string
+  project_id: string
+  page_number: number
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+  text: string
+  color: string
+  created_at: string
+}
+
+export const annotationsApi = {
+  list: (projectId: string, sourceId: string) =>
+    apiFetch<Annotation[]>(`/projects/${projectId}/sources/${sourceId}/annotations`),
+  create: (projectId: string, sourceId: string, data: Omit<Annotation, 'id' | 'source_id' | 'project_id' | 'created_at'>) =>
+    apiFetch<Annotation>(`/projects/${projectId}/sources/${sourceId}/annotations`, {
+      method: 'POST', body: JSON.stringify(data),
+    }),
+  delete: (projectId: string, sourceId: string, annotationId: string) =>
+    apiFetch(`/projects/${projectId}/sources/${sourceId}/annotations/${annotationId}`, { method: 'DELETE' }),
+  updateColor: (projectId: string, sourceId: string, annotationId: string, color: string) =>
+    apiFetch<Annotation>(`/projects/${projectId}/sources/${sourceId}/annotations/${annotationId}`, {
+      method: 'PATCH', body: JSON.stringify({ color }),
+    }),
+}
+
 export const artifactsApi = {
   list: (projectId: string) => apiFetch<Artifact[]>(`/projects/${projectId}/artifacts`),
   create: (projectId: string, data: { title?: string; content: string }) =>
