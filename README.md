@@ -135,17 +135,7 @@ Open [http://localhost:8200](http://localhost:8200).
 
 Auth is optional -- leave `GOOGLE_CLIENT_ID` empty to skip Google OAuth (suitable for local/solo use).
 
----
-
 ### Quick start (local)
-
-#### Requirements
-
-- Python 3.10+
-- Node.js 18+
-- [Claude CLI](https://claude.ai/code) installed and authenticated
-- (Optional) [Tavily API key](https://tavily.com) for web search
-- (Optional) Google Cloud OAuth 2.0 credentials for auth
 
 ```bash
 git clone https://github.com/andrepaim/pdfpal.git
@@ -161,36 +151,13 @@ make run
 cd backend && python3 cli.py --db ~/research.db --port 8200
 ```
 
----
+### Requirements
 
-### Development (hot reload)
-
-```bash
-# Terminal 1
-cd backend && uvicorn main:app --reload --port 8200
-
-# Terminal 2
-cd frontend && npm run dev
-```
-
----
-
-### Google OAuth (optional)
-
-Only needed if you want to restrict access with Google sign-in.
-
-1. Go to [console.cloud.google.com](https://console.cloud.google.com)
-2. Create or select a project
-3. Navigate to **APIs & Services > Credentials**
-4. Click **+ Create Credentials > OAuth 2.0 Client ID**
-5. Application type: **Web application**
-6. Under **Authorized redirect URIs**, add:
-   ```
-   https://your-domain.com/auth/google/callback
-   ```
-7. Add your **Client ID**, **Client Secret**, and allowed emails to `.env`
-
----
+- Python 3.10+
+- Node.js 18+
+- [Claude CLI](https://claude.ai/code) installed and authenticated
+- (Optional) [Tavily API key](https://tavily.com) for web search
+- (Optional) Google Cloud OAuth 2.0 credentials for auth
 
 ### Environment variables
 
@@ -208,7 +175,30 @@ Copy `.env.example` to `.env` and edit. See the file for all options:
 | `PDFPAL_DB` | No | SQLite database path (default: `backend/pdfpal.db`) |
 | `CORS_ORIGINS` | No | Comma-separated origins (default: `*`) |
 
----
+### Development
+
+```bash
+# Terminal 1
+cd backend && uvicorn main:app --reload --port 8200
+
+# Terminal 2
+cd frontend && npm run dev
+```
+
+### Google OAuth
+
+Only needed if you want to restrict access with Google sign-in.
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com)
+2. Create or select a project
+3. Navigate to **APIs & Services > Credentials**
+4. Click **+ Create Credentials > OAuth 2.0 Client ID**
+5. Application type: **Web application**
+6. Under **Authorized redirect URIs**, add:
+   ```
+   https://your-domain.com/auth/google/callback
+   ```
+7. Add your **Client ID**, **Client Secret**, and allowed emails to `.env`
 
 ### Deploy (systemd)
 
@@ -224,9 +214,7 @@ Update:
 bash deploy.sh
 ```
 
----
-
-### Reverse proxy (Apache)
+#### Reverse proxy (Apache)
 
 ```apache
 <VirtualHost *:443>
