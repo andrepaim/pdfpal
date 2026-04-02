@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          pip install -r backend/requirements.txt
+          pip install pytest fpdf2
+      - name: Run tests
+        run: cd backend && python -m pytest tests/ -v
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install backend deps
+        run: pip install -r backend/requirements.txt
+      - name: Install frontend deps
+        run: cd frontend && npm ci
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build
+          cp node_modules/react-pdf/node_modules/pdfjs-dist/build/pdf.worker.min.mjs dist/pdf.worker.min.mjs || true
+      - name: Install Playwright
+        run: cd frontend && npx playwright install --with-deps chromium
+      - name: Run E2E tests
+        run: cd frontend && npx playwright test
+        env:
+          PDFPAL_DB: /tmp/pdfpal_ci.db
+          GOOGLE_CLIENT_ID: ''
+          CLAUDE_BIN: /bin/echo
