@@ -63,6 +63,7 @@ And there's one more thing no SaaS can offer: I have an OpenClaw agent running o
 - **Web search** — toggleable Tavily-powered search injects live results into every conversation
 - **Chat persistence** — all conversations persisted in SQLite, restored on reload
 - **Google OAuth** — private by default; only allowlisted emails can log in
+- **Local CLI mode** — run `pdfpal` on localhost with a one-command setup (auto venv, browser launch, auth bypassed)
 - **Dark theme** — easy on the eyes
 
 ---
@@ -150,6 +151,45 @@ make run
 ```bash
 cd backend && python3 cli.py --db ~/research.db --port 8200
 ```
+
+### Quick start (local CLI — the `pdfpal` command)
+
+For solo use on your own machine: install once, then run `pdfpal` from any
+directory. It boots a self-contained server on `http://localhost:8200`, opens
+your browser, and keeps its data, database, and config in `~/.pdfpal`.
+
+```bash
+git clone https://github.com/andrepaim/pdfpal.git
+cd pdfpal
+make link          # or: make global-install
+pdfpal
+```
+
+**First run** automatically:
+
+- creates a Python virtualenv in `~/.pdfpal/venv` and installs backend deps
+  (bootstraps pip via `get-pip.py` if your system Python lacks `ensurepip`),
+- writes `~/.pdfpal/config.env` (auto-detecting your `claude` CLI),
+- starts uvicorn bound to `127.0.0.1:8200`,
+- opens the browser.
+
+Google auth is **always bypassed** in this mode — you go straight to your
+projects, no login page. The database is separate from any server-mode DB.
+
+**Options**
+
+| Flag | Description |
+|------|-------------|
+| `-p, --port <n>` | Port (default `8200`) |
+| `--host <addr>` | Bind host (default `127.0.0.1`) |
+| `--no-browser` | Don't open a browser |
+| `--reset-venv` | Recreate the Python virtualenv |
+
+**Configuration** — edit `~/.pdfpal/config.env`: set `TAVILY_API_KEY` to enable
+web search in chat; `CLAUDE_BIN` is auto-detected but can be overridden.
+Restart `pdfpal` to apply changes. Uninstall with
+`npm unlink -g pdfpal` (after `make link`) or `npm uninstall -g pdfpal`
+(after `make global-install`).
 
 ### Requirements
 
