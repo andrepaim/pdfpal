@@ -1,0 +1,23 @@
+{
+  "name": "pdfpal",
+  "version": "1.0.0",
+  "description": "PDF reading and research assistant with AI chat, annotations, and paper search.",
+  "license": "MIT",
+  "type": "commonjs",
+  "bin": {
+    "pdfpal": "bin/pdfpal.js"
+  },
+  "files": [
+    "bin/",
+    "backend/",
+    "frontend/dist/"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build && cp node_modules/react-pdf/node_modules/pdfjs-dist/build/pdf.worker.min.mjs dist/pdf.worker.min.mjs",
+    "start": "node bin/pdfpal.js",
+    "dev": "cd frontend && npm run dev"
+  }
+}

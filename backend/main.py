@@ -829,6 +829,22 @@ async def get_related_papers(project_id: str, source_id: str, refresh: bool = Fa
 if _AUTH_ENABLED:
     app.include_router(auth_router)
     app.include_router(auth_router, prefix="/api")
+else:
+    # Local mode (auth disabled): expose /api/auth/me and /api/auth/logout so
+    # the frontend auth gate resolves to the local user instead of falling
+    # through to the SPA and rendering the Google login page.
+    _local_auth = APIRouter(prefix="/auth", tags=["auth"])
+
+    @_local_auth.get("/me")
+    def _local_me(request: Request):
+        u = getattr(request.state, "user", None) or {"email": "local@localhost", "name": "Local User"}
+        return {"email": u.get("email", ""), "name": u.get("name", ""), "picture": u.get("picture", "")}
+
+    @_local_auth.post("/logout")
+    def _local_logout():
+        return {"ok": True}
+
+    app.include_router(_local_auth, prefix="/api")
 
 # v2 project routes (only under /api — not at root to avoid clashing with SPA routes)
 from routes.projects import router as projects_router

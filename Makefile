@@ -1,4 +1,4 @@
-.PHONY: install build dev run clean
+.PHONY: install build dev run clean link global-install local-run
 
 install: build
 	cd backend && pip install -r requirements.txt
@@ -15,3 +15,18 @@ run:
 
 clean:
 	rm -rf frontend/dist frontend/node_modules backend/__pycache__
+
+# --- Local CLI mode (npm) -------------------------------------------------
+# Install `pdfpal` as a global command. Builds the frontend first so the
+# built SPA is shipped inside the installed package.
+global-install: build
+	npm install -g .
+
+# Symlink `pdfpal` to this checkout (dev workflow; live edits to the
+# frontend dist are reflected without reinstalling).
+link: build
+	npm link
+
+# Run the locally installed `pdfpal` command without installing globally.
+local-run: build
+	node bin/pdfpal.js
