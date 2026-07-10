@@ -6,6 +6,8 @@ import { openDatabase } from '../core/database.js'
 import { ProjectService } from '../core/projects.js'
 import { SourceService } from '../core/sources.js'
 import { CollectionService } from '../core/collections.js'
+import { RetrievalService } from '../core/retrieval.js'
+import { listHighlights } from '../core/highlights.js'
 import { ChatService } from '../core/chat.js'
 import type { AgentName } from '../core/agents.js'
 import { confirm, print, readStdin, reportError } from './output.js'
@@ -78,6 +80,17 @@ collection.command('delete').argument('<project>').argument('<collection>').opti
     await confirm(`Delete collection "${found.name}" (its sources become unfiled)`, options.yes, isJson)
     print(service.delete(p, found.id), isJson)
   })
+
+program.command('search').argument('<project>').argument('<query>').option('-l, --limit <number>', 'max passages', value => Number(value))
+  .description('full-text search across a project\'s indexed source text')
+  .action((p, query, options, command) => {
+    const project = new ProjectService(db()).resolve(p)
+    print(new RetrievalService(db()).search(project.id, query, [], options.limit ?? 20), json(command))
+  })
+
+program.command('highlights').argument('<project>')
+  .description('list every annotation in a project, grouped by source')
+  .action((p, _options, command) => print(listHighlights(db(), new ProjectService(db()).resolve(p).id), json(command)))
 
 program.command('ask')
   .argument('<project>')

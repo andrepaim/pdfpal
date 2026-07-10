@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { projectsApi, sourcesApi, collectionsApi, notesApi, artifactsApi, chatApi, type Project, type Source, type Collection, type Note, type Artifact, type ChatSession } from '../lib/api'
+import { projectsApi, sourcesApi, collectionsApi, notesApi, artifactsApi, chatApi, searchApi, highlightsApi, type Project, type Source, type Collection, type Note, type Artifact, type ChatSession, type SearchPassage, type Highlight } from '../lib/api'
 import SearchPaperModal from '../components/SearchPaperModal'
 import { timeAgo } from '../lib/time'
 
-type Tab = 'sources' | 'notes' | 'artifacts' | 'chats'
+type Tab = 'sources' | 'search' | 'notes' | 'artifacts' | 'chats' | 'highlights'
 
 // Payload dragged between the tree's rows: either a source being filed, or a
 // collection being reparented.
@@ -369,6 +369,98 @@ function ChatsTab({ projectId }: { projectId: string }) {
   )
 }
 
+// ── Search tab: full-text search across the project's indexed sources ─────────
+function SearchTab({ projectId }: { projectId: string }) {
+  const navigate = useNavigate()
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<SearchPassage[] | null>(null)
+  const [searching, setSearching] = useState(false)
+
+  const run = async () => {
+    const q = query.trim()
+    if (q.length < 2) return
+    setSearching(true)
+    try { setResults((await searchApi.inProject(projectId, q)).results) }
+    finally { setSearching(false) }
+  }
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--panel)', flexShrink: 0, display: 'flex', gap: 8 }}>
+        <input
+          autoFocus value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') run() }}
+          placeholder="Search across all source text in this project…"
+          style={{ flex: 1, background: '#0f0f0f', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', color: '#e5e7eb', fontSize: 13, outline: 'none', fontFamily: 'inherit' }}
+        />
+        <button onClick={run} disabled={searching || query.trim().length < 2}
+          style={{ background: searching || query.trim().length < 2 ? '#2a2a2a' : 'var(--accent)', color: '#fff', border: 'none', borderRadius: 8, padding: '0 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+          {searching ? <span className="spinner" style={{ width: 14, height: 14 }} /> : 'Search'}
+        </button>
+      </div>
+      <div style={{ flex: 1, overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {results === null && <div style={{ textAlign: 'center', paddingTop: 60, color: '#4b5563', fontSize: 13 }}>Type at least two characters and press Enter.</div>}
+        {results !== null && results.length === 0 && <div style={{ textAlign: 'center', paddingTop: 60, color: '#4b5563', fontSize: 13 }}>No matching passages.</div>}
+        {results?.map((r, i) => (
+          <div key={i} onClick={() => navigate(`/projects/${projectId}/sources/${r.source_id}`)}
+            style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', cursor: 'pointer' }}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = '#3a3a3a')}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#e5e7eb', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📄 {r.source_title}</span>
+              <span style={{ fontSize: 10, color: '#6b7280', flexShrink: 0 }}>page {r.page_number}</span>
+            </div>
+            <div style={{ fontSize: 12, color: '#9ca3af', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{r.content}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Highlights tab: every annotation in the project, grouped by source ────────
+function HighlightsTab({ projectId }: { projectId: string }) {
+  const navigate = useNavigate()
+  const [highlights, setHighlights] = useState<Highlight[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => { highlightsApi.list(projectId).then(setHighlights).finally(() => setLoading(false)) }, [projectId])
+
+  const colors: Record<string, string> = { yellow: '#fde047', green: '#4ade80', blue: '#60a5fa', pink: '#f472b6' }
+  const bySource = useMemo(() => {
+    const map = new Map<string, { title: string; items: Highlight[] }>()
+    for (const h of highlights) (map.get(h.source_id) ?? map.set(h.source_id, { title: h.source_title, items: [] }).get(h.source_id)!).items.push(h)
+    return [...map.entries()]
+  }, [highlights])
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--panel)', flexShrink: 0 }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>Highlights</span>
+      </div>
+      <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+        {loading ? <div style={{ textAlign: 'center', paddingTop: 40, color: '#4b5563' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+          : highlights.length === 0 ? <div style={{ textAlign: 'center', paddingTop: 60, color: '#4b5563' }}><div style={{ fontSize: 36, marginBottom: 12 }}>🖊</div>No highlights yet. Select text in a PDF and choose Highlight.</div>
+          : bySource.map(([sourceId, group]) => (
+            <div key={sourceId} style={{ marginBottom: 18 }}>
+              <div onClick={() => navigate(`/projects/${projectId}/sources/${sourceId}`)}
+                style={{ fontSize: 13, fontWeight: 700, color: '#e5e7eb', marginBottom: 8, cursor: 'pointer' }}>📄 {group.title}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {group.items.map(h => (
+                  <div key={h.id} onClick={() => navigate(`/projects/${projectId}/sources/${sourceId}`)}
+                    style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderLeft: `3px solid ${colors[h.color] ?? colors.yellow}`, borderRadius: 8, padding: '8px 12px', cursor: 'pointer', display: 'flex', gap: 10 }}>
+                    <span style={{ fontSize: 10, color: '#6b7280', flexShrink: 0, marginTop: 2 }}>p{h.page_number}</span>
+                    <span style={{ fontSize: 12, color: '#d1d5db', lineHeight: 1.5 }}>{h.text}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  )
+}
+
 // ── Main ProjectView ──────────────────────────────────────────────────────────
 export default function ProjectView() {
   const { projectId } = useParams<{ projectId: string }>()
@@ -446,6 +538,8 @@ export default function ProjectView() {
         </div>
         <div style={{ flex: 1, padding: 8 }}>
           {navItem('sources', '📄', 'Sources', project?.source_count)}
+          {navItem('search', '🔍', 'Search')}
+          {navItem('highlights', '🖊', 'Highlights')}
           {navItem('notes', '📝', 'Notes', project?.note_count)}
           {navItem('artifacts', '✨', 'Artifacts', project?.artifact_count)}
           {navItem('chats', '💬', 'Chats', project?.chat_count || undefined)}
@@ -461,6 +555,8 @@ export default function ProjectView() {
       {/* Main content */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {tab === 'sources' && <SourcesTab projectId={projectId} />}
+        {tab === 'search' && <SearchTab projectId={projectId} />}
+        {tab === 'highlights' && <HighlightsTab projectId={projectId} />}
         {tab === 'notes' && <NotesTab projectId={projectId} />}
         {tab === 'artifacts' && <ArtifactsTab projectId={projectId} />}
         {tab === 'chats' && <ChatsTab projectId={projectId} />}

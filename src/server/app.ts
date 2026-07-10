@@ -11,6 +11,8 @@ import { openDatabase } from '../core/database.js'
 import { ProjectService } from '../core/projects.js'
 import { SourceService } from '../core/sources.js'
 import { CollectionService } from '../core/collections.js'
+import { RetrievalService } from '../core/retrieval.js'
+import { listHighlights } from '../core/highlights.js'
 import { ChatService } from '../core/chat.js'
 import { AgentService, type AgentName } from '../core/agents.js'
 import { resolvePdf } from '../core/pdf.js'
@@ -101,6 +103,15 @@ export async function buildServer(config: PdfpalConfig) {
     (SELECT COUNT(*) FROM chat_messages WHERE session_id=cs.id) message_count,
     (SELECT content FROM chat_messages WHERE session_id=cs.id AND role='user' ORDER BY id LIMIT 1) first_message
     FROM chat_sessions cs LEFT JOIN sources s ON s.id=cs.source_id WHERE cs.project_id=? ORDER BY cs.accessed_at DESC`).all(request.params.projectId))
+
+  const retrieval = new RetrievalService(db)
+  app.get<{ Params: Pick<Params, 'projectId'>; Querystring: { q?: string; limit?: string } }>('/api/projects/:projectId/search', async request => {
+    const project = projects.resolve(request.params.projectId)
+    const q = String(request.query.q ?? '').trim()
+    if (q.length < 2) return { results: [] }
+    return { results: retrieval.search(project.id, q, [], Math.min(Number(request.query.limit ?? 20), 50)) }
+  })
+  app.get<{ Params: Pick<Params, 'projectId'> }>('/api/projects/:projectId/highlights', async request => listHighlights(db, projects.resolve(request.params.projectId).id))
 
   registerCollectionRoutes(app, collections)
   registerDocumentRoutes(app, db)

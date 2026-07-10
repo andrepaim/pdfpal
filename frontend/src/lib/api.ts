@@ -182,8 +182,33 @@ export interface SearchResult {
   pdf_url?: string
 }
 
+export interface SearchPassage {
+  source_id: string
+  source_title: string
+  page_number: number
+  content: string
+  score: number
+}
+
+export interface Highlight {
+  id: string
+  source_id: string
+  source_title: string
+  collection_id: string | null
+  collection_name: string | null
+  page_number: number
+  text: string
+  color: string
+  created_at: string
+}
+
 export const searchApi = {
   papers: (q: string) => apiFetch<{ results: SearchResult[]; error?: string }>(`/search/papers?q=${encodeURIComponent(q)}`),
+  inProject: (projectId: string, q: string) => apiFetch<{ results: SearchPassage[] }>(`/projects/${projectId}/search?q=${encodeURIComponent(q)}`),
+}
+
+export const highlightsApi = {
+  list: (projectId: string) => apiFetch<Highlight[]>(`/projects/${projectId}/highlights`),
 }
 
 export const relatedApi = {
