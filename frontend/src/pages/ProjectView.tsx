@@ -239,7 +239,7 @@ function SourcesTab({ projectId }: { projectId: string }) {
           <span>🔍</span><span>Search or paste a URL to add a source…</span>
         </div>
       </div>
-      {showAdd && <SearchPaperModal projectId={projectId} onClose={() => setShowAdd(false)} onAdded={() => { setShowAdd(false); reload() }} />}
+      {showAdd && <SearchPaperModal projectId={projectId} onClose={() => { setShowAdd(false); reload() }} onAdded={s => { setShowAdd(false); setSources(prev => [s, ...prev]) }} />}
     </div>
   )
 }
