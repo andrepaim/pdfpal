@@ -7,9 +7,12 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:8201',
     trace: 'on-first-retry',
+    ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH
+      ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH } }
+      : {}),
   },
   webServer: {
-    command: 'cd ../backend && PDFPAL_DB=/tmp/pdfpal_e2e.db GOOGLE_CLIENT_ID="" CLAUDE_BIN=/bin/echo python3 -m uvicorn main:app --port 8201',
+    command: `cd .. && PDFPAL_DATA_DIR=/tmp/pdfpal_e2e_data_${process.pid} node dist/cli/index.js serve --no-open --port 8201`,
     port: 8201,
     reuseExistingServer: false,
     timeout: 15_000,

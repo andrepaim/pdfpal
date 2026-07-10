@@ -10,6 +10,8 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import { sourcesApi, artifactsApi, chatApi, type Source } from '../lib/api'
+import { useAgent } from '../hooks/useAgent'
+import AgentSelect from '../components/AgentSelect'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -32,6 +34,7 @@ export default function ProjectChat() {
   const [savedArtifact, setSavedArtifact] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const { agent, setAgent, agents: agentOptions } = useAgent()
 
   useEffect(() => {
     if (!projectId) return
@@ -79,22 +82,14 @@ export default function ProjectChat() {
     setLoading(true)
 
     try {
-      // Build combined context from all active sources
-      const contextParts = activeSources.map((s, i) =>
-        `[Source ${i + 1}: ${s.title || s.url}]\n${s.pdf_text?.slice(0, 30000) || '(no text extracted)'}`
-      )
-      const combinedContext = contextParts.join('\n\n---\n\n')
-
       const res = await fetch('/api/chat', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: userMsg,
-          pdf_text: combinedContext,
-          pdf_url: activeSources.map(s => s.url).join(', '),
-          conversation_history: messages,
           search_web: webSearch,
+          agent,
           project_id: projectId,
           source_id: null, // project-level chat
           active_source_ids: activeSources.map(s => s.id),
@@ -246,6 +241,7 @@ export default function ProjectChat() {
               try { if (projectId) await chatApi.clearProjectChat(projectId) } catch { /* non-fatal */ }
             }} style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 12, cursor: 'pointer', padding: '3px 8px' }}>Clear</button>
           )}
+          <AgentSelect agent={agent} setAgent={setAgent} agents={agentOptions} />
           <button
             onClick={() => setWebSearch(v => !v)}
             style={{

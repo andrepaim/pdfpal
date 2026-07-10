@@ -1,23 +1,53 @@
 {
   "name": "pdfpal",
-  "version": "1.0.0",
-  "description": "PDF reading and research assistant with AI chat, annotations, and paper search.",
+  "version": "2.0.0",
+  "description": "Local PDF research assistant and CLI",
   "license": "MIT",
-  "type": "commonjs",
+  "type": "module",
+  "workspaces": [
+    "frontend"
+  ],
   "bin": {
-    "pdfpal": "bin/pdfpal.js"
+    "pdfpal": "dist/cli/index.js"
   },
   "files": [
-    "bin/",
-    "backend/",
+    "dist/",
     "frontend/dist/"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "scripts": {
-    "build": "cd frontend && npm install && npm run build && cp node_modules/react-pdf/node_modules/pdfjs-dist/build/pdf.worker.min.mjs dist/pdf.worker.min.mjs",
-    "start": "node bin/pdfpal.js",
-    "dev": "cd frontend && npm run dev"
+    "build": "npm run build:server && npm run build --workspace frontend",
+    "build:server": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli/index.ts serve --no-open",
+    "start": "node dist/cli/index.js",
+    "pretest": "npm run build:server",
+    "test:raw": "node scripts/run-tests.mjs",
+    "test": "c8 --all --include=src/core/**/*.ts --include=src/server/**/*.ts --include=src/cli/**/*.ts --exclude=src/**/*.d.ts --check-coverage --lines 70 --statements 70 --functions 60 --branches 55 npm run test:raw",
+    "test:coverage": "c8 --all --reporter=text --reporter=html --include=src/core/**/*.ts --include=src/server/**/*.ts --include=src/cli/**/*.ts npm run test:raw",
+    "test:watch": "tsx --test --watch test/**/*.test.ts",
+    "test:e2e": "npm run build && npm exec --workspace frontend playwright test",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepare": "npm run build"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.1.0",
+    "@fastify/multipart": "^9.2.1",
+    "@fastify/static": "^9.3.0",
+    "better-sqlite3": "^12.2.0",
+    "cheerio": "^1.1.2",
+    "commander": "^14.0.0",
+    "fastify": "^5.4.0",
+    "open": "^10.2.0",
+    "pdfjs-dist": "^5.4.54",
+    "zod": "^4.0.15"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.2.1",
+    "c8": "^11.0.0",
+    "tsx": "^4.20.3",
+    "typescript": "~5.9.2"
   }
 }

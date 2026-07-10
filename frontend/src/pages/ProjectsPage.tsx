@@ -177,8 +177,16 @@ export default function ProjectsPage({ user }: { user: User }) {
   }
 
   const handleDelete = async (id: string) => {
-    await projectsApi.delete(id)
+    const previous = projects
+    // Remove immediately so the card cannot remain visible while the
+    // destructive request is completing. Restore it if the API rejects.
     setProjects(prev => prev.filter(p => p.id !== id))
+    try {
+      await projectsApi.delete(id)
+    } catch (error) {
+      setProjects(previous)
+      throw error
+    }
   }
 
   return (

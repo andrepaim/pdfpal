@@ -4,6 +4,8 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import { chatApi } from '../lib/api'
+import { useAgent } from '../hooks/useAgent'
+import AgentSelect from './AgentSelect'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -25,6 +27,10 @@ interface Props {
 }
 
 export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onSelectedTextUsed, projectId, sourceId, sessionId, initialMessages }: Props) {
+  // Retained in the component contract for older callers; context is now
+  // loaded by the server-side ChatService from source IDs.
+  void pdfText
+  void pdfUrl
   const [messages, setMessages] = useState<Message[]>(initialMessages?.map(m => ({ role: m.role as 'user'|'assistant', content: m.content })) ?? [])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -32,6 +38,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
   const [error, setError] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const { agent, setAgent, agents: agentOptions } = useAgent()
 
   // Load chat history when source changes
   useEffect(() => {
@@ -87,13 +94,10 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: userMsg,
-          pdf_text: pdfText,
-          pdf_url: pdfUrl,
-          conversation_history: messages,
           search_web: webSearch,
+          agent,
           project_id: projectId ?? null,
           source_id: sourceId ?? null,
-          session_id: sessionId ?? null,
         }),
       })
 
@@ -177,6 +181,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
               Clear
             </button>
           )}
+          <AgentSelect agent={agent} setAgent={setAgent} agents={agentOptions} />
           <button
             onClick={() => setWebSearch(v => !v)}
             title="Toggle web search"

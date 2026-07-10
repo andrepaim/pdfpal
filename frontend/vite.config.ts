@@ -8,11 +8,7 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://localhost:8200',
-        rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },
-  },
-  optimizeDeps: {
-    include: ['pdfjs-dist'],
   },
 })

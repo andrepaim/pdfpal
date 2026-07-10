@@ -236,7 +236,12 @@ export default function App({ user }: { user: User }) {
     setRightPanel('chat')
   }
 
-  const viewerUrl = source?.url ? `/api/proxy-pdf?url=${encodeURIComponent(source.url)}` : ''
+  // New sources are stored under ~/.pdfpal/files and served by source ID.
+  // Keep the URL proxy as a compatibility fallback for databases migrated
+  // before managed-file storage was introduced.
+  const viewerUrl = source && projectId && sourceId
+    ? `/api/projects/${projectId}/sources/${sourceId}/file`
+    : ''
   const hasPdfText = !!pdfText.trim()
 
   if (loading) {
