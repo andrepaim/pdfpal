@@ -4,6 +4,7 @@ import path from 'node:path'
 import type { Database } from 'better-sqlite3'
 import type { PdfpalConfig } from './config.js'
 import { extractPdf, resolvePdf, storePdf } from './pdf.js'
+import { titleFromUrl } from './research.js'
 import { ProjectService } from './projects.js'
 import { RetrievalService } from './retrieval.js'
 import type { Source } from './types.js'
@@ -56,7 +57,10 @@ export class SourceService {
     const extracted = await extractPdf(bytes)
     const stored = storePdf(bytes, this.config.filesDir, id)
     const timestamp = now()
-    const sourceTitle = title?.trim() || extracted.title || (isUrl ? new URL(location).pathname.split('/').filter(Boolean).at(-1) : path.basename(location)) || 'Untitled Source'
+    // Prefer a clean catalogue title for arXiv/DOI links; the PDF's own
+    // first-line heuristic often bleeds authors and affiliations into the title.
+    const catalogueTitle = isUrl && !title?.trim() ? await titleFromUrl(location) : null
+    const sourceTitle = title?.trim() || catalogueTitle || extracted.title || (isUrl ? new URL(location).pathname.split('/').filter(Boolean).at(-1) : path.basename(location)) || 'Untitled Source'
     const source: Source = {
       id, project_id: project.id, type: 'pdf', url, title: sourceTitle, pdf_text: extracted.text,
       pages: extracted.pages, created_at: timestamp, accessed_at: timestamp, original_location: originalLocation,

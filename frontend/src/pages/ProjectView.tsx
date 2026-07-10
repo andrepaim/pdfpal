@@ -2,18 +2,9 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { projectsApi, sourcesApi, notesApi, artifactsApi, chatApi, type Project, type Source, type Note, type Artifact, type ChatSession } from '../lib/api'
 import SearchPaperModal from '../components/SearchPaperModal'
+import { timeAgo } from '../lib/time'
 
 type Tab = 'sources' | 'notes' | 'artifacts' | 'chats'
-
-function timeAgo(iso: string) {
-  const diff = Date.now() - new Date(iso + 'Z').getTime()
-  const m = Math.floor(diff / 60000)
-  if (m < 1) return 'just now'
-  if (m < 60) return `${m}m ago`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
-  return `${Math.floor(h / 24)}d ago`
-}
 
 // ── Add URL modal ─────────────────────────────────────────────────────────────
 
