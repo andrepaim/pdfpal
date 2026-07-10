@@ -33,6 +33,22 @@ function normalize(paper: S2Paper, relation: 'reference' | 'citation') {
   }
 }
 
+/**
+ * Best-effort clean title for an arXiv/DOI URL via Semantic Scholar. Returns
+ * null (never throws) when the URL isn't recognised, the lookup fails, or the
+ * network is unavailable, so callers can fall back to PDF-derived titles.
+ */
+export async function titleFromUrl(url: string): Promise<string | null> {
+  const paperId = paperIdFromUrl(url)
+  if (!paperId) return null
+  try {
+    const response = await fetch(`${S2_BASE}/paper/${encodeURIComponent(paperId)}?fields=title`, { signal: AbortSignal.timeout(10_000) })
+    if (!response.ok) return null
+    const data = await response.json() as { title?: string }
+    return data.title?.trim() || null
+  } catch { return null }
+}
+
 async function findByTitle(title: string): Promise<string | null> {
   const response = await fetch(`${S2_BASE}/paper/search?query=${encodeURIComponent(title)}&fields=title,paperId&limit=1`, { signal: AbortSignal.timeout(15_000) })
   if (!response.ok) return null

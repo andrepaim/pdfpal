@@ -6,7 +6,7 @@ import type { Database as DatabaseType } from 'better-sqlite3'
 import type { PdfpalConfig } from './config.js'
 import { ensureDataDirectories } from './config.js'
 
-const CURRENT_SCHEMA = 2
+const CURRENT_SCHEMA = 3
 
 function columnExists(db: DatabaseType, table: string, column: string): boolean {
   return (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some(row => row.name === column)
@@ -125,6 +125,23 @@ function migrate(db: DatabaseType): void {
   if (!migrated) {
     migrateLegacySessions(db)
     db.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (2, datetime('now'))").run()
+  }
+
+  if (!db.prepare('SELECT 1 FROM schema_migrations WHERE version=3').get()) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS collections (
+        id TEXT PRIMARY KEY, project_id TEXT NOT NULL, parent_id TEXT,
+        name TEXT NOT NULL DEFAULT 'New Collection', position INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL,
+        FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE,
+        FOREIGN KEY(parent_id) REFERENCES collections(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_collections_project ON collections(project_id, parent_id, position);
+    `)
+    // Sources reference at most one collection; deleting a collection (directly
+    // or via a parent cascade) unfiles its papers rather than destroying them.
+    if (!columnExists(db, 'sources', 'collection_id'))
+      db.exec('ALTER TABLE sources ADD COLUMN collection_id TEXT REFERENCES collections(id) ON DELETE SET NULL')
+    db.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (3, datetime('now'))").run()
   }
 }
 

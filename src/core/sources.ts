@@ -4,6 +4,8 @@ import path from 'node:path'
 import type { Database } from 'better-sqlite3'
 import type { PdfpalConfig } from './config.js'
 import { extractPdf, resolvePdf, storePdf } from './pdf.js'
+import { titleFromUrl } from './research.js'
+import { CollectionService } from './collections.js'
 import { ProjectService } from './projects.js'
 import { RetrievalService } from './retrieval.js'
 import type { Source } from './types.js'
@@ -14,10 +16,12 @@ const now = () => new Date().toISOString()
 export class SourceService {
   private readonly projects: ProjectService
   private readonly retrieval: RetrievalService
+  private readonly collections: CollectionService
 
   constructor(private readonly db: Database, private readonly config: PdfpalConfig) {
     this.projects = new ProjectService(db)
     this.retrieval = new RetrievalService(db)
+    this.collections = new CollectionService(db)
   }
 
   list(projectSelector: string): Source[] {
@@ -35,8 +39,9 @@ export class SourceService {
     return matches[0]!
   }
 
-  async add(projectSelector: string, location: string, title?: string): Promise<Source> {
+  async add(projectSelector: string, location: string, title?: string, collectionSelector?: string): Promise<Source> {
     const project = this.projects.resolve(projectSelector)
+    const collectionId = collectionSelector ? this.collections.resolve(project.id, collectionSelector).id : null
     const id = randomUUID()
     const isUrl = /^https?:\/\//i.test(location)
     let bytes: Buffer
@@ -56,18 +61,22 @@ export class SourceService {
     const extracted = await extractPdf(bytes)
     const stored = storePdf(bytes, this.config.filesDir, id)
     const timestamp = now()
-    const sourceTitle = title?.trim() || extracted.title || (isUrl ? new URL(location).pathname.split('/').filter(Boolean).at(-1) : path.basename(location)) || 'Untitled Source'
+    // Prefer a clean catalogue title for arXiv/DOI links; the PDF's own
+    // first-line heuristic often bleeds authors and affiliations into the title.
+    const catalogueTitle = isUrl && !title?.trim() ? await titleFromUrl(location) : null
+    const sourceTitle = title?.trim() || catalogueTitle || extracted.title || (isUrl ? new URL(location).pathname.split('/').filter(Boolean).at(-1) : path.basename(location)) || 'Untitled Source'
     const source: Source = {
       id, project_id: project.id, type: 'pdf', url, title: sourceTitle, pdf_text: extracted.text,
       pages: extracted.pages, created_at: timestamp, accessed_at: timestamp, original_location: originalLocation,
       local_path: path.basename(stored.localPath), media_type: 'application/pdf', byte_size: bytes.length, content_hash: stored.hash,
+      collection_id: collectionId,
     }
     try {
       this.db.transaction(() => {
         this.db.prepare(`INSERT INTO sources(id,project_id,type,url,title,pdf_text,pages,created_at,accessed_at,
-          original_location,local_path,media_type,byte_size,content_hash)
+          original_location,local_path,media_type,byte_size,content_hash,collection_id)
           VALUES (@id,@project_id,@type,@url,@title,@pdf_text,@pages,@created_at,@accessed_at,
-          @original_location,@local_path,@media_type,@byte_size,@content_hash)`).run(source)
+          @original_location,@local_path,@media_type,@byte_size,@content_hash,@collection_id)`).run(source)
         this.retrieval.index(id, extracted.text)
         this.db.prepare('UPDATE projects SET accessed_at=? WHERE id=?').run(timestamp, project.id)
       })()
@@ -90,12 +99,21 @@ export class SourceService {
     const target = this.projects.resolve(targetProjectSelector)
     if (source.project_id === target.id) throw new PdfpalError('SAME_PROJECT', 'Source is already in the target project', 4)
     this.db.transaction(() => {
-      this.db.prepare('UPDATE sources SET project_id=?, accessed_at=? WHERE id=?').run(target.id, now(), source.id)
+      // Collections are project-scoped, so a cross-project move unfiles the source.
+      this.db.prepare('UPDATE sources SET project_id=?, collection_id=NULL, accessed_at=? WHERE id=?').run(target.id, now(), source.id)
       this.db.prepare('UPDATE notes SET project_id=? WHERE source_id=?').run(target.id, source.id)
       this.db.prepare('UPDATE annotations SET project_id=? WHERE source_id=?').run(target.id, source.id)
       this.db.prepare('UPDATE chat_sessions SET project_id=? WHERE source_id=?').run(target.id, source.id)
     })()
     return this.resolve(target.id, source.id)
+  }
+
+  /** File a source into a collection, or unfile it when `collectionSelector` is null. */
+  setCollection(projectSelector: string, sourceSelector: string, collectionSelector: string | null): Source {
+    const source = this.resolve(projectSelector, sourceSelector)
+    const collectionId = collectionSelector ? this.collections.resolve(source.project_id, collectionSelector).id : null
+    this.db.prepare('UPDATE sources SET collection_id=?, accessed_at=? WHERE id=?').run(collectionId, now(), source.id)
+    return { ...source, collection_id: collectionId }
   }
 
   remove(projectSelector: string, sourceSelector: string): Source {

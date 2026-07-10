@@ -40,6 +40,55 @@ test('Fastify document, annotation, chat, and research routes work', async () =>
   } finally { await app.close(); cleanup(config, { close() {} } as never) }
 })
 
+test('Fastify collection routes create, nest, and file sources', async () => {
+  const config = testConfig(), app = await buildServer(config)
+  try {
+    const project = (await app.inject({ method: 'POST', url: '/api/projects', payload: { title: 'Organized' } })).json()
+    const parent = (await app.inject({ method: 'POST', url: `/api/projects/${project.id}/collections`, payload: { name: 'Diffusion' } })).json()
+    const child = (await app.inject({ method: 'POST', url: `/api/projects/${project.id}/collections`, payload: { name: 'Samplers', parent_id: parent.id } })).json()
+    assert.equal(child.parent_id, parent.id)
+
+    const now = new Date().toISOString()
+    const db = (await import('../../src/core/database.js')).openDatabase(config)
+    db.prepare('INSERT INTO sources(id,project_id,type,title,pdf_text,pages,created_at,accessed_at) VALUES (?,?,?,?,?,?,?,?)').run('s1', project.id, 'pdf', 'Paper', '[Page 1]\nbody', 1, now, now)
+    db.close()
+
+    const filed = await app.inject({ method: 'PATCH', url: `/api/projects/${project.id}/sources/s1`, payload: { collection_id: child.id } })
+    assert.equal(filed.statusCode, 200)
+    const listed = (await app.inject({ method: 'GET', url: `/api/projects/${project.id}/collections` })).json()
+    assert.equal(listed.find((c: { id: string }) => c.id === child.id).source_count, 1)
+
+    // Deleting the parent unfiles the source rather than deleting it.
+    await app.inject({ method: 'DELETE', url: `/api/projects/${project.id}/collections/${parent.id}` })
+    assert.equal((await app.inject({ method: 'GET', url: `/api/projects/${project.id}/collections` })).json().length, 0)
+    const source = (await app.inject({ method: 'GET', url: `/api/projects/${project.id}/sources/s1` })).json()
+    assert.equal(source.collection_id, null)
+  } finally { await app.close(); cleanup(config, { close() {} } as never) }
+})
+
+test('Fastify project search and highlights aggregate across sources', async () => {
+  const config = testConfig(), app = await buildServer(config)
+  try {
+    const project = (await app.inject({ method: 'POST', url: '/api/projects', payload: { title: 'Findable' } })).json()
+    const db = (await import('../../src/core/database.js')).openDatabase(config)
+    const now = new Date().toISOString()
+    db.prepare('INSERT INTO sources(id,project_id,type,title,pdf_text,pages,created_at,accessed_at) VALUES (?,?,?,?,?,?,?,?)').run('s1', project.id, 'pdf', 'Transformers', '[Page 1]\nattention mechanisms scale well', 1, now, now)
+    const { RetrievalService } = await import('../../src/core/retrieval.js')
+    new RetrievalService(db).index('s1', '[Page 1]\nattention mechanisms scale well')
+    db.prepare('INSERT INTO annotations(id,source_id,project_id,page_number,x1,y1,x2,y2,text,color,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run('a1', 's1', project.id, 1, 0, 0, 1, 1, 'attention mechanisms', 'green', now)
+    db.close()
+
+    const search = (await app.inject({ method: 'GET', url: `/api/projects/${project.id}/search?q=attention` })).json()
+    assert.ok(search.results.length >= 1)
+    assert.equal(search.results[0].source_title, 'Transformers')
+
+    const highlights = (await app.inject({ method: 'GET', url: `/api/projects/${project.id}/highlights` })).json()
+    assert.equal(highlights.length, 1)
+    assert.equal(highlights[0].text, 'attention mechanisms')
+    assert.equal(highlights[0].source_title, 'Transformers')
+  } finally { await app.close(); cleanup(config, { close() {} } as never) }
+})
+
 test('Fastify returns structured errors for missing projects', async () => {
   const config = testConfig(), app = await buildServer(config)
   try {

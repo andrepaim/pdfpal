@@ -1,16 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { projectsApi, type Project } from '../lib/api'
-
-function timeAgo(iso: string) {
-  const diff = Date.now() - new Date(iso + 'Z').getTime()
-  const m = Math.floor(diff / 60000)
-  if (m < 1) return 'just now'
-  if (m < 60) return `${m}m ago`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
-  return `${Math.floor(h / 24)}d ago`
-}
+import { timeAgo } from '../lib/time'
 
 interface NewProjectModalProps {
   onClose: () => void

@@ -10,6 +10,9 @@ import type { PdfpalConfig } from '../core/config.js'
 import { openDatabase } from '../core/database.js'
 import { ProjectService } from '../core/projects.js'
 import { SourceService } from '../core/sources.js'
+import { CollectionService } from '../core/collections.js'
+import { RetrievalService } from '../core/retrieval.js'
+import { listHighlights } from '../core/highlights.js'
 import { ChatService } from '../core/chat.js'
 import { AgentService, type AgentName } from '../core/agents.js'
 import { resolvePdf } from '../core/pdf.js'
@@ -24,6 +27,7 @@ export async function buildServer(config: PdfpalConfig) {
   const db = openDatabase(config)
   const projects = new ProjectService(db)
   const sources = new SourceService(db, config)
+  const collections = new CollectionService(db)
   const chat = new ChatService(db, config)
   await app.register(cors, { origin: false })
   await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024 } })
@@ -53,15 +57,19 @@ export async function buildServer(config: PdfpalConfig) {
 
   app.get<{ Params: Pick<Params, 'projectId'> }>('/api/projects/:projectId/sources', async request => sources.list(request.params.projectId).map(({ pdf_text: _, ...source }) => source))
   app.get<{ Params: Pick<Params, 'projectId' | 'sourceId'> }>('/api/projects/:projectId/sources/:sourceId', async request => sources.resolve(request.params.projectId, request.params.sourceId))
-  app.patch<{ Params: Pick<Params, 'projectId' | 'sourceId'>; Body: { title: string } }>('/api/projects/:projectId/sources/:sourceId', async request => { sources.rename(request.params.projectId, request.params.sourceId, request.body.title); return { ok: true } })
+  app.patch<{ Params: Pick<Params, 'projectId' | 'sourceId'>; Body: { title?: string; collection_id?: string | null } }>('/api/projects/:projectId/sources/:sourceId', async request => {
+    if (request.body.title !== undefined) sources.rename(request.params.projectId, request.params.sourceId, request.body.title)
+    if ('collection_id' in request.body) sources.setCollection(request.params.projectId, request.params.sourceId, request.body.collection_id ?? null)
+    return { ok: true }
+  })
   app.delete<{ Params: Pick<Params, 'projectId' | 'sourceId'> }>('/api/projects/:projectId/sources/:sourceId', async request => { sources.remove(request.params.projectId, request.params.sourceId); return { ok: true } })
-  app.post<{ Params: Pick<Params, 'projectId'>; Body: { url: string; title?: string } }>('/api/projects/:projectId/sources', async request => sources.add(request.params.projectId, request.body.url, request.body.title))
-  app.post<{ Body: { url: string; project_id: string; source_id?: string } }>('/api/extract', async request => {
+  app.post<{ Params: Pick<Params, 'projectId'>; Body: { url: string; title?: string; collection_id?: string } }>('/api/projects/:projectId/sources', async request => sources.add(request.params.projectId, request.body.url, request.body.title, request.body.collection_id))
+  app.post<{ Body: { url: string; project_id: string; source_id?: string; collection_id?: string } }>('/api/extract', async request => {
     if (request.body.source_id) {
       await sources.reindex(request.body.project_id, request.body.source_id, true)
       return sources.resolve(request.body.project_id, request.body.source_id)
     }
-    return sources.add(request.body.project_id, request.body.url)
+    return sources.add(request.body.project_id, request.body.url, undefined, request.body.collection_id)
   })
   app.get<{ Params: Pick<Params, 'projectId' | 'sourceId'> }>('/api/projects/:projectId/sources/:sourceId/file', async (request, reply) => {
     const source = sources.resolve(request.params.projectId, request.params.sourceId)
@@ -80,9 +88,9 @@ export async function buildServer(config: PdfpalConfig) {
     return reply.type('application/pdf').send(result.bytes)
   })
 
-  app.post<{ Body: { message: string; project_id: string; source_id?: string; active_source_ids?: string[]; search_web?: boolean; agent?: AgentName; model?: string } }>('/api/chat', async (request, reply) => {
+  app.post<{ Body: { message: string; project_id: string; source_id?: string; active_source_ids?: string[]; collection_id?: string; search_web?: boolean; agent?: AgentName; model?: string } }>('/api/chat', async (request, reply) => {
     const selectors = request.body.source_id ? [request.body.source_id] : request.body.active_source_ids
-    const result = await chat.ask(request.body.project_id, request.body.message, { sourceSelectors: selectors, searchWeb: request.body.search_web, agent: request.body.agent, model: request.body.model })
+    const result = await chat.ask(request.body.project_id, request.body.message, { sourceSelectors: selectors, collectionSelector: request.body.collection_id, searchWeb: request.body.search_web, agent: request.body.agent, model: request.body.model })
     reply.raw.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' })
     reply.raw.write(`data: ${JSON.stringify({ text: result.answer, sources: result.sources })}\n\n`)
     reply.raw.end('data: [DONE]\n\n')
@@ -96,6 +104,16 @@ export async function buildServer(config: PdfpalConfig) {
     (SELECT content FROM chat_messages WHERE session_id=cs.id AND role='user' ORDER BY id LIMIT 1) first_message
     FROM chat_sessions cs LEFT JOIN sources s ON s.id=cs.source_id WHERE cs.project_id=? ORDER BY cs.accessed_at DESC`).all(request.params.projectId))
 
+  const retrieval = new RetrievalService(db)
+  app.get<{ Params: Pick<Params, 'projectId'>; Querystring: { q?: string; limit?: string } }>('/api/projects/:projectId/search', async request => {
+    const project = projects.resolve(request.params.projectId)
+    const q = String(request.query.q ?? '').trim()
+    if (q.length < 2) return { results: [] }
+    return { results: retrieval.search(project.id, q, [], Math.min(Number(request.query.limit ?? 20), 50)) }
+  })
+  app.get<{ Params: Pick<Params, 'projectId'> }>('/api/projects/:projectId/highlights', async request => listHighlights(db, projects.resolve(request.params.projectId).id))
+
+  registerCollectionRoutes(app, collections)
   registerDocumentRoutes(app, db)
   registerAnnotationRoutes(app, db)
   registerResearchRoutes(app, db)
@@ -119,6 +137,19 @@ function clearChat(db: import('better-sqlite3').Database, projectId: string, sou
     : db.prepare('SELECT id FROM chat_sessions WHERE project_id=? AND source_id=?').get(projectId, sourceId)
   if (row) db.prepare('DELETE FROM chat_sessions WHERE id=?').run((row as { id: string }).id)
   return { ok: true }
+}
+
+function registerCollectionRoutes(app: any, collections: CollectionService) {
+  app.get('/api/projects/:projectId/collections', async (request: any) => collections.list(request.params.projectId))
+  app.post('/api/projects/:projectId/collections', async (request: any) => collections.create(request.params.projectId, request.body.name ?? 'New Collection', request.body.parent_id ?? undefined))
+  app.patch('/api/projects/:projectId/collections/:id', async (request: any) => {
+    const { projectId, id } = request.params, body = request.body
+    if (body.name !== undefined) collections.rename(projectId, id, body.name)
+    if ('parent_id' in body) collections.move(projectId, id, body.parent_id ?? null)
+    if (body.position !== undefined) collections.reorder(projectId, id, body.position)
+    return { ok: true }
+  })
+  app.delete('/api/projects/:projectId/collections/:id', async (request: any) => { collections.delete(request.params.projectId, request.params.id); return { ok: true } })
 }
 
 function registerDocumentRoutes(app: Awaited<ReturnType<typeof import('fastify')['default']>>, db: import('better-sqlite3').Database) {

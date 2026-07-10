@@ -4,14 +4,27 @@
  * "Save as artifact" button saves the last AI response.
  */
 import { useState, useEffect, useRef, type KeyboardEvent } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
-import { sourcesApi, artifactsApi, chatApi, type Source } from '../lib/api'
+import { sourcesApi, collectionsApi, artifactsApi, chatApi, type Source, type Collection } from '../lib/api'
 import { useAgent } from '../hooks/useAgent'
 import AgentSelect from '../components/AgentSelect'
+
+/** Collection subtree (the collection id plus all descendant collection ids). */
+function subtreeIds(collections: Collection[], rootId: string): Set<string> {
+  const ids = new Set([rootId])
+  let grew = true
+  while (grew) {
+    grew = false
+    for (const c of collections) {
+      if (c.parent_id && ids.has(c.parent_id) && !ids.has(c.id)) { ids.add(c.id); grew = true }
+    }
+  }
+  return ids
+}
 
 interface Message {
   role: 'user' | 'assistant'
@@ -22,8 +35,11 @@ interface Message {
 export default function ProjectChat() {
   const { projectId } = useParams<{ projectId: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const collectionScope = searchParams.get('collection')
 
   const [sources, setSources] = useState<Source[]>([])
+  const [scopeName, setScopeName] = useState<string | null>(null)
   const [activeSourceIds, setActiveSourceIds] = useState<Set<string>>(new Set())
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -38,13 +54,22 @@ export default function ProjectChat() {
 
   useEffect(() => {
     if (!projectId) return
-    // Load sources + chat history in parallel
+    // Load sources + collections + chat history in parallel
     Promise.all([
       sourcesApi.list(projectId),
       chatApi.getProjectChat(projectId),
-    ]).then(([sources, history]) => {
+      collectionsApi.list(projectId),
+    ]).then(([sources, history, collections]) => {
       setSources(sources)
-      setActiveSourceIds(new Set(sources.map(x => x.id)))
+      // When arriving via "Ask this collection", start with only that
+      // collection's subtree active; otherwise every source is in context.
+      if (collectionScope) {
+        const ids = subtreeIds(collections, collectionScope)
+        setActiveSourceIds(new Set(sources.filter(s => s.collection_id && ids.has(s.collection_id)).map(s => s.id)))
+        setScopeName(collections.find(c => c.id === collectionScope)?.name ?? null)
+      } else {
+        setActiveSourceIds(new Set(sources.map(x => x.id)))
+      }
       if (history.messages.length > 0) {
         setMessages(history.messages.map(m => ({
           role: m.role,
@@ -53,7 +78,7 @@ export default function ProjectChat() {
         })))
       }
     })
-  }, [projectId])
+  }, [projectId, collectionScope])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -218,6 +243,11 @@ export default function ProjectChat() {
         {/* Header */}
         <div style={{ padding: '0 16px', height: 44, background: 'var(--panel)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
           <div style={{ flex: 1, fontWeight: 700, fontSize: 14, color: '#fff' }}>💬 Project Chat</div>
+          {scopeName && (
+            <span style={{ background: '#1e1b4b', border: '1px solid #312e81', color: '#a5b4fc', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}>
+              📁 {scopeName}
+            </span>
+          )}
           <div style={{ fontSize: 11, color: '#6b7280' }}>
             Context: {activeSources.length} source{activeSources.length !== 1 ? 's' : ''}
           </div>
