@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
 import type { PdfpalConfig } from './config.js'
 import { AgentService, type AgentName } from './agents.js'
+import { CollectionService } from './collections.js'
 import { ProjectService } from './projects.js'
 import { RetrievalService } from './retrieval.js'
 import { SourceService } from './sources.js'
@@ -12,6 +13,7 @@ const now = () => new Date().toISOString()
 
 export interface AskOptions {
   sourceSelectors?: string[]
+  collectionSelector?: string
   agent?: AgentName
   model?: string
   searchWeb?: boolean
@@ -20,12 +22,14 @@ export interface AskOptions {
 export class ChatService {
   private readonly projects: ProjectService
   private readonly sources: SourceService
+  private readonly collections: CollectionService
   private readonly retrieval: RetrievalService
   private readonly agents: AgentService
 
   constructor(private readonly db: Database, private readonly config: PdfpalConfig) {
     this.projects = new ProjectService(db)
     this.sources = new SourceService(db, config)
+    this.collections = new CollectionService(db)
     this.retrieval = new RetrievalService(db)
     this.agents = new AgentService(config)
   }
@@ -47,9 +51,18 @@ export class ChatService {
     if (!question.trim()) throw new PdfpalError('EMPTY_QUESTION', 'Question cannot be empty', 2)
     const project = this.projects.resolve(projectSelector)
     const selected = (options.sourceSelectors ?? []).map(selector => this.sources.resolve(project.id, selector))
-    let passages = this.retrieval.search(project.id, question, selected.map(source => source.id))
+    // A collection scopes retrieval to every source filed anywhere beneath it,
+    // unioned with any explicitly selected sources.
+    let scope = selected
+    if (options.collectionSelector) {
+      const collectionId = this.collections.resolve(project.id, options.collectionSelector).id
+      const ids = new Set(this.collections.descendantSourceIds(collectionId))
+      const collectionSources = this.sources.list(project.id).filter(source => ids.has(source.id))
+      scope = [...new Map([...selected, ...collectionSources].map(source => [source.id, source])).values()]
+    }
+    let passages = this.retrieval.search(project.id, question, scope.map(source => source.id))
     if (!passages.length) {
-      const fallback = selected.length ? selected : this.sources.list(project.id)
+      const fallback = scope.length ? scope : this.sources.list(project.id)
       passages = fallback.filter(source => source.pdf_text).slice(0, 4).map(source => ({
         source_id: source.id, source_title: source.title ?? 'Source', page_number: 1,
         content: (source.pdf_text ?? '').slice(0, 15_000), score: 0,

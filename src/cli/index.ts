@@ -5,6 +5,7 @@ import { loadConfig } from '../core/config.js'
 import { openDatabase } from '../core/database.js'
 import { ProjectService } from '../core/projects.js'
 import { SourceService } from '../core/sources.js'
+import { CollectionService } from '../core/collections.js'
 import { ChatService } from '../core/chat.js'
 import type { AgentName } from '../core/agents.js'
 import { confirm, print, readStdin, reportError } from './output.js'
@@ -44,8 +45,11 @@ project.command('delete').argument('<project>').option('-y, --yes', 'skip confir
 const source = program.command('source').description('manage project sources')
 source.command('list').argument('<project>').action((p, _options, command) => print(new SourceService(db(), config).list(p).map(({ pdf_text: _, ...item }) => item), json(command)))
 source.command('show').argument('<project>').argument('<source>').action((p, s, _options, command) => print(new SourceService(db(), config).resolve(p, s), json(command)))
-source.command('add').argument('<project>').argument('<url-or-file>').option('-t, --title <text>')
-  .action(async (p, location, options, command) => print(await new SourceService(db(), config).add(p, location, options.title), json(command)))
+source.command('add').argument('<project>').argument('<url-or-file>').option('-t, --title <text>').option('-c, --collection <collection>', 'file into a collection')
+  .action(async (p, location, options, command) => print(await new SourceService(db(), config).add(p, location, options.title, options.collection), json(command)))
+source.command('file').argument('<project>').argument('<source>').argument('[collection]')
+  .description('file a source into a collection, or omit the collection to unfile it')
+  .action((p, s, collection, _options, command) => print(new SourceService(db(), config).setCollection(p, s, collection ?? null), json(command)))
 source.command('rename').argument('<project>').argument('<source>').argument('<title>')
   .action((p, s, title, _options, command) => print(new SourceService(db(), config).rename(p, s, title), json(command)))
 source.command('move').argument('<project>').argument('<source>').argument('<target-project>')
@@ -59,17 +63,34 @@ source.command('remove').argument('<project>').argument('<source>').option('-y, 
 source.command('reindex').argument('<project>').argument('[source]').option('--refetch', 'download or read the PDF again')
   .action(async (p, s, options, command) => print({ chunks_indexed: await new SourceService(db(), config).reindex(p, s, options.refetch) }, json(command)))
 
+const collection = program.command('collection').description('organize sources into nested collections')
+collection.command('list').argument('<project>').action((p, _options, command) => print(new CollectionService(db()).list(p), json(command)))
+collection.command('create').argument('<project>').argument('<name>').option('-p, --parent <collection>', 'nest under a parent collection')
+  .action((p, name, options, command) => print(new CollectionService(db()).create(p, name, options.parent), json(command)))
+collection.command('rename').argument('<project>').argument('<collection>').argument('<name>')
+  .action((p, c, name, _options, command) => print(new CollectionService(db()).rename(p, c, name), json(command)))
+collection.command('move').argument('<project>').argument('<collection>').argument('[parent]')
+  .description('reparent a collection, or omit the parent to move it to the top level')
+  .action((p, c, parent, _options, command) => print(new CollectionService(db()).move(p, c, parent ?? null), json(command)))
+collection.command('delete').argument('<project>').argument('<collection>').option('-y, --yes', 'skip confirmation')
+  .action(async (p, c, options, command) => {
+    const service = new CollectionService(db()); const found = service.resolve(p, c); const isJson = json(command)
+    await confirm(`Delete collection "${found.name}" (its sources become unfiled)`, options.yes, isJson)
+    print(service.delete(p, found.id), isJson)
+  })
+
 program.command('ask')
   .argument('<project>')
   .argument('[question]')
   .option('-s, --source <source...>', 'restrict context to one or more sources')
+  .option('-c, --collection <collection>', 'restrict context to a collection subtree')
   .addOption(new Option('-a, --agent <agent>').choices(['claude', 'codex', 'opencode']))
   .option('-m, --model <model>')
   .option('--no-web', 'disable Tavily augmentation')
   .action(async (p, question, options, command) => {
     const prompt = question ?? await readStdin()
     const result = await new ChatService(db(), config).ask(p, prompt, {
-      sourceSelectors: options.source, agent: options.agent as AgentName | undefined,
+      sourceSelectors: options.source, collectionSelector: options.collection, agent: options.agent as AgentName | undefined,
       model: options.model, searchWeb: options.web,
     })
     print(json(command) ? result : result.answer, json(command))

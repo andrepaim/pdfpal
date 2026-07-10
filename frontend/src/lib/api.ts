@@ -37,8 +37,19 @@ export interface Source {
   title?: string
   pages: number
   pdf_text?: string
+  collection_id?: string | null
   created_at: string
   accessed_at: string
+}
+
+export interface Collection {
+  id: string
+  project_id: string
+  parent_id: string | null
+  name: string
+  position: number
+  created_at: string
+  source_count: number
 }
 
 export interface Note {
@@ -80,12 +91,14 @@ export const sourcesApi = {
     apiFetch(`/projects/${projectId}/sources/${sourceId}`, { method: 'DELETE' }),
   updateTitle: (projectId: string, sourceId: string, title: string) =>
     apiFetch(`/projects/${projectId}/sources/${sourceId}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
-  addUrl: async (projectId: string, url: string) => {
+  setCollection: (projectId: string, sourceId: string, collectionId: string | null) =>
+    apiFetch(`/projects/${projectId}/sources/${sourceId}`, { method: 'PATCH', body: JSON.stringify({ collection_id: collectionId }) }),
+  addUrl: async (projectId: string, url: string, collectionId?: string | null) => {
     const res = await fetch(`${BASE}/extract`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, project_id: projectId }),
+      body: JSON.stringify({ url, project_id: projectId, collection_id: collectionId ?? undefined }),
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }))
@@ -93,6 +106,18 @@ export const sourcesApi = {
     }
     return res.json()
   },
+}
+
+export const collectionsApi = {
+  list: (projectId: string) => apiFetch<Collection[]>(`/projects/${projectId}/collections`),
+  create: (projectId: string, name: string, parentId?: string | null) =>
+    apiFetch<Collection>(`/projects/${projectId}/collections`, { method: 'POST', body: JSON.stringify({ name, parent_id: parentId ?? undefined }) }),
+  rename: (projectId: string, id: string, name: string) =>
+    apiFetch(`/projects/${projectId}/collections/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  move: (projectId: string, id: string, parentId: string | null) =>
+    apiFetch(`/projects/${projectId}/collections/${id}`, { method: 'PATCH', body: JSON.stringify({ parent_id: parentId }) }),
+  delete: (projectId: string, id: string) =>
+    apiFetch(`/projects/${projectId}/collections/${id}`, { method: 'DELETE' }),
 }
 
 export const notesApi = {

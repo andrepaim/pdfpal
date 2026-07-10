@@ -25,6 +25,7 @@ export interface Source {
   media_type?: string | null
   byte_size?: number | null
   content_hash?: string | null
+  collection_id?: string | null
 }
 
 export interface Passage {
