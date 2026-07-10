@@ -63,7 +63,7 @@ pdfpal uses `~/.pdfpal` by default:
 
 New PDFs are copied into `files/`, while extracted text and FTS chunks live in SQLite. If a managed PDF is removed and the source has a URL, the reader downloads and renders the remote PDF without recreating the copy.
 
-Existing Python-era databases are migrated in place after an automatic backup. Override the data directory with `PDFPAL_DATA_DIR` or only the database path with `PDFPAL_DB`.
+Existing databases are migrated in place after an automatic backup. Override the data directory with `PDFPAL_DATA_DIR` or only the database path with `PDFPAL_DB`.
 
 ## Configuration
 
@@ -104,4 +104,4 @@ Fastify ───┘          │
                       └── Tavily (optional)
 ```
 
-The npm package contains the compiled TypeScript server/CLI and the built React frontend. It has no Python runtime dependency and is intended for local, single-user operation.
+The npm package contains the compiled TypeScript server/CLI and the built React frontend and is intended for local, single-user operation.
