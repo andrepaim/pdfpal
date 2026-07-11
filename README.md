@@ -44,10 +44,21 @@ pdfpal source list "My Research"
 pdfpal source move "My Research" "Paper title" "Another Project"
 pdfpal source reindex "My Research"
 pdfpal ask "My Research" "Compare the main methods"
-pdfpal papers search "attention mechanisms"
 ```
 
 Commands accept a UUID or an exact case-insensitive title. Ambiguous titles are rejected. Add `--json` for machine-readable output. `pdfpal ask <project>` reads the question from stdin when the question argument is omitted.
+
+## Agent skill (Claude Code / Codex)
+
+`skills/pdfpal-cli/` documents the full CLI (flags, exit codes, selector rules) so an AI agent can drive it directly — creating a project and adding a list of papers you already found, organizing them into collections, and so on. It does not search for papers itself; find them first, then ask the agent to add them.
+
+Install it for both Claude Code and Codex (symlinks into `~/.claude/skills/` and `~/.codex/skills/`):
+
+```bash
+npm run skill:install
+```
+
+Then just ask the agent, e.g. "Create a pdfpal project called 'Attention Mechanisms' and add these papers: ...". Run `npm run skill:uninstall` to remove the symlinks.
 
 ## Local data
 

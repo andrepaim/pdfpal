@@ -12,7 +12,9 @@
   },
   "files": [
     "dist/",
-    "frontend/dist/"
+    "frontend/dist/",
+    "skills/",
+    "scripts/install-skill.sh"
   ],
   "engines": {
     "node": ">=22"
@@ -29,7 +31,9 @@
     "test:watch": "tsx --test --watch test/**/*.test.ts",
     "test:e2e": "npm run build && npm exec --workspace frontend playwright test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "skill:install": "bash scripts/install-skill.sh",
+    "skill:uninstall": "bash scripts/install-skill.sh --uninstall"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",
