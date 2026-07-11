@@ -1,15 +1,81 @@
 # pdfpal
 
-Read, organize, and ask questions about research papers from a local web app or an installable CLI. pdfpal is written in TypeScript, stores its data locally, and uses an installed Claude, Codex, or OpenCode CLI for AI answers.
+> An inline PDF reader with AI chat, notes, and highlights side by side — plus a scriptable CLI an AI agent can drive on its own. Runs entirely on your machine, powered by your existing Claude, Codex, or OpenCode subscription. No SaaS fee, no usage cap, no account.
+
+<div align="center">
+
+| Read and chat, side by side | Your research, organized |
+|:---:|:---:|
+| ![Reader](screenshots/1-reader.png) | ![Projects](screenshots/4-projects.png) |
+| Ask questions about the paper you're reading — no tab-switching | Projects, collections, notes, and chat history, all in one place |
+
+</div>
+
+## Why I Built This
+
+I wanted a tool to chat with research papers — something with an inline reader so I wouldn't have to context-switch between a PDF tab and an AI tab. Tools like ChatPDF do exactly that, and they work well.
+
+But every option I found follows the same pattern: a free tier too restrictive for real use, and a paid tier that stacks another monthly subscription on top of whatever I'm already paying for Claude, Codex, or OpenCode.
+
+So I cut out the middleman. pdfpal runs entirely on your own machine. Every chat, every cross-paper question, goes through the agent CLI you've already got installed and authenticated — no extra fee, no usage caps, no feature gates.
+
+It's also a CLI with the same project/source/collection model as the web app — the browser and the CLI call the same core code, nothing is reimplemented twice — plus a Claude Code / Codex skill that lets an agent drive the whole thing directly. Here's what that looks like end to end.
+
+## Research with an agent, then read
+
+pdfpal has no built-in web search — but an agent with the `pdfpal-cli` skill installed (see [Agent skill](#agent-skill-claude-code--codex) below) can research a topic itself and hand you back an organized, ready-to-read project.
+
+1. **Ask an agent** (Claude Code, Codex — anything that can load the skill):
+
+   > Research recent approaches to efficient attention mechanisms, create a pdfpal project called "Efficient Attention", and add the best papers you find.
+
+2. **The agent searches the web on its own**, then drives the real CLI to build the project — this is genuinely what it runs, not a mockup:
+
+   ```bash
+   pdfpal --json project create "Efficient Attention"
+   pdfpal --json source add <project-id> "https://arxiv.org/abs/1706.03762"
+   pdfpal --json source add <project-id> "https://arxiv.org/abs/2009.06732"
+   pdfpal --json collection create <project-id> "Core Papers"
+   pdfpal --json source file <project-id> <source-id> <collection-id>
+   ```
+
+3. **Open it in the browser** — already organized into collections:
+
+   ![Collections](screenshots/6-collections.png)
+
+4. **Read and ask questions inline**, in the same reader shown above, right where the agent left off.
 
 ## Features
 
-- Project workspaces with PDF sources, notes, artifacts, annotations, and chat history.
-- PDF reader with inline highlights, source chat, and related papers.
-- Project-wide questions using SQLite FTS5 retrieval across selected sources.
-- Paper search through OpenAlex and related references/citations through Semantic Scholar.
-- Managed local PDF copies with URL fallback if a copy is deleted.
-- Scriptable CLI with human-readable output and `--json` support.
+### Reading & Chat
+- **Split-pane reader** — PDF viewer on the left, chat/notes/related on the right; resizable.
+- **Per-source chat** — persistent conversation history per paper, restored across sessions; renders math (KaTeX); optional Tavily web augmentation.
+- **Text selection → ask or highlight** — select text in the PDF to pre-fill a question or save a highlight.
+- **Project chat** — ask across multiple sources at once, toggle which sources are in context, or scope to a single collection.
+
+### Organization
+- **Projects** — workspaces for a research topic: sources, notes, artifacts, chat history.
+- **Collections** — nested folders for organizing sources within a project; drag-and-drop, Expand/Collapse All.
+- **Notes** — markdown notes at the project or source level, rendered by default, edit in place:
+
+  ![Notes](screenshots/5-notes.png)
+- **Highlights** — every annotation across a project, grouped by source, one click back to context.
+- **Artifacts** — save AI chat responses as reusable documents.
+
+### Sources & Discovery
+- **Paper search** — search OpenAlex by title, one click to add:
+
+  ![Search](screenshots/3-search.png)
+- **Related papers** — references and citations from Semantic Scholar for any source, one click to add:
+
+  ![Related](screenshots/2-related.png)
+- **Smart PDF resolver** — paste any URL: arXiv, OpenReview, ACL Anthology, PMLR, a DOI link, or a direct `.pdf`; tracking params stripped automatically.
+- **Project-wide full-text search** — SQLite FTS5 across every already-indexed source.
+- **Managed local copies** — PDFs are copied locally; falls back to the source URL if a managed copy is deleted.
+
+### CLI & Agent Automation
+- **Full CLI** — every action above is also a `pdfpal` command, with `--json` for scripting.
+- **Claude Code / Codex skill** — let an agent drive projects, sources, collections, and notes directly (see below).
 
 ## Requirements
 
@@ -34,15 +100,21 @@ npm run build
 npm start
 ```
 
+## Quickstart
+
+1. Click **New Project** and give it a title.
+2. Click **Add Source** and paste a paper URL (arXiv, OpenReview, ACL Anthology, PMLR, a DOI link, or a direct `.pdf`) — or search by title.
+3. Open the source, select any text to ask a question about it or save a highlight.
+4. Switch to the **Notes** tab and jot down a markdown summary — it renders as you read it back.
+5. Ask a question across every source in the project from **Project Chat**.
+
 ## CLI
 
 ```bash
-pdfpal project list
 pdfpal project create "My Research"
 pdfpal source add "My Research" https://arxiv.org/abs/1706.03762
+pdfpal collection create "My Research" "Core Papers"
 pdfpal source list "My Research"
-pdfpal source move "My Research" "Paper title" "Another Project"
-pdfpal source reindex "My Research"
 pdfpal note create "My Research" -t "Summary" -c "Key findings..."
 pdfpal ask "My Research" "Compare the main methods"
 ```
@@ -51,7 +123,7 @@ Commands accept a UUID or an exact case-insensitive title. Ambiguous titles are 
 
 ## Agent skill (Claude Code / Codex)
 
-`skills/pdfpal-cli/` documents the full CLI (flags, exit codes, selector rules) so an AI agent can drive it directly — creating a project and adding a list of papers you already found, organizing them into collections, and so on. It does not search for papers itself; find them first, then ask the agent to add them.
+`skills/pdfpal-cli/` documents the full CLI (flags, exit codes, selector rules) so an agent can drive it directly — see [Research with an agent, then read](#research-with-an-agent-then-read) above for what that looks like in practice. It does not search for papers itself; that's the agent's job, using its own tools.
 
 Install it for both Claude Code and Codex (symlinks into `~/.claude/skills/` and `~/.codex/skills/`):
 
@@ -59,7 +131,7 @@ Install it for both Claude Code and Codex (symlinks into `~/.claude/skills/` and
 npm run skill:install
 ```
 
-Then just ask the agent, e.g. "Create a pdfpal project called 'Attention Mechanisms' and add these papers: ...". Run `npm run skill:uninstall` to remove the symlinks.
+Run `npm run skill:uninstall` to remove the symlinks.
 
 ## Local data
 
