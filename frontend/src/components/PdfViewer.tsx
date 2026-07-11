@@ -5,6 +5,10 @@ import 'react-pdf/dist/Page/TextLayer.css'
 import type { Annotation } from '../lib/api'
 
 // Bundle the worker from the same pdfjs-dist version used by react-pdf.
+// package.json pins pdfjs-dist to react-pdf's exact version (no "^"): pdfjs
+// throws if the API and worker versions differ, and a caret range lets npm
+// hoist a newer pdfjs-dist here than the one react-pdf bundles internally,
+// silently breaking every render with "Failed to render page".
 pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
 
 interface Props {

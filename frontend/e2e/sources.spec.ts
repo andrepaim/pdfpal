@@ -87,7 +87,10 @@ test.describe('Sources management', () => {
     // Click the source
     await page.locator('text=Clickable Paper').click();
 
-    // Should navigate to the reader route
+    // Should navigate to the reader route using the real source id — not
+    // "undefined", which is what a mismatched field name in the optimistic
+    // insert (SearchPaperModal's onAdded) used to produce.
     await page.waitForURL(`**/projects/${project.id}/sources/${sourceId}`);
+    expect(page.url()).not.toContain('/sources/undefined');
   });
 });

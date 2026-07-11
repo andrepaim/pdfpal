@@ -132,8 +132,8 @@ export default function SearchPaperModal({ projectId, onClose, onAdded }: Props)
     try {
       const result = await sourcesApi.addUrl(projectId, url.trim())
       onAdded({
-        id: result.source_id, project_id: projectId, type: 'pdf',
-        url: result.pdf_url, title: result.title, pages: result.pages,
+        id: result.id, project_id: projectId, type: 'pdf',
+        url: result.url, title: result.title, pages: result.pages,
         created_at: new Date().toISOString(), accessed_at: new Date().toISOString(),
       })
     } catch (e: any) {

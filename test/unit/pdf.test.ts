@@ -1,7 +1,20 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { resolvePdf, rewritePdfUrl } from '../../src/core/pdf.js'
+import { resolvePdf, rewritePdfUrl, titleFromLines } from '../../src/core/pdf.js'
 import { PdfpalError } from '../../src/core/types.js'
+
+test('titleFromLines picks only the first real line, not the whole flattened page', () => {
+  // Regression: extractPdf used to join every line's text with spaces before
+  // splitting on '\n' to find "the second line", which meant the title
+  // fallback grabbed the entire first page as one 120-char blob instead of
+  // just its title line.
+  const lines = ['Attention Is All You Need', 'Ashish Vaswani, Noam Shazeer, Niki Parmar, et al.']
+  assert.equal(titleFromLines(lines), 'Attention Is All You Need')
+})
+
+test('titleFromLines skips blank or trivially short leading lines', () => {
+  assert.equal(titleFromLines(['1', '', 'Real Paper Title Here']), 'Real Paper Title Here')
+})
 
 test('rewritePdfUrl removes tracking parameters and known paper paths', () => {
   assert.equal(rewritePdfUrl('https://arxiv.org/abs/2401.0001v2?utm_source=x'), 'https://arxiv.org/pdf/2401.0001')

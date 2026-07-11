@@ -60,20 +60,37 @@ export async function resolvePdf(input: string): Promise<{ bytes: Buffer; url: s
   return { bytes, url: response.url }
 }
 
+/** First substantive line of the page, used as a title fallback when no PDF metadata title exists. */
+export function titleFromLines(lines: string[]): string {
+  return lines.map(line => line.replace(/\s+/g, ' ').trim()).find(line => line.length > 3)?.slice(0, 120) ?? ''
+}
+
 export async function extractPdf(bytes: Buffer): Promise<{ text: string; pages: number; title: string }> {
   const document = await getDocument({ data: new Uint8Array(bytes), useSystemFonts: true }).promise
   if (document.numPages > 50) throw new PdfpalError('PDF_TOO_LARGE', `PDFs over 50 pages are not supported (${document.numPages} pages)`)
   const parts: string[] = []
+  let firstPageLines: string[] = []
   for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber++) {
     const page = await document.getPage(pageNumber)
     const content = await page.getTextContent()
-    const text = content.items.map(item => 'str' in item ? item.str : '').join(' ').replace(/\s+/g, ' ').trim()
+    // Reconstruct real lines from pdfjs's hasEOL markers before collapsing
+    // whitespace, so the title heuristic below can still tell lines apart.
+    const lines: string[] = []
+    let current = ''
+    for (const item of content.items) {
+      if (!('str' in item)) continue
+      current += item.str
+      if (item.hasEOL) { lines.push(current); current = '' }
+    }
+    if (current) lines.push(current)
+    if (pageNumber === 1) firstPageLines = lines
+    const text = lines.join(' ').replace(/\s+/g, ' ').trim()
     if (text) parts.push(`[Page ${pageNumber}]\n${text}`)
   }
   const metadata = await document.getMetadata().catch(() => null)
   let title = String((metadata?.info as Record<string, unknown> | undefined)?.Title ?? '').trim()
   if (/^(microsoft word|untitled)/i.test(title) || title.length > 200) title = ''
-  if (!title) title = parts[0]?.split('\n')[1]?.slice(0, 120) ?? ''
+  if (!title) title = titleFromLines(firstPageLines)
   await document.destroy()
   return { text: parts.join('\n\n'), pages: document.numPages, title }
 }

@@ -75,6 +75,14 @@ export async function createSourceViaApi(
 
 /**
  * Mock the /api/extract endpoint and add a source through the UI.
+ *
+ * The response shape here must match the real `Source` row returned by
+ * `SourceService.add()` (src/core/sources.ts) — notably `id` and `url`,
+ * not `source_id`/`pdf_url`. A prior version of this mock used the wrong
+ * field names, which matched a bug in SearchPaperModal's optimistic insert
+ * (it read `result.source_id`/`result.pdf_url`) and masked it: the source
+ * card ended up with `id: undefined`, so clicking it right after adding
+ * navigated to `/sources/undefined` and the PDF failed to render.
  */
 export function mockExtract(page: Page, opts: { title?: string; sourceId?: string } = {}) {
   const sourceId = opts.sourceId ?? 'mock-source-' + Date.now();
@@ -84,13 +92,15 @@ export function mockExtract(page: Page, opts: { title?: string; sourceId?: strin
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        text: 'Mock PDF text content for testing purposes.',
-        pages: 5,
-        title,
-        pdf_url: 'https://example.com/test.pdf',
-        original_url: 'https://example.com/test.pdf',
-        source_id: sourceId,
+        id: sourceId,
         project_id: 'will-be-overridden',
+        type: 'pdf',
+        url: 'https://example.com/test.pdf',
+        title,
+        pdf_text: 'Mock PDF text content for testing purposes.',
+        pages: 5,
+        created_at: new Date().toISOString(),
+        accessed_at: new Date().toISOString(),
       }),
     }),
   );
