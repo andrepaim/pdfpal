@@ -110,6 +110,8 @@ function SourcesTab({ projectId }: { projectId: string }) {
   }, [collections, sources])
 
   const toggle = (id: string) => setExpanded(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
+  const allExpanded = collections.length > 0 && collections.every(c => expanded.has(c.id))
+  const toggleAll = () => setExpanded(allExpanded ? new Set() : new Set(collections.map(c => c.id)))
 
   const drop = async (targetCollectionId: string | null) => {
     const item = dragItem
@@ -201,6 +203,11 @@ function SourcesTab({ projectId }: { projectId: string }) {
       <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--panel)', flexShrink: 0 }}>
         <span style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>Sources</span>
         <div style={{ display: 'flex', gap: 8 }}>
+          {collections.length > 0 && (
+            <button onClick={toggleAll} style={{ background: 'none', color: '#9ca3af', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              {allExpanded ? '▾ Collapse All' : '▸ Expand All'}
+            </button>
+          )}
           <button onClick={() => addCollection(null)} style={{ background: 'none', color: '#a5b4fc', border: '1px solid #312e81', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>📁 New Collection</button>
           <button onClick={() => setShowAdd(true)} style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>＋ Add Source</button>
         </div>
