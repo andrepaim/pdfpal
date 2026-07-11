@@ -43,6 +43,7 @@ pdfpal source add "My Research" https://arxiv.org/abs/1706.03762
 pdfpal source list "My Research"
 pdfpal source move "My Research" "Paper title" "Another Project"
 pdfpal source reindex "My Research"
+pdfpal note create "My Research" -t "Summary" -c "Key findings..."
 pdfpal ask "My Research" "Compare the main methods"
 ```
 

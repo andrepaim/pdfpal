@@ -6,6 +6,7 @@ import { openDatabase } from '../core/database.js'
 import { ProjectService } from '../core/projects.js'
 import { SourceService } from '../core/sources.js'
 import { CollectionService } from '../core/collections.js'
+import { NoteService } from '../core/notes.js'
 import { RetrievalService } from '../core/retrieval.js'
 import { listHighlights } from '../core/highlights.js'
 import { ChatService } from '../core/chat.js'
@@ -78,6 +79,30 @@ collection.command('delete').argument('<project>').argument('<collection>').opti
   .action(async (p, c, options, command) => {
     const service = new CollectionService(db()); const found = service.resolve(p, c); const isJson = json(command)
     await confirm(`Delete collection "${found.name}" (its sources become unfiled)`, options.yes, isJson)
+    print(service.delete(p, found.id), isJson)
+  })
+
+const note = program.command('note').description('manage project notes')
+note.command('list').argument('<project>').action((p, _options, command) => print(new NoteService(db(), config).list(p).map(({ content: _, ...item }) => item), json(command)))
+note.command('show').argument('<project>').argument('<note>').action((p, n, _options, command) => print(new NoteService(db(), config).resolve(p, n), json(command)))
+note.command('create').argument('<project>').option('-t, --title <text>').option('-c, --content <text>').option('-s, --source <source>', 'attach to a source')
+  .description('reads content from stdin when --content is omitted')
+  .action(async (p, options, command) => {
+    const content = options.content ?? await readStdin()
+    print(new NoteService(db(), config).create(p, { title: options.title, content, sourceSelector: options.source }), json(command))
+  })
+note.command('rename').argument('<project>').argument('<note>').argument('<title>')
+  .action((p, n, title, _options, command) => print(new NoteService(db(), config).update(p, n, { title }), json(command)))
+note.command('edit').argument('<project>').argument('<note>').option('-c, --content <text>')
+  .description('replaces a note\'s content; reads from stdin when --content is omitted')
+  .action(async (p, n, options, command) => {
+    const content = options.content ?? await readStdin()
+    print(new NoteService(db(), config).update(p, n, { content }), json(command))
+  })
+note.command('delete').argument('<project>').argument('<note>').option('-y, --yes', 'skip confirmation')
+  .action(async (p, n, options, command) => {
+    const service = new NoteService(db(), config); const found = service.resolve(p, n); const isJson = json(command)
+    await confirm(`Delete note "${found.title}"`, options.yes, isJson)
     print(service.delete(p, found.id), isJson)
   })
 

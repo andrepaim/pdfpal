@@ -1,6 +1,6 @@
 ---
 name: pdfpal-cli
-description: Drive the pdfpal CLI to manage local PDF research projects — create/rename/delete projects, add PDF sources (from a URL or a local file) and organize them into nested collections, move/rename/remove sources, full-text search within a project, list highlights, and ask project-scoped questions. Use whenever asked to build or maintain a pdfpal project, e.g. "create a pdfpal project for a topic and add these papers", "add this PDF to my pdfpal project", "remove this source from pdfpal", "what's in my pdfpal project". Requires the pdfpal CLI on PATH (npm install -g pdfpal). Does NOT search for papers — pdfpal has no paper-discovery command; find papers yourself first, then use this skill to ingest them.
+description: Drive the pdfpal CLI to manage local PDF research projects — create/rename/delete projects, add PDF sources (from a URL or a local file) and organize them into nested collections, move/rename/remove sources, write/edit markdown notes, full-text search within a project, list highlights, and ask project-scoped questions. Use whenever asked to build or maintain a pdfpal project, e.g. "create a pdfpal project for a topic and add these papers", "add this PDF to my pdfpal project", "write a note in my pdfpal project explaining X", "remove this source from pdfpal", "what's in my pdfpal project". Requires the pdfpal CLI on PATH (npm install -g pdfpal). Does NOT search for papers — pdfpal has no paper-discovery command; find papers yourself first, then use this skill to ingest them.
 ---
 
 # pdfpal CLI
@@ -10,7 +10,7 @@ Local PDF research assistant. Every action below is a real `pdfpal` subcommand �
 ## Golden rules
 
 1. **Always pass `--json`** (global flag, goes right after `pdfpal`, e.g. `pdfpal --json project create "..."`). Without it, output is a human `console.table`/plain-text format that is not reliable to parse.
-2. **Always pass `-y`/`--yes` on destructive commands** (`project delete`, `source remove`, `collection delete`). Running non-interactively without it throws `CONFIRMATION_REQUIRED` (exit code 2) — there is no prompt to answer.
+2. **Always pass `-y`/`--yes` on destructive commands** (`project delete`, `source remove`, `collection delete`, `note delete`). Running non-interactively without it throws `CONFIRMATION_REQUIRED` (exit code 2) — there is no prompt to answer.
 3. **Selectors** (`<project>`, `<source>`, `<collection>`) accept either the resource's UUID or its exact, case-insensitive title. Prefer capturing the `id` from a `--json` response and reusing it for later commands on the same resource, rather than re-resolving by title each time — titles are not guaranteed unique.
 4. **Exit codes**: `0` success, `1` unexpected error, `2` validation error or confirmation required, `3` not found, `4` ambiguous selector (title matched more than one resource) or conflict (e.g. moving a source to the project it's already in). On exit 4 from an ambiguous title, the JSON error `details` lists the matching `{id, title}` pairs — pick one and use its `id`.
 5. **This skill has no paper-discovery step.** pdfpal has no CLI command to search the web for papers. Find the papers first (your own search), then use `source add` with each paper's URL (arXiv, OpenReview, ACL Anthology, PMLR, DOI, or any direct `.pdf` link — pdfpal auto-rewrites common paper-page URLs to their PDF) or a local file path.
@@ -78,6 +78,19 @@ All commands accept `<project>`/`<source>`/`<collection>` as UUID or exact case-
 | `pdfpal collection rename <project> <collection> <name>` | |
 | `pdfpal collection move <project> <collection> [parent]` | Reparents it; omit `parent` to move it to the top level. |
 | `pdfpal collection delete <project> <collection> [-y, --yes]` | Its sources become unfiled, not deleted. Destructive — see Golden rule 2 and 6. |
+
+### Notes
+
+Markdown notes attached to a project (and optionally to one of its sources).
+
+| Command | Notes |
+|---|---|
+| `pdfpal note list <project>` | |
+| `pdfpal note show <project> <note>` | |
+| `pdfpal note create <project> [-t, --title <text>] [-c, --content <text>] [-s, --source <source>]` | Reads content from stdin when `--content` is omitted — the natural way to pass multi-line markdown, e.g. `pdfpal --json note create <project> -t "Title" <<< "$content"` or piping a file. `--source` optionally attaches the note to a source. |
+| `pdfpal note rename <project> <note> <title>` | Title only; content is untouched. |
+| `pdfpal note edit <project> <note> [-c, --content <text>]` | Replaces the note's content (title untouched); reads from stdin when `--content` is omitted. |
+| `pdfpal note delete <project> <note> [-y, --yes]` | Destructive — see Golden rule 2 and 6. |
 
 ### Search, highlights, and Q&A
 

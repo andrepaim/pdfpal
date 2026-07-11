@@ -28,6 +28,16 @@ export interface Source {
   collection_id?: string | null
 }
 
+export interface Note {
+  id: string
+  project_id: string
+  source_id: string | null
+  title: string
+  content: string
+  created_at: string
+  updated_at: string
+}
+
 export interface Passage {
   source_id: string
   source_title: string
