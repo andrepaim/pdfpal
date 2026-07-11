@@ -60,31 +60,51 @@ export async function resolvePdf(input: string): Promise<{ bytes: Buffer; url: s
   return { bytes, url: response.url }
 }
 
-/** First substantive line of the page, used as a title fallback when no PDF metadata title exists. */
-export function titleFromLines(lines: string[]): string {
-  return lines.map(line => line.replace(/\s+/g, ' ').trim()).find(line => line.length > 3)?.slice(0, 120) ?? ''
+export type TitleCandidateLine = { text: string; fontSize: number }
+
+/**
+ * Largest-font line near the top of the page, used as a title fallback when
+ * no PDF metadata title exists. Many papers (conference camera-readies in
+ * particular) print a small-font copyright/permission notice above the
+ * title, so picking the first substantive line often grabs that notice
+ * instead — the title is reliably the biggest text near the top instead.
+ */
+export function titleFromLines(lines: TitleCandidateLine[]): string {
+  const candidates = lines
+    .slice(0, 40)
+    .map(line => ({ text: line.text.replace(/\s+/g, ' ').trim(), fontSize: line.fontSize }))
+    .filter(line => line.text.length > 3)
+  if (!candidates.length) return ''
+  return candidates.reduce((best, line) => (line.fontSize > best.fontSize ? line : best)).text.slice(0, 120)
 }
 
 export async function extractPdf(bytes: Buffer): Promise<{ text: string; pages: number; title: string }> {
   const document = await getDocument({ data: new Uint8Array(bytes), useSystemFonts: true }).promise
   if (document.numPages > 50) throw new PdfpalError('PDF_TOO_LARGE', `PDFs over 50 pages are not supported (${document.numPages} pages)`)
   const parts: string[] = []
-  let firstPageLines: string[] = []
+  let firstPageLines: TitleCandidateLine[] = []
   for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber++) {
     const page = await document.getPage(pageNumber)
     const content = await page.getTextContent()
     // Reconstruct real lines from pdfjs's hasEOL markers before collapsing
-    // whitespace, so the title heuristic below can still tell lines apart.
-    const lines: string[] = []
+    // whitespace, so the title heuristic below can still tell lines apart,
+    // and track each line's largest font size (from the text transform's
+    // scale) for picking the title out of same-page boilerplate.
+    const lines: TitleCandidateLine[] = []
     let current = ''
+    let fontSize = 0
     for (const item of content.items) {
       if (!('str' in item)) continue
       current += item.str
-      if (item.hasEOL) { lines.push(current); current = '' }
+      // pdf.js emits blank spacer items (paragraph gaps) tagged with the
+      // *next* line's font size — skip them so they don't inflate the
+      // current line's measured size and cause false ties with the title.
+      if (item.str.trim()) fontSize = Math.max(fontSize, Math.hypot(item.transform[2], item.transform[3]))
+      if (item.hasEOL) { lines.push({ text: current, fontSize }); current = ''; fontSize = 0 }
     }
-    if (current) lines.push(current)
+    if (current) lines.push({ text: current, fontSize })
     if (pageNumber === 1) firstPageLines = lines
-    const text = lines.join(' ').replace(/\s+/g, ' ').trim()
+    const text = lines.map(line => line.text).join(' ').replace(/\s+/g, ' ').trim()
     if (text) parts.push(`[Page ${pageNumber}]\n${text}`)
   }
   const metadata = await document.getMetadata().catch(() => null)

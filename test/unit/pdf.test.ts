@@ -3,17 +3,36 @@ import assert from 'node:assert/strict'
 import { resolvePdf, rewritePdfUrl, titleFromLines } from '../../src/core/pdf.js'
 import { PdfpalError } from '../../src/core/types.js'
 
-test('titleFromLines picks only the first real line, not the whole flattened page', () => {
+test('titleFromLines picks the largest-font line, not just the first real line', () => {
   // Regression: extractPdf used to join every line's text with spaces before
   // splitting on '\n' to find "the second line", which meant the title
   // fallback grabbed the entire first page as one 120-char blob instead of
   // just its title line.
-  const lines = ['Attention Is All You Need', 'Ashish Vaswani, Noam Shazeer, Niki Parmar, et al.']
+  const lines = [
+    { text: 'Attention Is All You Need', fontSize: 17.22 },
+    { text: 'Ashish Vaswani, Noam Shazeer, Niki Parmar, et al.', fontSize: 9.96 },
+  ]
+  assert.equal(titleFromLines(lines), 'Attention Is All You Need')
+})
+
+test('titleFromLines skips a small-font permission notice printed above the title', () => {
+  // Regression: some camera-ready PDFs (this is the real first page of the
+  // "Attention Is All You Need" arXiv PDF) print a copyright/permission
+  // notice above the title in a smaller font. Picking "the first
+  // substantive line" grabbed the notice instead of the title.
+  const lines = [
+    { text: 'Provided proper attribution is provided, Google hereby grants permission to', fontSize: 11.96 },
+    { text: 'reproduce the tables and figures in this paper solely for use in journalistic or', fontSize: 11.96 },
+    { text: 'scholarly works.', fontSize: 11.96 },
+    { text: 'Attention Is All You Need', fontSize: 17.22 },
+    { text: 'Ashish Vaswani', fontSize: 9.96 },
+  ]
   assert.equal(titleFromLines(lines), 'Attention Is All You Need')
 })
 
 test('titleFromLines skips blank or trivially short leading lines', () => {
-  assert.equal(titleFromLines(['1', '', 'Real Paper Title Here']), 'Real Paper Title Here')
+  const lines = [{ text: '1', fontSize: 10 }, { text: '', fontSize: 10 }, { text: 'Real Paper Title Here', fontSize: 10 }]
+  assert.equal(titleFromLines(lines), 'Real Paper Title Here')
 })
 
 test('rewritePdfUrl removes tracking parameters and known paper paths', () => {
