@@ -77,6 +77,7 @@ All commands accept `<project>`/`<source>`/`<collection>` as UUID or exact case-
 | `pdfpal collection create <project> <name> [-p, --parent <collection>]` | Omit `--parent` for a top-level collection. |
 | `pdfpal collection rename <project> <collection> <name>` | |
 | `pdfpal collection move <project> <collection> [parent]` | Reparents it; omit `parent` to move it to the top level. |
+| `pdfpal collection reorder <project> <collection> <position>` | Sets its 0-based sort position among sibling collections — renaming alone does not change display order, since that's driven by this position (then creation time), not by name. |
 | `pdfpal collection delete <project> <collection> [-y, --yes]` | Its sources become unfiled, not deleted. Destructive — see Golden rule 2 and 6. |
 
 ### Notes

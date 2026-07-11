@@ -75,6 +75,9 @@ collection.command('rename').argument('<project>').argument('<collection>').argu
 collection.command('move').argument('<project>').argument('<collection>').argument('[parent]')
   .description('reparent a collection, or omit the parent to move it to the top level')
   .action((p, c, parent, _options, command) => print(new CollectionService(db()).move(p, c, parent ?? null), json(command)))
+collection.command('reorder').argument('<project>').argument('<collection>').argument('<position>')
+  .description('set a collection\'s 0-based sort position among its siblings')
+  .action((p, c, position, _options, command) => print(new CollectionService(db()).reorder(p, c, Number(position)), json(command)))
 collection.command('delete').argument('<project>').argument('<collection>').option('-y, --yes', 'skip confirmation')
   .action(async (p, c, options, command) => {
     const service = new CollectionService(db()); const found = service.resolve(p, c); const isJson = json(command)

@@ -52,6 +52,21 @@ test('deleting a collection unfiles its sources instead of removing them', () =>
   } finally { cleanup(config, db) }
 })
 
+test('reorder sets a collection\'s position among its siblings', () => {
+  const config = testConfig(), db = testDb(config)
+  try {
+    const projectId = createProject(db, 'Research')
+    const service = new CollectionService(db)
+    const first = service.create(projectId, 'First')
+    const second = service.create(projectId, 'Second')
+    assert.equal(first.position, 0)
+    assert.equal(second.position, 1)
+    const reordered = service.reorder(projectId, first.id, 5)
+    assert.equal(reordered.position, 5)
+    assert.equal(service.resolve(projectId, first.id).position, 5)
+  } finally { cleanup(config, db) }
+})
+
 test('moving a source across projects clears its collection', () => {
   const config = testConfig(), db = testDb(config)
   try {
