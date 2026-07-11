@@ -3,10 +3,13 @@
 const BASE = '/api'
 
 async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
+  // Only set a JSON content-type when there's actually a body — Fastify's
+  // JSON body parser rejects bodyless requests (e.g. DELETE) that declare
+  // one, which used to 500 on every source/project/note/artifact removal.
   const res = await fetch(BASE + path, {
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
     ...opts,
+    headers: { ...(opts?.body ? { 'Content-Type': 'application/json' } : {}), ...opts?.headers },
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
