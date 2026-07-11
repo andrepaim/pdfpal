@@ -25,7 +25,7 @@ function SourceNotePanel({ projectId, sourceId }: { projectId: string; sourceId:
   const [activeNote, setActiveNote] = useState<Note | null>(null)
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
-  const [preview, setPreview] = useState(false)
+  const [preview, setPreview] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(true)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -42,7 +42,7 @@ function SourceNotePanel({ projectId, sourceId }: { projectId: string; sourceId:
     setTitle(n.title)
     setContent(n.content || '')
     setSaved(true)
-    setPreview(false)
+    setPreview(true)
   }
 
   const scheduleSave = (newTitle: string, newContent: string) => {

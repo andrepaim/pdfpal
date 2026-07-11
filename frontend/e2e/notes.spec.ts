@@ -41,6 +41,9 @@ test.describe('Notes management', () => {
 
     await page.goto(`/projects/${project.id}/notes/${noteId}`);
 
+    // Notes open in rendered read view by default; switch to Edit to reach the textarea.
+    await page.getByRole('button', { name: /Edit/ }).click();
+
     // Wait for note to load
     const titleInput = page.getByPlaceholder('Note title\u2026');
     await expect(titleInput).toHaveValue('Initial Title');
@@ -62,6 +65,7 @@ test.describe('Notes management', () => {
     // Re-mock auth before navigating again (reload clears route mocks)
     await mockAuth(page);
     await page.goto(`/projects/${project.id}/notes/${noteId}`);
+    await page.getByRole('button', { name: /Edit/ }).click();
 
     await expect(page.getByPlaceholder('Note title\u2026')).toHaveValue('Updated Title', { timeout: 5000 });
     await expect(page.getByPlaceholder(/Write your notes here/)).toHaveValue('Updated content here');

@@ -14,7 +14,7 @@ export default function NoteEditor() {
   const [content, setContent] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(true)
-  const [preview, setPreview] = useState(false)
+  const [preview, setPreview] = useState(true)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -53,29 +53,25 @@ export default function NoteEditor() {
         </button>
       </div>
 
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        {/* Editor */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: preview ? '1px solid var(--border)' : 'none' }}>
-          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--panel)' }}>
-            <input
-              value={title}
-              onChange={e => updateTitle(e.target.value)}
-              placeholder="Note title…"
-              style={{ width: '100%', background: 'none', border: 'none', color: '#fff', fontSize: 16, fontWeight: 700, outline: 'none', fontFamily: 'inherit' }}
-            />
-          </div>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--panel)', flexShrink: 0 }}>
+          <input
+            value={title}
+            onChange={e => updateTitle(e.target.value)}
+            placeholder="Note title…"
+            style={{ width: '100%', background: 'none', border: 'none', color: '#fff', fontSize: 16, fontWeight: 700, outline: 'none', fontFamily: 'inherit' }}
+          />
+        </div>
+
+        {!preview ? (
           <textarea
             value={content}
             onChange={e => updateContent(e.target.value)}
             placeholder="Write your notes here… (Markdown supported)"
             style={{ flex: 1, background: 'var(--bg)', border: 'none', color: '#e5e7eb', padding: '16px 20px', fontSize: 13, resize: 'none', fontFamily: "'SF Mono', 'Fira Code', monospace", lineHeight: 1.7, outline: 'none' }}
           />
-        </div>
-
-        {/* Preview */}
-        {preview && (
-          <div style={{ flex: 1, overflow: 'auto', padding: '20px 28px', background: 'var(--panel)' }}>
-            <h1 style={{ color: '#fff', fontSize: 20, fontWeight: 800, marginBottom: 20 }}>{title || 'Untitled'}</h1>
+        ) : (
+          <div style={{ flex: 1, overflow: 'auto', padding: '20px 28px', background: 'var(--bg)' }}>
             <div className="prose">
               <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{content || '*Nothing here yet…*'}</ReactMarkdown>
             </div>
