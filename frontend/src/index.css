@@ -29,6 +29,24 @@ body {
   flex-direction: column;
 }
 
+/* react-pdf's bundled TextLayer.css omits the selection-highlight rule that
+   the official pdf.js viewer stylesheet ships. Without it, the browser's
+   default ::selection paints the invisible text-layer glyphs opaque, in the
+   generic fallback font pdf.js assigned to the span (e.g. sans-serif) rather
+   than the PDF's actual font — so selected text visibly looks like the wrong
+   font. A translucent highlight lets the real canvas-rendered glyphs show
+   through instead, matching pdf.js's own viewer. */
+.textLayer ::-moz-selection {
+  background: rgba(0, 0, 255, 0.25);
+  background: color-mix(in srgb, AccentColor, transparent 75%);
+}
+.textLayer ::selection {
+  background: rgba(0, 0, 255, 0.25);
+  background: color-mix(in srgb, AccentColor, transparent 75%);
+}
+.textLayer br::-moz-selection { background: transparent; }
+.textLayer br::selection { background: transparent; }
+
 /* Scrollbars */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
