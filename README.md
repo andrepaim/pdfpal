@@ -27,13 +27,13 @@ It's also a CLI with the same project/source/collection model as the web app (th
 
 ## Research with an agent, then read
 
-pdfpal has no built-in web search, but an agent with the `pdfpal-cli` skill installed (see [Agent skill](#agent-skill-claude-code--codex) below) can research a topic itself and hand you back an organized, ready-to-read project.
+Finding papers is legwork. Reading them is the actual work. pdfpal is built to delegate the first without touching the second: give an agent a topic and it searches the web on its own, drives the pdfpal CLI through the [Agent skill](#agent-skill-claude-code--codex), and hands you back a project with the papers already fetched, filed into collections, and ready to read.
 
 1. **Ask an agent** (Claude Code, Codex, or anything that can load the skill):
 
    > Research recent approaches to efficient attention mechanisms, create a pdfpal project called "Efficient Attention", and add the best papers you find.
 
-2. **The agent searches the web on its own**, then drives the real CLI to build the project. This is genuinely what it runs, not a mockup:
+2. **The agent finds the papers with its own tools**, then drives the real CLI to build the project. This is genuinely what it runs, not a mockup:
 
    ```bash
    pdfpal --json project create "Efficient Attention"
