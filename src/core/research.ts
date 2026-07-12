@@ -4,6 +4,13 @@ import { PdfpalError } from './types.js'
 const S2_BASE = 'https://api.semanticscholar.org/graph/v1'
 const FIELDS = 'title,authors,year,externalIds,openAccessPdf,venue,citationCount'
 
+// Semantic Scholar's unauthenticated quota is small and shared per IP, not
+// per caller — an optional key (free from semanticscholar.org) is scoped to
+// this app instead and raises the limit substantially.
+function s2Headers(apiKey: string): HeadersInit | undefined {
+  return apiKey ? { 'x-api-key': apiKey } : undefined
+}
+
 type S2Paper = {
   paperId?: string
   title?: string
@@ -38,25 +45,25 @@ function normalize(paper: S2Paper, relation: 'reference' | 'citation') {
  * null (never throws) when the URL isn't recognised, the lookup fails, or the
  * network is unavailable, so callers can fall back to PDF-derived titles.
  */
-export async function titleFromUrl(url: string): Promise<string | null> {
+export async function titleFromUrl(url: string, apiKey = ''): Promise<string | null> {
   const paperId = paperIdFromUrl(url)
   if (!paperId) return null
   try {
-    const response = await fetch(`${S2_BASE}/paper/${encodeURIComponent(paperId)}?fields=title`, { signal: AbortSignal.timeout(10_000) })
+    const response = await fetch(`${S2_BASE}/paper/${encodeURIComponent(paperId)}?fields=title`, { headers: s2Headers(apiKey), signal: AbortSignal.timeout(10_000) })
     if (!response.ok) return null
     const data = await response.json() as { title?: string }
     return data.title?.trim() || null
   } catch { return null }
 }
 
-async function findByTitle(title: string): Promise<string | null> {
-  const response = await fetch(`${S2_BASE}/paper/search?query=${encodeURIComponent(title)}&fields=title,paperId&limit=1`, { signal: AbortSignal.timeout(15_000) })
+async function findByTitle(title: string, apiKey: string): Promise<string | null> {
+  const response = await fetch(`${S2_BASE}/paper/search?query=${encodeURIComponent(title)}&fields=title,paperId&limit=1`, { headers: s2Headers(apiKey), signal: AbortSignal.timeout(15_000) })
   if (!response.ok) return null
   const data = await response.json() as { data?: Array<{ paperId?: string }> }
   return data.data?.[0]?.paperId ?? null
 }
 
-export async function relatedPapers(db: Database, projectId: string, sourceId: string, refresh = false) {
+export async function relatedPapers(db: Database, projectId: string, sourceId: string, apiKey = '', refresh = false) {
   const source = db.prepare('SELECT url,title FROM sources WHERE id=? AND project_id=?').get(sourceId, projectId) as { url: string | null; title: string | null } | undefined
   if (!source) throw new PdfpalError('SOURCE_NOT_FOUND', 'Source not found', 3)
   if (!refresh) {
@@ -64,11 +71,11 @@ export async function relatedPapers(db: Database, projectId: string, sourceId: s
     if (cached.length) return { references: cached.filter(row => row.relation === 'reference'), citations: cached.filter(row => row.relation === 'citation'), cached: true }
   }
   try {
-    const paperId = paperIdFromUrl(source.url ?? '') || (source.title ? await findByTitle(source.title) : null)
+    const paperId = paperIdFromUrl(source.url ?? '') || (source.title ? await findByTitle(source.title, apiKey) : null)
     if (!paperId) return { references: [], citations: [], cached: false, paper_id: null, error: 'Paper not found in Semantic Scholar' }
     const output: { references: ReturnType<typeof normalize>[]; citations: ReturnType<typeof normalize>[] } = { references: [], citations: [] }
     for (const relation of ['references', 'citations'] as const) {
-      const response = await fetch(`${S2_BASE}/paper/${encodeURIComponent(paperId)}/${relation}?fields=${encodeURIComponent(FIELDS)}&limit=${relation === 'references' ? 60 : 20}`, { signal: AbortSignal.timeout(15_000) })
+      const response = await fetch(`${S2_BASE}/paper/${encodeURIComponent(paperId)}/${relation}?fields=${encodeURIComponent(FIELDS)}&limit=${relation === 'references' ? 60 : 20}`, { headers: s2Headers(apiKey), signal: AbortSignal.timeout(15_000) })
       if (response.status === 429) return { ...output, cached: false, paper_id: paperId, error: 'Semantic Scholar rate limit — retry in a moment' }
       if (!response.ok) continue
       const data = await response.json() as { data?: Array<{ citedPaper?: S2Paper; citingPaper?: S2Paper }> }

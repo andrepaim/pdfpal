@@ -63,7 +63,7 @@ export class SourceService {
     const timestamp = now()
     // Prefer a clean catalogue title for arXiv/DOI links; the PDF's own
     // first-line heuristic often bleeds authors and affiliations into the title.
-    const catalogueTitle = isUrl && !title?.trim() ? await titleFromUrl(location) : null
+    const catalogueTitle = isUrl && !title?.trim() ? await titleFromUrl(location, this.config.semanticScholarApiKey) : null
     const sourceTitle = title?.trim() || catalogueTitle || extracted.title || (isUrl ? new URL(location).pathname.split('/').filter(Boolean).at(-1) : path.basename(location)) || 'Untitled Source'
     const source: Source = {
       id, project_id: project.id, type: 'pdf', url, title: sourceTitle, pdf_text: extracted.text,

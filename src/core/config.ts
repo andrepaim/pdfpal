@@ -16,6 +16,7 @@ const ConfigSchema = z.object({
   codexBin: z.string(),
   opencodeBin: z.string(),
   tavilyApiKey: z.string(),
+  semanticScholarApiKey: z.string(),
 })
 
 export type PdfpalConfig = z.infer<typeof ConfigSchema>
@@ -28,6 +29,7 @@ type ConfigFile = Partial<{
   codex_bin: string
   opencode_bin: string
   tavily_api_key: string
+  semantic_scholar_api_key: string
 }>
 
 function parseLegacy(text: string): Record<string, string> {
@@ -79,6 +81,7 @@ export function loadConfig(overrides: Partial<PdfpalConfig> = {}): PdfpalConfig 
     codexBin: overrides.codexBin ?? process.env.CODEX_BIN ?? file.codex_bin ?? 'codex',
     opencodeBin: overrides.opencodeBin ?? process.env.OPENCODE_BIN ?? file.opencode_bin ?? 'opencode',
     tavilyApiKey: overrides.tavilyApiKey ?? process.env.TAVILY_API_KEY ?? file.tavily_api_key ?? '',
+    semanticScholarApiKey: overrides.semanticScholarApiKey ?? process.env.SEMANTIC_SCHOLAR_API_KEY ?? file.semantic_scholar_api_key ?? '',
   })
 }
 

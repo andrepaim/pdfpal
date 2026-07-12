@@ -162,7 +162,10 @@ PDFPAL_MODEL=
 PDFPAL_PORT=8200
 PDFPAL_DB=
 TAVILY_API_KEY=
+SEMANTIC_SCHOLAR_API_KEY=
 ```
+
+`SEMANTIC_SCHOLAR_API_KEY` is optional. Semantic Scholar's unauthenticated API shares a small rate limit across every caller on your network, not just you — a [free key](https://www.semanticscholar.org/product/api#api-key-form) is scoped to your own app instead and raises the limit substantially. Used for Related Papers and clean titles for arXiv/DOI links.
 
 Legacy `~/.pdfpal/config.env` is imported automatically on first TypeScript startup.
 

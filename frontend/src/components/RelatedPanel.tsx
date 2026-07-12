@@ -205,9 +205,18 @@ export default function RelatedPanel({ projectId, sourceId }: Props) {
           <div style={{ textAlign: 'center', paddingTop: 40, color: '#6b7280', fontSize: 12, padding: '40px 16px' }}>
             <div style={{ fontSize: 28, marginBottom: 12 }}>🔍</div>
             <div>{error}</div>
-            <div style={{ fontSize: 11, marginTop: 8, color: '#4b5563' }}>
-              This paper may not be indexed in Semantic Scholar, or its URL doesn't contain a recognizable DOI or arXiv ID.
-            </div>
+            {error === 'Paper not found in Semantic Scholar' && (
+              <div style={{ fontSize: 11, marginTop: 8, color: '#4b5563' }}>
+                This paper may not be indexed in Semantic Scholar, or its URL doesn't contain a recognizable DOI or arXiv ID.
+              </div>
+            )}
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              style={{ marginTop: 14, background: 'none', border: '1px solid var(--border)', color: '#9ca3af', borderRadius: 8, padding: '5px 14px', fontSize: 11, cursor: refreshing ? 'not-allowed' : 'pointer' }}
+            >
+              {refreshing ? <span className="spinner" style={{ width: 10, height: 10 }} /> : '↺ Retry'}
+            </button>
           </div>
         )}
 

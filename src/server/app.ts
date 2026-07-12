@@ -118,7 +118,7 @@ export async function buildServer(config: PdfpalConfig) {
   registerCollectionRoutes(app, collections)
   registerDocumentRoutes(app, db, notes)
   registerAnnotationRoutes(app, db)
-  registerResearchRoutes(app, db)
+  registerResearchRoutes(app, db, config)
 
   const frontend = [path.resolve('frontend/dist'), path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../frontend/dist')].find(candidate => fs.existsSync(path.join(candidate, 'index.html')))
   if (frontend) {
@@ -198,7 +198,7 @@ function registerAnnotationRoutes(app: any, db: import('better-sqlite3').Databas
   app.delete('/api/projects/:projectId/sources/:sourceId/annotations/:id', async (request: any, reply: any) => { db.prepare('DELETE FROM annotations WHERE id=? AND source_id=? AND project_id=?').run(request.params.id, request.params.sourceId, request.params.projectId); reply.status(204).send() })
 }
 
-function registerResearchRoutes(app: any, db: import('better-sqlite3').Database) {
+function registerResearchRoutes(app: any, db: import('better-sqlite3').Database, config: PdfpalConfig) {
   app.get('/api/search/papers', async (request: any) => {
     const q = String(request.query.q ?? '').trim(); if (q.length < 3) throw new PdfpalError('QUERY_TOO_SHORT', 'Query too short', 2)
     const response = await fetch(`https://api.openalex.org/works?search=${encodeURIComponent(q)}&per-page=${Math.min(Number(request.query.limit ?? 20), 30)}`, { signal: AbortSignal.timeout(15_000) })
@@ -213,7 +213,7 @@ function registerResearchRoutes(app: any, db: import('better-sqlite3').Database)
       return { title: work.title, authors: (work.authorships ?? []).map((a: any) => a.author?.display_name).filter(Boolean).join(', '), year: work.publication_year, venue: work.primary_location?.source?.display_name, citation_count: work.cited_by_count, arxiv_url: arxivUrl, pdf_url: work.best_oa_location?.pdf_url }
     }) }
   })
-  app.get('/api/projects/:projectId/sources/:sourceId/related', async (request: any) => relatedPapers(db, request.params.projectId, request.params.sourceId, request.query.refresh === 'true'))
+  app.get('/api/projects/:projectId/sources/:sourceId/related', async (request: any) => relatedPapers(db, request.params.projectId, request.params.sourceId, config.semanticScholarApiKey, request.query.refresh === 'true'))
 }
 
 export async function startServer(config: PdfpalConfig, options: { openBrowser: boolean }): Promise<void> {
