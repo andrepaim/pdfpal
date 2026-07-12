@@ -31,7 +31,13 @@ const COLOR_MAP: Record<string, string> = {
 function getSelectionPageCoords(selection: Selection): { page: number; x1: number; y1: number; x2: number; y2: number } | null {
   if (selection.rangeCount === 0) return null
   const range = selection.getRangeAt(0)
-  const rects = Array.from(range.getClientRects())
+  // getClientRects() includes a zero-area rect for the <br> pdf.js inserts
+  // between lines: since every text span is position:absolute (out of flow),
+  // the <br> has no explicit left/top and collapses to the page's top-left
+  // corner. Left in, that phantom rect drags the bounding box up to (0,0)
+  // whenever a selection crosses a line break, ballooning the highlight to
+  // cover the whole top-left of the page.
+  const rects = Array.from(range.getClientRects()).filter(r => r.width > 0 && r.height > 0)
   if (rects.length === 0) return null
   const anchor = selection.anchorNode?.parentElement
   const pageEl = anchor?.closest('[data-page-number]') as HTMLElement | null
