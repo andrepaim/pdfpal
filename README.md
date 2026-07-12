@@ -27,7 +27,7 @@ It's also a CLI with the same project/source/collection model as the web app (th
 
 ## Research with an agent, then read
 
-Finding papers is legwork. Reading them is the actual work. pdfpal is built to delegate the first without touching the second: give an agent a topic and it searches the web on its own, drives the pdfpal CLI through the [Agent skill](#agent-skill-claude-code--codex), and hands you back a project with the papers already fetched, filed into collections, and ready to read.
+Finding papers is legwork, and by now agents are better at it than we are: they sweep the literature, follow citation trails, and triage abstracts faster than anyone with twelve tabs open. Reading is the part that's still yours. So pdfpal splits the job: give an agent a topic and it searches on its own, drives the pdfpal CLI through the [Agent skill](#agent-skill-claude-code--codex), and hands you back a project with the papers already fetched, filed into collections, and ready to read.
 
 1. **Ask an agent** (Claude Code, Codex, or anything that can load the skill):
 
