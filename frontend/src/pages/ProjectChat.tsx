@@ -1,7 +1,6 @@
 /**
  * ProjectChat.tsx — Cross-source chat for a project.
  * Left panel: source toggles. Right panel: full chat with all active sources in context.
- * "Save as artifact" button saves the last AI response.
  */
 import { useState, useEffect, useRef, type KeyboardEvent } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -9,7 +8,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
-import { sourcesApi, collectionsApi, artifactsApi, chatApi, type Source, type Collection } from '../lib/api'
+import { sourcesApi, collectionsApi, chatApi, type Source, type Collection } from '../lib/api'
 import { useAgent } from '../hooks/useAgent'
 import AgentSelect from '../components/AgentSelect'
 
@@ -46,8 +45,6 @@ export default function ProjectChat() {
   const [loading, setLoading] = useState(false)
   const [webSearch, setWebSearch] = useState(true)
   const [error, setError] = useState('')
-  const [savingArtifact, setSavingArtifact] = useState(false)
-  const [savedArtifact, setSavedArtifact] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { agent, setAgent, agents: agentOptions } = useAgent()
@@ -100,7 +97,6 @@ export default function ProjectChat() {
     const userMsg = input.trim()
     setInput('')
     setError('')
-    setSavedArtifact(false)
 
     const newHistory: Message[] = [...messages, { role: 'user', content: userMsg }]
     setMessages(newHistory)
@@ -168,25 +164,6 @@ export default function ProjectChat() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
 
-  const lastAssistantMsg = [...messages].reverse().find(m => m.role === 'assistant')
-
-  const saveAsArtifact = async () => {
-    if (!lastAssistantMsg || !projectId) return
-    setSavingArtifact(true)
-    try {
-      // Generate a title from the last user message
-      const lastUser = [...messages].reverse().find(m => m.role === 'user')
-      const title = lastUser?.content.slice(0, 60) || 'Project Chat Artifact'
-      await artifactsApi.create(projectId, { title, content: lastAssistantMsg.content })
-      setSavedArtifact(true)
-      setTimeout(() => setSavedArtifact(false), 3000)
-    } catch (e: any) {
-      setError('Failed to save artifact')
-    } finally {
-      setSavingArtifact(false)
-    }
-  }
-
   return (
     <div style={{ display: 'flex', height: '100vh', background: 'var(--bg)' }}>
       {/* Sources panel */}
@@ -251,20 +228,6 @@ export default function ProjectChat() {
           <div style={{ fontSize: 11, color: '#6b7280' }}>
             Context: {activeSources.length} source{activeSources.length !== 1 ? 's' : ''}
           </div>
-          {lastAssistantMsg && (
-            <button
-              onClick={saveAsArtifact}
-              disabled={savingArtifact || savedArtifact}
-              style={{
-                background: savedArtifact ? '#14532d' : '#1e1b4b',
-                border: `1px solid ${savedArtifact ? '#166534' : '#312e81'}`,
-                color: savedArtifact ? '#4ade80' : '#a5b4fc',
-                borderRadius: 8, padding: '4px 12px', fontSize: 11, cursor: 'pointer', fontWeight: 600,
-              }}
-            >
-              {savingArtifact ? 'Saving…' : savedArtifact ? '✓ Saved!' : '✨ Save as artifact'}
-            </button>
-          )}
           {messages.length > 0 && (
             <button onClick={async () => {
               setMessages([]); setError('')

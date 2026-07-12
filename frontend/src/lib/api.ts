@@ -5,7 +5,7 @@ const BASE = '/api'
 async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
   // Only set a JSON content-type when there's actually a body — Fastify's
   // JSON body parser rejects bodyless requests (e.g. DELETE) that declare
-  // one, which used to 500 on every source/project/note/artifact removal.
+  // one, which used to 500 on every source/project/note removal.
   const res = await fetch(BASE + path, {
     credentials: 'include',
     ...opts,
@@ -28,7 +28,6 @@ export interface Project {
   accessed_at: string
   source_count: number
   note_count: number
-  artifact_count: number
   chat_count: number
 }
 
@@ -59,16 +58,6 @@ export interface Note {
   id: string
   project_id: string
   source_id?: string
-  title: string
-  content?: string
-  preview?: string
-  created_at: string
-  updated_at: string
-}
-
-export interface Artifact {
-  id: string
-  project_id: string
   title: string
   content?: string
   preview?: string
@@ -261,14 +250,3 @@ export const annotationsApi = {
     }),
 }
 
-export const artifactsApi = {
-  list: (projectId: string) => apiFetch<Artifact[]>(`/projects/${projectId}/artifacts`),
-  create: (projectId: string, data: { title?: string; content: string }) =>
-    apiFetch<{ id: string }>(`/projects/${projectId}/artifacts`, { method: 'POST', body: JSON.stringify(data) }),
-  get: (projectId: string, artifactId: string) =>
-    apiFetch<Artifact>(`/projects/${projectId}/artifacts/${artifactId}`),
-  update: (projectId: string, artifactId: string, data: { title?: string; content?: string }) =>
-    apiFetch(`/projects/${projectId}/artifacts/${artifactId}`, { method: 'PUT', body: JSON.stringify(data) }),
-  delete: (projectId: string, artifactId: string) =>
-    apiFetch(`/projects/${projectId}/artifacts/${artifactId}`, { method: 'DELETE' }),
-}

@@ -6,7 +6,7 @@ import type { Database as DatabaseType } from 'better-sqlite3'
 import type { PdfpalConfig } from './config.js'
 import { ensureDataDirectories } from './config.js'
 
-const CURRENT_SCHEMA = 3
+const CURRENT_SCHEMA = 4
 
 function columnExists(db: DatabaseType, table: string, column: string): boolean {
   return (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some(row => row.name === column)
@@ -70,11 +70,6 @@ function migrate(db: DatabaseType): void {
     CREATE TABLE IF NOT EXISTS notes (
       id TEXT PRIMARY KEY, project_id TEXT NOT NULL, source_id TEXT, title TEXT DEFAULT 'Untitled Note',
       content TEXT DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-      FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
-    );
-    CREATE TABLE IF NOT EXISTS artifacts (
-      id TEXT PRIMARY KEY, project_id TEXT NOT NULL, title TEXT DEFAULT 'Untitled Artifact', content TEXT DEFAULT '',
-      created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
       FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
     );
     CREATE TABLE IF NOT EXISTS annotations (
@@ -142,6 +137,12 @@ function migrate(db: DatabaseType): void {
     if (!columnExists(db, 'sources', 'collection_id'))
       db.exec('ALTER TABLE sources ADD COLUMN collection_id TEXT REFERENCES collections(id) ON DELETE SET NULL')
     db.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (3, datetime('now'))").run()
+  }
+
+  if (!db.prepare('SELECT 1 FROM schema_migrations WHERE version=4').get()) {
+    // The artifacts feature was removed; drop its table for existing databases.
+    db.exec('DROP TABLE IF EXISTS artifacts')
+    db.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (4, datetime('now'))").run()
   }
 }
 

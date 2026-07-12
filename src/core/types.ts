@@ -6,7 +6,6 @@ export interface Project {
   accessed_at: string
   source_count?: number
   note_count?: number
-  artifact_count?: number
   chat_count?: number
 }
 

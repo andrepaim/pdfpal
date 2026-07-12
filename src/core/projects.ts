@@ -12,7 +12,6 @@ export class ProjectService {
     return this.db.prepare(`SELECT p.*,
       (SELECT COUNT(*) FROM sources WHERE project_id=p.id) source_count,
       (SELECT COUNT(*) FROM notes WHERE project_id=p.id) note_count,
-      (SELECT COUNT(*) FROM artifacts WHERE project_id=p.id) artifact_count,
       (SELECT COUNT(*) FROM chat_sessions WHERE project_id=p.id) chat_count
       FROM projects p ORDER BY accessed_at DESC`).all() as Project[]
   }

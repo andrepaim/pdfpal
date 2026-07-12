@@ -50,7 +50,7 @@ All commands accept `<project>`/`<source>`/`<collection>` as UUID or exact case-
 
 | Command | Notes |
 |---|---|
-| `pdfpal project list` | All projects, with `source_count`/`note_count`/`artifact_count`/`chat_count`. |
+| `pdfpal project list` | All projects, with `source_count`/`note_count`/`chat_count`. |
 | `pdfpal project show <project>` | Single project. |
 | `pdfpal project create <title> [-d, --description <text>]` | Returns the new project with its `id`. |
 | `pdfpal project rename <project> <title>` | |

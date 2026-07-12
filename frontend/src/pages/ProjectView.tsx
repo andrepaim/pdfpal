@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { projectsApi, sourcesApi, collectionsApi, notesApi, artifactsApi, chatApi, searchApi, highlightsApi, type Project, type Source, type Collection, type Note, type Artifact, type ChatSession, type SearchPassage, type Highlight } from '../lib/api'
+import { projectsApi, sourcesApi, collectionsApi, notesApi, chatApi, searchApi, highlightsApi, type Project, type Source, type Collection, type Note, type ChatSession, type SearchPassage, type Highlight } from '../lib/api'
 import SearchPaperModal from '../components/SearchPaperModal'
 import { timeAgo } from '../lib/time'
 
-type Tab = 'sources' | 'search' | 'notes' | 'artifacts' | 'chats' | 'highlights'
+type Tab = 'sources' | 'search' | 'notes' | 'chats' | 'highlights'
 
 // Payload dragged between the tree's rows: either a source being filed, or a
 // collection being reparented.
@@ -289,35 +289,6 @@ function NotesTab({ projectId }: { projectId: string }) {
   )
 }
 
-// ── Artifacts tab ─────────────────────────────────────────────────────────────
-function ArtifactsTab({ projectId }: { projectId: string }) {
-  const navigate = useNavigate()
-  const [artifacts, setArtifacts] = useState<Artifact[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => { artifactsApi.list(projectId).then(setArtifacts).finally(() => setLoading(false)) }, [projectId])
-
-  return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--panel)', flexShrink: 0 }}>
-        <span style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>Artifacts</span>
-      </div>
-      <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
-        {loading ? <div style={{ textAlign: 'center', paddingTop: 40, color: '#4b5563' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
-          : artifacts.length === 0 ? <div style={{ textAlign: 'center', paddingTop: 60, color: '#4b5563' }}><div style={{ fontSize: 36, marginBottom: 12 }}>✨</div>No artifacts yet. Generate one from Project Chat.</div>
-          : artifacts.map(a => (
-            <div key={a.id} onClick={() => navigate(`/projects/${projectId}/artifacts/${a.id}`)}
-              style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', cursor: 'pointer', marginBottom: 10 }}>
-              <div style={{ fontWeight: 600, color: '#fff', fontSize: 13, marginBottom: 4 }}>✨ {a.title}</div>
-              <div style={{ color: '#6b7280', fontSize: 11 }}>{timeAgo(a.updated_at)}</div>
-            </div>
-          ))
-        }
-      </div>
-    </div>
-  )
-}
-
 // ── Chats tab ─────────────────────────────────────────────────────────────────
 function ChatsTab({ projectId }: { projectId: string }) {
   const navigate = useNavigate()
@@ -548,7 +519,6 @@ export default function ProjectView() {
           {navItem('search', '🔍', 'Search')}
           {navItem('highlights', '🖊', 'Highlights')}
           {navItem('notes', '📝', 'Notes', project?.note_count)}
-          {navItem('artifacts', '✨', 'Artifacts', project?.artifact_count)}
           {navItem('chats', '💬', 'Chats', project?.chat_count || undefined)}
         </div>
         <div style={{ padding: 12, borderTop: '1px solid var(--border)' }}>
@@ -565,7 +535,6 @@ export default function ProjectView() {
         {tab === 'search' && <SearchTab projectId={projectId} />}
         {tab === 'highlights' && <HighlightsTab projectId={projectId} />}
         {tab === 'notes' && <NotesTab projectId={projectId} />}
-        {tab === 'artifacts' && <ArtifactsTab projectId={projectId} />}
         {tab === 'chats' && <ChatsTab projectId={projectId} />}
       </div>
     </div>

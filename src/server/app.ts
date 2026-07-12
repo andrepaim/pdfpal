@@ -116,7 +116,7 @@ export async function buildServer(config: PdfpalConfig) {
   app.get<{ Params: Pick<Params, 'projectId'> }>('/api/projects/:projectId/highlights', async request => listHighlights(db, projects.resolve(request.params.projectId).id))
 
   registerCollectionRoutes(app, collections)
-  registerDocumentRoutes(app, db, notes)
+  registerDocumentRoutes(app, notes)
   registerAnnotationRoutes(app, db)
   registerResearchRoutes(app, db, config)
 
@@ -154,7 +154,7 @@ function registerCollectionRoutes(app: any, collections: CollectionService) {
   app.delete('/api/projects/:projectId/collections/:id', async (request: any) => { collections.delete(request.params.projectId, request.params.id); return { ok: true } })
 }
 
-function registerDocumentRoutes(app: Awaited<ReturnType<typeof import('fastify')['default']>>, db: import('better-sqlite3').Database, notes: NoteService) {
+function registerDocumentRoutes(app: Awaited<ReturnType<typeof import('fastify')['default']>>, notes: NoteService) {
   const preview = (n: { content: string }) => ({ ...n, content: undefined, preview: n.content.slice(0, 200) })
   app.get('/api/projects/:projectId/notes', async (request: any) => notes.list(request.params.projectId).map(preview))
   app.post('/api/projects/:projectId/notes', async (request: any) => {
@@ -168,23 +168,6 @@ function registerDocumentRoutes(app: Awaited<ReturnType<typeof import('fastify')
   })
   app.delete('/api/projects/:projectId/notes/:id', async (request: any) => { notes.delete(request.params.projectId, request.params.id); return { ok: true } })
   app.get('/api/projects/:projectId/sources/:sourceId/notes', async (request: any) => notes.listBySource(request.params.projectId, request.params.sourceId).map(preview))
-
-  // Artifacts have no CLI/core service yet, so this stays as direct SQL.
-  const table = 'artifacts'
-  app.get('/api/projects/:projectId/artifacts', async (request: any) => db.prepare(`SELECT id,project_id,title,substr(content,1,200) preview,created_at,updated_at FROM ${table} WHERE project_id=? ORDER BY updated_at DESC`).all(request.params.projectId))
-  app.post('/api/projects/:projectId/artifacts', async (request: any) => {
-    const id = randomUUID(), timestamp = now(), body = request.body
-    db.prepare(`INSERT INTO artifacts(id,project_id,title,content,created_at,updated_at) VALUES (?,?,?,?,?,?)`).run(id, request.params.projectId, body.title ?? 'Untitled Artifact', body.content ?? '', timestamp, timestamp)
-    return { id }
-  })
-  app.get(`/api/projects/:projectId/artifacts/:id`, async (request: any) => db.prepare(`SELECT * FROM ${table} WHERE id=? AND project_id=?`).get(request.params.id, request.params.projectId) ?? Promise.reject(new PdfpalError('NOT_FOUND', 'Document not found', 3)))
-  app.put(`/api/projects/:projectId/artifacts/:id`, async (request: any) => {
-    const existing = db.prepare(`SELECT * FROM ${table} WHERE id=? AND project_id=?`).get(request.params.id, request.params.projectId) as any
-    if (!existing) throw new PdfpalError('NOT_FOUND', 'Document not found', 3)
-    db.prepare(`UPDATE ${table} SET title=?,content=?,updated_at=? WHERE id=?`).run(request.body.title ?? existing.title, request.body.content ?? existing.content, now(), existing.id)
-    return { ok: true }
-  })
-  app.delete(`/api/projects/:projectId/artifacts/:id`, async (request: any) => { db.prepare(`DELETE FROM artifacts WHERE id=? AND project_id=?`).run(request.params.id, request.params.projectId); return { ok: true } })
 }
 
 function registerAnnotationRoutes(app: any, db: import('better-sqlite3').Database) {

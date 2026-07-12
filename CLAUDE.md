@@ -34,7 +34,7 @@ Use `npm run dev` to run the TypeScript server through `tsx`. Running `pdfpal` w
 
 ## Data and migrations
 
-Local state defaults to `~/.pdfpal`. `pdfpal.db` stores projects, sources, extracted text, chat, notes, artifacts, annotations, related-paper cache, and FTS chunks. Managed PDFs live under `files/`. Schema migrations run during database open and create a backup before changing an older database. Legacy `sessions/messages` data is migrated into projects, sources, and chat sessions.
+Local state defaults to `~/.pdfpal`. `pdfpal.db` stores projects, sources, extracted text, chat, notes, annotations, related-paper cache, and FTS chunks. Managed PDFs live under `files/`. Schema migrations run during database open and create a backup before changing an older database. Legacy `sessions/messages` data is migrated into projects, sources, and chat sessions.
 
 Never use the real home database in tests. Use the temporary configuration helpers under `test/helpers`.
 

@@ -54,13 +54,12 @@ pdfpal has no built-in web search — but an agent with the `pdfpal-cli` skill i
 - **Project chat** — ask across multiple sources at once, toggle which sources are in context, or scope to a single collection.
 
 ### Organization
-- **Projects** — workspaces for a research topic: sources, notes, artifacts, chat history.
+- **Projects** — workspaces for a research topic: sources, notes, chat history.
 - **Collections** — nested folders for organizing sources within a project; drag-and-drop, Expand/Collapse All.
 - **Notes** — markdown notes at the project or source level, rendered by default, edit in place:
 
   ![Notes](screenshots/5-notes.png)
 - **Highlights** — every annotation across a project, grouped by source, one click back to context.
-- **Artifacts** — save AI chat responses as reusable documents.
 
 ### Sources & Discovery
 - **Paper search** — search OpenAlex by title, one click to add:

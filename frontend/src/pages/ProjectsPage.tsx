@@ -124,7 +124,6 @@ function ProjectCard({ project, onDelete }: ProjectCardProps) {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {project.source_count > 0 && <span style={pillStyle}><b>{project.source_count}</b> source{project.source_count !== 1 ? 's' : ''}</span>}
         {project.note_count > 0 && <span style={pillStyle}><b>{project.note_count}</b> note{project.note_count !== 1 ? 's' : ''}</span>}
-        {project.artifact_count > 0 && <span style={pillStyle}><b>{project.artifact_count}</b> artifact{project.artifact_count !== 1 ? 's' : ''}</span>}
         <span style={pillStyle}>{timeAgo(project.accessed_at)}</span>
       </div>
       {hovered && (

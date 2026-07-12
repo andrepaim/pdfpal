@@ -7,7 +7,6 @@ import 'katex/dist/katex.min.css'
 import ProjectsPage from './pages/ProjectsPage'
 import ProjectView from './pages/ProjectView'
 import NoteEditor from './pages/NoteEditor'
-import ArtifactViewer from './pages/ArtifactViewer'
 import App from './App'  // legacy reader (now used as PaperReader)
 import ProjectChat from './pages/ProjectChat'
 import LoginPage from './components/LoginPage'
@@ -77,9 +76,6 @@ function Root() {
 
         {/* Note editor */}
         <Route path="/projects/:projectId/notes/:noteId" element={<NoteEditor />} />
-
-        {/* Artifact viewer */}
-        <Route path="/projects/:projectId/artifacts/:artifactId" element={<ArtifactViewer />} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />

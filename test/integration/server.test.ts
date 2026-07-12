@@ -23,8 +23,6 @@ test('Fastify document, annotation, chat, and research routes work', async () =>
     const project = created.json()
     const note = await app.inject({ method: 'POST', url: `/api/projects/${project.id}/notes`, payload: { title: 'Note', content: 'Body' } })
     assert.equal(note.statusCode, 200)
-    const artifact = await app.inject({ method: 'POST', url: `/api/projects/${project.id}/artifacts`, payload: { title: 'Artifact', content: 'Output' } })
-    assert.equal(artifact.statusCode, 200)
     const listedNotes = await app.inject({ method: 'GET', url: `/api/projects/${project.id}/notes` })
     assert.equal(listedNotes.json()[0].title, 'Note')
     const sourceId = 'source-for-api'
