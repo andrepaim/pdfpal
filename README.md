@@ -15,11 +15,13 @@ But the answer isn't to pretend it's five years ago: print the paper, read it al
 
 </div>
 
-## Why not ChatPDF?
+## Isn't this already a thing?
 
-Tools like ChatPDF already put a PDF and an AI chat side by side, and they work well. But every one I tried follows the same pattern: a free tier too restrictive for real use, and a paid tier that stacks another monthly subscription on top of what you already pay for Claude, Codex, or OpenCode.
+Sort of. There are plenty of chat-with-PDF tools: web apps where you upload a paper and ask questions, AI assistants bolted onto PDF readers, notebook tools that summarize your sources. If you've tried one, you know the pattern: a free tier capped at a couple of documents or a few dozen pages, and a paid tier that stacks one more monthly subscription on top of the Claude, Codex, or OpenCode plan you already pay for. And your library lives in their cloud, not on your machine.
 
-pdfpal cuts out the middleman. It runs entirely on your own machine, and every chat, every cross-paper question, goes through the agent CLI you've already got installed and authenticated. No extra fee, no usage caps, no feature gates.
+Most of them are also built around the summary: upload, get the takeaways, move on. That's the vibe-researching workflow. pdfpal is built around the reader.
+
+pdfpal cuts out the middleman. It runs entirely on your machine, and every chat, every cross-paper question, goes through the agent CLI you've already got installed and authenticated. No extra fee, no usage caps, no feature gates, no uploads to anyone's cloud.
 
 It's also a CLI with the same project/source/collection model as the web app (the browser and the CLI call the same core code, nothing is reimplemented twice), plus a Claude Code / Codex skill that lets an agent drive the whole thing directly. Here's what that looks like end to end.
 
