@@ -15,13 +15,11 @@ But the answer isn't to pretend it's five years ago: print the paper, read it al
 
 </div>
 
-## Why I Built This
+## Why not ChatPDF?
 
-I wanted a tool to chat with research papers: something with an inline reader so I wouldn't have to context-switch between a PDF tab and an AI tab. Tools like ChatPDF do exactly that, and they work well.
+Tools like ChatPDF already put a PDF and an AI chat side by side, and they work well. But every one I tried follows the same pattern: a free tier too restrictive for real use, and a paid tier that stacks another monthly subscription on top of what you already pay for Claude, Codex, or OpenCode.
 
-But every option I found follows the same pattern: a free tier too restrictive for real use, and a paid tier that stacks another monthly subscription on top of whatever I'm already paying for Claude, Codex, or OpenCode.
-
-So I cut out the middleman. pdfpal runs entirely on your own machine. Every chat, every cross-paper question, goes through the agent CLI you've already got installed and authenticated. No extra fee, no usage caps, no feature gates.
+pdfpal cuts out the middleman. It runs entirely on your own machine, and every chat, every cross-paper question, goes through the agent CLI you've already got installed and authenticated. No extra fee, no usage caps, no feature gates.
 
 It's also a CLI with the same project/source/collection model as the web app (the browser and the CLI call the same core code, nothing is reimplemented twice), plus a Claude Code / Codex skill that lets an agent drive the whole thing directly. Here's what that looks like end to end.
 
