@@ -34,7 +34,6 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
   const [messages, setMessages] = useState<Message[]>(initialMessages?.map(m => ({ role: m.role as 'user'|'assistant', content: m.content })) ?? [])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [webSearch, setWebSearch] = useState(true)
   const [error, setError] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -94,7 +93,6 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: userMsg,
-          search_web: webSearch,
           agent,
           project_id: projectId ?? null,
           source_id: sourceId ?? null,
@@ -182,22 +180,6 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
             </button>
           )}
           <AgentSelect agent={agent} setAgent={setAgent} agents={agentOptions} />
-          <button
-            onClick={() => setWebSearch(v => !v)}
-            title="Toggle web search"
-            style={{
-              background: webSearch ? '#1e2a1e' : '#1a1a1a',
-              border: `1px solid ${webSearch ? '#4ade80' : 'var(--border)'}`,
-              borderRadius: 6,
-              padding: '4px 10px',
-              fontSize: 12,
-              color: webSearch ? '#4ade80' : '#6b7280',
-              cursor: 'pointer',
-              transition: 'all 0.15s',
-            }}
-          >
-            🔍 Web {webSearch ? 'ON' : 'OFF'}
-          </button>
         </div>
       </div>
 

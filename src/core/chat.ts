@@ -16,7 +16,6 @@ export interface AskOptions {
   collectionSelector?: string
   agent?: AgentName
   model?: string
-  searchWeb?: boolean
 }
 
 export class ChatService {
@@ -32,19 +31,6 @@ export class ChatService {
     this.collections = new CollectionService(db)
     this.retrieval = new RetrievalService(db)
     this.agents = new AgentService(config)
-  }
-
-  private async webSearch(query: string): Promise<string> {
-    if (!this.config.tavilyApiKey) return ''
-    try {
-      const response = await fetch('https://api.tavily.com/search', {
-        method: 'POST', headers: { 'content-type': 'application/json' }, signal: AbortSignal.timeout(10_000),
-        body: JSON.stringify({ api_key: this.config.tavilyApiKey, query, max_results: 5 }),
-      })
-      if (!response.ok) return ''
-      const data = await response.json() as { results?: Array<{ title?: string; url?: string; content?: string }> }
-      return (data.results ?? []).map(item => `- ${item.title ?? ''} (${item.url ?? ''}): ${(item.content ?? '').slice(0, 300)}`).join('\n')
-    } catch { return '' }
   }
 
   async ask(projectSelector: string, question: string, options: AskOptions = {}): Promise<AskResult> {
@@ -74,8 +60,7 @@ export class ChatService {
       const block = `\n[Source: ${passage.source_title}; page ${passage.page_number}]\n${passage.content}\n`
       return out.length + block.length <= 80_000 ? out + block : out
     }, '')
-    const web = options.searchWeb === false ? '' : await this.webSearch(question)
-    const prompt = `You are a research assistant. Answer from the supplied passages. Cite source titles and page numbers when possible. If the context is insufficient, say so.\n\nPassages:${context}${web ? `\n\nWeb results:\n${web}` : ''}${history.length ? `\n\nRecent conversation:\n${history.map(message => `${message.role}: ${message.content}`).join('\n')}` : ''}\n\nUser: ${question}\nAssistant:`
+    const prompt = `You are a research assistant. Answer from the supplied passages. Cite source titles and page numbers when possible. If the context is insufficient, say so.\n\nPassages:${context}${history.length ? `\n\nRecent conversation:\n${history.map(message => `${message.role}: ${message.content}`).join('\n')}` : ''}\n\nUser: ${question}\nAssistant:`
     const answer = await this.agents.invoke(prompt, options.agent, options.model)
     const sourceIds = [...new Set(passages.map(passage => passage.source_id))]
     const sessionId = this.persist(project.id, selected.length === 1 ? selected[0]!.id : null, question, answer, sourceIds)

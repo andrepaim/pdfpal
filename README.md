@@ -49,7 +49,7 @@ pdfpal has no built-in web search — but an agent with the `pdfpal-cli` skill i
 
 ### Reading & Chat
 - **Split-pane reader** — PDF viewer on the left, chat/notes/related on the right; resizable.
-- **Per-source chat** — persistent conversation history per paper, restored across sessions; renders math (KaTeX); optional Tavily web augmentation.
+- **Per-source chat** — persistent conversation history per paper, restored across sessions; renders math (KaTeX); web research is handled by the selected agent when supported.
 - **Text selection → ask or highlight** — select text in the PDF to pre-fill a question or save a highlight.
 - **Project chat** — ask across multiple sources at once, toggle which sources are in context, or scope to a single collection.
 
@@ -80,7 +80,7 @@ pdfpal has no built-in web search — but an agent with the `pdfpal-cli` skill i
 
 - Node.js 22 or newer.
 - One supported agent CLI installed and authenticated: `claude`, `codex`, or `opencode`.
-- Optional Tavily API key for web-augmented chat.
+- The selected agent may use its own built-in web-search tools, depending on the agent and its configuration.
 
 ## Install and run
 
@@ -160,7 +160,6 @@ OPENCODE_BIN=opencode
 PDFPAL_MODEL=
 PDFPAL_PORT=8200
 PDFPAL_DB=
-TAVILY_API_KEY=
 SEMANTIC_SCHOLAR_API_KEY=
 ```
 
@@ -187,7 +186,7 @@ CLI ───────┐
 Fastify ───┘          │
    │                  ├── Claude / Codex / OpenCode CLI
    └── React SPA      ├── OpenAlex / Semantic Scholar
-                      └── Tavily (optional)
+                      └── Agent-provided web search (when supported)
 ```
 
 The npm package contains the compiled TypeScript server/CLI and the built React frontend and is intended for local, single-user operation.

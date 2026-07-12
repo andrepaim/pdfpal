@@ -8,7 +8,7 @@ import type Database from 'better-sqlite3'
 
 export function testConfig(): PdfpalConfig {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdfpal-test-'))
-  return loadConfig({ dataDir, port: 18299, host: '127.0.0.1', agent: 'claude', model: '', claudeBin: 'claude', codexBin: 'codex', opencodeBin: 'opencode', tavilyApiKey: '' })
+  return loadConfig({ dataDir, port: 18299, host: '127.0.0.1', agent: 'claude', model: '', claudeBin: 'claude', codexBin: 'codex', opencodeBin: 'opencode' })
 }
 
 export function testDb(config: PdfpalConfig): Database.Database {

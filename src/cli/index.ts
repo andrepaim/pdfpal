@@ -127,12 +127,11 @@ program.command('ask')
   .option('-c, --collection <collection>', 'restrict context to a collection subtree')
   .addOption(new Option('-a, --agent <agent>').choices(['claude', 'codex', 'opencode']))
   .option('-m, --model <model>')
-  .option('--no-web', 'disable Tavily augmentation')
   .action(async (p, question, options, command) => {
     const prompt = question ?? await readStdin()
     const result = await new ChatService(db(), config).ask(p, prompt, {
       sourceSelectors: options.source, collectionSelector: options.collection, agent: options.agent as AgentName | undefined,
-      model: options.model, searchWeb: options.web,
+      model: options.model,
     })
     print(json(command) ? result : result.answer, json(command))
   })

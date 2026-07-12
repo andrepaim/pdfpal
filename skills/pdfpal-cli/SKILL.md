@@ -99,7 +99,7 @@ Markdown notes attached to a project (and optionally to one of its sources).
 |---|---|
 | `pdfpal search <project> <query> [-l, --limit <number>]` | Full-text search over already-indexed source text within one project. This is NOT paper discovery — it only searches sources already added. |
 | `pdfpal highlights <project>` | Every annotation in the project, grouped by source. |
-| `pdfpal ask <project> [question] [-s, --source <source...>] [-c, --collection <collection>] [-a, --agent <claude\|codex\|opencode>] [-m, --model <model>] [--no-web]` | Answers a question using the project's indexed sources via a configured agent subprocess (`claude`/`codex`/`opencode`, whichever is installed/authenticated). Reads the question from stdin if omitted. `--no-web` disables Tavily web augmentation. Can be slow (spawns a subprocess) — not needed for building a project, only for querying it afterward. |
+| `pdfpal ask <project> [question] [-s, --source <source...>] [-c, --collection <collection>] [-a, --agent <claude\|codex\|opencode>] [-m, --model <model>]` | Answers a question using the project's indexed sources via a configured agent subprocess (`claude`/`codex`/`opencode`, whichever is installed/authenticated). Reads the question from stdin if omitted. The selected agent may use its own web-search tools when supported. Can be slow (spawns a subprocess) — not needed for building a project, only for querying it afterward. |
 
 ### Server (not needed for CLI-only workflows)
 

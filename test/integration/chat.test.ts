@@ -8,6 +8,8 @@ import { cleanup, createSource, testConfig, testDb } from '../helpers/test-utils
 test('chat retrieves context, invokes an agent, and persists history', async () => {
   const config = testConfig(), db = testDb(config)
   config.claudeBin = '/bin/echo'
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async () => { throw new Error('unexpected external web search') }) as typeof fetch
   try {
     const project = new ProjectService(db).create('Chat Project')
     const source = createSource(db, project.id, '[Page 2]\nTesting makes research reliable.')
@@ -17,7 +19,10 @@ test('chat retrieves context, invokes an agent, and persists history', async () 
     assert.deepEqual(result.sources[0]?.pages, [2])
     assert.ok(result.chat_session_id)
     assert.equal((db.prepare('SELECT COUNT(*) count FROM chat_messages').get() as { count: number }).count, 2)
-  } finally { cleanup(config, db) }
+  } finally {
+    globalThis.fetch = originalFetch
+    cleanup(config, db)
+  }
 })
 
 test('failed agent requests do not persist chat messages', async () => {

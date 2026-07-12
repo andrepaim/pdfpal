@@ -43,7 +43,6 @@ export default function ProjectChat() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [webSearch, setWebSearch] = useState(true)
   const [error, setError] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -109,7 +108,6 @@ export default function ProjectChat() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: userMsg,
-          search_web: webSearch,
           agent,
           project_id: projectId,
           source_id: null, // project-level chat
@@ -235,17 +233,6 @@ export default function ProjectChat() {
             }} style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 12, cursor: 'pointer', padding: '3px 8px' }}>Clear</button>
           )}
           <AgentSelect agent={agent} setAgent={setAgent} agents={agentOptions} />
-          <button
-            onClick={() => setWebSearch(v => !v)}
-            style={{
-              background: webSearch ? '#1e2a1e' : '#1a1a1a',
-              border: `1px solid ${webSearch ? '#4ade80' : 'var(--border)'}`,
-              borderRadius: 6, padding: '4px 10px', fontSize: 11,
-              color: webSearch ? '#4ade80' : '#6b7280', cursor: 'pointer',
-            }}
-          >
-            🔍 Web {webSearch ? 'ON' : 'OFF'}
-          </button>
         </div>
 
         {/* Messages */}

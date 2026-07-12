@@ -48,3 +48,23 @@ test('compiled CLI returns structured errors and stable exit codes', () => {
     assert.equal(JSON.parse(result.stderr).error.code, 'PROJECT_NOT_FOUND')
   } finally { fs.rmSync(dataDir, { recursive: true, force: true }) }
 })
+
+test('compiled CLI ask help has no Tavily web-search option', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdfpal-cli-help-'))
+  try {
+    const help = runCli(dataDir, ['ask', '--help'])
+    assert.equal(help.includes('--no-web'), false)
+    assert.equal(help.includes('Tavily'), false)
+  } finally { fs.rmSync(dataDir, { recursive: true, force: true }) }
+})
+
+test('compiled CLI rejects the removed web-search option', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdfpal-cli-no-web-'))
+  try {
+    const result = spawnSync(process.execPath, ['dist/cli/index.js', 'ask', 'missing', 'question', '--no-web'], {
+      cwd: path.resolve('.'), env: { ...process.env, PDFPAL_DATA_DIR: dataDir }, encoding: 'utf8',
+    })
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /unknown option '--no-web'/)
+  } finally { fs.rmSync(dataDir, { recursive: true, force: true }) }
+})

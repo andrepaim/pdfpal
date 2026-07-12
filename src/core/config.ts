@@ -15,7 +15,6 @@ const ConfigSchema = z.object({
   claudeBin: z.string(),
   codexBin: z.string(),
   opencodeBin: z.string(),
-  tavilyApiKey: z.string(),
   semanticScholarApiKey: z.string(),
 })
 
@@ -28,7 +27,6 @@ type ConfigFile = Partial<{
   claude_bin: string
   codex_bin: string
   opencode_bin: string
-  tavily_api_key: string
   semantic_scholar_api_key: string
 }>
 
@@ -62,7 +60,6 @@ export function loadConfig(overrides: Partial<PdfpalConfig> = {}): PdfpalConfig 
       claude_bin: legacy.CLAUDE_BIN,
       codex_bin: legacy.CODEX_BIN,
       opencode_bin: legacy.OPENCODE_BIN,
-      tavily_api_key: legacy.TAVILY_API_KEY,
     }
     fs.writeFileSync(configPath, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 })
   }
@@ -80,7 +77,6 @@ export function loadConfig(overrides: Partial<PdfpalConfig> = {}): PdfpalConfig 
     claudeBin: overrides.claudeBin ?? process.env.CLAUDE_BIN ?? file.claude_bin ?? 'claude',
     codexBin: overrides.codexBin ?? process.env.CODEX_BIN ?? file.codex_bin ?? 'codex',
     opencodeBin: overrides.opencodeBin ?? process.env.OPENCODE_BIN ?? file.opencode_bin ?? 'opencode',
-    tavilyApiKey: overrides.tavilyApiKey ?? process.env.TAVILY_API_KEY ?? file.tavily_api_key ?? '',
     semanticScholarApiKey: overrides.semanticScholarApiKey ?? process.env.SEMANTIC_SCHOLAR_API_KEY ?? file.semantic_scholar_api_key ?? '',
   })
 }
