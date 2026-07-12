@@ -54,7 +54,7 @@ Finding papers is legwork, and by now agents are better at it than we are: they 
 ### Reading & Chat
 - **Split-pane reader**: PDF viewer on the left, chat/notes/related on the right; resizable.
 - **Per-source chat**: persistent conversation history per paper, restored across sessions; renders math (KaTeX); web research is handled by the selected agent when supported.
-- **Text selection → ask or highlight**: select text in the PDF to pre-fill a question or save a highlight.
+- **Text selection → ask or highlight**: stuck on a passage? Select it and ask about it right there, grounded in the paper, or save it as a highlight.
 - **Project chat**: ask across multiple sources at once, toggle which sources are in context, or scope to a single collection.
 
 ### Organization
@@ -107,8 +107,8 @@ npm start
 
 1. Click **New Project** and give it a title.
 2. Click **Add Source** and paste a paper URL (arXiv, OpenReview, ACL Anthology, PMLR, a DOI link, or a direct `.pdf`), or search by title.
-3. Open the source, select any text to ask a question about it or save a highlight.
-4. Switch to the **Notes** tab and jot down a markdown summary; it renders as you read it back.
+3. Open the source, select the passage you're stuck on to ask about it, or save it as a highlight.
+4. Switch to the **Notes** tab and write what you understood in your own words as a markdown note; it renders as you read it back.
 5. Ask a question across every source in the project from **Project Chat**.
 
 ## CLI
@@ -194,3 +194,5 @@ Fastify ───┘          │
 ```
 
 The npm package contains the compiled TypeScript server/CLI and the built React frontend and is intended for local, single-user operation.
+
+*AI to read deeper, not to avoid reading.*
