@@ -6,7 +6,7 @@ import type { Database as DatabaseType } from 'better-sqlite3'
 import type { PdfpalConfig } from './config.js'
 import { ensureDataDirectories } from './config.js'
 
-const CURRENT_SCHEMA = 4
+const CURRENT_SCHEMA = 5
 
 function columnExists(db: DatabaseType, table: string, column: string): boolean {
   return (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some(row => row.name === column)
@@ -143,6 +143,17 @@ function migrate(db: DatabaseType): void {
     // The artifacts feature was removed; drop its table for existing databases.
     db.exec('DROP TABLE IF EXISTS artifacts')
     db.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (4, datetime('now'))").run()
+  }
+
+  if (!db.prepare('SELECT 1 FROM schema_migrations WHERE version=5').get()) {
+    // A highlight spanning multiple lines used to be stored as a single
+    // x1..y2 box (the union of every line's rect), which visually expanded
+    // to cover whole lines that were only partially selected. `rects` stores
+    // the precise per-line boxes instead; x1..y2 remains the union, used for
+    // sorting and as a fallback for annotations created before this column
+    // existed (rects is NULL for those rows).
+    if (!columnExists(db, 'annotations', 'rects')) db.exec('ALTER TABLE annotations ADD COLUMN rects TEXT')
+    db.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (5, datetime('now'))").run()
   }
 }
 

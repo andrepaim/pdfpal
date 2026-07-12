@@ -230,6 +230,10 @@ export interface Annotation {
   y1: number
   x2: number
   y2: number
+  // Per-line boxes for highlights spanning multiple lines; x1..y2 above is
+  // their union. Null for annotations created before this field existed, or
+  // when the highlight is a single line — render those with the x1..y2 box.
+  rects: { x1: number; y1: number; x2: number; y2: number }[] | null
   text: string
   color: string
   created_at: string

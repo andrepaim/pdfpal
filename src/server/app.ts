@@ -170,14 +170,20 @@ function registerDocumentRoutes(app: Awaited<ReturnType<typeof import('fastify')
   app.get('/api/projects/:projectId/sources/:sourceId/notes', async (request: any) => notes.listBySource(request.params.projectId, request.params.sourceId).map(preview))
 }
 
+function parseAnnotation(row: any): any {
+  if (!row) return row
+  return { ...row, rects: row.rects ? JSON.parse(row.rects) : null }
+}
+
 function registerAnnotationRoutes(app: any, db: import('better-sqlite3').Database) {
-  app.get('/api/projects/:projectId/sources/:sourceId/annotations', async (request: any) => db.prepare('SELECT * FROM annotations WHERE project_id=? AND source_id=? ORDER BY page_number,y1').all(request.params.projectId, request.params.sourceId))
+  app.get('/api/projects/:projectId/sources/:sourceId/annotations', async (request: any) =>
+    (db.prepare('SELECT * FROM annotations WHERE project_id=? AND source_id=? ORDER BY page_number,y1').all(request.params.projectId, request.params.sourceId) as any[]).map(parseAnnotation))
   app.post('/api/projects/:projectId/sources/:sourceId/annotations', async (request: any) => {
     const id = randomUUID(), body = request.body
-    db.prepare('INSERT INTO annotations(id,source_id,project_id,page_number,x1,y1,x2,y2,text,color,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)').run(id, request.params.sourceId, request.params.projectId, body.page_number, body.x1, body.y1, body.x2, body.y2, body.text, body.color ?? 'yellow', now())
-    return db.prepare('SELECT * FROM annotations WHERE id=?').get(id)
+    db.prepare('INSERT INTO annotations(id,source_id,project_id,page_number,x1,y1,x2,y2,text,color,rects,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').run(id, request.params.sourceId, request.params.projectId, body.page_number, body.x1, body.y1, body.x2, body.y2, body.text, body.color ?? 'yellow', body.rects ? JSON.stringify(body.rects) : null, now())
+    return parseAnnotation(db.prepare('SELECT * FROM annotations WHERE id=?').get(id))
   })
-  app.patch('/api/projects/:projectId/sources/:sourceId/annotations/:id', async (request: any) => { db.prepare('UPDATE annotations SET color=? WHERE id=? AND source_id=? AND project_id=?').run(request.body.color, request.params.id, request.params.sourceId, request.params.projectId); return db.prepare('SELECT * FROM annotations WHERE id=?').get(request.params.id) })
+  app.patch('/api/projects/:projectId/sources/:sourceId/annotations/:id', async (request: any) => { db.prepare('UPDATE annotations SET color=? WHERE id=? AND source_id=? AND project_id=?').run(request.body.color, request.params.id, request.params.sourceId, request.params.projectId); return parseAnnotation(db.prepare('SELECT * FROM annotations WHERE id=?').get(request.params.id)) })
   app.delete('/api/projects/:projectId/sources/:sourceId/annotations/:id', async (request: any, reply: any) => { db.prepare('DELETE FROM annotations WHERE id=? AND source_id=? AND project_id=?').run(request.params.id, request.params.sourceId, request.params.projectId); reply.status(204).send() })
 }
 

@@ -11,13 +11,15 @@ import type { Annotation } from '../lib/api'
 // silently breaking every render with "Failed to render page".
 pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
 
+type PageRect = { x1: number; y1: number; x2: number; y2: number }
+
 interface Props {
   url: string
   pages: number
   isResizing?: boolean
   onTextSelected?: (text: string) => void
   annotations?: Annotation[]
-  onHighlightCreate?: (data: { page_number: number; x1: number; y1: number; x2: number; y2: number; text: string; color: string }) => void
+  onHighlightCreate?: (data: { page_number: number; x1: number; y1: number; x2: number; y2: number; rects: PageRect[]; text: string; color: string }) => void
   onHighlightClick?: (annotation: Annotation) => void
 }
 
@@ -28,7 +30,13 @@ const COLOR_MAP: Record<string, string> = {
   pink:   'rgba(244,114,182,0.40)',
 }
 
-function getSelectionPageCoords(selection: Selection): { page: number; x1: number; y1: number; x2: number; y2: number } | null {
+// A highlight spanning multiple lines used to be drawn as a single box (the
+// union of every line's rect), which visually expanded to cover whole lines
+// that were only partially selected — e.g. selecting one full line plus half
+// of the next made the highlight cover all of the second line too. Returning
+// one rect per line (plus the union, kept for sorting/back-compat) lets the
+// caller draw a highlight that hugs the actual selected text on each line.
+function getSelectionPageRects(selection: Selection): { page: number; bbox: PageRect; rects: PageRect[] } | null {
   if (selection.rangeCount === 0) return null
   const range = selection.getRangeAt(0)
   // getClientRects() includes a zero-area rect for the <br> pdf.js inserts
@@ -37,8 +45,8 @@ function getSelectionPageCoords(selection: Selection): { page: number; x1: numbe
   // corner. Left in, that phantom rect drags the bounding box up to (0,0)
   // whenever a selection crosses a line break, ballooning the highlight to
   // cover the whole top-left of the page.
-  const rects = Array.from(range.getClientRects()).filter(r => r.width > 0 && r.height > 0)
-  if (rects.length === 0) return null
+  const clientRects = Array.from(range.getClientRects()).filter(r => r.width > 0 && r.height > 0)
+  if (clientRects.length === 0) return null
   const anchor = selection.anchorNode?.parentElement
   const pageEl = anchor?.closest('[data-page-number]') as HTMLElement | null
   if (!pageEl) return null
@@ -46,18 +54,17 @@ function getSelectionPageCoords(selection: Selection): { page: number; x1: numbe
   if (!pageNum) return null
   const pageRect = pageEl.getBoundingClientRect()
   if (pageRect.width === 0 || pageRect.height === 0) return null
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-  for (const r of rects) {
-    minX = Math.min(minX, (r.left   - pageRect.left) / pageRect.width)
-    minY = Math.min(minY, (r.top    - pageRect.top)  / pageRect.height)
-    maxX = Math.max(maxX, (r.right  - pageRect.left) / pageRect.width)
-    maxY = Math.max(maxY, (r.bottom - pageRect.top)  / pageRect.height)
+  const rects = clientRects.map(r => ({
+    x1: Math.max(0, (r.left   - pageRect.left) / pageRect.width),
+    y1: Math.max(0, (r.top    - pageRect.top)  / pageRect.height),
+    x2: Math.min(1, (r.right  - pageRect.left) / pageRect.width),
+    y2: Math.min(1, (r.bottom - pageRect.top)  / pageRect.height),
+  }))
+  const bbox = {
+    x1: Math.min(...rects.map(r => r.x1)), y1: Math.min(...rects.map(r => r.y1)),
+    x2: Math.max(...rects.map(r => r.x2)), y2: Math.max(...rects.map(r => r.y2)),
   }
-  return {
-    page: pageNum,
-    x1: Math.max(0, minX), y1: Math.max(0, minY),
-    x2: Math.min(1, maxX), y2: Math.min(1, maxY),
-  }
+  return { page: pageNum, bbox, rects }
 }
 
 const ZOOM_LEVELS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
@@ -71,7 +78,7 @@ export default function PdfViewer({ url, isResizing, onTextSelected, annotations
   const [scale, setScale] = useState(1.0)
   const [fitWidth, setFitWidth] = useState(true)
   const [containerWidth, setContainerWidth] = useState(800)
-  const [bubble, setBubble] = useState<{ x: number; y: number; text: string; coords: ReturnType<typeof getSelectionPageCoords> } | null>(null)
+  const [bubble, setBubble] = useState<{ x: number; y: number; text: string; coords: ReturnType<typeof getSelectionPageRects> } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   // Use a ref so the ResizeObserver callback always sees the current value
@@ -129,7 +136,7 @@ export default function PdfViewer({ url, isResizing, onTextSelected, annotations
         const anchor = selection.anchorNode
         if (!anchor || !container.contains(anchor)) return
         const rect = container.getBoundingClientRect()
-        const coords = getSelectionPageCoords(selection)
+        const coords = getSelectionPageRects(selection)
         setBubble({ x: e.clientX - rect.left, y: e.clientY - rect.top, text, coords })
       }, 80)
     }
@@ -153,7 +160,8 @@ export default function PdfViewer({ url, isResizing, onTextSelected, annotations
 
   const handleHighlight = () => {
     if (!bubble?.coords) return
-    onHighlightCreate?.({ page_number: bubble.coords.page, x1: bubble.coords.x1, y1: bubble.coords.y1, x2: bubble.coords.x2, y2: bubble.coords.y2, text: bubble.text, color: 'yellow' })
+    const { page, bbox, rects } = bubble.coords
+    onHighlightCreate?.({ page_number: page, x1: bbox.x1, y1: bbox.y1, x2: bbox.x2, y2: bbox.y2, rects, text: bubble.text, color: 'yellow' })
     setBubble(null)
     window.getSelection()?.removeAllRanges()
   }
@@ -243,26 +251,30 @@ export default function PdfViewer({ url, isResizing, onTextSelected, annotations
                     loading={<LoadingPage />}
                     error={<ErrorPage />}
                   />
-                  {pageAnnotations.map(ann => (
-                    <div
-                      key={ann.id}
-                      onClick={() => onHighlightClick?.(ann)}
-                      title={ann.text}
-                      style={{
-                        position: 'absolute',
-                        left:   `${ann.x1 * 100}%`,
-                        top:    `${ann.y1 * 100}%`,
-                        width:  `${(ann.x2 - ann.x1) * 100}%`,
-                        height: `${(ann.y2 - ann.y1) * 100}%`,
-                        background: COLOR_MAP[ann.color] ?? COLOR_MAP.yellow,
-                        pointerEvents: 'auto',
-                        cursor: 'pointer',
-                        zIndex: 2,
-                        borderRadius: 2,
-                        mixBlendMode: 'multiply',
-                      }}
-                    />
-                  ))}
+                  {pageAnnotations.map(ann =>
+                    // rects gives one box per selected line; annotations from
+                    // before that field existed only have the x1..y2 union.
+                    (ann.rects && ann.rects.length ? ann.rects : [ann]).map((r, i) => (
+                      <div
+                        key={`${ann.id}-${i}`}
+                        onClick={() => onHighlightClick?.(ann)}
+                        title={ann.text}
+                        style={{
+                          position: 'absolute',
+                          left:   `${r.x1 * 100}%`,
+                          top:    `${r.y1 * 100}%`,
+                          width:  `${(r.x2 - r.x1) * 100}%`,
+                          height: `${(r.y2 - r.y1) * 100}%`,
+                          background: COLOR_MAP[ann.color] ?? COLOR_MAP.yellow,
+                          pointerEvents: 'auto',
+                          cursor: 'pointer',
+                          zIndex: 2,
+                          borderRadius: 2,
+                          mixBlendMode: 'multiply',
+                        }}
+                      />
+                    ))
+                  )}
                 </div>
               </div>
             )

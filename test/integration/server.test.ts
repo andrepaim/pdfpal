@@ -33,8 +33,20 @@ test('Fastify document, annotation, chat, and research routes work', async () =>
     db.close()
     const annotation = await app.inject({ method: 'POST', url: `/api/projects/${project.id}/sources/${sourceId}/annotations`, payload: { page_number: 1, x1: 0, y1: 0, x2: 1, y2: 1, text: 'highlight', color: 'yellow' } })
     assert.equal(annotation.statusCode, 200)
+    assert.equal(annotation.json().rects, null)
     const chats = await app.inject({ method: 'GET', url: `/api/projects/${project.id}/chat` })
     assert.deepEqual(chats.json().messages, [])
+
+    // A highlight spanning two lines stores one rect per line, not just the
+    // x1..y2 union, so the highlight overlay hugs each line's actual selection.
+    const multiline = await app.inject({
+      method: 'POST', url: `/api/projects/${project.id}/sources/${sourceId}/annotations`,
+      payload: { page_number: 1, x1: 0.1, y1: 0.1, x2: 0.9, y2: 0.2, text: 'two lines', color: 'yellow', rects: [{ x1: 0.1, y1: 0.1, x2: 0.9, y2: 0.15 }, { x1: 0.1, y1: 0.15, x2: 0.5, y2: 0.2 }] },
+    })
+    assert.equal(multiline.statusCode, 200)
+    assert.deepEqual(multiline.json().rects, [{ x1: 0.1, y1: 0.1, x2: 0.9, y2: 0.15 }, { x1: 0.1, y1: 0.15, x2: 0.5, y2: 0.2 }])
+    const listed = await app.inject({ method: 'GET', url: `/api/projects/${project.id}/sources/${sourceId}/annotations` })
+    assert.deepEqual(listed.json().map((a: { rects: unknown }) => a.rects), [null, [{ x1: 0.1, y1: 0.1, x2: 0.9, y2: 0.15 }, { x1: 0.1, y1: 0.15, x2: 0.5, y2: 0.2 }]])
   } finally { await app.close(); cleanup(config, { close() {} } as never) }
 })
 
