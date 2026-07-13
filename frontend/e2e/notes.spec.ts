@@ -11,7 +11,7 @@ test.describe('Notes management', () => {
 
     await page.goto(`/projects/${project.id}`);
     // Switch to Notes tab
-    await page.locator('text=Notes').click();
+    await page.getByRole('tab', { name: 'Notes' }).click();
     await expect(page.locator('text=No notes yet')).toBeVisible();
   });
 
@@ -20,7 +20,7 @@ test.describe('Notes management', () => {
 
     await page.goto(`/projects/${project.id}`);
     // Switch to Notes tab
-    await page.locator('text=Notes').click();
+    await page.getByRole('tab', { name: 'Notes' }).click();
 
     // Click "New Note" button
     await page.getByRole('button', { name: /New Note/ }).click();
@@ -89,7 +89,7 @@ test.describe('Notes management', () => {
     await createNoteViaApi(page, project.id, { title: 'Listed Note', content: 'Some content' });
 
     await page.goto(`/projects/${project.id}`);
-    await page.locator('text=Notes').click();
+    await page.getByRole('tab', { name: 'Notes' }).click();
 
     // Note should appear in the list
     await expect(page.locator('text=Listed Note')).toBeVisible();
@@ -104,7 +104,7 @@ test.describe('Notes management', () => {
 
     // Navigate to project and check notes tab
     await page.goto(`/projects/${project.id}`);
-    await page.locator('text=Notes').click();
+    await page.getByRole('tab', { name: 'Notes' }).click();
 
     await expect(page.locator('text=Delete Me Note')).not.toBeVisible();
     await expect(page.locator('text=No notes yet')).toBeVisible();

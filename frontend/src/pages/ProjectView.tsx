@@ -469,7 +469,7 @@ export default function ProjectView() {
   if (!projectId) return null
 
   const navItem = (t: Tab, icon: string, label: string, count?: number) => (
-    <div onClick={() => setTab(t)} style={{
+    <div role="tab" aria-selected={tab === t} onClick={() => setTab(t)} style={{
       display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
       borderRadius: 8, cursor: 'pointer', fontSize: 13, marginBottom: 2,
       background: tab === t ? '#1e1b4b' : 'transparent',
