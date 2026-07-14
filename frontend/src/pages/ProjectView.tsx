@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { projectsApi, sourcesApi, collectionsApi, notesApi, chatApi, searchApi, highlightsApi, type Project, type Source, type Collection, type Note, type ChatSession, type SearchPassage, type Highlight } from '../lib/api'
 import SearchPaperModal from '../components/SearchPaperModal'
@@ -81,13 +81,21 @@ function SourcesTab({ projectId }: { projectId: string }) {
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const initializedExpanded = useRef(false)
   const [dragItem, setDragItem] = useState<DragItem | null>(null)
   const [dropTarget, setDropTarget] = useState<string | null>(null) // collection id or 'root'
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
 
   const reload = () => Promise.all([sourcesApi.list(projectId), collectionsApi.list(projectId)])
-    .then(([s, c]) => { setSources(s); setCollections(c) })
+    .then(([s, c]) => {
+      setSources(s)
+      setCollections(c)
+      if (!initializedExpanded.current && c.length > 0) {
+        initializedExpanded.current = true
+        setExpanded(new Set(c.map(collection => collection.id)))
+      }
+    })
     .finally(() => setLoading(false))
 
   useEffect(() => { reload() }, [projectId])
