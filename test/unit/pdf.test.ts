@@ -69,6 +69,21 @@ test('rewritePdfUrl removes tracking parameters and known paper paths', () => {
   assert.equal(rewritePdfUrl('https://example.com/paper.pdf?ref=home'), 'https://example.com/paper.pdf')
 })
 
+test('rewritePdfUrl converts Google Drive share links to the direct-download endpoint', () => {
+  // Regression: drive.google.com/file/d/<id>/view is a JS-rendered viewer
+  // page with no PDF link in its static HTML, so resolvePdf's link-discovery
+  // fallback always failed with PDF_LINK_NOT_FOUND. uc?export=download
+  // redirects straight to the raw file bytes instead.
+  assert.equal(
+    rewritePdfUrl('https://drive.google.com/file/d/1qzKI4DKnyHRpXK1J3ATPqwaqLc0iNu-M/view?usp=sharing'),
+    'https://drive.google.com/uc?export=download&id=1qzKI4DKnyHRpXK1J3ATPqwaqLc0iNu-M',
+  )
+  assert.equal(
+    rewritePdfUrl('https://drive.google.com/open?id=1qzKI4DKnyHRpXK1J3ATPqwaqLc0iNu-M'),
+    'https://drive.google.com/uc?export=download&id=1qzKI4DKnyHRpXK1J3ATPqwaqLc0iNu-M',
+  )
+})
+
 test('resolvePdf accepts direct PDFs and discovers relative HTML links', async () => {
   const original = globalThis.fetch
   try {

@@ -28,6 +28,12 @@ export function rewritePdfUrl(input: string): string {
   if (acl) value = `https://aclanthology.org/${acl[1]}.pdf`
   const pmlr = value.match(/^(https?:\/\/proceedings\.mlr\.press\/v\d+)\/([a-z0-9]+)\.html/)
   if (pmlr) value = `${pmlr[1]}/${pmlr[2]}/${pmlr[2]}.pdf`
+  // Drive's share/view pages (/file/d/<id>/view, open?id=<id>) are a JS-rendered
+  // viewer with no scrapable PDF link in the static HTML. The uc?export=download
+  // endpoint redirects straight to the raw file bytes instead.
+  const driveId = value.match(/^https?:\/\/drive\.google\.com\/file\/d\/([^/?#]+)/)?.[1]
+    ?? value.match(/^https?:\/\/drive\.google\.com\/open\?(?:[^#]*&)?id=([^&#]+)/)?.[1]
+  if (driveId) value = `https://drive.google.com/uc?export=download&id=${driveId}`
   return value
 }
 
