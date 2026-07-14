@@ -1,12 +1,14 @@
 # Project loops
 
-## Test stabilizer
+## Local test-quality pass
 
-Checks the primary test suite for inconsistent results, repairs one proven root cause at a time, and stops after three consecutive passes or a bounded terminal state.
+Improves test confidence by completing at most one high-value test or bug-fix improvement per manual run.
 
 Prompt:
-> Run `npm test` three times under the same conditions and list tests whose result changes. If all three pass, stop without changes. Otherwise, fix the most frequent flake at its root cause—shared state, timing, ordering, or an external dependency—never with a blind sleep or retry. Run the affected test three times, then rerun the full suite. Repeat until three consecutive full-suite runs pass, progress stalls, or approval is required. Preserve unrelated work, exclude `npm run test:e2e`, and return each flake, cause, fix, evidence, and justified quarantine.
+> Review the current code, coverage, test results, and reproducible user-visible bugs. Choose at most one highest-risk uncovered behavior or bug. If none offers measurable value, make no changes and report a clean no-op. Add a meaningful regression test; if it exposes a bug, fix the smallest root cause. Run the affected checks and `npm run typecheck`, `npm test`, and `npm run build`; also run `npm run test:e2e` for frontend changes. Keep only verified changes, never weaken assertions or coverage thresholds, preserve unrelated work, and do not commit or push. Stop after the single improvement or earlier if blocked. Report coverage changes, tests, fixes, evidence, and remaining gaps.
 
 - Saved: 2026-07-14
-- Source: https://signals.forwardfuture.com/loop-library/loops/test-stabilizer-loop/
-- Source modified: 2026-06-20
+- Sources:
+  - https://signals.forwardfuture.com/loop-library/loops/quality-streak-loop/
+  - https://signals.forwardfuture.com/loop-library/loops/100-percent-test-coverage-loop/
+- Sources modified: 2026-06-17

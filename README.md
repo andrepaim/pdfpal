@@ -192,10 +192,10 @@ Reusable agent workflows for this repository live in [`LOOPS.md`](LOOPS.md). [Lo
 npx skills add Forward-Future/loopy --skill loopy -g
 ```
 
-Run the saved test-stabilizer workflow with:
+Run the saved local test-quality workflow with:
 
 ```text
-$loopy run the saved Test stabilizer loop
+$loopy run the saved Local test-quality pass loop
 ```
 
 ## Architecture
