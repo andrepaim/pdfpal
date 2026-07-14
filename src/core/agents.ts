@@ -36,6 +36,7 @@ export class AgentService {
     let stdin: string | undefined
     if (agent === 'claude') {
       args = ['--print']
+      if (model) args.push('--model', model)
       stdin = prompt
     } else if (agent === 'codex') {
       args = ['--ask-for-approval', 'never', 'exec', '--skip-git-repo-check', '--sandbox', 'read-only']

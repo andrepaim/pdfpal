@@ -19,6 +19,16 @@ test('missing agent binary produces a typed error', async () => {
   await assert.rejects(() => new AgentService(config).invoke('hello'), (error: unknown) => error instanceof PdfpalError && error.code === 'AGENT_NOT_FOUND')
 })
 
+test('Claude receives the configured model', async () => {
+  const config = testConfig()
+  const argsPath = path.join(config.dataDir, 'claude-args')
+  config.model = 'claude-sonnet'
+  config.claudeBin = executable(config, 'claude', `printf '%s\\n' "$@" > ${argsPath}; cat >/dev/null; printf 'claude answer'`)
+
+  assert.equal(await new AgentService(config).invoke('prompt', 'claude'), 'claude answer')
+  assert.deepEqual(fs.readFileSync(argsPath, 'utf8').trim().split(/\r?\n/), ['--print', '--model', 'claude-sonnet'])
+})
+
 function executable(config: ReturnType<typeof testConfig>, name: string, body: string): string {
   const file = path.join(config.dataDir, name)
   fs.writeFileSync(file, `#!/bin/sh\n${body}\n`, { mode: 0o700 })
