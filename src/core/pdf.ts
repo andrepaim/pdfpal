@@ -6,11 +6,6 @@ import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { PdfpalError } from './types.js'
 
 const HEADERS = { 'user-agent': 'Mozilla/5.0 pdfpal/2.0', accept: 'application/pdf,text/html;q=0.9,*/*;q=0.8' }
-export const MAX_PDF_PAGES = 200
-
-export function validatePdfPageCount(pages: number): void {
-  if (pages > MAX_PDF_PAGES) throw new PdfpalError('PDF_TOO_LARGE', `PDFs over ${MAX_PDF_PAGES} pages are not supported (${pages} pages)`)
-}
 
 async function fetchBytes(url: string, timeoutMs = 45_000): Promise<{ response: Response; bytes: Buffer }> {
   try {
@@ -85,7 +80,6 @@ export function titleFromLines(lines: TitleCandidateLine[]): string {
 
 export async function extractPdf(bytes: Buffer): Promise<{ text: string; pages: number; title: string }> {
   const document = await getDocument({ data: new Uint8Array(bytes), useSystemFonts: true }).promise
-  validatePdfPageCount(document.numPages)
   const parts: string[] = []
   let firstPageLines: TitleCandidateLine[] = []
   for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber++) {

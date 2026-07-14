@@ -1,14 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { MAX_PDF_PAGES, excerptFromText, resolvePdf, rewritePdfUrl, titleFromLines, validatePdfPageCount } from '../../src/core/pdf.js'
+import { excerptFromText, resolvePdf, rewritePdfUrl, titleFromLines } from '../../src/core/pdf.js'
 import { PdfpalError } from '../../src/core/types.js'
-
-test('PDF page limit accepts 200 pages and rejects 201', () => {
-  assert.equal(MAX_PDF_PAGES, 200)
-  assert.doesNotThrow(() => validatePdfPageCount(200))
-  assert.throws(() => validatePdfPageCount(201),
-    (error: unknown) => error instanceof PdfpalError && error.code === 'PDF_TOO_LARGE' && /over 200 pages/.test(error.message))
-})
 
 test('titleFromLines picks the largest-font line, not just the first real line', () => {
   // Regression: extractPdf used to join every line's text with spaces before
