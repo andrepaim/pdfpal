@@ -38,6 +38,28 @@ test('removes a source, its managed PDF, and indexed passages', async () => {
   } finally { cleanup(config, db) }
 })
 
+test('refetches a local source and replaces stale indexed text', async () => {
+  const config = testConfig(), db = testDb(config)
+  try {
+    const project = new ProjectService(db).create('PDF Project')
+    const sources = new SourceService(db, config)
+    const source = await sources.add(project.id, path.resolve('test/fixtures/sample.pdf'))
+    const retrieval = new RetrievalService(db)
+    const staleText = '[Page 1]\nObsolete marker that must leave the search index.'
+    db.prepare('UPDATE sources SET pdf_text=? WHERE id=?').run(staleText, source.id)
+    retrieval.index(source.id, staleText)
+    assert.equal(retrieval.search(project.id, 'obsolete').length, 1)
+
+    const chunks = await sources.reindex(project.id, source.id, true)
+    const refreshed = sources.resolve(project.id, source.id)
+
+    assert.equal(chunks, 2)
+    assert.equal(refreshed.pages, 2)
+    assert.notEqual(refreshed.pdf_text, staleText)
+    assert.deepEqual(retrieval.search(project.id, 'obsolete'), [])
+  } finally { cleanup(config, db) }
+})
+
 test('moves a source and its source-scoped records atomically', () => {
   const config = testConfig(), db = testDb(config)
   try {
