@@ -71,7 +71,14 @@ const ZOOM_LEVELS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
 
 // Module-level constant so react-pdf's loadDocument effect never sees a new
 // object reference, preventing spurious document destroy/reload cycles.
-const PDF_OPTIONS = { withCredentials: true }
+const PDF_OPTIONS = {
+  withCredentials: true,
+  // PDF.js needs these assets to decode JPEG2000 page images and to load
+  // fallback fonts. Vite exposes them at these stable paths in dev and in
+  // the production bundle (see vite.config.ts).
+  wasmUrl: '/pdfjs/wasm/',
+  standardFontDataUrl: '/pdfjs/standard_fonts/',
+}
 
 export default function PdfViewer({ url, isResizing, onTextSelected, annotations, onHighlightCreate, onHighlightClick }: Props) {
   const [numPages, setNumPages] = useState(0)
@@ -240,43 +247,14 @@ export default function PdfViewer({ url, isResizing, onTextSelected, annotations
             const pageNum = i + 1
             const pageAnnotations = (annotations ?? []).filter(a => a.page_number === pageNum)
             return (
-              <div key={i} style={{ display: 'flex', justifyContent: 'center', marginBottom: 12, position: 'relative' }}>
-                <div style={{ position: 'relative' }}>
-                  <Page
-                    pageNumber={pageNum}
-                    width={pageWidth}
-                    scale={pageScale}
-                    renderTextLayer={true}
-                    renderAnnotationLayer={true}
-                    loading={<LoadingPage />}
-                    error={<ErrorPage />}
-                  />
-                  {pageAnnotations.map(ann =>
-                    // rects gives one box per selected line; annotations from
-                    // before that field existed only have the x1..y2 union.
-                    (ann.rects && ann.rects.length ? ann.rects : [ann]).map((r, i) => (
-                      <div
-                        key={`${ann.id}-${i}`}
-                        onClick={() => onHighlightClick?.(ann)}
-                        title={ann.text}
-                        style={{
-                          position: 'absolute',
-                          left:   `${r.x1 * 100}%`,
-                          top:    `${r.y1 * 100}%`,
-                          width:  `${(r.x2 - r.x1) * 100}%`,
-                          height: `${(r.y2 - r.y1) * 100}%`,
-                          background: COLOR_MAP[ann.color] ?? COLOR_MAP.yellow,
-                          pointerEvents: 'auto',
-                          cursor: 'pointer',
-                          zIndex: 2,
-                          borderRadius: 2,
-                          mixBlendMode: 'multiply',
-                        }}
-                      />
-                    ))
-                  )}
-                </div>
-              </div>
+              <LazyPdfPage
+                key={i}
+                pageNumber={pageNum}
+                pageWidth={pageWidth}
+                pageScale={pageScale}
+                annotations={pageAnnotations}
+                onHighlightClick={onHighlightClick}
+              />
             )
           })}
         </Document>
@@ -317,6 +295,88 @@ export default function PdfViewer({ url, isResizing, onTextSelected, annotations
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+interface LazyPdfPageProps {
+  pageNumber: number
+  pageWidth?: number
+  pageScale?: number
+  annotations: Annotation[]
+  onHighlightClick?: (annotation: Annotation) => void
+}
+
+// The viewer can contain hundreds of pages. Mounting a canvas and text layer
+// for every page at once overwhelms the browser (especially for scanned PDFs
+// whose pages contain JPEG2000 images), leaving later canvases permanently
+// hidden while their text layers remain selectable. Keep the layout with a
+// lightweight placeholder and only mount pages as they approach the viewport.
+const PAGE_ASPECT_RATIO = 1.53
+
+function LazyPdfPage({ pageNumber, pageWidth, pageScale, annotations, onHighlightClick }: LazyPdfPageProps) {
+  const pageRef = useRef<HTMLDivElement>(null)
+  const [shouldRender, setShouldRender] = useState(pageNumber === 1)
+
+  useEffect(() => {
+    if (shouldRender || !pageRef.current) return
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries.some(entry => entry.isIntersecting)) {
+          setShouldRender(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '1200px 0px' },
+    )
+    observer.observe(pageRef.current)
+    return () => observer.disconnect()
+  }, [shouldRender])
+
+  const placeholderWidth = pageWidth ?? 600 * (pageScale ?? 1)
+  const placeholderHeight = placeholderWidth * PAGE_ASPECT_RATIO
+
+  return (
+    <div ref={pageRef} style={{ display: 'flex', justifyContent: 'center', marginBottom: 12, position: 'relative', minHeight: placeholderHeight }}>
+      <div style={{ position: 'relative' }}>
+        {shouldRender ? (
+          <Page
+            pageNumber={pageNumber}
+            width={pageWidth}
+            scale={pageScale}
+            renderTextLayer={true}
+            renderAnnotationLayer={true}
+            loading={<LoadingPage />}
+            error={<ErrorPage />}
+          />
+        ) : (
+          <div style={{ width: placeholderWidth, height: placeholderHeight, background: 'white' }} aria-label={`Page ${pageNumber}`} />
+        )}
+        {annotations.map(ann =>
+          // rects gives one box per selected line; annotations from before
+          // that field existed only have the x1..y2 union.
+          (ann.rects && ann.rects.length ? ann.rects : [ann]).map((r, i) => (
+            <div
+              key={`${ann.id}-${i}`}
+              onClick={() => onHighlightClick?.(ann)}
+              title={ann.text}
+              style={{
+                position: 'absolute',
+                left:   `${r.x1 * 100}%`,
+                top:    `${r.y1 * 100}%`,
+                width:  `${(r.x2 - r.x1) * 100}%`,
+                height: `${(r.y2 - r.y1) * 100}%`,
+                background: COLOR_MAP[ann.color] ?? COLOR_MAP.yellow,
+                pointerEvents: 'auto',
+                cursor: 'pointer',
+                zIndex: 2,
+                borderRadius: 2,
+                mixBlendMode: 'multiply',
+              }}
+            />
+          )),
+        )}
+      </div>
     </div>
   )
 }
