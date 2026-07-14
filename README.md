@@ -184,6 +184,20 @@ cd frontend && npx playwright test
 
 `npm test` runs Node's test runner through `tsx`, fails when no tests are found, and enforces the configured c8 coverage thresholds. Playwright starts the compiled Fastify server using an isolated temporary data directory. Set `PLAYWRIGHT_EXECUTABLE_PATH` to use a system Chromium installation.
 
+### Project loops
+
+Reusable agent workflows for this repository live in [`LOOPS.md`](LOOPS.md). [Loopy](https://signals.forwardfuture.com/loop-library/) is optional contributor tooling and is not required to build or run pdfpal.
+
+```bash
+npx skills add Forward-Future/loopy --skill loopy -g
+```
+
+Run the saved test-stabilizer workflow with:
+
+```text
+$loopy run the saved Test stabilizer loop
+```
+
 ## Architecture
 
 ```text
