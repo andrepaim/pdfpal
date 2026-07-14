@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import path from 'node:path'
 import { SourceService } from '../../src/core/sources.js'
 import { ProjectService } from '../../src/core/projects.js'
+import { RetrievalService } from '../../src/core/retrieval.js'
 import { cleanup, testConfig, testDb } from '../helpers/test-utils.js'
 
 test('adds a local PDF, stores a managed copy, and indexes it', async () => {
@@ -13,6 +14,27 @@ test('adds a local PDF, stores a managed copy, and indexes it', async () => {
     assert.equal(source.pages, 2)
     assert.ok(source.local_path)
     assert.equal((db.prepare('SELECT COUNT(*) count FROM source_chunks WHERE source_id=?').get(source.id) as { count: number }).count, 2)
+  } finally { cleanup(config, db) }
+})
+
+test('removes a source, its managed PDF, and indexed passages', async () => {
+  const config = testConfig(), db = testDb(config)
+  try {
+    const project = new ProjectService(db).create('PDF Project')
+    const sources = new SourceService(db, config)
+    const source = await sources.add(project.id, path.resolve('test/fixtures/sample.pdf'))
+    const retrieval = new RetrievalService(db)
+
+    assert.ok(sources.pdfPath(source))
+    assert.equal((db.prepare('SELECT COUNT(*) count FROM source_chunks WHERE source_id=?').get(source.id) as { count: number }).count, 2)
+
+    sources.remove(project.id, source.id)
+
+    assert.equal(sources.list(project.id).length, 0)
+    assert.equal(sources.pdfPath(source), null)
+    assert.equal((db.prepare('SELECT COUNT(*) count FROM source_chunks WHERE source_id=?').get(source.id) as { count: number }).count, 0)
+    assert.equal((db.prepare('SELECT COUNT(*) count FROM source_chunks_fts').get() as { count: number }).count, 0)
+    assert.deepEqual(retrieval.search(project.id, 'research'), [])
   } finally { cleanup(config, db) }
 })
 
