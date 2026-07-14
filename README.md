@@ -200,15 +200,32 @@ $loopy run the saved Test stabilizer loop
 
 ## Architecture
 
+The browser and CLI are two entry points over the same TypeScript services. The browser reaches those services through Fastify over HTTP; the CLI calls them directly. Both paths share configuration, storage, retrieval, chat history, and agent adapters.
+
 ```text
-CLI ───────┐
-           ├── TypeScript core ── SQLite + FTS5 + managed PDFs
-Fastify ───┘          │
-   │                  ├── Claude / Codex / OpenCode CLI
-   └── React SPA      ├── OpenAlex / Semantic Scholar
-                      └── Agent-provided web search (when supported)
+React SPA ── HTTP ──▶ Fastify API ──┐
+                                    ├── TypeScript core
+pdfpal CLI ─────────────────────────┘          │
+                                              ├── Projects, sources, collections, notes, chat
+                                              ├── SQLite + FTS5 retrieval and history
+                                              ├── Managed PDF copies and extracted text
+                                              ├── Claude / Codex / OpenCode subprocesses
+                                              └── OpenAlex / Semantic Scholar integrations
 ```
 
-The npm package contains the compiled TypeScript server/CLI and the built React frontend and is intended for local, single-user operation.
+### Main data paths
+
+- **Ingest**: `SourceService` resolves a local file or URL, extracts its text, stores a managed PDF copy, and chunks/indexes the text in SQLite FTS5.
+- **Ask**: `ChatService` scopes retrieval by project, source, or collection, builds a grounded prompt from matching passages, invokes the selected agent CLI, and persists the answer and source references.
+- **Use**: React pages call the Fastify API; CLI commands and [`skills/pdfpal-cli`](skills/pdfpal-cli/) automate the same core operations. An agent subprocess may use its own web-search tools when supported by that agent.
+
+The implementation follows that split:
+
+- [`frontend/src`](frontend/src/) contains the reader, chat, projects, notes, collections, and source-discovery UI.
+- [`src/server`](src/server/) exposes the HTTP API and serves the built frontend.
+- [`src/cli`](src/cli/) defines the scriptable `pdfpal` commands.
+- [`src/core`](src/core/) owns projects, sources, collections, notes, retrieval, chat, PDF handling, configuration, and agent invocation.
+
+The npm package contains the compiled TypeScript server/CLI and the built React frontend. Runtime state stays local under `~/.pdfpal` by default, while external network edges are limited to source URLs, OpenAlex, Semantic Scholar, and capabilities provided by the selected agent. It is intended for local, single-user operation.
 
 *AI to read deeper, not to avoid reading.*
