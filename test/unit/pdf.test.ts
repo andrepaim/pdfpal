@@ -1,7 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { resolvePdf, rewritePdfUrl, titleFromLines } from '../../src/core/pdf.js'
+import { MAX_PDF_PAGES, excerptFromText, resolvePdf, rewritePdfUrl, titleFromLines, validatePdfPageCount } from '../../src/core/pdf.js'
 import { PdfpalError } from '../../src/core/types.js'
+
+test('PDF page limit accepts 200 pages and rejects 201', () => {
+  assert.equal(MAX_PDF_PAGES, 200)
+  assert.doesNotThrow(() => validatePdfPageCount(200))
+  assert.throws(() => validatePdfPageCount(201),
+    (error: unknown) => error instanceof PdfpalError && error.code === 'PDF_TOO_LARGE' && /over 200 pages/.test(error.message))
+})
 
 test('titleFromLines picks the largest-font line, not just the first real line', () => {
   // Regression: extractPdf used to join every line's text with spaces before
@@ -33,6 +40,34 @@ test('titleFromLines skips a small-font permission notice printed above the titl
 test('titleFromLines skips blank or trivially short leading lines', () => {
   const lines = [{ text: '1', fontSize: 10 }, { text: '', fontSize: 10 }, { text: 'Real Paper Title Here', fontSize: 10 }]
   assert.equal(titleFromLines(lines), 'Real Paper Title Here')
+})
+
+test('excerptFromText skips straight to the content after an "Abstract" heading', () => {
+  // Regression: a plain prefix of the extracted text often surfaces
+  // boilerplate (arXiv watermarks, journal headers, copyright notices)
+  // instead of anything about the paper. This is the real first page of the
+  // "Attention Is All You Need" arXiv PDF, where a Google copyright notice
+  // and the title/authors precede the actual abstract.
+  const text = '[Page 1]\nProvided proper attribution is provided, Google hereby grants permission to reproduce the tables and figures in this paper solely for use in journalistic or scholarly works. Attention Is All You Need Ashish Vaswani Google Brain Abstract The dominant sequence transduction models are based on complex recurrent or convolutional neural networks.'
+  assert.equal(excerptFromText(text), 'The dominant sequence transduction models are based on complex recurrent or convolutional neural networks.')
+})
+
+test('excerptFromText handles the "Abstract—" dash style used by IEEE-formatted papers', () => {
+  const text = '[Page 1]\n1 Product quantization for nearest neighbor search Herve Jegou, Matthijs Douze Abstract— This paper introduces a product quantization based approach.'
+  assert.equal(excerptFromText(text), 'This paper introduces a product quantization based approach.')
+})
+
+test('excerptFromText falls back to the raw prefix when no "Abstract" heading is found', () => {
+  assert.equal(excerptFromText('[Page 1]\nJust some extracted text with no heading.'), 'Just some extracted text with no heading.')
+  assert.equal(excerptFromText(null), '')
+})
+
+test('excerptFromText truncates on a word boundary and adds an ellipsis', () => {
+  const body = 'word '.repeat(100).trim()
+  const result = excerptFromText(`Abstract ${body}`, 20)
+  assert.ok(result.endsWith('…'))
+  assert.ok(result.length <= 21)
+  assert.equal(result, 'word word word word…')
 })
 
 test('rewritePdfUrl removes tracking parameters and known paper paths', () => {

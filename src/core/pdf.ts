@@ -6,6 +6,11 @@ import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { PdfpalError } from './types.js'
 
 const HEADERS = { 'user-agent': 'Mozilla/5.0 pdfpal/2.0', accept: 'application/pdf,text/html;q=0.9,*/*;q=0.8' }
+export const MAX_PDF_PAGES = 200
+
+export function validatePdfPageCount(pages: number): void {
+  if (pages > MAX_PDF_PAGES) throw new PdfpalError('PDF_TOO_LARGE', `PDFs over ${MAX_PDF_PAGES} pages are not supported (${pages} pages)`)
+}
 
 async function fetchBytes(url: string, timeoutMs = 45_000): Promise<{ response: Response; bytes: Buffer }> {
   try {
@@ -80,7 +85,7 @@ export function titleFromLines(lines: TitleCandidateLine[]): string {
 
 export async function extractPdf(bytes: Buffer): Promise<{ text: string; pages: number; title: string }> {
   const document = await getDocument({ data: new Uint8Array(bytes), useSystemFonts: true }).promise
-  if (document.numPages > 50) throw new PdfpalError('PDF_TOO_LARGE', `PDFs over 50 pages are not supported (${document.numPages} pages)`)
+  validatePdfPageCount(document.numPages)
   const parts: string[] = []
   let firstPageLines: TitleCandidateLine[] = []
   for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber++) {
@@ -113,6 +118,20 @@ export async function extractPdf(bytes: Buffer): Promise<{ text: string; pages: 
   if (!title) title = titleFromLines(firstPageLines)
   await document.destroy()
   return { text: parts.join('\n\n'), pages: document.numPages, title }
+}
+
+const ABSTRACT_HEADING = /\babstract\b[\s:.\-–—]*/i
+
+// Camera-ready PDFs often prepend a journal header, arXiv watermark, or
+// copyright notice before the title, so a plain prefix of the extracted text
+// is frequently just boilerplate. The literal "Abstract" heading is a much
+// more reliable landmark: skip straight to whatever follows it.
+export function excerptFromText(text: string | null, maxLength = 280): string {
+  const clean = (text ?? '').replace(/\[Page \d+\]\n?/g, ' ').replace(/\s+/g, ' ').trim()
+  const heading = ABSTRACT_HEADING.exec(clean)
+  const body = (heading ? clean.slice(heading.index + heading[0].length) : clean).trim()
+  if (body.length <= maxLength) return body
+  return `${body.slice(0, maxLength).replace(/\s+\S*$/, '')}…`
 }
 
 export function storePdf(bytes: Buffer, filesDir: string, sourceId: string): { localPath: string; hash: string } {

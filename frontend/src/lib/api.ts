@@ -39,6 +39,7 @@ export interface Source {
   title?: string
   pages: number
   pdf_text?: string
+  excerpt?: string
   collection_id?: string | null
   created_at: string
   accessed_at: string
