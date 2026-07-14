@@ -33,6 +33,23 @@ test('Codex and OpenCode output adapters parse successful responses', async () =
   assert.equal(await new AgentService(config).invoke('prompt', 'opencode', 'model-x'), 'open answer')
 })
 
+test('Codex global approval option precedes the exec subcommand', async () => {
+  const config = testConfig()
+  const argsPath = path.join(config.dataDir, 'codex-args')
+  config.codexBin = executable(config, 'codex', `printf '%s\\n' "$@" > ${argsPath}; cat >/dev/null; printf 'codex answer'`)
+
+  assert.equal(await new AgentService(config).invoke('prompt', 'codex'), 'codex answer')
+  assert.deepEqual(fs.readFileSync(argsPath, 'utf8').trim().split(/\r?\n/), [
+    '--ask-for-approval',
+    'never',
+    'exec',
+    '--skip-git-repo-check',
+    '--sandbox',
+    'read-only',
+    '-',
+  ])
+})
+
 test('nonzero agent exits become AGENT_FAILED errors', async () => {
   const config = testConfig()
   config.claudeBin = executable(config, 'failed-agent', "printf 'failure' >&2; exit 2")

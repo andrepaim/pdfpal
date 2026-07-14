@@ -38,7 +38,7 @@ export class AgentService {
       args = ['--print']
       stdin = prompt
     } else if (agent === 'codex') {
-      args = ['exec', '--skip-git-repo-check', '--sandbox', 'read-only', '-a', 'never']
+      args = ['--ask-for-approval', 'never', 'exec', '--skip-git-repo-check', '--sandbox', 'read-only']
       if (model) args.push('-m', model)
       args.push('-')
       stdin = prompt
