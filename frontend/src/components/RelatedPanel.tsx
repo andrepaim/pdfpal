@@ -3,7 +3,7 @@
  * Shows paper cards with "Add to project" button.
  */
 import { useState, useEffect } from 'react'
-import { relatedApi, sourcesApi, type RelatedPaper } from '../lib/api'
+import { relatedApi, sourcesApi, type RelatedPaper, type RelatedResult } from '../lib/api'
 
 interface Props {
   projectId: string
@@ -110,7 +110,7 @@ function PaperCard({
 }
 
 export default function RelatedPanel({ projectId, sourceId }: Props) {
-  const [data, setData] = useState<{ references: RelatedPaper[]; citations: RelatedPaper[] } | null>(null)
+  const [data, setData] = useState<RelatedResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
@@ -174,10 +174,13 @@ export default function RelatedPanel({ projectId, sourceId }: Props) {
       {/* Header */}
       <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
         <span style={{ fontSize: 14, fontWeight: 600, color: '#d1d5db', flex: 1 }}>Related Papers</span>
+        {data?.provider === 'openalex' && (
+          <span title="Results supplied by OpenAlex" style={{ color: '#6b7280', fontSize: 10 }}>via OpenAlex</span>
+        )}
         <button
           onClick={handleRefresh}
           disabled={refreshing || loading}
-          title="Refresh from Semantic Scholar"
+          title="Refresh related papers"
           style={{ background: 'none', border: '1px solid var(--border)', color: '#6b7280', borderRadius: 6, padding: '3px 8px', fontSize: 10, cursor: 'pointer' }}
         >
           {refreshing ? <span className="spinner" style={{ width: 10, height: 10 }} /> : '↺'}
@@ -197,7 +200,7 @@ export default function RelatedPanel({ projectId, sourceId }: Props) {
         {loading && (
           <div style={{ textAlign: 'center', paddingTop: 40, color: '#4b5563' }}>
             <div className="spinner" style={{ margin: '0 auto 12px' }} />
-            <div style={{ fontSize: 12 }}>Querying Semantic Scholar…</div>
+            <div style={{ fontSize: 12 }}>Finding related papers…</div>
           </div>
         )}
 
@@ -205,9 +208,9 @@ export default function RelatedPanel({ projectId, sourceId }: Props) {
           <div style={{ textAlign: 'center', paddingTop: 40, color: '#6b7280', fontSize: 12, padding: '40px 16px' }}>
             <div style={{ fontSize: 28, marginBottom: 12 }}>🔍</div>
             <div>{error}</div>
-            {error === 'Paper not found in Semantic Scholar' && (
+            {error === 'Paper not found in Semantic Scholar or OpenAlex' && (
               <div style={{ fontSize: 11, marginTop: 8, color: '#4b5563' }}>
-                This paper may not be indexed in Semantic Scholar, or its URL doesn't contain a recognizable DOI or arXiv ID.
+                Neither citation index could identify this paper. Both References and Citing need a matching paper record.
               </div>
             )}
             <button

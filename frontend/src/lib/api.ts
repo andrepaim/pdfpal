@@ -161,6 +161,7 @@ export interface RelatedResult {
   citations: RelatedPaper[]
   cached: boolean
   paper_id?: string
+  provider?: 'semantic_scholar' | 'openalex'
   error?: string
 }
 
@@ -254,4 +255,3 @@ export const annotationsApi = {
       method: 'PATCH', body: JSON.stringify({ color }),
     }),
 }
-

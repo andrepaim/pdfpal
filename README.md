@@ -71,7 +71,7 @@ Finding papers is legwork, and by now agents are better at it than we are: they 
 - **Paper search**: search OpenAlex by title, one click to add:
 
   ![Search](screenshots/3-search.png)
-- **Related papers**: references and citations from Semantic Scholar for any source, one click to add:
+- **Related papers**: references and citations from Semantic Scholar, with an OpenAlex fallback when needed, one click to add:
 
   ![Related](screenshots/2-related.png)
 - **Smart PDF resolver**: paste any URL: arXiv, OpenReview, ACL Anthology, PMLR, a DOI link, or a direct `.pdf`; tracking params stripped automatically.
