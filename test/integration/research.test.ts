@@ -86,6 +86,121 @@ test('falls back to OpenAlex references and citations when Semantic Scholar has 
   } finally { globalThis.fetch = originalFetch; cleanup(config, db) }
 })
 
+test('pages through Semantic Scholar to collect more references than fit in one response', async () => {
+  const config = testConfig(), db = testDb(config), originalFetch = globalThis.fetch
+  try {
+    const projectId = createProject(db), timestamp = new Date().toISOString()
+    db.prepare('INSERT INTO sources(id,project_id,type,url,title,pdf_text,pages,created_at,accessed_at) VALUES (?,?,?,?,?,?,?,?,?)')
+      .run('paper', projectId, 'pdf', 'https://arxiv.org/abs/1801.07698', 'ArcFace', 'text', 1, timestamp, timestamp)
+    const referenceOffsets: number[] = []
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = new URL(String(input))
+      if (url.pathname.endsWith('/citations')) return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+      const offset = Number(url.searchParams.get('offset')), limit = Number(url.searchParams.get('limit'))
+      referenceOffsets.push(offset)
+      // 130 references in total, so the last page comes back short.
+      const remaining = Math.max(0, Math.min(limit, 130 - offset))
+      const data = Array.from({ length: remaining }, (_, i) => ({ citedPaper: { paperId: `ref${offset + i}`, title: `Reference ${offset + i}`, authors: [{ name: 'Ada' }], year: 2020 } }))
+      return new Response(JSON.stringify({ data }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }) as typeof fetch
+
+    const fetched = await relatedPapers(db, projectId, 'paper')
+    assert.deepEqual(referenceOffsets, [0, 100])
+    assert.equal(fetched.references.length, 130)
+    assert.equal(fetched.references[0]?.title, 'Reference 0')
+    assert.equal(fetched.references[129]?.title, 'Reference 129')
+
+    const cached = await relatedPapers(db, projectId, 'paper')
+    assert.equal(cached.references.length, 130, 'the full set should survive the cache round-trip')
+  } finally { globalThis.fetch = originalFetch; cleanup(config, db) }
+})
+
+test('keeps earlier Semantic Scholar pages when a later page fails', async () => {
+  const config = testConfig(), db = testDb(config), originalFetch = globalThis.fetch
+  try {
+    const projectId = createProject(db), timestamp = new Date().toISOString()
+    db.prepare('INSERT INTO sources(id,project_id,type,url,title,pdf_text,pages,created_at,accessed_at) VALUES (?,?,?,?,?,?,?,?,?)')
+      .run('paper', projectId, 'pdf', 'https://arxiv.org/abs/1801.07698', 'ArcFace', 'text', 1, timestamp, timestamp)
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = new URL(String(input))
+      if (url.hostname !== 'api.semanticscholar.org') throw new Error('should not fall through to OpenAlex: ' + url)
+      if (url.pathname.endsWith('/citations')) return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+      if (url.searchParams.get('offset') !== '0') return new Response('', { status: 500 })
+      const data = Array.from({ length: 100 }, (_, i) => ({ citedPaper: { paperId: `ref${i}`, title: `Reference ${i}`, authors: [{ name: 'Ada' }], year: 2020 } }))
+      return new Response(JSON.stringify({ data }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }) as typeof fetch
+
+    const fetched = await relatedPapers(db, projectId, 'paper')
+    assert.equal(fetched.provider, 'semantic_scholar')
+    assert.equal(fetched.references.length, 100)
+  } finally { globalThis.fetch = originalFetch; cleanup(config, db) }
+})
+
+test('batches OpenAlex reference lookups and preserves bibliography order', async () => {
+  const config = testConfig(), db = testDb(config), originalFetch = globalThis.fetch
+  try {
+    const projectId = createProject(db), timestamp = new Date().toISOString()
+    db.prepare('INSERT INTO sources(id,project_id,type,url,title,pdf_text,pages,created_at,accessed_at) VALUES (?,?,?,?,?,?,?,?,?)')
+      .run('paper', projectId, 'pdf', 'https://doi.org/10.5555/many-refs', 'A Paper With Many References', 'text', 1, timestamp, timestamp)
+    const referencedWorks = Array.from({ length: 120 }, (_, i) => `https://openalex.org/W${1000 + i}`)
+    const batchSizes: number[] = []
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = new URL(String(input))
+      if (url.hostname === 'api.semanticscholar.org') {
+        if (url.pathname.endsWith('/references')) return new Response('', { status: 404 })
+        return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      if (url.pathname.startsWith('/works/doi:')) {
+        return new Response(JSON.stringify({ id: 'https://openalex.org/W100', title: 'A Paper With Many References', referenced_works: referencedWorks }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      const filter = url.searchParams.get('filter') ?? ''
+      if (filter.startsWith('openalex_id:')) {
+        const ids = filter.slice('openalex_id:'.length).split('|')
+        batchSizes.push(ids.length)
+        // Returned in reverse so the assertion below checks ordering, not luck.
+        return new Response(JSON.stringify({ results: [...ids].reverse().map(id => ({ id: `https://openalex.org/${id}`, title: `Reference ${id}`, publication_year: 2021 })) }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      if (filter === 'cites:W100') return new Response(JSON.stringify({ results: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+      throw new Error('Unexpected request: ' + url)
+    }) as typeof fetch
+
+    const fetched = await relatedPapers(db, projectId, 'paper')
+    assert.equal(fetched.provider, 'openalex')
+    assert.deepEqual(batchSizes, [50, 50, 20], 'reference IDs should be requested in batches of at most 50')
+    assert.equal(fetched.references.length, 120)
+    assert.equal(fetched.references[0]?.title, 'Reference W1000')
+    assert.equal(fetched.references[119]?.title, 'Reference W1119')
+  } finally { globalThis.fetch = originalFetch; cleanup(config, db) }
+})
+
+test('caps OpenAlex references at 200 even when the paper cites more', async () => {
+  const config = testConfig(), db = testDb(config), originalFetch = globalThis.fetch
+  try {
+    const projectId = createProject(db), timestamp = new Date().toISOString()
+    db.prepare('INSERT INTO sources(id,project_id,type,url,title,pdf_text,pages,created_at,accessed_at) VALUES (?,?,?,?,?,?,?,?,?)')
+      .run('paper', projectId, 'pdf', 'https://doi.org/10.5555/huge', 'A Survey', 'text', 1, timestamp, timestamp)
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = new URL(String(input))
+      if (url.hostname === 'api.semanticscholar.org') {
+        if (url.pathname.endsWith('/references')) return new Response('', { status: 404 })
+        return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      if (url.pathname.startsWith('/works/doi:')) {
+        return new Response(JSON.stringify({ id: 'https://openalex.org/W100', title: 'A Survey', referenced_works: Array.from({ length: 400 }, (_, i) => `https://openalex.org/W${2000 + i}`) }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      const filter = url.searchParams.get('filter') ?? ''
+      if (filter.startsWith('openalex_id:')) {
+        const ids = filter.slice('openalex_id:'.length).split('|')
+        return new Response(JSON.stringify({ results: ids.map(id => ({ id: `https://openalex.org/${id}`, title: `Reference ${id}`, publication_year: 2021 })) }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      return new Response(JSON.stringify({ results: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }) as typeof fetch
+
+    const fetched = await relatedPapers(db, projectId, 'paper')
+    assert.equal(fetched.references.length, 200)
+  } finally { globalThis.fetch = originalFetch; cleanup(config, db) }
+})
+
 test('uses an OpenAlex title match when the source URL has no paper identifier', async () => {
   const config = testConfig(), db = testDb(config), originalFetch = globalThis.fetch
   try {

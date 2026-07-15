@@ -6,6 +6,12 @@ const S2_FIELDS = 'title,authors,year,externalIds,openAccessPdf,venue,citationCo
 const OPENALEX_BASE = 'https://api.openalex.org'
 const OPENALEX_FOCAL_FIELDS = 'id,title,display_name,referenced_works'
 const OPENALEX_RELATED_FIELDS = 'id,title,display_name,authorships,publication_year,best_oa_location,locations,ids'
+const REFERENCE_LIMIT = 200
+const CITATION_LIMIT = 20
+// Both providers cap a single response well below REFERENCE_LIMIT, so a paper
+// with a long bibliography has to be assembled from several requests.
+const S2_PAGE_SIZE = 100
+const OPENALEX_ID_BATCH = 50
 
 // Semantic Scholar's unauthenticated quota is small and shared per IP, not
 // per caller — an optional key (free from semanticscholar.org) is scoped to
@@ -215,26 +221,31 @@ async function openAlexRelated(source: { url: string | null; title: string | nul
   if (!paper || !paperId) return null
 
   const output = emptyOutput()
-  const referenceIds = [...new Set((paper.referenced_works ?? []).map(openAlexId).filter((id): id is string => Boolean(id)))].slice(0, 60)
-  if (referenceIds.length) {
+  const referenceIds = [...new Set((paper.referenced_works ?? []).map(openAlexId).filter((id): id is string => Boolean(id)))].slice(0, REFERENCE_LIMIT)
+  const papersById = new Map<string, OpenAlexWork>()
+  for (let start = 0; start < referenceIds.length; start += OPENALEX_ID_BATCH) {
+    const batch = referenceIds.slice(start, start + OPENALEX_ID_BATCH)
     const response = await fetch(openAlexWorksUrl({
-      filter: `openalex_id:${referenceIds.join('|')}`,
-      per_page: String(referenceIds.length),
+      filter: `openalex_id:${batch.join('|')}`,
+      per_page: String(batch.length),
       select: OPENALEX_RELATED_FIELDS,
     }), { signal: AbortSignal.timeout(15_000) })
-    if (response.ok) {
-      const data = await response.json() as { results?: OpenAlexWork[] }
-      const papersById = new Map((data.results ?? []).map(item => [openAlexId(item.id), item]))
-      output.references = referenceIds.flatMap(id => {
-        const referencedPaper = papersById.get(id)
-        return referencedPaper && openAlexTitle(referencedPaper) ? [normalizeOpenAlex(referencedPaper, 'reference')] : []
-      })
+    if (!response.ok) continue
+    const data = await response.json() as { results?: OpenAlexWork[] }
+    for (const item of data.results ?? []) {
+      const id = openAlexId(item.id)
+      if (id) papersById.set(id, item)
     }
   }
+  // Ordered by the focal paper's bibliography, not by response arrival.
+  output.references = referenceIds.flatMap(id => {
+    const referencedPaper = papersById.get(id)
+    return referencedPaper && openAlexTitle(referencedPaper) ? [normalizeOpenAlex(referencedPaper, 'reference')] : []
+  })
 
   const citationsResponse = await fetch(openAlexWorksUrl({
     filter: `cites:${paperId}`,
-    per_page: '20',
+    per_page: String(CITATION_LIMIT),
     sort: 'cited_by_count:desc',
     select: OPENALEX_RELATED_FIELDS,
   }), { signal: AbortSignal.timeout(15_000) })
@@ -251,13 +262,25 @@ async function semanticScholarRelated(paperId: string, apiKey: string): Promise<
   const output = emptyOutput()
   try {
     for (const relation of ['references', 'citations'] as const) {
-      const response = await fetch(`${S2_BASE}/paper/${encodeURIComponent(paperId)}/${relation}?fields=${encodeURIComponent(S2_FIELDS)}&limit=${relation === 'references' ? 60 : 20}`, { headers: s2Headers(apiKey), signal: AbortSignal.timeout(15_000) })
-      if (response.status === 429) return { error: 'Semantic Scholar rate limit — retry in a moment' }
-      // A DOI/arXiv URL can be syntactically valid without being present in S2.
-      // Let the caller try a title match and then OpenAlex in that case.
-      if (!response.ok) return null
-      const data = await response.json() as { data?: Array<{ citedPaper?: S2Paper; citingPaper?: S2Paper }> }
-      output[relation] = (data.data ?? []).map(item => item.citedPaper ?? item.citingPaper).filter((paper): paper is S2Paper => Boolean(paper?.title)).map(paper => normalize(paper, relation === 'references' ? 'reference' : 'citation'))
+      const wanted = relation === 'references' ? REFERENCE_LIMIT : CITATION_LIMIT
+      const papers: S2Paper[] = []
+      for (let offset = 0; offset < wanted; offset += S2_PAGE_SIZE) {
+        const limit = Math.min(S2_PAGE_SIZE, wanted - offset)
+        const response = await fetch(`${S2_BASE}/paper/${encodeURIComponent(paperId)}/${relation}?fields=${encodeURIComponent(S2_FIELDS)}&offset=${offset}&limit=${limit}`, { headers: s2Headers(apiKey), signal: AbortSignal.timeout(15_000) })
+        if (response.status === 429) return { error: 'Semantic Scholar rate limit — retry in a moment' }
+        if (!response.ok) {
+          // A DOI/arXiv URL can be syntactically valid without being present in S2.
+          // Let the caller try a title match and then OpenAlex in that case.
+          if (offset === 0) return null
+          // A later page failing means the paper does exist here, so keep the
+          // pages already collected rather than falling through to OpenAlex.
+          break
+        }
+        const data = await response.json() as { data?: Array<{ citedPaper?: S2Paper; citingPaper?: S2Paper }> }
+        papers.push(...(data.data ?? []).map(item => item.citedPaper ?? item.citingPaper).filter((paper): paper is S2Paper => Boolean(paper?.title)))
+        if ((data.data?.length ?? 0) < limit) break
+      }
+      output[relation] = papers.map(paper => normalize(paper, relation === 'references' ? 'reference' : 'citation'))
     }
   } catch {
     return null
