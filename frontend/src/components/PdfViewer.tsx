@@ -16,7 +16,9 @@ type PageRect = { x1: number; y1: number; x2: number; y2: number }
 interface Props {
   url: string
   pages: number
+  initialPage?: number
   isResizing?: boolean
+  onPageChange?: (page: number) => void
   onTextSelected?: (text: string) => void
   annotations?: Annotation[]
   onHighlightCreate?: (data: { page_number: number; x1: number; y1: number; x2: number; y2: number; rects: PageRect[]; text: string; color: string }) => void
@@ -69,6 +71,10 @@ function getSelectionPageRects(selection: Selection): { page: number; bbox: Page
 
 const ZOOM_LEVELS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
 
+function normalizePage(page: number | undefined): number {
+  return Number.isInteger(page) && Number(page) > 0 ? Number(page) : 1
+}
+
 // Module-level constant so react-pdf's loadDocument effect never sees a new
 // object reference, preventing spurious document destroy/reload cycles.
 const PDF_OPTIONS = {
@@ -80,14 +86,21 @@ const PDF_OPTIONS = {
   standardFontDataUrl: '/pdfjs/standard_fonts/',
 }
 
-export default function PdfViewer({ url, isResizing, onTextSelected, annotations, onHighlightCreate, onHighlightClick }: Props) {
+export default function PdfViewer({
+  url, initialPage = 1, isResizing, onPageChange, onTextSelected,
+  annotations, onHighlightCreate, onHighlightClick,
+}: Props) {
+  const requestedPage = normalizePage(initialPage)
   const [numPages, setNumPages] = useState(0)
+  const [currentPage, setCurrentPage] = useState(requestedPage)
+  const [restored, setRestored] = useState(false)
   const [scale, setScale] = useState(1.0)
   const [fitWidth, setFitWidth] = useState(true)
   const [containerWidth, setContainerWidth] = useState(800)
   const [bubble, setBubble] = useState<{ x: number; y: number; text: string; coords: ReturnType<typeof getSelectionPageRects> } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const currentPageRef = useRef(requestedPage)
   // Use a ref so the ResizeObserver callback always sees the current value
   // without needing to re-subscribe the observer on every drag start/end.
   const isResizingRef = useRef(isResizing)
@@ -188,11 +201,53 @@ export default function PdfViewer({ url, isResizing, onTextSelected, annotations
   const pageWidth = fitWidth ? containerWidth || undefined : undefined
   const pageScale = fitWidth ? undefined : scale
 
-  // Reset to fit-width on new PDF
+  // Every lazy page has a full-size placeholder, so a deep page can be located
+  // before its PDF canvas is mounted. Wait until both the document and the
+  // measured fit-width layout exist, then align the saved page in the reader.
   useEffect(() => {
-    setFitWidth(true)
-    setNumPages(0)
-  }, [url])
+    const scroll = scrollRef.current
+    if (!scroll || !numPages || restored) return
+    const page = Math.min(numPages, normalizePage(initialPage))
+    const timer = setTimeout(() => {
+      const target = scroll.querySelector<HTMLElement>(`[data-pdf-page="${page}"]`)
+      if (!target) return
+      const scrollRect = scroll.getBoundingClientRect()
+      const targetRect = target.getBoundingClientRect()
+      scroll.scrollTop += targetRect.top - scrollRect.top - 16
+      currentPageRef.current = page
+      setCurrentPage(page)
+      setRestored(true)
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [containerWidth, initialPage, numPages, restored, url])
+
+  // A narrow observation band through the viewport center defines the current
+  // reading page. This stays correct for mixed page sizes and avoids doing a
+  // getBoundingClientRect scan across hundreds of pages on every scroll event.
+  useEffect(() => {
+    const scroll = scrollRef.current
+    if (!scroll || !restored || !numPages || isResizing) return
+    const pages = Array.from(scroll.querySelectorAll<HTMLElement>('[data-pdf-page]'))
+    const observer = new IntersectionObserver(entries => {
+      const visible = entries.filter(entry => entry.isIntersecting)
+      if (!visible.length) return
+      const rootCenter = visible[0]?.rootBounds
+        ? (visible[0].rootBounds!.top + visible[0].rootBounds!.bottom) / 2
+        : scroll.getBoundingClientRect().top + scroll.clientHeight / 2
+      const closest = visible.reduce((best, entry) => {
+        const distance = Math.abs((entry.boundingClientRect.top + entry.boundingClientRect.bottom) / 2 - rootCenter)
+        const bestDistance = Math.abs((best.boundingClientRect.top + best.boundingClientRect.bottom) / 2 - rootCenter)
+        return distance < bestDistance ? entry : best
+      })
+      const page = Number((closest.target as HTMLElement).dataset.pdfPage)
+      if (!Number.isInteger(page) || page === currentPageRef.current) return
+      currentPageRef.current = page
+      setCurrentPage(page)
+      onPageChange?.(page)
+    }, { root: scroll, rootMargin: '-47% 0px -47% 0px', threshold: 0 })
+    for (const page of pages) observer.observe(page)
+    return () => observer.disconnect()
+  }, [isResizing, numPages, onPageChange, restored, url])
 
   if (!url) {
     return (
@@ -228,12 +283,14 @@ export default function PdfViewer({ url, isResizing, onTextSelected, annotations
         </select>
         <button onClick={zoomIn} title="Zoom in" style={btnStyle}>+</button>
         {numPages > 0 && (
-          <span style={{ marginLeft: 8, fontSize: 12, color: '#6b7280' }}>{numPages} pages</span>
+          <span data-testid="page-progress" aria-live="polite" style={{ marginLeft: 8, fontSize: 12, color: '#6b7280' }}>
+            Page {Math.min(currentPage, numPages)} of {numPages}
+          </span>
         )}
       </div>
 
       {/* PDF scroll area */}
-      <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: '16px 0' }}>
+      <div ref={scrollRef} data-testid="pdf-scroll-area" style={{ flex: 1, overflow: 'auto', padding: '16px 0' }}>
         <Document
           key={url}
           file={url}
@@ -337,7 +394,12 @@ function LazyPdfPage({ pageNumber, pageWidth, pageScale, annotations, onHighligh
   const placeholderHeight = placeholderWidth * PAGE_ASPECT_RATIO
 
   return (
-    <div ref={pageRef} style={{ display: 'flex', justifyContent: 'center', marginBottom: 12, position: 'relative', minHeight: placeholderHeight }}>
+    <div
+      ref={pageRef}
+      data-pdf-page={pageNumber}
+      aria-label={`Page ${pageNumber}`}
+      style={{ display: 'flex', justifyContent: 'center', marginBottom: 12, position: 'relative', minHeight: placeholderHeight }}
+    >
       <div style={{ position: 'relative' }}>
         {shouldRender ? (
           <Page

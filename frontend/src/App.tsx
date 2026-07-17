@@ -165,6 +165,10 @@ export default function App({ user }: { user: User }) {
 
   const splitRef = useRef<HTMLDivElement>(null)
   const dragging = useRef(false)
+  const progressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingProgress = useRef<number | null>(null)
+  const lastSavedProgress = useRef<number | null>(null)
+  const readingContext = useRef('')
 
   const loadSource = useCallback(() => {
     if (!projectId || !sourceId) return
@@ -175,6 +179,11 @@ export default function App({ user }: { user: User }) {
       annotationsApi.list(projectId, sourceId),
     ])
       .then(([s, anns]) => {
+        if (progressTimer.current) clearTimeout(progressTimer.current)
+        progressTimer.current = null
+        pendingProgress.current = null
+        lastSavedProgress.current = s.last_page_read ?? 1
+        readingContext.current = `${projectId}/${sourceId}`
         setSource(s)
         setPdfText(s.pdf_text || '')
         setPdfPages(s.pages || 0)
@@ -186,6 +195,51 @@ export default function App({ user }: { user: User }) {
   }, [projectId, sourceId])
 
   useEffect(() => { loadSource() }, [loadSource])
+
+  const flushReadingProgress = useCallback(() => {
+    if (!projectId || !sourceId) return
+    const page = pendingProgress.current
+    if (page === null || page === lastSavedProgress.current) {
+      pendingProgress.current = null
+      return
+    }
+    const context = `${projectId}/${sourceId}`
+    pendingProgress.current = null
+    lastSavedProgress.current = page
+    void sourcesApi.updateLastPageRead(projectId, sourceId, page).catch(() => {
+      // Progress is best-effort and must never interrupt reading. Keep a failed
+      // page pending so route teardown/pagehide gets one more chance to save it.
+      if (readingContext.current === context && lastSavedProgress.current === page) {
+        lastSavedProgress.current = null
+        pendingProgress.current = page
+      }
+    })
+  }, [projectId, sourceId])
+
+  const handlePageChange = useCallback((page: number) => {
+    if (page === lastSavedProgress.current || page === pendingProgress.current) return
+    pendingProgress.current = page
+    if (progressTimer.current) clearTimeout(progressTimer.current)
+    progressTimer.current = setTimeout(() => {
+      progressTimer.current = null
+      flushReadingProgress()
+    }, 750)
+  }, [flushReadingProgress])
+
+  useEffect(() => {
+    const onPageHide = () => {
+      if (progressTimer.current) clearTimeout(progressTimer.current)
+      progressTimer.current = null
+      flushReadingProgress()
+    }
+    window.addEventListener('pagehide', onPageHide)
+    return () => {
+      window.removeEventListener('pagehide', onPageHide)
+      if (progressTimer.current) clearTimeout(progressTimer.current)
+      progressTimer.current = null
+      flushReadingProgress()
+    }
+  }, [flushReadingProgress])
 
   const handleRetry = async () => {
     if (!source?.url || !projectId || !sourceId) return
@@ -340,9 +394,12 @@ export default function App({ user }: { user: User }) {
         {/* PDF panel */}
         <div style={{ width: `${splitPct}%`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <PdfViewer
+            key={viewerUrl}
             url={viewerUrl}
             pages={pdfPages}
+            initialPage={source?.last_page_read ?? 1}
             isResizing={isResizing}
+            onPageChange={handlePageChange}
             onTextSelected={setSelectedText}
             annotations={annotations}
             onHighlightCreate={handleHighlightCreate}

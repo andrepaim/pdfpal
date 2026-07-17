@@ -67,15 +67,15 @@ export class SourceService {
     const sourceTitle = title?.trim() || catalogueTitle || extracted.title || (isUrl ? new URL(location).pathname.split('/').filter(Boolean).at(-1) : path.basename(location)) || 'Untitled Source'
     const source: Source = {
       id, project_id: project.id, type: 'pdf', url, title: sourceTitle, pdf_text: extracted.text,
-      pages: extracted.pages, created_at: timestamp, accessed_at: timestamp, original_location: originalLocation,
+      pages: extracted.pages, last_page_read: 1, created_at: timestamp, accessed_at: timestamp, original_location: originalLocation,
       local_path: path.basename(stored.localPath), media_type: 'application/pdf', byte_size: bytes.length, content_hash: stored.hash,
       collection_id: collectionId,
     }
     try {
       this.db.transaction(() => {
-        this.db.prepare(`INSERT INTO sources(id,project_id,type,url,title,pdf_text,pages,created_at,accessed_at,
+        this.db.prepare(`INSERT INTO sources(id,project_id,type,url,title,pdf_text,pages,last_page_read,created_at,accessed_at,
           original_location,local_path,media_type,byte_size,content_hash,collection_id)
-          VALUES (@id,@project_id,@type,@url,@title,@pdf_text,@pages,@created_at,@accessed_at,
+          VALUES (@id,@project_id,@type,@url,@title,@pdf_text,@pages,@last_page_read,@created_at,@accessed_at,
           @original_location,@local_path,@media_type,@byte_size,@content_hash,@collection_id)`).run(source)
         this.retrieval.index(id, extracted.text)
         this.db.prepare('UPDATE projects SET accessed_at=? WHERE id=?').run(timestamp, project.id)
@@ -116,6 +116,16 @@ export class SourceService {
     return { ...source, collection_id: collectionId }
   }
 
+  setLastPageRead(projectSelector: string, sourceSelector: string, page: number): Source {
+    const source = this.resolve(projectSelector, sourceSelector)
+    const lastPage = Math.max(1, source.pages)
+    if (!Number.isInteger(page) || page < 1 || page > lastPage) {
+      throw new PdfpalError('INVALID_PAGE', `Page must be an integer between 1 and ${lastPage}`, 2)
+    }
+    this.db.prepare('UPDATE sources SET last_page_read=?, accessed_at=? WHERE id=?').run(page, now(), source.id)
+    return this.resolve(source.project_id, source.id)
+  }
+
   remove(projectSelector: string, sourceSelector: string): Source {
     const source = this.resolve(projectSelector, sourceSelector)
     this.db.prepare('DELETE FROM sources WHERE id=?').run(source.id)
@@ -135,8 +145,10 @@ export class SourceService {
         const extracted = await extractPdf(bytes)
         const stored = storePdf(bytes, this.config.filesDir, source.id)
         text = extracted.text
-        this.db.prepare(`UPDATE sources SET pdf_text=?, pages=?, local_path=?, byte_size=?, content_hash=?, accessed_at=? WHERE id=?`)
-          .run(text, extracted.pages, path.basename(stored.localPath), bytes.length, stored.hash, now(), source.id)
+        this.db.prepare(`UPDATE sources SET pdf_text=?, pages=?, local_path=?, byte_size=?, content_hash=?,
+          last_page_read=MIN(last_page_read, ?), accessed_at=? WHERE id=?`)
+          .run(text, extracted.pages, path.basename(stored.localPath), bytes.length, stored.hash,
+            Math.max(1, extracted.pages), now(), source.id)
       }
       total += this.retrieval.index(source.id, text)
     }

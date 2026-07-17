@@ -38,6 +38,7 @@ export interface Source {
   url?: string
   title?: string
   pages: number
+  last_page_read: number
   pdf_text?: string
   excerpt?: string
   collection_id?: string | null
@@ -86,6 +87,10 @@ export const sourcesApi = {
     apiFetch(`/projects/${projectId}/sources/${sourceId}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
   setCollection: (projectId: string, sourceId: string, collectionId: string | null) =>
     apiFetch(`/projects/${projectId}/sources/${sourceId}`, { method: 'PATCH', body: JSON.stringify({ collection_id: collectionId }) }),
+  updateLastPageRead: (projectId: string, sourceId: string, lastPageRead: number) =>
+    apiFetch(`/projects/${projectId}/sources/${sourceId}`, {
+      method: 'PATCH', body: JSON.stringify({ last_page_read: lastPageRead }), keepalive: true,
+    }),
   addUrl: async (projectId: string, url: string, collectionId?: string | null) => {
     const res = await fetch(`${BASE}/extract`, {
       method: 'POST',

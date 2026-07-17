@@ -12,6 +12,7 @@ test('adds a local PDF, stores a managed copy, and indexes it', async () => {
     const project = new ProjectService(db).create('PDF Project')
     const source = await new SourceService(db, config).add(project.id, path.resolve('test/fixtures/sample.pdf'))
     assert.equal(source.pages, 2)
+    assert.equal(source.last_page_read, 1)
     assert.ok(source.local_path)
     assert.equal((db.prepare('SELECT COUNT(*) count FROM source_chunks WHERE source_id=?').get(source.id) as { count: number }).count, 2)
   } finally { cleanup(config, db) }
@@ -46,7 +47,9 @@ test('refetches a local source and replaces stale indexed text', async () => {
     const source = await sources.add(project.id, path.resolve('test/fixtures/sample.pdf'))
     const retrieval = new RetrievalService(db)
     const staleText = '[Page 1]\nObsolete marker that must leave the search index.'
-    db.prepare('UPDATE sources SET pdf_text=? WHERE id=?').run(staleText, source.id)
+    // Simulate an older ten-page copy whose saved position is past the end of
+    // the replacement PDF. Refetching must keep progress inside the new range.
+    db.prepare('UPDATE sources SET pdf_text=?,pages=?,last_page_read=? WHERE id=?').run(staleText, 10, 10, source.id)
     retrieval.index(source.id, staleText)
     assert.equal(retrieval.search(project.id, 'obsolete').length, 1)
 
@@ -55,6 +58,7 @@ test('refetches a local source and replaces stale indexed text', async () => {
 
     assert.equal(chunks, 2)
     assert.equal(refreshed.pages, 2)
+    assert.equal(refreshed.last_page_read, 2)
     assert.notEqual(refreshed.pdf_text, staleText)
     assert.deepEqual(retrieval.search(project.id, 'obsolete'), [])
   } finally { cleanup(config, db) }

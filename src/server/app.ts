@@ -59,9 +59,10 @@ export async function buildServer(config: PdfpalConfig) {
 
   app.get<{ Params: Pick<Params, 'projectId'> }>('/api/projects/:projectId/sources', async request => sources.list(request.params.projectId).map(({ pdf_text, ...source }) => ({ ...source, excerpt: excerptFromText(pdf_text) })))
   app.get<{ Params: Pick<Params, 'projectId' | 'sourceId'> }>('/api/projects/:projectId/sources/:sourceId', async request => sources.resolve(request.params.projectId, request.params.sourceId))
-  app.patch<{ Params: Pick<Params, 'projectId' | 'sourceId'>; Body: { title?: string; collection_id?: string | null } }>('/api/projects/:projectId/sources/:sourceId', async request => {
+  app.patch<{ Params: Pick<Params, 'projectId' | 'sourceId'>; Body: { title?: string; collection_id?: string | null; last_page_read?: number } }>('/api/projects/:projectId/sources/:sourceId', async request => {
     if (request.body.title !== undefined) sources.rename(request.params.projectId, request.params.sourceId, request.body.title)
     if ('collection_id' in request.body) sources.setCollection(request.params.projectId, request.params.sourceId, request.body.collection_id ?? null)
+    if (request.body.last_page_read !== undefined) sources.setLastPageRead(request.params.projectId, request.params.sourceId, request.body.last_page_read)
     return { ok: true }
   })
   app.delete<{ Params: Pick<Params, 'projectId' | 'sourceId'> }>('/api/projects/:projectId/sources/:sourceId', async request => { sources.remove(request.params.projectId, request.params.sourceId); return { ok: true } })

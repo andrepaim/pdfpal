@@ -93,4 +93,35 @@ test.describe('Sources management', () => {
     await page.waitForURL(`**/projects/${project.id}/sources/${sourceId}`);
     expect(page.url()).not.toContain('/sources/undefined');
   });
+
+  test('reader restores the last page read after reload', async ({ page }) => {
+    const project = await createProjectViaApi(page, 'Reading Progress Project');
+    const created = await page.request.post(`/api/projects/${project.id}/sources`, {
+      data: { url: 'test/fixtures/sample.pdf', title: 'Progress Book' },
+    });
+    expect(created.ok()).toBeTruthy();
+    const source = await created.json();
+
+    await page.goto(`/projects/${project.id}/sources/${source.id}`);
+    await expect(page.getByTestId('page-progress')).toHaveText('Page 1 of 2');
+
+    const saved = page.waitForResponse(response => {
+      if (response.request().method() !== 'PATCH') return false;
+      if (!response.url().endsWith(`/api/projects/${project.id}/sources/${source.id}`)) return false;
+      return response.request().postDataJSON()?.last_page_read === 2;
+    });
+    await page.locator('[data-pdf-page="2"]').evaluate(element => element.scrollIntoView({ block: 'center' }));
+    await expect(page.getByTestId('page-progress')).toHaveText('Page 2 of 2');
+    await saved;
+
+    await page.reload();
+    await expect(page.getByTestId('page-progress')).toHaveText('Page 2 of 2');
+    await expect.poll(async () => page.locator('[data-pdf-page="2"]').evaluate(element => {
+      const scroll = element.closest('[data-testid="pdf-scroll-area"]');
+      if (!scroll) return false;
+      const pageRect = element.getBoundingClientRect();
+      const scrollRect = scroll.getBoundingClientRect();
+      return Math.abs(pageRect.top - scrollRect.top - 16) < 8;
+    })).toBe(true);
+  });
 });

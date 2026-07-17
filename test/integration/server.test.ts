@@ -76,6 +76,36 @@ test('Fastify collection routes create, nest, and file sources', async () => {
   } finally { await app.close(); cleanup(config, { close() {} } as never) }
 })
 
+test('Fastify source updates persist and validate reading progress', async () => {
+  const config = testConfig(), app = await buildServer(config)
+  try {
+    const project = (await app.inject({ method: 'POST', url: '/api/projects', payload: { title: 'Reading' } })).json()
+    const now = new Date().toISOString()
+    const db = (await import('../../src/core/database.js')).openDatabase(config)
+    db.prepare('INSERT INTO sources(id,project_id,type,title,pdf_text,pages,created_at,accessed_at) VALUES (?,?,?,?,?,?,?,?)')
+      .run('book', project.id, 'pdf', 'Long Book', '[Page 1]\nbody', 10, now, now)
+    db.close()
+
+    const updated = await app.inject({
+      method: 'PATCH', url: `/api/projects/${project.id}/sources/book`, payload: { last_page_read: 7 },
+    })
+    assert.equal(updated.statusCode, 200)
+    const source = (await app.inject({ method: 'GET', url: `/api/projects/${project.id}/sources/book` })).json()
+    assert.equal(source.last_page_read, 7)
+    assert.equal(source.title, 'Long Book')
+
+    for (const page of [0, 11, 1.5]) {
+      const invalid = await app.inject({
+        method: 'PATCH', url: `/api/projects/${project.id}/sources/book`, payload: { last_page_read: page },
+      })
+      assert.equal(invalid.statusCode, 400)
+      assert.equal(invalid.json().code, 'INVALID_PAGE')
+    }
+    const unchanged = (await app.inject({ method: 'GET', url: `/api/projects/${project.id}/sources/book` })).json()
+    assert.equal(unchanged.last_page_read, 7)
+  } finally { await app.close(); cleanup(config, { close() {} } as never) }
+})
+
 test('Fastify project search and highlights aggregate across sources', async () => {
   const config = testConfig(), app = await buildServer(config)
   try {

@@ -17,6 +17,7 @@ export interface Source {
   title: string | null
   pdf_text: string | null
   pages: number
+  last_page_read: number
   created_at: string
   accessed_at: string
   original_location?: string | null

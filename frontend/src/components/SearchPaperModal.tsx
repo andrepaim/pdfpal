@@ -134,6 +134,7 @@ export default function SearchPaperModal({ projectId, onClose, onAdded }: Props)
       onAdded({
         id: result.id, project_id: projectId, type: 'pdf',
         url: result.url, title: result.title, pages: result.pages,
+        last_page_read: result.last_page_read ?? 1,
         created_at: new Date().toISOString(), accessed_at: new Date().toISOString(),
       })
     } catch (e: any) {

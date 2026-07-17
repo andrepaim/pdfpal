@@ -55,6 +55,7 @@ Finding papers is legwork, and by now agents are better at it than we are: they 
 
 ### Reading & Chat
 - **Split-pane reader**: PDF viewer on the left, chat/notes/related on the right; resizable.
+- **Reading progress**: remembers the last page read for every source and restores it automatically the next time you open the PDF.
 - **Per-source chat**: persistent conversation history per paper, restored across sessions; renders math (KaTeX); web research is handled by the selected agent when supported.
 - **Text selection → ask or highlight**: stuck on a passage? Select it and ask about it right there, grounded in the paper, or save it as a highlight.
 - **Project chat**: ask across multiple sources at once, toggle which sources are in context, or scope to a single collection.

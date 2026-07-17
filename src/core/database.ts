@@ -6,7 +6,7 @@ import type { Database as DatabaseType } from 'better-sqlite3'
 import type { PdfpalConfig } from './config.js'
 import { ensureDataDirectories } from './config.js'
 
-const CURRENT_SCHEMA = 5
+const CURRENT_SCHEMA = 6
 
 function columnExists(db: DatabaseType, table: string, column: string): boolean {
   return (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some(row => row.name === column)
@@ -53,7 +53,8 @@ function migrate(db: DatabaseType): void {
     );
     CREATE TABLE IF NOT EXISTS sources (
       id TEXT PRIMARY KEY, project_id TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'pdf', url TEXT, title TEXT,
-      pdf_text TEXT, pages INTEGER DEFAULT 0, created_at TEXT NOT NULL, accessed_at TEXT NOT NULL,
+      pdf_text TEXT, pages INTEGER DEFAULT 0, last_page_read INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL, accessed_at TEXT NOT NULL,
       FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
     );
     CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -154,6 +155,14 @@ function migrate(db: DatabaseType): void {
     // existed (rects is NULL for those rows).
     if (!columnExists(db, 'annotations', 'rects')) db.exec('ALTER TABLE annotations ADD COLUMN rects TEXT')
     db.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (5, datetime('now'))").run()
+  }
+
+  if (!db.prepare('SELECT 1 FROM schema_migrations WHERE version=6').get()) {
+    // Reading progress belongs to the managed source so it survives browser
+    // cache clears and is shared by every client using this local database.
+    if (!columnExists(db, 'sources', 'last_page_read'))
+      db.exec('ALTER TABLE sources ADD COLUMN last_page_read INTEGER NOT NULL DEFAULT 1')
+    db.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (6, datetime('now'))").run()
   }
 }
 

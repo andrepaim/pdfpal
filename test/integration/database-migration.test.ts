@@ -17,18 +17,20 @@ test('opens and migrates a legacy sessions database', () => {
     assert.equal((db.prepare('SELECT COUNT(*) count FROM projects').get() as { count: number }).count, 1)
     assert.equal((db.prepare('SELECT COUNT(*) count FROM sources').get() as { count: number }).count, 1)
     assert.equal((db.prepare('SELECT COUNT(*) count FROM chat_messages').get() as { count: number }).count, 1)
-    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 5)
+    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 6)
   } finally { cleanup(config, db) }
 })
 
-test('a fresh database provisions the collections schema at version 5', () => {
+test('a fresh database provisions reading progress at schema version 6', () => {
   const config = testConfig()
   const db = openDatabase(config)
   try {
-    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 5)
+    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 6)
     assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='collections'").get())
     assert.ok((db.prepare('PRAGMA table_info(sources)').all() as Array<{ name: string }>).some(c => c.name === 'collection_id'))
     assert.ok((db.prepare('PRAGMA table_info(annotations)').all() as Array<{ name: string }>).some(c => c.name === 'rects'))
+    const progress = (db.prepare("SELECT dflt_value FROM pragma_table_info('sources') WHERE name='last_page_read'").get() as { dflt_value: string })
+    assert.equal(progress.dflt_value, '1')
   } finally { cleanup(config, db) }
 })
 
@@ -48,7 +50,7 @@ test('adds the rects column when migrating a pre-existing annotations table', ()
   legacy.close()
   const db = openDatabase(config)
   try {
-    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 5)
+    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 6)
     const row = db.prepare('SELECT rects FROM annotations WHERE id=?').get('a1') as { rects: string | null }
     assert.equal(row.rects, null)
   } finally { cleanup(config, db) }
@@ -68,7 +70,29 @@ test('drops a pre-existing artifacts table when migrating an older database', ()
   legacy.close()
   const db = openDatabase(config)
   try {
-    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 5)
+    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 6)
     assert.equal(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='artifacts'").get(), undefined)
+  } finally { cleanup(config, db) }
+})
+
+test('adds page progress to a version 5 database without changing existing sources', () => {
+  const config = testConfig()
+  const legacy = new Database(config.dbPath)
+  legacy.exec(`
+    CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
+    CREATE TABLE projects (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT 'Untitled Project', description TEXT DEFAULT '', created_at TEXT NOT NULL, accessed_at TEXT NOT NULL);
+    CREATE TABLE sources (id TEXT PRIMARY KEY, project_id TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'pdf', url TEXT, title TEXT, pdf_text TEXT, pages INTEGER DEFAULT 0, created_at TEXT NOT NULL, accessed_at TEXT NOT NULL);
+    INSERT INTO schema_migrations(version, applied_at) VALUES
+      (1, datetime('now')), (2, datetime('now')), (3, datetime('now')), (4, datetime('now')), (5, datetime('now'));
+    INSERT INTO projects VALUES ('p1','Existing Project','','2020-01-01','2020-01-01');
+    INSERT INTO sources VALUES ('s1','p1','pdf',NULL,'Existing Book',NULL,370,'2020-01-01','2020-01-01');
+  `)
+  legacy.close()
+
+  const db = openDatabase(config)
+  try {
+    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 6)
+    const source = db.prepare('SELECT title,pages,last_page_read FROM sources WHERE id=?').get('s1') as { title: string; pages: number; last_page_read: number }
+    assert.deepEqual(source, { title: 'Existing Book', pages: 370, last_page_read: 1 })
   } finally { cleanup(config, db) }
 })
