@@ -1,11 +1,8 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
 import { chatApi } from '../lib/api'
 import { useAgent } from '../hooks/useAgent'
 import AgentSelect from './AgentSelect'
+import Markdown from './Markdown'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -233,7 +230,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
               whiteSpace: msg.role === 'user' ? 'pre-wrap' : undefined,
             }}>
               {msg.role === 'assistant' ? (
-                <div className="prose"><ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.content}</ReactMarkdown></div>
+                <Markdown>{msg.content}</Markdown>
               ) : msg.content}
             </div>
           </div>

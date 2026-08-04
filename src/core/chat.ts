@@ -10,6 +10,7 @@ import type { AskResult, Passage } from './types.js'
 import { PdfpalError } from './types.js'
 
 const now = () => new Date().toISOString()
+const RESPONSE_FORMAT_INSTRUCTIONS = 'Format the answer as GitHub-flavored Markdown. Use headings, lists, tables, and code fences when they improve readability. For math, use $...$ for inline expressions and $$...$$ for display equations; do not use \\(...\\) or \\[...\\] delimiters.'
 
 export interface AskOptions {
   sourceSelectors?: string[]
@@ -60,7 +61,7 @@ export class ChatService {
       const block = `\n[Source: ${passage.source_title}; page ${passage.page_number}]\n${passage.content}\n`
       return out.length + block.length <= 80_000 ? out + block : out
     }, '')
-    const prompt = `You are a research assistant. Answer from the supplied passages. Cite source titles and page numbers when possible. If the context is insufficient, say so.\n\nPassages:${context}${history.length ? `\n\nRecent conversation:\n${history.map(message => `${message.role}: ${message.content}`).join('\n')}` : ''}\n\nUser: ${question}\nAssistant:`
+    const prompt = `You are a research assistant. Answer from the supplied passages. Cite source titles and page numbers when possible. If the context is insufficient, say so. ${RESPONSE_FORMAT_INSTRUCTIONS}\n\nPassages:${context}${history.length ? `\n\nRecent conversation:\n${history.map(message => `${message.role}: ${message.content}`).join('\n')}` : ''}\n\nUser: ${question}\nAssistant:`
     const answer = await this.agents.invoke(prompt, options.agent, options.model)
     const sourceIds = [...new Set(passages.map(passage => passage.source_id))]
     const sessionId = this.persist(project.id, selected.length === 1 ? selected[0]!.id : null, question, answer, sourceIds)

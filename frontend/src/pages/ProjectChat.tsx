@@ -4,13 +4,10 @@
  */
 import { useState, useEffect, useRef, type KeyboardEvent } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
 import { sourcesApi, collectionsApi, chatApi, type Source, type Collection } from '../lib/api'
 import { useAgent } from '../hooks/useAgent'
 import AgentSelect from '../components/AgentSelect'
+import Markdown from '../components/Markdown'
 
 /** Collection subtree (the collection id plus all descendant collection ids). */
 function subtreeIds(collections: Collection[], rootId: string): Set<string> {
@@ -258,7 +255,7 @@ export default function ProjectChat() {
                   whiteSpace: msg.role === 'user' ? 'pre-wrap' : undefined,
                 }}>
                   {msg.role === 'assistant'
-                    ? <div className="prose"><ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.content}</ReactMarkdown></div>
+                    ? <Markdown>{msg.content}</Markdown>
                     : msg.content
                   }
                 </div>
