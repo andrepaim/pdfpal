@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Document, Page, pdfjs } from 'react-pdf'
+import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 import type { Annotation } from '../lib/api'
@@ -12,6 +13,7 @@ import type { Annotation } from '../lib/api'
 pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
 
 type PageRect = { x1: number; y1: number; x2: number; y2: number }
+type PageSize = { width: number; height: number }
 
 interface Props {
   url: string
@@ -86,12 +88,22 @@ const PDF_OPTIONS = {
   standardFontDataUrl: '/pdfjs/standard_fonts/',
 }
 
+const FALLBACK_PAGE_SIZE: PageSize = { width: 595, height: 842 }
+
+function getPageSize(page: PDFPageProxy): PageSize {
+  const viewport = page.getViewport({ scale: 1 })
+  return viewport.width > 0 && viewport.height > 0
+    ? { width: viewport.width, height: viewport.height }
+    : FALLBACK_PAGE_SIZE
+}
+
 export default function PdfViewer({
   url, initialPage = 1, isResizing, onPageChange, onTextSelected,
   annotations, onHighlightCreate, onHighlightClick,
 }: Props) {
   const requestedPage = normalizePage(initialPage)
   const [numPages, setNumPages] = useState(0)
+  const [pageSizes, setPageSizes] = useState<PageSize[]>([])
   const [currentPage, setCurrentPage] = useState(requestedPage)
   const [restored, setRestored] = useState(false)
   const [scale, setScale] = useState(1.0)
@@ -101,6 +113,8 @@ export default function PdfViewer({
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const currentPageRef = useRef(requestedPage)
+  const activeUrlRef = useRef(url)
+  useEffect(() => { activeUrlRef.current = url }, [url])
   // Use a ref so the ResizeObserver callback always sees the current value
   // without needing to re-subscribe the observer on every drag start/end.
   const isResizingRef = useRef(isResizing)
@@ -201,6 +215,25 @@ export default function PdfViewer({
   const pageWidth = fitWidth ? containerWidth || undefined : undefined
   const pageScale = fitWidth ? undefined : scale
 
+  const handleDocumentLoadSuccess = async (pdf: PDFDocumentProxy, loadedUrl: string) => {
+    // Reading a page proxy only loads its geometry; canvases, text, images, and
+    // annotations remain lazy. Exact dimensions keep placeholders stable for
+    // book trim sizes and PDFs whose pages do not all share one MediaBox.
+    const loadedSizes = await Promise.all(
+      Array.from({ length: pdf.numPages }, async (_, index): Promise<PageSize | null> => {
+        try {
+          return getPageSize(await pdf.getPage(index + 1))
+        } catch {
+          return null
+        }
+      }),
+    )
+    if (activeUrlRef.current !== loadedUrl) return
+    const fallback = loadedSizes.find((size): size is PageSize => size !== null) ?? FALLBACK_PAGE_SIZE
+    setPageSizes(loadedSizes.map(size => size ?? fallback))
+    setNumPages(pdf.numPages)
+  }
+
   // Every lazy page has a full-size placeholder, so a deep page can be located
   // before its PDF canvas is mounted. Wait until both the document and the
   // measured fit-width layout exist, then align the saved page in the reader.
@@ -295,7 +328,7 @@ export default function PdfViewer({
           key={url}
           file={url}
           options={PDF_OPTIONS}
-          onLoadSuccess={({ numPages }) => setNumPages(numPages)}
+          onLoadSuccess={pdf => { void handleDocumentLoadSuccess(pdf, url) }}
           onLoadError={err => console.error('PDF load error:', err)}
           loading={<LoadingPage />}
           error={<ErrorPage />}
@@ -309,6 +342,7 @@ export default function PdfViewer({
                 pageNumber={pageNum}
                 pageWidth={pageWidth}
                 pageScale={pageScale}
+                pageSize={pageSizes[i] ?? FALLBACK_PAGE_SIZE}
                 annotations={pageAnnotations}
                 onHighlightClick={onHighlightClick}
               />
@@ -360,6 +394,7 @@ interface LazyPdfPageProps {
   pageNumber: number
   pageWidth?: number
   pageScale?: number
+  pageSize: PageSize
   annotations: Annotation[]
   onHighlightClick?: (annotation: Annotation) => void
 }
@@ -369,11 +404,11 @@ interface LazyPdfPageProps {
 // whose pages contain JPEG2000 images), leaving later canvases permanently
 // hidden while their text layers remain selectable. Keep the layout with a
 // lightweight placeholder and only mount pages as they approach the viewport.
-const PAGE_ASPECT_RATIO = 1.53
 
-function LazyPdfPage({ pageNumber, pageWidth, pageScale, annotations, onHighlightClick }: LazyPdfPageProps) {
+function LazyPdfPage({ pageNumber, pageWidth, pageScale, pageSize: initialPageSize, annotations, onHighlightClick }: LazyPdfPageProps) {
   const pageRef = useRef<HTMLDivElement>(null)
   const [shouldRender, setShouldRender] = useState(pageNumber === 1)
+  const [pageSize, setPageSize] = useState(initialPageSize)
 
   useEffect(() => {
     if (shouldRender || !pageRef.current) return
@@ -390,8 +425,10 @@ function LazyPdfPage({ pageNumber, pageWidth, pageScale, annotations, onHighligh
     return () => observer.disconnect()
   }, [shouldRender])
 
-  const placeholderWidth = pageWidth ?? 600 * (pageScale ?? 1)
-  const placeholderHeight = placeholderWidth * PAGE_ASPECT_RATIO
+  const placeholderWidth = pageWidth ?? pageSize.width * (pageScale ?? 1)
+  const placeholderHeight = pageWidth
+    ? pageWidth * pageSize.height / pageSize.width
+    : pageSize.height * (pageScale ?? 1)
 
   return (
     <div
@@ -406,6 +443,7 @@ function LazyPdfPage({ pageNumber, pageWidth, pageScale, annotations, onHighligh
             pageNumber={pageNumber}
             width={pageWidth}
             scale={pageScale}
+            onLoadSuccess={page => setPageSize(getPageSize(page))}
             renderTextLayer={true}
             renderAnnotationLayer={true}
             loading={<LoadingPage />}

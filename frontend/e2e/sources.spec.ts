@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import { mockAuth, createProjectViaApi, mockExtract } from './helpers';
 
 test.describe('Sources management', () => {
@@ -123,5 +124,45 @@ test.describe('Sources management', () => {
       const scrollRect = scroll.getBoundingClientRect();
       return Math.abs(pageRect.top - scrollRect.top - 16) < 8;
     })).toBe(true);
+  });
+
+  test('reader uses a book page\'s real height without a dark placeholder gap', async ({ page }) => {
+    const project = await createProjectViaApi(page, 'Book Geometry Project');
+    const created = await page.request.post(`/api/projects/${project.id}/sources`, {
+      data: { url: 'test/fixtures/sample.pdf', title: 'Wide Book' },
+    });
+    expect(created.ok()).toBeTruthy();
+    const source = await created.json();
+
+    // The fixture uses one inherited A4 MediaBox. Replace it in memory with
+    // the wider trim size from the reported book; equal-length values preserve
+    // the PDF's xref byte offsets.
+    const bookPdf = await readFile(new URL('../../test/fixtures/sample.pdf', import.meta.url));
+    const originalMediaBox = Buffer.from('595.28 841.89');
+    const bookMediaBox = Buffer.from('531.00 666.00');
+    const mediaBoxOffset = bookPdf.indexOf(originalMediaBox);
+    expect(mediaBoxOffset).toBeGreaterThan(-1);
+    bookMediaBox.copy(bookPdf, mediaBoxOffset);
+    await page.route(`**/api/projects/${project.id}/sources/${source.id}/file`, route => route.fulfill({
+      status: 200,
+      contentType: 'application/pdf',
+      body: bookPdf,
+    }));
+
+    await page.goto(`/projects/${project.id}/sources/${source.id}`);
+    const renderedPage = page.locator('[data-pdf-page="1"] [data-page-number="1"]');
+    await expect(renderedPage).toBeVisible();
+
+    const geometry = await page.locator('[data-pdf-page="1"]').evaluate(wrapper => {
+      const pdfPage = wrapper.querySelector<HTMLElement>('[data-page-number="1"]');
+      if (!pdfPage) throw new Error('Rendered PDF page was not found');
+      return {
+        wrapperHeight: wrapper.getBoundingClientRect().height,
+        pageHeight: pdfPage.getBoundingClientRect().height,
+        pageRatio: pdfPage.getBoundingClientRect().height / pdfPage.getBoundingClientRect().width,
+      };
+    });
+    expect(geometry.pageRatio).toBeCloseTo(666 / 531, 2);
+    expect(Math.abs(geometry.wrapperHeight - geometry.pageHeight)).toBeLessThan(3);
   });
 });
