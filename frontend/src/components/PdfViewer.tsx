@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Document, Page, pdfjs } from 'react-pdf'
+import { Document, Page, pdfjs, type DocumentProps } from 'react-pdf'
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
@@ -14,6 +14,8 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.m
 
 type PageRect = { x1: number; y1: number; x2: number; y2: number }
 type PageSize = { width: number; height: number }
+type PdfLinkTarget = Parameters<NonNullable<DocumentProps['onItemClick']>>[0]
+type ReadingPosition = { page: number; offsetY: number; offsetX: number; fitWidth: boolean; scale: number }
 
 interface Props {
   url: string
@@ -114,11 +116,19 @@ export default function PdfViewer({
     catch { return false }
   })
   const [containerWidth, setContainerWidth] = useState(800)
+  const [linkHistory, setLinkHistory] = useState<ReadingPosition[]>([])
+  const [returnPosition, setReturnPosition] = useState<ReadingPosition | null>(null)
   const [bubble, setBubble] = useState<{ x: number; y: number; text: string; coords: ReturnType<typeof getSelectionPageRects> } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const currentPageRef = useRef(requestedPage)
   const activeUrlRef = useRef(url)
+  const pdfRef = useRef<PDFDocumentProxy | null>(null)
+  const navigationRef = useRef({ fitWidth, scale, containerWidth, onPageChange })
+  // react-pdf retains its initial onItemClick callback. Read live settings
+  // through refs so reference links also work after zoom or layout changes.
+  useEffect(() => { navigationRef.current = { fitWidth, scale, containerWidth, onPageChange } }, [fitWidth, scale, containerWidth, onPageChange])
+  useEffect(() => () => { pdfRef.current = null }, [url])
   useEffect(() => {
     // Privacy settings can disable storage; the toggle still works for the
     // current reader even when its preference cannot be saved.
@@ -227,6 +237,8 @@ export default function PdfViewer({
   const pageScale = fitWidth ? undefined : scale
 
   const handleDocumentLoadSuccess = async (pdf: PDFDocumentProxy, loadedUrl: string) => {
+    if (activeUrlRef.current !== loadedUrl) return
+    pdfRef.current = pdf
     // Reading a page proxy only loads its geometry; canvases, text, images, and
     // annotations remain lazy. Exact dimensions keep placeholders stable for
     // book trim sizes and PDFs whose pages do not all share one MediaBox.
@@ -244,6 +256,81 @@ export default function PdfViewer({
     setPageSizes(loadedSizes.map(size => size ?? fallback))
     setNumPages(pdf.numPages)
   }
+
+  const handleInternalLink = async ({ pageNumber, dest }: PdfLinkTarget) => {
+    const pdf = pdfRef.current
+    if (!pdf || pageNumber < 1 || pageNumber > pdf.numPages) return
+    const page = await pdf.getPage(pageNumber)
+    if (pdfRef.current !== pdf) return
+    const scroll = scrollRef.current
+    // Every page has a sized placeholder, even before its canvas is mounted.
+    const target = scroll?.querySelector<HTMLElement>(`[data-pdf-page="${pageNumber}"]`)
+    if (!scroll || !target) return
+    const settings = navigationRef.current
+    const pageScale = settings.fitWidth ? settings.containerWidth / getPageSize(page).width : settings.scale
+    const viewport = page.getViewport({ scale: pageScale })
+    const destination = Array.isArray(dest) ? dest as unknown[] : []
+    const kind = (destination[1] as { name?: string } | undefined)?.name
+    const coordinate = (index: number, fallback: number) => typeof destination[index] === 'number' ? destination[index] as number : fallback
+    let x = 0, y = 0
+    if (kind === 'XYZ' || kind === 'FitR' || kind === 'FitH' || kind === 'FitBH' || kind === 'FitV' || kind === 'FitBV') {
+      const left = kind === 'FitH' || kind === 'FitBH' ? page.view[0] : coordinate(2, page.view[0])
+      const top = kind === 'FitV' || kind === 'FitBV' ? page.view[3] : coordinate(kind === 'FitR' ? 5 : kind === 'XYZ' ? 3 : 2, page.view[3])
+      ;[x, y] = viewport.convertToViewportPoint(left, top)
+    }
+    const targetRect = target.getBoundingClientRect()
+    const scrollRect = scroll.getBoundingClientRect()
+    const origin = scroll.querySelector<HTMLElement>(`[data-pdf-page="${currentPageRef.current}"]`)
+    if (origin) {
+      const originRect = origin.getBoundingClientRect()
+      const position: ReadingPosition = {
+        page: currentPageRef.current,
+        offsetY: (scrollRect.top - originRect.top) / originRect.height,
+        offsetX: scroll.scrollLeft / originRect.width,
+        fitWidth: settings.fitWidth,
+        scale: settings.scale,
+      }
+      setLinkHistory(history => [...history, position])
+    }
+    scroll.scrollTop += targetRect.top - scrollRect.top + Math.max(0, y) - 16
+    if (viewport.width > scroll.clientWidth) {
+      const pageLeft = targetRect.left + (targetRect.width - viewport.width) / 2
+      scroll.scrollLeft += pageLeft - scrollRect.left + Math.max(0, x)
+    }
+    currentPageRef.current = pageNumber
+    setCurrentPage(pageNumber)
+    settings.onPageChange?.(pageNumber)
+  }
+
+  const handleBackToCitation = () => {
+    const previous = linkHistory.at(-1)
+    if (!previous || returnPosition) return
+    setLinkHistory(history => history.slice(0, -1))
+    setFitWidth(previous.fitWidth)
+    setScale(previous.scale)
+    setReturnPosition(previous)
+    setBubble(null)
+  }
+
+  useEffect(() => {
+    if (!returnPosition) return
+    // Restore after zoom and page placeholders adopt their new dimensions.
+    // Page-relative offsets also remain useful after a fit-width resize.
+    const frame = requestAnimationFrame(() => {
+      const scroll = scrollRef.current
+      const target = scroll?.querySelector<HTMLElement>(`[data-pdf-page="${returnPosition.page}"]`)
+      if (scroll && target) {
+        const targetRect = target.getBoundingClientRect()
+        scroll.scrollTop += targetRect.top - scroll.getBoundingClientRect().top + returnPosition.offsetY * targetRect.height
+        scroll.scrollLeft = returnPosition.offsetX * targetRect.width
+        currentPageRef.current = returnPosition.page
+        setCurrentPage(returnPosition.page)
+        navigationRef.current.onPageChange?.(returnPosition.page)
+      }
+      setReturnPosition(null)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [returnPosition, containerWidth, fitWidth, scale])
 
   // Every lazy page has a full-size placeholder, so a deep page can be located
   // before its PDF canvas is mounted. Wait until both the document and the
@@ -314,6 +401,17 @@ export default function PdfViewer({
         background: 'var(--panel)', borderBottom: '1px solid var(--border)',
         flexShrink: 0, flexWrap: 'wrap',
       }}>
+        {(linkHistory.length > 0 || returnPosition) && (
+          <button
+            type="button"
+            onClick={handleBackToCitation}
+            disabled={returnPosition !== null}
+            title={`Return to page ${linkHistory.at(-1)?.page ?? returnPosition?.page}`}
+            style={{ ...btnStyle, width: 'auto', padding: '4px 10px', fontSize: 12 }}
+          >
+            Back to citation
+          </button>
+        )}
         <button onClick={zoomOut} title="Zoom out" style={btnStyle}>−</button>
         <select
           value={fitWidth ? 'fit' : String(scale)}
@@ -348,6 +446,7 @@ export default function PdfViewer({
           key={url}
           file={url}
           options={PDF_OPTIONS}
+          onItemClick={target => { void handleInternalLink(target).catch(error => console.error('PDF link navigation error:', error)) }}
           onLoadSuccess={pdf => { void handleDocumentLoadSuccess(pdf, url) }}
           onLoadError={err => console.error('PDF load error:', err)}
           loading={<LoadingPage />}
