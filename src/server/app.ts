@@ -35,6 +35,9 @@ export async function buildServer(config: PdfpalConfig) {
   await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024 } })
 
   app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof app.multipartErrors.RequestFileTooLargeError) {
+      return reply.status(413).send({ detail: 'PDF files must be 25 MB or smaller.', code: 'FILE_TOO_LARGE' })
+    }
     const message = error instanceof Error ? error.message : String(error)
     const known = error instanceof PdfpalError ? error : new PdfpalError('INTERNAL_ERROR', message)
     const status = known.code === 'PDF_FETCH_TIMEOUT' ? 504 : known.exitCode === 3 ? 404 : known.exitCode === 2 || known.exitCode === 4 ? 400 : 500
@@ -67,6 +70,13 @@ export async function buildServer(config: PdfpalConfig) {
   })
   app.delete<{ Params: Pick<Params, 'projectId' | 'sourceId'> }>('/api/projects/:projectId/sources/:sourceId', async request => { sources.remove(request.params.projectId, request.params.sourceId); return { ok: true } })
   app.post<{ Params: Pick<Params, 'projectId'>; Body: { url: string; title?: string; collection_id?: string } }>('/api/projects/:projectId/sources', async request => sources.add(request.params.projectId, request.body.url, request.body.title, request.body.collection_id))
+  app.post<{ Params: Pick<Params, 'projectId'>; Querystring: { collection_id?: string } }>('/api/projects/:projectId/sources/upload', async request => {
+    projects.resolve(request.params.projectId)
+    const file = await request.file()
+    if (!file) throw new PdfpalError('FILE_REQUIRED', 'Choose a PDF file to import.', 2)
+    const bytes = await file.toBuffer()
+    return sources.add(request.params.projectId, { filename: file.filename, bytes }, undefined, request.query.collection_id)
+  })
   app.post<{ Body: { url: string; project_id: string; source_id?: string; collection_id?: string } }>('/api/extract', async request => {
     if (request.body.source_id) {
       await sources.reindex(request.body.project_id, request.body.source_id, true)

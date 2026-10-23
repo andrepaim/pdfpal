@@ -109,7 +109,7 @@ npm start
 ## Quickstart
 
 1. Click **New Project** and give it a title.
-2. Click **Add Source** and paste a paper URL (arXiv, OpenReview, ACL Anthology, PMLR, a DOI link, or a direct `.pdf`), or search by title.
+2. Click **Add Source** and search by title, paste a paper URL (arXiv, OpenReview, ACL Anthology, PMLR, a DOI link, or a direct `.pdf`), or choose **Upload PDF** to import a local file up to 25 MB.
 3. Open the source, select the passage you're stuck on to ask about it, or save it as a highlight.
 4. Switch to the **Notes** tab and write what you understood in your own words as a markdown note; it renders as you read it back.
 5. Ask a question across every source in the project from **Project Chat**.

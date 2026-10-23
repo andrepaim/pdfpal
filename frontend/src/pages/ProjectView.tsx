@@ -256,7 +256,7 @@ function SourcesTab({ projectId }: { projectId: string }) {
         )}
 
         <div onClick={() => setShowAdd(true)} style={{ border: '2px dashed #333', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: '#4b5563', cursor: 'pointer', padding: '14px 0', fontSize: 12, marginTop: 6 }}>
-          <span>🔍</span><span>Search or paste a URL to add a source…</span>
+          <span>＋</span><span>Search, paste a URL, or upload a PDF…</span>
         </div>
       </div>
       {showAdd && <SearchPaperModal projectId={projectId} onClose={() => { setShowAdd(false); reload() }} onAdded={s => { setShowAdd(false); setSources(prev => [s, ...prev]) }} />}

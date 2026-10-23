@@ -44,6 +44,49 @@ test.describe('Sources management', () => {
     await expect(page.locator('text=Test Paper: A Study')).toBeVisible();
   });
 
+  test('imports a local PDF and opens its managed copy in the reader', async ({ page }) => {
+    const project = await createProjectViaApi(page, 'Local PDF Project');
+    await page.goto(`/projects/${project.id}`);
+    await page.getByRole('button', { name: /Add Source/ }).first().click();
+    await page.getByRole('button', { name: 'Upload PDF' }).click();
+    const importButton = page.getByRole('button', { name: 'Import PDF', exact: true });
+    await expect(importButton).toBeDisabled();
+    const bytes = await readFile(new URL('../../test/fixtures/sample.pdf', import.meta.url));
+    await page.getByLabel('Choose a PDF file').setInputFiles({ name: 'downloaded-paper.pdf', mimeType: 'application/pdf', buffer: bytes });
+    await expect(importButton).toBeEnabled();
+    const uploaded = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith(`/api/projects/${project.id}/sources/upload`));
+    await importButton.click();
+    const response = await uploaded;
+    expect(response.ok()).toBeTruthy();
+    const source = await response.json();
+    await expect(page.getByRole('heading', { name: 'Add a source' })).not.toBeVisible();
+    await page.getByText(source.title, { exact: true }).click();
+    await page.waitForURL(`**/projects/${project.id}/sources/${source.id}`);
+    await expect(page.getByTestId('page-progress')).toHaveText('Page 1 of 2');
+    await expect(page.locator('[data-pdf-page="1"] [data-page-number="1"]')).toBeVisible();
+    await page.reload();
+    await expect(page.getByTestId('page-progress')).toHaveText('Page 1 of 2');
+  });
+
+  test('shows an upload error and allows retry with a valid PDF', async ({ page }) => {
+    const project = await createProjectViaApi(page, 'Upload Retry Project');
+    await page.goto(`/projects/${project.id}`);
+    await page.getByRole('button', { name: /Add Source/ }).first().click();
+    await page.getByRole('button', { name: 'Upload PDF' }).click();
+    const input = page.getByLabel('Choose a PDF file');
+    await input.setInputFiles({ name: 'not-really.pdf', mimeType: 'application/pdf', buffer: Buffer.from('not a PDF') });
+    await page.getByRole('button', { name: 'Import PDF', exact: true }).click();
+    await expect(page.getByRole('alert')).toHaveText('The uploaded file is not a PDF');
+    await expect(page.getByRole('heading', { name: 'Add a source' })).toBeVisible();
+    const bytes = await readFile(new URL('../../test/fixtures/sample.pdf', import.meta.url));
+    await input.setInputFiles({ name: 'paper.pdf', mimeType: 'application/pdf', buffer: bytes });
+    await expect(page.getByRole('alert')).not.toBeVisible();
+    await page.getByRole('button', { name: 'Import PDF', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Add a source' })).not.toBeVisible();
+    const sources = await (await page.request.get(`/api/projects/${project.id}/sources`)).json();
+    expect(sources).toHaveLength(1);
+  });
+
   test('click source navigates to reader view', async ({ page }) => {
     const project = await createProjectViaApi(page, 'Source Click Project');
 

@@ -9,7 +9,7 @@ async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(BASE + path, {
     credentials: 'include',
     ...opts,
-    headers: { ...(opts?.body ? { 'Content-Type': 'application/json' } : {}), ...opts?.headers },
+    headers: { ...(opts?.body && !(opts.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}), ...opts?.headers },
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
@@ -91,6 +91,12 @@ export const sourcesApi = {
     apiFetch(`/projects/${projectId}/sources/${sourceId}`, {
       method: 'PATCH', body: JSON.stringify({ last_page_read: lastPageRead }), keepalive: true,
     }),
+  upload: (projectId: string, file: File, collectionId?: string | null) => {
+    const body = new FormData()
+    body.append('file', file)
+    const query = collectionId ? `?collection_id=${encodeURIComponent(collectionId)}` : ''
+    return apiFetch<Source>(`/projects/${projectId}/sources/upload${query}`, { method: 'POST', body })
+  },
   addUrl: async (projectId: string, url: string, collectionId?: string | null) => {
     const res = await fetch(`${BASE}/extract`, {
       method: 'POST',

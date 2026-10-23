@@ -1,7 +1,69 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
 import { buildServer } from '../../src/server/app.js'
 import { cleanup, testConfig } from '../helpers/test-utils.js'
+
+async function uploadFile(app: Awaited<ReturnType<typeof buildServer>>, url: string, bytes?: Buffer) {
+  const body = new FormData()
+  if (bytes) body.append('file', new Blob([new Uint8Array(bytes)], { type: 'application/pdf' }), 'paper.pdf')
+  const request = new Request(`http://localhost${url}`, { method: 'POST', body })
+  return app.inject({
+    method: 'POST', url,
+    headers: { 'content-type': request.headers.get('content-type')! },
+    payload: Buffer.from(await request.arrayBuffer()),
+  })
+}
+
+test('uploaded PDFs are stored, indexed, filed, and served without a remote URL', async () => {
+  const config = testConfig(), app = await buildServer(config)
+  try {
+    const project = (await app.inject({ method: 'POST', url: '/api/projects', payload: { title: 'Uploads' } })).json()
+    const collection = (await app.inject({ method: 'POST', url: `/api/projects/${project.id}/collections`, payload: { name: 'Papers' } })).json()
+    const bytes = fs.readFileSync('test/fixtures/sample.pdf')
+    const uploaded = await uploadFile(app, `/api/projects/${project.id}/sources/upload?collection_id=${collection.id}`, bytes)
+    assert.equal(uploaded.statusCode, 200)
+    const source = uploaded.json()
+    assert.equal(source.pages, 2)
+    assert.equal(source.url, null)
+    assert.equal(source.original_location, null)
+    assert.equal(source.collection_id, collection.id)
+    assert.ok(source.local_path)
+    assert.ok(source.pdf_text.length > 0)
+
+    const file = await app.inject({ method: 'GET', url: `/api/projects/${project.id}/sources/${source.id}/file` })
+    assert.equal(file.headers['content-type'], 'application/pdf')
+    assert.deepEqual(file.rawPayload, bytes)
+    const db = (await import('../../src/core/database.js')).openDatabase(config)
+    try {
+      assert.equal((db.prepare('SELECT COUNT(*) count FROM source_chunks WHERE source_id=?').get(source.id) as { count: number }).count, 2)
+      // Browser uploads have no original filesystem path. Refresh extraction
+      // must read the managed copy rather than requiring a URL or temp file.
+      const { SourceService } = await import('../../src/core/sources.js')
+      assert.equal(await new SourceService(db, config).reindex(project.id, source.id, true), 2)
+    } finally { db.close() }
+  } finally { await app.close(); cleanup(config, { close() {} } as never) }
+})
+
+test('upload rejects missing, non-PDF, and oversized files without creating sources', async () => {
+  const config = testConfig(), app = await buildServer(config)
+  try {
+    const project = (await app.inject({ method: 'POST', url: '/api/projects', payload: { title: 'Invalid uploads' } })).json()
+    const url = `/api/projects/${project.id}/sources/upload`
+    const missing = await uploadFile(app, url)
+    assert.equal(missing.statusCode, 400)
+    assert.equal(missing.json().code, 'FILE_REQUIRED')
+    const invalid = await uploadFile(app, url, Buffer.from('This is HTML, despite the PDF filename and MIME type.'))
+    assert.equal(invalid.statusCode, 400)
+    assert.equal(invalid.json().code, 'NOT_A_PDF')
+    const oversized = await uploadFile(app, url, Buffer.alloc(25 * 1024 * 1024 + 1))
+    assert.equal(oversized.statusCode, 413)
+    assert.equal(oversized.json().code, 'FILE_TOO_LARGE')
+    const listed = await app.inject({ method: 'GET', url: `/api/projects/${project.id}/sources` })
+    assert.deepEqual(listed.json(), [])
+    assert.deepEqual(fs.existsSync(config.filesDir) ? fs.readdirSync(config.filesDir) : [], [])
+  } finally { await app.close(); cleanup(config, { close() {} } as never) }
+})
 
 test('Fastify server exposes health and project CRUD', async () => {
   const config = testConfig(), app = await buildServer(config)

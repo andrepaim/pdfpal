@@ -39,15 +39,19 @@ export class SourceService {
     return matches[0]!
   }
 
-  async add(projectSelector: string, location: string, title?: string, collectionSelector?: string): Promise<Source> {
+  async add(projectSelector: string, location: string | { filename: string; bytes: Buffer }, title?: string, collectionSelector?: string): Promise<Source> {
     const project = this.projects.resolve(projectSelector)
     const collectionId = collectionSelector ? this.collections.resolve(project.id, collectionSelector).id : null
     const id = randomUUID()
-    const isUrl = /^https?:\/\//i.test(location)
+    const isUrl = typeof location === 'string' && /^https?:\/\//i.test(location)
     let bytes: Buffer
     let url: string | null = null
-    let originalLocation = location
-    if (isUrl) {
+    let originalLocation = typeof location === 'string' ? location : null
+    const filename = typeof location === 'string' ? location : location.filename
+    if (typeof location !== 'string') {
+      bytes = location.bytes
+      if (bytes.subarray(0, 4).toString() !== '%PDF') throw new PdfpalError('NOT_A_PDF', 'The uploaded file is not a PDF', 2)
+    } else if (isUrl) {
       const resolved = await resolvePdf(location)
       bytes = resolved.bytes
       url = resolved.url
@@ -63,8 +67,8 @@ export class SourceService {
     const timestamp = now()
     // Prefer a clean catalogue title for arXiv/DOI links; the PDF's own
     // first-line heuristic often bleeds authors and affiliations into the title.
-    const catalogueTitle = isUrl && !title?.trim() ? await titleFromUrl(location, this.config.semanticScholarApiKey) : null
-    const sourceTitle = title?.trim() || catalogueTitle || extracted.title || (isUrl ? new URL(location).pathname.split('/').filter(Boolean).at(-1) : path.basename(location)) || 'Untitled Source'
+    const catalogueTitle = isUrl && !title?.trim() ? await titleFromUrl(filename, this.config.semanticScholarApiKey) : null
+    const sourceTitle = title?.trim() || catalogueTitle || extracted.title || (isUrl ? new URL(filename).pathname.split('/').filter(Boolean).at(-1) : path.basename(filename)) || 'Untitled Source'
     const source: Source = {
       id, project_id: project.id, type: 'pdf', url, title: sourceTitle, pdf_text: extracted.text,
       pages: extracted.pages, last_page_read: 1, created_at: timestamp, accessed_at: timestamp, original_location: originalLocation,
@@ -139,7 +143,7 @@ export class SourceService {
     for (const source of targets) {
       let text = source.pdf_text ?? ''
       if (refetch) {
-        const location = source.url ?? source.original_location
+        const location = source.url ?? source.original_location ?? this.pdfPath(source)
         if (!location) throw new PdfpalError('SOURCE_UNAVAILABLE', `No retrievable location for ${source.title ?? source.id}`)
         const bytes = /^https?:\/\//.test(location) ? (await resolvePdf(location)).bytes : fs.readFileSync(location)
         const extracted = await extractPdf(bytes)

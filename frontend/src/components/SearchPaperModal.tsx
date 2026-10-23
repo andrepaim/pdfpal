@@ -1,5 +1,5 @@
 /**
- * SearchPaperModal.tsx — Add a source by URL or by searching S2 + arXiv.
+ * SearchPaperModal.tsx — Add a source by URL, local PDF, or paper search.
  */
 import { useState, useRef, type KeyboardEvent } from 'react'
 import { sourcesApi, searchApi, type Source, type SearchResult } from '../lib/api'
@@ -10,7 +10,9 @@ interface Props {
   onAdded: (s: Source) => void
 }
 
-type Tab = 'url' | 'search'
+type Tab = 'url' | 'search' | 'upload'
+
+const MAX_PDF_SIZE = 25 * 1024 * 1024
 
 const overlayStyle: React.CSSProperties = {
   position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
@@ -118,6 +120,10 @@ export default function SearchPaperModal({ projectId, onClose, onAdded }: Props)
   const [url, setUrl] = useState('')
   const [urlLoading, setUrlLoading] = useState(false)
   const [urlError, setUrlError] = useState('')
+  // Upload tab
+  const [file, setFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
   // Search tab
   const [query, setQuery] = useState('')
   const [searching, setSearching] = useState(false)
@@ -158,6 +164,22 @@ export default function SearchPaperModal({ projectId, onClose, onAdded }: Props)
     }
   }
 
+  const handleUpload = async () => {
+    if (!file || uploading) return
+    if (file.size > MAX_PDF_SIZE) {
+      setUploadError('PDF files must be 25 MB or smaller.')
+      return
+    }
+    setUploading(true); setUploadError('')
+    try {
+      onAdded(await sourcesApi.upload(projectId, file))
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : 'Failed to import PDF')
+    } finally {
+      setUploading(false)
+    }
+  }
+
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') handleSearch()
   }
@@ -182,7 +204,7 @@ export default function SearchPaperModal({ projectId, onClose, onAdded }: Props)
         <div style={{ marginBottom: 16 }}>
           <h3 style={{ color: '#fff', margin: '0 0 4px', fontSize: 15 }}>Add a source</h3>
           <p style={{ color: '#6b7280', fontSize: 12, margin: 0 }}>
-            Search for a paper or paste a URL directly.
+            Search for a paper, paste a URL, or upload a PDF.
           </p>
         </div>
 
@@ -190,6 +212,7 @@ export default function SearchPaperModal({ projectId, onClose, onAdded }: Props)
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 16, flexShrink: 0 }}>
           {tabBtn('search', '🔍 Search papers')}
           {tabBtn('url', '🔗 Paste URL')}
+          {tabBtn('upload', '📄 Upload PDF')}
         </div>
 
         {/* Search tab */}
@@ -279,6 +302,48 @@ export default function SearchPaperModal({ projectId, onClose, onAdded }: Props)
                 }}
               >
                 {urlLoading ? <><span className="spinner" style={{ width: 14, height: 14, marginRight: 8 }} />Fetching…</> : 'Add Source'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {tab === 'upload' && (
+          <>
+            <label htmlFor="source-pdf-file" style={{ color: '#e5e7eb', fontSize: 13, marginBottom: 8 }}>
+              Choose a PDF file
+            </label>
+            <input
+              id="source-pdf-file"
+              type="file"
+              accept=".pdf,application/pdf"
+              disabled={uploading}
+              onChange={e => {
+                const selected = e.target.files?.[0] ?? null
+                setFile(selected)
+                setUploadError(selected && selected.size > MAX_PDF_SIZE ? 'PDF files must be 25 MB or smaller.' : '')
+              }}
+              style={{ ...inputStyle, marginBottom: 10 }}
+            />
+            <p style={{ color: '#6b7280', fontSize: 11, margin: '0 0 16px' }}>
+              PDF files up to 25 MB. A copy will be saved in your library.
+            </p>
+            {uploadError && <div role="alert" style={{ color: '#f87171', fontSize: 12, marginBottom: 12 }}>{uploadError}</div>}
+            {uploading && <p role="status" style={{ color: '#9ca3af', fontSize: 12 }}>Uploading and indexing your PDF…</p>}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={onClose} style={{ background: 'none', border: '1px solid var(--border)', color: '#9ca3af', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button
+                onClick={handleUpload}
+                disabled={uploading || !file || file.size > MAX_PDF_SIZE}
+                style={{
+                  background: uploading || !file || file.size > MAX_PDF_SIZE ? '#3a3a3a' : 'var(--accent)',
+                  color: '#fff', border: 'none', borderRadius: 8,
+                  padding: '8px 16px', fontSize: 13, fontWeight: 600,
+                  cursor: uploading ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {uploading ? 'Importing…' : 'Import PDF'}
               </button>
             </div>
           </>
