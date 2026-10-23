@@ -47,6 +47,42 @@ body {
 .textLayer br::-moz-selection { background: transparent; }
 .textLayer br::selection { background: transparent; }
 
+.pdf-viewer {
+  --pdf-page-background: white;
+  --pdf-highlight-blend: multiply;
+}
+
+.pdf-viewer[data-page-theme="dark"] {
+  --pdf-page-background: #1a1a1a;
+  --pdf-highlight-blend: screen;
+}
+
+.pdf-viewer .react-pdf__Page {
+  /* react-pdf sets an inline white background, including while loading. */
+  background-color: var(--pdf-page-background) !important;
+}
+
+.pdf-viewer[data-page-theme="dark"] .react-pdf__Page__canvas {
+  /* Filter only the rendered page so controls, links, selection, and saved
+     highlights retain their own colors. The original PDF bytes stay intact. */
+  filter: invert(0.9) hue-rotate(180deg);
+}
+
+.pdf-viewer .pdf-highlight {
+  mix-blend-mode: var(--pdf-highlight-blend);
+}
+
+.pdf-viewer[data-page-theme="dark"] .textLayer ::-moz-selection {
+  background: rgba(96, 165, 250, 0.4);
+  color: transparent;
+}
+.pdf-viewer[data-page-theme="dark"] .textLayer ::selection {
+  background: rgba(96, 165, 250, 0.4);
+  color: transparent;
+}
+.pdf-viewer[data-page-theme="dark"] .textLayer br::-moz-selection { background: transparent; }
+.pdf-viewer[data-page-theme="dark"] .textLayer br::selection { background: transparent; }
+
 /* Scrollbars */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

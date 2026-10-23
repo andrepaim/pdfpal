@@ -72,6 +72,7 @@ function getSelectionPageRects(selection: Selection): { page: number; bbox: Page
 }
 
 const ZOOM_LEVELS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
+const DARK_PAGES_STORAGE_KEY = 'pdfpal.pdf.darkPages'
 
 function normalizePage(page: number | undefined): number {
   return Number.isInteger(page) && Number(page) > 0 ? Number(page) : 1
@@ -108,12 +109,22 @@ export default function PdfViewer({
   const [restored, setRestored] = useState(false)
   const [scale, setScale] = useState(1.0)
   const [fitWidth, setFitWidth] = useState(true)
+  const [darkPages, setDarkPages] = useState(() => {
+    try { return localStorage.getItem(DARK_PAGES_STORAGE_KEY) === 'true' }
+    catch { return false }
+  })
   const [containerWidth, setContainerWidth] = useState(800)
   const [bubble, setBubble] = useState<{ x: number; y: number; text: string; coords: ReturnType<typeof getSelectionPageRects> } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const currentPageRef = useRef(requestedPage)
   const activeUrlRef = useRef(url)
+  useEffect(() => {
+    // Privacy settings can disable storage; the toggle still works for the
+    // current reader even when its preference cannot be saved.
+    try { localStorage.setItem(DARK_PAGES_STORAGE_KEY, String(darkPages)) }
+    catch { /* Keep the in-memory preference. */ }
+  }, [darkPages])
   useEffect(() => { activeUrlRef.current = url }, [url])
   // Use a ref so the ResizeObserver callback always sees the current value
   // without needing to re-subscribe the observer on every drag start/end.
@@ -296,7 +307,7 @@ export default function PdfViewer({
   }
 
   return (
-    <div ref={containerRef} style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', position: 'relative' }}>
+    <div ref={containerRef} className="pdf-viewer" data-page-theme={darkPages ? 'dark' : 'light'} style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', position: 'relative' }}>
       {/* Toolbar */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
@@ -320,6 +331,15 @@ export default function PdfViewer({
             Page {Math.min(currentPage, numPages)} of {numPages}
           </span>
         )}
+        <button
+          type="button"
+          aria-pressed={darkPages}
+          onClick={() => setDarkPages(value => !value)}
+          title="Use dark page colors. Figure and photo colors will also change."
+          style={{ ...btnStyle, width: 'auto', padding: '4px 10px', marginLeft: 'auto', fontSize: 12, background: darkPages ? 'var(--accent)' : btnStyle.background }}
+        >
+          Dark pages
+        </button>
       </div>
 
       {/* PDF scroll area */}
@@ -437,7 +457,7 @@ function LazyPdfPage({ pageNumber, pageWidth, pageScale, pageSize: initialPageSi
       aria-label={`Page ${pageNumber}`}
       style={{ display: 'flex', justifyContent: 'center', marginBottom: 12, position: 'relative', minHeight: placeholderHeight }}
     >
-      <div style={{ position: 'relative' }}>
+      <div style={{ position: 'relative', isolation: 'isolate' }}>
         {shouldRender ? (
           <Page
             pageNumber={pageNumber}
@@ -450,7 +470,7 @@ function LazyPdfPage({ pageNumber, pageWidth, pageScale, pageSize: initialPageSi
             error={<ErrorPage />}
           />
         ) : (
-          <div style={{ width: placeholderWidth, height: placeholderHeight, background: 'white' }} aria-label={`Page ${pageNumber}`} />
+          <div style={{ width: placeholderWidth, height: placeholderHeight, background: 'var(--pdf-page-background)' }} aria-label={`Page ${pageNumber}`} />
         )}
         {annotations.map(ann =>
           // rects gives one box per selected line; annotations from before
@@ -458,6 +478,7 @@ function LazyPdfPage({ pageNumber, pageWidth, pageScale, pageSize: initialPageSi
           (ann.rects && ann.rects.length ? ann.rects : [ann]).map((r, i) => (
             <div
               key={`${ann.id}-${i}`}
+              className="pdf-highlight"
               onClick={() => onHighlightClick?.(ann)}
               title={ann.text}
               style={{
@@ -471,7 +492,6 @@ function LazyPdfPage({ pageNumber, pageWidth, pageScale, pageSize: initialPageSi
                 cursor: 'pointer',
                 zIndex: 2,
                 borderRadius: 2,
-                mixBlendMode: 'multiply',
               }}
             />
           )),

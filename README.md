@@ -114,6 +114,8 @@ npm start
 4. Switch to the **Notes** tab and write what you understood in your own words as a markdown note; it renders as you read it back.
 5. Ask a question across every source in the project from **Project Chat**.
 
+Use **Dark pages** beside the reader's zoom controls for a dark page background and light text. The setting is remembered in your browser across documents and reloads. It also changes figure and photo colors; switch it off to view their original colors.
+
 ## CLI
 
 ```bash
