@@ -2,7 +2,7 @@
 
 > **AI to read deeper, not to avoid reading.**
 
-An inline PDF reader with AI chat, notes, and highlights side by side, plus a scriptable CLI an AI agent can drive on its own. Runs entirely on your machine, powered by your existing Claude, Codex, or OpenCode subscription. No SaaS fee, no usage cap, no account.
+A local reading assistant for PDFs and Kindle books, with three interfaces: a web reader, a Chrome companion for Kindle for Web, and a scriptable CLI. Read with AI chat, visual explanations, notes, and highlights beside the page, powered by your configured Claude, Codex, or OpenCode agent. No separate pdfpal account or subscription; your provider’s authentication, charges, and usage limits still apply.
 
 There's a lot of vibe researching going on. Feed the PDF to a chatbot and ask for the gist, watch the 20-minute YouTube explainer, skim an AI-generated summary, then walk away feeling like you read the paper. You didn't. The understanding that matters lives in exactly the parts the summary flattens: the assumptions, the derivation the author skipped, the limitation buried in section 6, the table that quietly contradicts the abstract. If your grasp of a paper ends where a summary does, you don't have one.
 
@@ -23,7 +23,7 @@ Sort of. There are plenty of chat-with-PDF tools: web apps where you upload a pa
 
 Most of them are also built around the summary: upload, get the takeaways, move on. That's the vibe-researching workflow. pdfpal is built around the reader.
 
-pdfpal cuts out the middleman. It runs entirely on your machine, and every chat, every cross-paper question, goes through the agent CLI you've already got installed and authenticated. No extra fee, no usage caps, no feature gates, no uploads to anyone's cloud.
+pdfpal keeps your library, notes, and history on your machine. Chat and visual explanations go through the agent CLI you've installed and authenticated, which sends the relevant context to its configured provider. Kindle OCR runs locally with bundled language data. pdfpal adds no subscription fee or artificial usage quota; provider terms and limits still apply.
 
 It's also a CLI with the same project/source/collection model as the web app (the browser and the CLI call the same core code, nothing is reimplemented twice), plus a Claude Code / Codex skill that lets an agent drive the whole thing directly. Here's what that looks like end to end.
 
@@ -52,6 +52,14 @@ Finding papers is legwork, and by now agents are better at it than we are: they 
 4. **Read and ask questions inline**, in the same reader shown above, right where the agent left off.
 
 ## Features
+
+### Kindle reading
+
+The [Kindle Companion](extension/README.md) brings the same dark chat pane to Kindle for Web. Ask about the open book, attach native selections or locally recognized image text, generate visual explanations with `/visual`, and save passages or answers as project notes. Conversations survive closing the panel and normal extension updates.
+
+Book questions use title/author, previous discussion, and captured or saved excerpts. The full Kindle book is not imported. Relevant project PDFs can be included explicitly; a project does not need PDFs to support Kindle chat.
+
+![Kindle companion showing a visual explanation beside the chat composer](screenshots/7-kindle-companion.png)
 
 ### Reading & Chat
 - **Split-pane reader**: PDF viewer on the left, chat/notes/related on the right; resizable.
@@ -95,6 +103,8 @@ Select text in the PDF reader and choose **Explain visually** from its popup, or
 
 ## Install and run
 
+The guided extension setup below is included in the repository's **2.1.0** build (companion **0.5.0**). It has not yet been published to npm. To use it now, follow the source installation instructions below; the registry command installs whichever version is currently published.
+
 ```bash
 npm install -g pdfpal
 pdfpal
@@ -102,15 +112,19 @@ pdfpal
 
 Running `pdfpal` starts the local Fastify server at `http://localhost:8200` and opens the browser. Use `pdfpal serve --no-open` to suppress the browser.
 
-For development:
+From a source checkout (including the current extension features):
 
 ```bash
+git clone https://github.com/andrepaim/pdfpal.git
+cd pdfpal
 npm ci
 npm run build
 npm start
 ```
 
 ## Quickstart
+
+### Read a PDF
 
 1. Click **New Project** and give it a title.
 2. Click **Add Source** and search by title, paste a paper URL (arXiv, OpenReview, ACL Anthology, PMLR, a DOI link, or a direct `.pdf`), or choose **Upload PDF** to import a local file up to 25 MB.
@@ -122,9 +136,19 @@ Use **Dark pages** beside the reader's zoom controls for a dark page background 
 
 After following a reference link within a PDF, click **Back to citation** in the reader toolbar to return to your previous position and zoom. Follow several references and click it repeatedly to retrace your jumps.
 
-### Kindle browser companion
+### Read a Kindle book
 
-The optional [Chrome extension](extension/README.md) brings pdfpal's dark chat pane to Kindle for Web. Ask general questions about the open book or attach a selection using native text or local OCR. Build it with `npm run build:extension`, load `extension/dist` through Chrome's **Load unpacked** option, and pair it using `pdfpal extension pair`. Conversations use book details, captured excerpts and optional project PDFs; the full Kindle book is not imported. Save passages or answers as project notes. Conversations persist per book and project, including projects with no PDFs.
+1. Start pdfpal and choose **Extension** on the projects home page (or **Kindle extension** in a project).
+2. **Download Chrome extension**, extract it to a folder you will keep, and open `chrome://extensions`. Enable **Developer mode**, choose **Load unpacked**, and select the extracted folder containing `manifest.json`.
+3. Pin pdfpal to Chrome's toolbar. Open your book in [Kindle for Web](https://read.amazon.com/), refresh the tab, and click the pdfpal toolbar icon.
+4. Click **Connect to pdfpal**. In the local tab that opens, click **Allow connection**, then return to Kindle. Choose or create a project.
+5. Ask a book question, select a passage to attach it, or type `/visual <concept>`. Save useful passages and answers as project notes.
+
+No pairing code is needed for this flow. Keep pdfpal running; if it stops, restart it and Retry. **Address & manual pairing** supports custom ports and the older code-based connection flow. The web **Extension** page also lets you name and disconnect paired connections.
+
+![The local extension setup and connection management page](screenshots/8-extension-setup.png)
+
+Supported readers: `read.amazon.com`, `ler.amazon.com.br`, and `read.amazon.co.uk`, in desktop Chrome. English prose is the initial OCR target. This companion works with Kindle for Web, not the native Kindle PC application. See the [companion guide](extension/README.md) for capture, update, and troubleshooting instructions.
 
 ## CLI
 
@@ -192,8 +216,15 @@ Legacy `~/.pdfpal/config.env` is imported automatically on first TypeScript star
 npm run typecheck
 npm test
 npm run build
-cd frontend && npx playwright test
+npm exec --workspace frontend -- playwright install --with-deps chromium
+npm exec --workspace extension -- playwright install --with-deps chromium
+npm exec --workspace frontend -- playwright test
+npm run test:extension
+npm run test:archive
+npm run test:package
 ```
+
+`npm run build` builds the server, web reader, and extension, and creates a reproducible ZIP in `extension/package/`. The server serves that matching ZIP from its Extension page. `test:package` installs a real tarball into a temporary prefix and exercises guided pairing, chat, and note saving outside the checkout. Extension browser tests use their workspace’s bundled Chromium; all automated AI calls use fixtures.
 
 `npm test` runs Node's test runner through `tsx`, fails when no tests are found, and enforces the configured c8 coverage thresholds. Playwright starts the compiled Fastify server using an isolated temporary data directory. Set `PLAYWRIGHT_EXECUTABLE_PATH` to use a system Chromium installation.
 
@@ -213,17 +244,17 @@ $loopy run the saved Local test-quality pass loop
 
 ## Architecture
 
-The browser and CLI are two entry points over the same TypeScript services. The browser reaches those services through Fastify over HTTP; the CLI calls them directly. Both paths share configuration, storage, retrieval, chat history, and agent adapters.
+The web reader, Kindle companion, and CLI share TypeScript services, local storage, and agent configuration. The web reader uses the same-origin Fastify API; the extension uses a loopback bridge with revocable credentials; the CLI calls services directly. Kindle conversations are scoped to connection, project, and book, separately from PDF chat sessions. Saved notes are available in the project UI.
 
 ```text
-React SPA ── HTTP ──▶ Fastify API ──┐
-                                    ├── TypeScript core
-pdfpal CLI ─────────────────────────┘          │
-                                              ├── Projects, sources, collections, notes, chat
-                                              ├── SQLite + FTS5 retrieval and history
-                                              ├── Managed PDF copies and extracted text
-                                              ├── Claude / Codex / OpenCode subprocesses
-                                              └── OpenAlex / Semantic Scholar integrations
+Web reader ── HTTP ──▶ Fastify API ──┐
+Kindle companion ────▶ Local bridge ─┤
+                                    ├── TypeScript services
+pdfpal CLI ─────────────────────────┘       │
+                                            ├── SQLite, retrieval, notes, history
+                                            ├── Managed PDF copies and extracted text
+                                            ├── Claude / Codex / OpenCode agents
+                                            └── OpenAlex / Semantic Scholar
 ```
 
 ### Main data paths
@@ -234,11 +265,12 @@ pdfpal CLI ───────────────────────
 
 The implementation follows that split:
 
+- [`extension/`](extension/) contains the Chrome side panel, reader capture, bundled OCR, and guided connection flow.
 - [`frontend/src`](frontend/src/) contains the reader, chat, projects, notes, collections, and source-discovery UI.
 - [`src/server`](src/server/) exposes the HTTP API and serves the built frontend.
 - [`src/cli`](src/cli/) defines the scriptable `pdfpal` commands.
 - [`src/core`](src/core/) owns projects, sources, collections, notes, retrieval, chat, PDF handling, configuration, and agent invocation.
 
-The npm package contains the compiled TypeScript server/CLI and the built React frontend. Runtime state stays local under `~/.pdfpal` by default, while external network edges are limited to source URLs, OpenAlex, Semantic Scholar, and capabilities provided by the selected agent. It is intended for local, single-user operation.
+The 2.1.0 package build contains the compiled TypeScript server/CLI, built React frontend, unpacked Chrome extension, and matching ZIP with bundled OCR assets. Runtime state stays local under `~/.pdfpal` by default, while external network edges are limited to source URLs, OpenAlex, Semantic Scholar, and capabilities provided by the selected agent. It is intended for local, single-user operation.
 
 *AI to read deeper, not to avoid reading.*
