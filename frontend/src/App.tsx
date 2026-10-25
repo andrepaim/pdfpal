@@ -154,6 +154,7 @@ export default function App({ user }: { user: User }) {
   const [pdfPages, setPdfPages] = useState(0)
   const [pdfLabel, setPdfLabel] = useState('')
   const [selectedText, setSelectedText] = useState('')
+  const [visualSelectionRequest, setVisualSelectionRequest] = useState<{ id: string; text: string; scope: string } | null>(null)
   const [annotations, setAnnotations] = useState<Annotation[]>([])
   const [splitPct, setSplitPct] = useState(55)
   const [loading, setLoading] = useState(true)
@@ -195,6 +196,7 @@ export default function App({ user }: { user: User }) {
   }, [projectId, sourceId])
 
   useEffect(() => { loadSource() }, [loadSource])
+  useEffect(() => { setSelectedText(''); setVisualSelectionRequest(null) }, [projectId, sourceId])
 
   const flushReadingProgress = useCallback(() => {
     if (!projectId || !sourceId) return
@@ -400,7 +402,10 @@ export default function App({ user }: { user: User }) {
             initialPage={source?.last_page_read ?? 1}
             isResizing={isResizing}
             onPageChange={handlePageChange}
-            onTextSelected={setSelectedText}
+            onTextSelected={text => { setSelectedText(text); setRightPanel('chat') }}
+            onExplainVisually={text => {
+              setSelectedText(text); setRightPanel('chat'); setVisualSelectionRequest({ id: crypto.randomUUID(), text, scope: `${projectId}:${sourceId}` })
+            }}
             annotations={annotations}
             onHighlightCreate={handleHighlightCreate}
             onHighlightClick={handleHighlightClick}
@@ -431,6 +436,8 @@ export default function App({ user }: { user: User }) {
               pdfUrl={source?.url || ''}
               disabled={!hasPdfText}
               selectedText={selectedText}
+              visualSelectionRequest={visualSelectionRequest}
+              onVisualSelectionHandled={() => setVisualSelectionRequest(null)}
               onSelectedTextUsed={() => setSelectedText('')}
               projectId={projectId || null}
               sourceId={sourceId || null}

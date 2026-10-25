@@ -122,8 +122,13 @@ test.describe('PDF page appearance', () => {
     const highlight = page.locator('[data-pdf-page="1"]').getByTitle(selected, { exact: true });
     await expect(highlight).toBeVisible();
     await expect(highlight).toHaveCSS('mix-blend-mode', 'screen');
+    await page.getByRole('textbox').fill('My question about this passage');
     await highlight.click();
-    await expect(page.getByRole('textbox')).toHaveValue(`> "${selected}"\n\n`);
+    await expect(page.getByRole('textbox')).toHaveValue('My question about this passage');
+    await expect(page.getByText('Selection attached — ask a question or type /visual')).toBeVisible();
+    await expect(page.getByTitle(selected, { exact: true }).filter({ hasText: selected })).toBeVisible();
+    await page.getByRole('button', { name: 'Remove selection', exact: true }).click();
+    await expect(page.getByRole('textbox')).toHaveValue('My question about this passage');
     await page.getByRole('button', { name: 'Dark pages', exact: true }).click();
     await expect(highlight).toHaveCSS('mix-blend-mode', 'multiply');
     const annotations = await (await page.request.get(`/api/projects/${project.id}/sources/${source.id}/annotations`)).json();

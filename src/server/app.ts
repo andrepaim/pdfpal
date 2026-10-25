@@ -19,6 +19,10 @@ import { AgentService, type AgentName } from '../core/agents.js'
 import { resolvePdf, excerptFromText } from '../core/pdf.js'
 import { relatedPapers } from '../core/research.js'
 import { PdfpalError } from '../core/types.js'
+import { registerExtensionRoutes } from './extension.js'
+import { ZodError } from 'zod'
+import { VisualExplanationService, VisualError } from '../core/visual-explanations.js'
+import { registerVisualRoutes } from './visual-explanations.js'
 
 type Params = { projectId: string; sourceId: string; id: string }
 const now = () => new Date().toISOString()
@@ -31,10 +35,13 @@ export async function buildServer(config: PdfpalConfig) {
   const collections = new CollectionService(db)
   const notes = new NoteService(db, config)
   const chat = new ChatService(db, config)
+  const visuals = new VisualExplanationService(db, config)
   await app.register(cors, { origin: false })
   await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024 } })
 
   app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof VisualError) return reply.status(error.status).send({ detail: error.message })
+    if (error instanceof ZodError) return reply.status(400).send({ detail: error.issues.map(issue => issue.message).join('; ') })
     if (error instanceof app.multipartErrors.RequestFileTooLargeError) {
       return reply.status(413).send({ detail: 'PDF files must be 25 MB or smaller.', code: 'FILE_TOO_LARGE' })
     }
@@ -130,13 +137,15 @@ export async function buildServer(config: PdfpalConfig) {
   registerDocumentRoutes(app, notes)
   registerAnnotationRoutes(app, db)
   registerResearchRoutes(app, db, config)
+  registerVisualRoutes(app, visuals)
+  const kindle = await registerExtensionRoutes(app, db, config, visuals)
 
   const frontend = [path.resolve('frontend/dist'), path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../frontend/dist')].find(candidate => fs.existsSync(path.join(candidate, 'index.html')))
   if (frontend) {
     await app.register(staticPlugin, { root: frontend, wildcard: false })
     app.setNotFoundHandler((request, reply) => request.url.startsWith('/api/') ? reply.status(404).send({ detail: 'Not Found' }) : reply.sendFile('index.html'))
   }
-  app.addHook('onClose', async () => db.close())
+  app.addHook('onClose', async () => { await kindle.close(); await visuals.close(); db.close() })
   return app
 }
 

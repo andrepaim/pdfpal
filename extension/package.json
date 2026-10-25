@@ -1,0 +1,30 @@
+{
+  "name": "pdfpal-kindle-extension",
+  "private": true,
+  "version": "0.4.2",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && node build.mjs",
+    "test": "npm run build && playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@types/chrome": "^0.3.6",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "esbuild": "0.28.1",
+    "typescript": "~5.9.3"
+  },
+  "dependencies": {
+    "@tesseract.js-data/eng": "^1.0.0",
+    "katex": "0.16.47",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "react-markdown": "10.1.0",
+    "rehype-katex": "7.0.1",
+    "remark-gfm": "4.0.1",
+    "remark-math": "6.0.0",
+    "tesseract.js": "^7.0.0"
+  }
+}

@@ -73,7 +73,7 @@ export class AgentService {
           clearTimeout(timer)
           const out = Buffer.concat(stdout).toString('utf8').trim()
           const err = Buffer.concat(stderr).toString('utf8').trim()
-          if (code !== 0 && !out) return reject(new PdfpalError('AGENT_FAILED', err || `${agent} exited with status ${code}`))
+          if (code !== 0) return reject(new PdfpalError('AGENT_FAILED', err || out || `${agent} exited with status ${code}`))
           if (agent !== 'opencode') return resolve(out)
           const text = out.split(/\r?\n/).flatMap(line => {
             try {

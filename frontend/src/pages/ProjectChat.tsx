@@ -8,6 +8,10 @@ import { sourcesApi, collectionsApi, chatApi, type Source, type Collection } fro
 import { useAgent } from '../hooks/useAgent'
 import AgentSelect from '../components/AgentSelect'
 import Markdown from '../components/Markdown'
+import VisualExplanation from '../components/VisualExplanation'
+import { startWebVisual, webVisualTransport } from '../lib/visual-api'
+import { isVisualCommandPrefix, parseChatInput } from '../../../src/shared/chat-command'
+import ChatCommandHint from '../components/ChatCommandHint'
 
 /** Collection subtree (the collection id plus all descendant collection ids). */
 function subtreeIds(collections: Collection[], rootId: string): Set<string> {
@@ -26,6 +30,7 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   sources_used?: string[]
+  visual_id?: string | null
 }
 
 export default function ProjectChat() {
@@ -41,18 +46,23 @@ export default function ProjectChat() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const scopeRef = useRef('')
+  scopeRef.current = `${projectId}:${collectionScope}`
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { agent, setAgent, agents: agentOptions } = useAgent()
 
   useEffect(() => {
     if (!projectId) return
+    let active = true
+    setMessages([]); setLoading(false); setError('')
     // Load sources + collections + chat history in parallel
     Promise.all([
       sourcesApi.list(projectId),
       chatApi.getProjectChat(projectId),
       collectionsApi.list(projectId),
     ]).then(([sources, history, collections]) => {
+      if (!active) return
       setSources(sources)
       // When arriving via "Ask this collection", start with only that
       // collection's subtree active; otherwise every source is in context.
@@ -68,9 +78,11 @@ export default function ProjectChat() {
           role: m.role,
           content: m.content,
           sources_used: m.sources_used || [],
+          visual_id: m.visual_id,
         })))
       }
-    })
+    }).catch(e => { if (active) setError(e instanceof Error ? e.message : 'Cannot load project chat.') })
+    return () => { active = false }
   }, [projectId, collectionScope])
 
   useEffect(() => {
@@ -87,10 +99,16 @@ export default function ProjectChat() {
   }
 
   const activeSources = sources.filter(s => activeSourceIds.has(s.id))
+  const parsedInput = parseChatInput(input)
+  const canSend = !!input.trim() && (parsedInput.kind !== 'text' || activeSources.length > 0)
 
   const send = async () => {
-    if (!input.trim() || loading || activeSources.length === 0) return
-    const userMsg = input.trim()
+    if (loading) return
+    const command = parseChatInput(input)
+    if (command.kind === 'help' || command.kind === 'empty') { textareaRef.current?.focus(); return }
+    const asVisual = command.kind === 'visual'
+    if (!asVisual && !activeSources.length) { setError('Select at least one source for text chat, or use /visual <concept>.'); return }
+    const userMsg = command.question, scope = scopeRef.current
     setInput('')
     setError('')
 
@@ -99,6 +117,12 @@ export default function ProjectChat() {
     setLoading(true)
 
     try {
+      if (asVisual && projectId) {
+        const visual = await startWebVisual(projectId, { question: userMsg, active_source_ids: activeSources.map(s => s.id),
+          ...(agent ? { agent } : {}) })
+        if (scope === scopeRef.current) setMessages([...newHistory, { role: 'assistant', content: '', visual_id: visual.id }])
+        return
+      }
       const res = await fetch('/api/chat', {
         method: 'POST',
         credentials: 'include',
@@ -141,21 +165,21 @@ export default function ProjectChat() {
         }
       }
 
-      setMessages([...newHistory, {
+      if (scope === scopeRef.current) setMessages([...newHistory, {
         role: 'assistant',
         content: assistantText,
         sources_used: activeSources.map(s => s.id),
       }])
     } catch (e: any) {
-      setError(e.message || 'Something went wrong')
-      setMessages(newHistory)
+      if (scope === scopeRef.current) { setError(e.message || 'Something went wrong'); setMessages(newHistory); setInput(asVisual ? `/visual ${userMsg}` : userMsg) }
     } finally {
-      setLoading(false)
-      textareaRef.current?.focus()
+      if (scope === scopeRef.current) { setLoading(false); textareaRef.current?.focus() }
     }
   }
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.nativeEvent.isComposing) return
+    if (e.key === 'Tab' && !e.shiftKey && isVisualCommandPrefix(input)) { e.preventDefault(); setInput('/visual '); return }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
 
@@ -237,7 +261,7 @@ export default function ProjectChat() {
           {messages.length === 0 && !loading && (
             <div style={{ textAlign: 'center', paddingTop: 60, color: '#4b5563', fontSize: 14 }}>
               {activeSources.length === 0
-                ? 'Enable at least one source to start chatting'
+                ? 'Select sources for text chat, or type /visual <concept> to explore an idea.'
                 : `Ask anything across ${activeSources.length} source${activeSources.length !== 1 ? 's' : ''}…`
               }
             </div>
@@ -245,7 +269,7 @@ export default function ProjectChat() {
 
           {messages.map((msg, i) => (
             <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
-              <div style={{ maxWidth: '80%' }}>
+              <div style={{ maxWidth: msg.visual_id ? '100%' : '80%', width: msg.visual_id ? '100%' : undefined, minWidth: 0 }}>
                 <div style={{
                   padding: '10px 14px',
                   borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
@@ -255,7 +279,9 @@ export default function ProjectChat() {
                   whiteSpace: msg.role === 'user' ? 'pre-wrap' : undefined,
                 }}>
                   {msg.role === 'assistant'
-                    ? <Markdown>{msg.content}</Markdown>
+                    ? msg.visual_id && projectId ? <VisualExplanation key={msg.visual_id} id={msg.visual_id} transport={webVisualTransport(projectId)}
+                      onFollowUp={question => { setInput(question); textareaRef.current?.focus() }} />
+                      : <Markdown>{msg.content}</Markdown>
                     : msg.content
                   }
                 </div>
@@ -295,27 +321,27 @@ export default function ProjectChat() {
         </div>
 
         {/* Input */}
+        {!loading && <ChatCommandHint input={input} onChoose={() => { setInput('/visual '); textareaRef.current?.focus() }} />}
         <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, flexShrink: 0 }}>
           <textarea
             ref={textareaRef}
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={loading || activeSources.length === 0}
-            placeholder={activeSources.length === 0 ? 'Enable at least one source…' : `Ask across ${activeSources.length} source${activeSources.length !== 1 ? 's' : ''}… (Enter to send, Shift+Enter for newline)`}
+            disabled={loading}
+            placeholder="Ask a question, or type /visual…"
             rows={3}
             style={{
               flex: 1, background: '#0f0f0f', border: '1px solid var(--border)',
               borderRadius: 10, padding: '10px 14px', color: 'var(--text)',
               fontSize: 13, resize: 'none', outline: 'none', fontFamily: 'inherit', lineHeight: 1.5,
-              opacity: activeSources.length === 0 ? 0.5 : 1,
             }}
           />
           <button
-            onClick={send}
-            disabled={loading || !input.trim() || activeSources.length === 0}
+            onClick={() => send()}
+            disabled={loading || !canSend}
             style={{
-              background: loading || !input.trim() || activeSources.length === 0 ? '#2a2a2a' : 'var(--accent)',
+              background: loading || !canSend ? '#2a2a2a' : 'var(--accent)',
               color: loading || !input.trim() ? '#6b7280' : '#fff',
               border: 'none', borderRadius: 10, padding: '0 16px', fontSize: 18,
               cursor: 'pointer', alignSelf: 'stretch', transition: 'background 0.15s',

@@ -9,6 +9,7 @@ import ProjectView from './pages/ProjectView'
 import NoteEditor from './pages/NoteEditor'
 import App from './App'  // legacy reader (now used as PaperReader)
 import ProjectChat from './pages/ProjectChat'
+import VisualPage from './pages/VisualPage'
 import LoginPage from './components/LoginPage'
 
 // ── Error boundary ────────────────────────────────────────────────────────────
@@ -76,6 +77,7 @@ function Root() {
 
         {/* Note editor */}
         <Route path="/projects/:projectId/notes/:noteId" element={<NoteEditor />} />
+        <Route path="/projects/:projectId/visuals/:id" element={<VisualPage />} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />

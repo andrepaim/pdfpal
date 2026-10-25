@@ -1,0 +1,4 @@
+.chat-command-hint{flex:none;margin:0 14px 8px;border:1px solid #41415e;border-radius:10px;background:#20202c;color:#d1d5db;font:12px/1.5 system-ui,sans-serif;overflow:hidden;text-align:left}
+.chat-command-hint button{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;background:transparent;color:inherit;border:0;border-radius:0;padding:10px 12px;cursor:pointer;text-align:left;font:inherit}
+.chat-command-hint button:hover,.chat-command-hint button:focus-visible{background:#2c2a43;outline:2px solid #818cf8;outline-offset:-2px}
+.chat-command-hint code{color:#c7d2fe;margin-right:8px}.chat-command-hint strong{font-size:12px;font-weight:500}.chat-command-hint button>span+span{color:#a1a1b5;font-size:11px}.chat-command-hint p{margin:0;padding:0 12px 10px;font-size:11px;color:#a5b4fc}

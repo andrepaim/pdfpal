@@ -4,6 +4,7 @@ import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
 import type { Annotation } from '../lib/api'
+import VisualIcon from './VisualIcon'
 
 // Bundle the worker from the same pdfjs-dist version used by react-pdf.
 // package.json pins pdfjs-dist to react-pdf's exact version (no "^"): pdfjs
@@ -24,6 +25,7 @@ interface Props {
   isResizing?: boolean
   onPageChange?: (page: number) => void
   onTextSelected?: (text: string) => void
+  onExplainVisually?: (text: string) => void
   annotations?: Annotation[]
   onHighlightCreate?: (data: { page_number: number; x1: number; y1: number; x2: number; y2: number; rects: PageRect[]; text: string; color: string }) => void
   onHighlightClick?: (annotation: Annotation) => void
@@ -101,7 +103,7 @@ function getPageSize(page: PDFPageProxy): PageSize {
 }
 
 export default function PdfViewer({
-  url, initialPage = 1, isResizing, onPageChange, onTextSelected,
+  url, initialPage = 1, isResizing, onPageChange, onTextSelected, onExplainVisually,
   annotations, onHighlightCreate, onHighlightClick,
 }: Props) {
   const requestedPage = normalizePage(initialPage)
@@ -209,6 +211,13 @@ export default function PdfViewer({
   const handleAsk = () => {
     if (!bubble) return
     onTextSelected?.(bubble.text)
+    setBubble(null)
+    window.getSelection()?.removeAllRanges()
+  }
+
+  const handleVisual = () => {
+    if (!bubble) return
+    onExplainVisually?.(bubble.text)
     setBubble(null)
     window.getSelection()?.removeAllRanges()
   }
@@ -474,11 +483,12 @@ export default function PdfViewer({
       {bubble && (
         <div
           data-ask-bubble="1"
+          onMouseDown={event => event.preventDefault()}
           style={{
             position: 'absolute',
-            left: Math.min(bubble.x, (containerRef.current?.clientWidth ?? 400) - 260),
+            left: Math.max(8, Math.min(bubble.x, (containerRef.current?.clientWidth ?? 400) - 360)),
             top: Math.max(bubble.y - 48, 8),
-            display: 'flex', gap: 6, zIndex: 9999, userSelect: 'none',
+            display: 'flex', flexWrap: 'wrap', maxWidth: 'calc(100% - 16px)', gap: 6, zIndex: 9999, userSelect: 'none',
           }}
         >
           {bubble.coords && (
@@ -503,6 +513,10 @@ export default function PdfViewer({
           >
             💬 Ask
           </button>
+          {onExplainVisually && <button onClick={handleVisual} style={{
+            background: '#26233c', color: '#c7d2fe', border: '1px solid #6366f1', padding: '6px 12px', borderRadius: 20,
+            fontSize: 12, fontWeight: 600, cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.4)', whiteSpace: 'nowrap',
+          }}><VisualIcon />Explain visually</button>}
         </div>
       )}
     </div>

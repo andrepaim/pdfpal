@@ -76,15 +76,15 @@ export class ChatService {
     }
   }
 
-  history(projectId: string, sourceId?: string): Array<{ role: string; content: string; sources_used: string; created_at: string }> {
+  history(projectId: string, sourceId?: string): Array<{ id: number; visual_id: string | null; role: string; content: string; sources_used: string; created_at: string }> {
     const session = sourceId
       ? this.db.prepare('SELECT id FROM chat_sessions WHERE project_id=? AND source_id=? ORDER BY accessed_at DESC LIMIT 1').get(projectId, sourceId)
       : this.db.prepare('SELECT id FROM chat_sessions WHERE project_id=? AND source_id IS NULL ORDER BY accessed_at DESC LIMIT 1').get(projectId)
     if (!session) return []
-    return this.db.prepare('SELECT role,content,sources_used,created_at FROM chat_messages WHERE session_id=? ORDER BY id').all((session as { id: string }).id) as ReturnType<ChatService['history']>
+    return this.db.prepare('SELECT id,visual_id,role,content,sources_used,created_at FROM chat_messages WHERE session_id=? ORDER BY id').all((session as { id: string }).id) as ReturnType<ChatService['history']>
   }
 
-  private persist(projectId: string, sourceId: string | null, question: string, answer: string, sourceIds: string[]): string {
+  persist(projectId: string, sourceId: string | null, question: string, answer: string, sourceIds: string[], visualId?: string): string {
     return this.db.transaction(() => {
       const existing = sourceId
         ? this.db.prepare('SELECT id FROM chat_sessions WHERE project_id=? AND source_id=? ORDER BY accessed_at DESC LIMIT 1').get(projectId, sourceId)
@@ -94,9 +94,9 @@ export class ChatService {
       if (!existing) this.db.prepare('INSERT INTO chat_sessions(id,project_id,source_id,title,created_at,accessed_at) VALUES (?,?,?,?,?,?)')
         .run(id, projectId, sourceId, sourceId ? 'Chat' : 'Project Chat', timestamp, timestamp)
       else this.db.prepare('UPDATE chat_sessions SET accessed_at=? WHERE id=?').run(timestamp, id)
-      const insert = this.db.prepare('INSERT INTO chat_messages(session_id,role,content,sources_used,created_at) VALUES (?,?,?,?,?)')
-      insert.run(id, 'user', question, JSON.stringify(sourceIds), timestamp)
-      insert.run(id, 'assistant', answer, JSON.stringify(sourceIds), now())
+      const insert = this.db.prepare('INSERT INTO chat_messages(session_id,role,content,sources_used,created_at,visual_id) VALUES (?,?,?,?,?,?)')
+      insert.run(id, 'user', question, JSON.stringify(sourceIds), timestamp, null)
+      insert.run(id, 'assistant', answer, JSON.stringify(sourceIds), now(), visualId || null)
       return id
     })()
   }

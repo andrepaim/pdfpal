@@ -143,6 +143,7 @@ export interface ChatMessage {
   content: string
   sources_used?: string[]
   created_at?: string
+  visual_id?: string | null
 }
 
 export interface ChatSession {

@@ -4,6 +4,9 @@ coverage/
 frontend/test-results/
 frontend/playwright-report/
 frontend/dist/
+extension/test-results/
+extension/playwright-report/
+extension/*.zip
 .env
 *.db
 *.db-shm

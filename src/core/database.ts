@@ -6,7 +6,7 @@ import type { Database as DatabaseType } from 'better-sqlite3'
 import type { PdfpalConfig } from './config.js'
 import { ensureDataDirectories } from './config.js'
 
-const CURRENT_SCHEMA = 6
+const CURRENT_SCHEMA = 8
 
 function columnExists(db: DatabaseType, table: string, column: string): boolean {
   return (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some(row => row.name === column)
@@ -163,6 +163,57 @@ function migrate(db: DatabaseType): void {
     if (!columnExists(db, 'sources', 'last_page_read'))
       db.exec('ALTER TABLE sources ADD COLUMN last_page_read INTEGER NOT NULL DEFAULT 1')
     db.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (6, datetime('now'))").run()
+  }
+
+  if (!db.prepare('SELECT 1 FROM schema_migrations WHERE version=7').get()) {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE extension_pair_codes (code_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);
+        CREATE TABLE extension_clients (
+          id TEXT PRIMARY KEY, token_hash TEXT UNIQUE NOT NULL, origin TEXT NOT NULL,
+          created_at TEXT NOT NULL, revoked_at TEXT
+        );
+        CREATE TABLE kindle_conversations (
+          id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES extension_clients(id),
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          book_key TEXT NOT NULL, title TEXT NOT NULL, created_at TEXT NOT NULL,
+          UNIQUE(client_id, project_id, book_key)
+        );
+        CREATE TABLE kindle_turns (
+          id TEXT PRIMARY KEY, client_id TEXT NOT NULL REFERENCES extension_clients(id),
+          conversation_id TEXT NOT NULL REFERENCES kindle_conversations(id) ON DELETE CASCADE,
+          request_id TEXT NOT NULL, request_hash TEXT NOT NULL, capture_json TEXT NOT NULL,
+          question TEXT NOT NULL, include_project INTEGER NOT NULL DEFAULT 0,
+          status TEXT NOT NULL, answer TEXT, error TEXT, research_json TEXT NOT NULL DEFAULT '[]',
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+          UNIQUE(client_id, request_id)
+        );
+        CREATE UNIQUE INDEX kindle_one_active_turn ON kindle_turns(conversation_id) WHERE status IN ('pending','running');
+        CREATE INDEX kindle_turn_order ON kindle_turns(conversation_id, created_at);
+        CREATE TABLE extension_saved_notes (
+          client_id TEXT NOT NULL REFERENCES extension_clients(id), request_id TEXT NOT NULL,
+          request_hash TEXT NOT NULL, note_id TEXT REFERENCES notes(id) ON DELETE SET NULL,
+          capture_json TEXT NOT NULL, PRIMARY KEY(client_id, request_id)
+        );
+        INSERT INTO schema_migrations(version, applied_at) VALUES (7, datetime('now'));
+      `)
+    })()
+  }
+  if (!db.prepare('SELECT 1 FROM schema_migrations WHERE version=8').get()) {
+    db.transaction(() => {
+      db.exec(`CREATE TABLE IF NOT EXISTS visual_explanations (
+        id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        client_id TEXT REFERENCES extension_clients(id), request_id TEXT NOT NULL, request_hash TEXT NOT NULL,
+        question TEXT NOT NULL, status TEXT NOT NULL, definition_json TEXT, references_json TEXT NOT NULL,
+        error TEXT, request_json TEXT NOT NULL, note_id TEXT REFERENCES notes(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS visual_requests ON visual_explanations(project_id, COALESCE(client_id, ''), request_id);`)
+      if (!columnExists(db, 'chat_messages', 'visual_id')) db.exec('ALTER TABLE chat_messages ADD COLUMN visual_id TEXT REFERENCES visual_explanations(id) ON DELETE SET NULL')
+      if (!columnExists(db, 'kindle_turns', 'visual_id')) db.exec('ALTER TABLE kindle_turns ADD COLUMN visual_id TEXT REFERENCES visual_explanations(id) ON DELETE SET NULL')
+      if (!columnExists(db, 'kindle_turns', 'response_mode')) db.exec("ALTER TABLE kindle_turns ADD COLUMN response_mode TEXT NOT NULL DEFAULT 'text'")
+      db.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (8, datetime('now'))").run()
+    })()
   }
 }
 

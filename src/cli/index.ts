@@ -13,6 +13,7 @@ import { ChatService } from '../core/chat.js'
 import type { AgentName } from '../core/agents.js'
 import { confirm, print, readStdin, reportError } from './output.js'
 import { startServer } from '../server/app.js'
+import { ExtensionAuth } from '../core/extension-auth.js'
 
 const program = new Command()
   .name('pdfpal')
@@ -24,6 +25,14 @@ let database: Database | undefined
 const config = loadConfig()
 const db = () => database ??= openDatabase(config)
 const json = (command: Command) => Boolean(command.optsWithGlobals().json)
+
+const extension = program.command('extension').description('pair and manage the Kindle browser companion')
+extension.command('pair').description('create a single-use pairing code valid for five minutes')
+  .action((_options, command) => print(new ExtensionAuth(db()).pairCode(), json(command)))
+extension.command('list').description('list paired browser connections')
+  .action((_options, command) => print(new ExtensionAuth(db()).list(), json(command)))
+extension.command('revoke').argument('<connection-id>').description('revoke a paired browser connection')
+  .action((id, _options, command) => { new ExtensionAuth(db()).revoke(id); print({ revoked: id }, json(command)) })
 
 program.command('serve')
   .description('start the local web application')

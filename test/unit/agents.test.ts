@@ -66,3 +66,12 @@ test('nonzero agent exits become AGENT_FAILED errors', async () => {
   await assert.rejects(() => new AgentService(config).invoke('prompt'),
     (error: unknown) => error instanceof PdfpalError && error.code === 'AGENT_FAILED' && /failure/.test(error.message))
 })
+
+test('an agent error printed to stdout is not accepted as an answer', async () => {
+  const config = testConfig()
+  try {
+    config.claudeBin = executable(config, 'expired-agent', "printf 'Failed to authenticate: OAuth session expired and could not be refreshed'; exit 1")
+    await assert.rejects(() => new AgentService(config).invoke('prompt'),
+      (error: unknown) => error instanceof PdfpalError && error.code === 'AGENT_FAILED' && /OAuth session expired/.test(error.message))
+  } finally { fs.rmSync(config.dataDir, { recursive: true, force: true }) }
+})

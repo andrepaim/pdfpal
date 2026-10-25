@@ -60,6 +60,10 @@ Finding papers is legwork, and by now agents are better at it than we are: they 
 - **Text selection → ask or highlight**: stuck on a passage? Select it and ask about it right there, grounded in the paper, or save it as a highlight.
 - **Project chat**: ask across multiple sources at once, toggle which sources are in context, or scope to a single collection.
 
+### Visual explanations
+
+Select text in the PDF reader and choose **Explain visually** from its popup, or type `/visual <concept>` in the reader or project chat. Type `/` for a command suggestion; Tab completes `/visual`. With a passage attached, `/visual` alone explains that selection. The same command works in the [Kindle companion](extension/README.md#explain-visually). Your configured agent creates progressive diagrams with clickable details, captions, a text transcript and source labels. Expand the viewer, ask follow-ups, save the explanation to a project note, or export a self-contained HTML file for offline reading. Saved explanations reopen without another model call. Project chat also supports general-concept visual questions without PDFs using `/visual <concept>`.
+
 ### Organization
 - **Projects**: workspaces for a research topic: sources, notes, chat history.
 - **Collections**: nested folders for organizing sources within a project; drag-and-drop, Expand/Collapse All.
@@ -117,6 +121,10 @@ npm start
 Use **Dark pages** beside the reader's zoom controls for a dark page background and light text. The setting is remembered in your browser across documents and reloads. It also changes figure and photo colors; switch it off to view their original colors.
 
 After following a reference link within a PDF, click **Back to citation** in the reader toolbar to return to your previous position and zoom. Follow several references and click it repeatedly to retrace your jumps.
+
+### Kindle browser companion
+
+The optional [Chrome extension](extension/README.md) brings pdfpal's dark chat pane to Kindle for Web. Ask general questions about the open book or attach a selection using native text or local OCR. Build it with `npm run build:extension`, load `extension/dist` through Chrome's **Load unpacked** option, and pair it using `pdfpal extension pair`. Conversations use book details, captured excerpts and optional project PDFs; the full Kindle book is not imported. Save passages or answers as project notes. Conversations persist per book and project, including projects with no PDFs.
 
 ## CLI
 

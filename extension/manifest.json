@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "pdfpal Kindle Companion",
+  "description": "Read Kindle with local passage capture, pdfpal AI chat, and project notes.",
+  "version": "0.4.2",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://read.amazon.com/*",
+    "https://ler.amazon.com.br/*",
+    "https://read.amazon.co.uk/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "action": {
+    "default_title": "Open pdfpal Kindle Companion"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "panel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://read.amazon.com/*",
+        "https://ler.amazon.com.br/*",
+        "https://read.amazon.co.uk/*"
+      ],
+      "js": [
+        "capture.js"
+      ],
+      "all_frames": true,
+      "match_origin_as_fallback": true
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self' http://127.0.0.1:* http://localhost:*; object-src 'none'"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1735FeBVuYI95lA472F4dzocSdQvtPwUvCErrCYaSPnFfS0KsdV4EUm+ckSXFwLlGL3Vbo1jRfGLlRQeLv/SmVltMrDTeYhgX/6dOonRtm/pOwGkx+F+PyJ9456lIrZZvj/fAPQeDh8w7GXnoSDswBWlQ9Or+2dl/Qcai72ufOOpJnDMi2oxLt8tBRniF+WD8Bsr/a4Xe4umb0ypiKJHkjvVwmR/BY7M5ecHzybHXStXW6ataYLokteyv8Xo9R8qJNjGS8sVD4sUcOsKTRtg9bM++pLY3B/YSOD3oIlvOzwyc0tVwufHriEY6ro4AlrWN1m4/+M9GYi7APFC+qUwFwIDAQAB"
+}

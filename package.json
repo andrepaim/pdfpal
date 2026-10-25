@@ -5,7 +5,8 @@
   "license": "MIT",
   "type": "module",
   "workspaces": [
-    "frontend"
+    "frontend",
+    "extension"
   ],
   "bin": {
     "pdfpal": "dist/cli/index.js"
@@ -30,6 +31,8 @@
     "test:coverage": "c8 --all --reporter=text --reporter=html --include=src/core/**/*.ts --include=src/server/**/*.ts --include=src/cli/**/*.ts npm run test:raw",
     "test:watch": "tsx --test --watch test/**/*.test.ts",
     "test:e2e": "npm run build && npm exec --workspace frontend playwright test",
+    "build:extension": "npm run build --workspace extension",
+    "test:extension": "npm run build:server && npm run test --workspace extension",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prepare": "npm run build",
     "skill:install": "bash scripts/install-skill.sh",

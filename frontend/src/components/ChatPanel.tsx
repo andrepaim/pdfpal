@@ -3,10 +3,15 @@ import { chatApi } from '../lib/api'
 import { useAgent } from '../hooks/useAgent'
 import AgentSelect from './AgentSelect'
 import Markdown from './Markdown'
+import VisualExplanation from './VisualExplanation'
+import { startWebVisual, webVisualTransport } from '../lib/visual-api'
+import { isVisualCommandPrefix, parseChatInput, type ChatInput } from '../../../src/shared/chat-command'
+import ChatCommandHint from './ChatCommandHint'
 
 interface Message {
   role: 'user' | 'assistant'
   content: string
+  visual_id?: string | null
 }
 
 interface Props {
@@ -15,6 +20,8 @@ interface Props {
   disabled: boolean
   selectedText?: string
   onSelectedTextUsed?: () => void
+  visualSelectionRequest?: { id: string; text: string; scope: string } | null
+  onVisualSelectionHandled?: () => void
   // v2
   projectId?: string | null
   sourceId?: string | null
@@ -23,7 +30,7 @@ interface Props {
   initialMessages?: { role: string; content: string }[]
 }
 
-export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onSelectedTextUsed, projectId, sourceId, sessionId, initialMessages }: Props) {
+export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onSelectedTextUsed, visualSelectionRequest, onVisualSelectionHandled, projectId, sourceId, sessionId, initialMessages }: Props) {
   // Retained in the component contract for older callers; context is now
   // loaded by the server-side ChatService from source IDs.
   void pdfText
@@ -32,37 +39,44 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [historyLoading, setHistoryLoading] = useState(true)
+  const handledVisualRequest = useRef('')
+  const scopeRef = useRef('')
+  scopeRef.current = `${projectId}:${sourceId}`
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { agent, setAgent, agents: agentOptions } = useAgent()
 
   // Load chat history when source changes
   useEffect(() => {
+    let active = true
     setMessages([])
+    setHistoryLoading(true)
+    setLoading(false); setError('')
     if (projectId && sourceId) {
       fetch(`/api/projects/${projectId}/sources/${sourceId}/chat`, { credentials: 'include' })
         .then(r => r.ok ? r.json() : { messages: [] })
         .then(data => {
-          if (data.messages?.length > 0) {
-            setMessages(data.messages.map((m: { role: string; content: string }) => ({
+          if (active && data.messages?.length > 0) {
+            setMessages(data.messages.map((m: { role: string; content: string; visual_id?: string }) => ({
               role: m.role as 'user' | 'assistant',
-              content: m.content
+              content: m.content, visual_id: m.visual_id,
             })))
           }
         })
         .catch(() => {})
-    }
-  }, [sourceId, sessionId])
+        .finally(() => { if (active) setHistoryLoading(false) })
+    } else setHistoryLoading(false)
+    return () => { active = false }
+  }, [projectId, sourceId, sessionId])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
-  // When selectedText changes, pre-fill the textarea with a quote prompt
+  // Keep the selection attached separately so a slash command starts the input.
   useEffect(() => {
     if (!selectedText || disabled) return
-    const quoted = `> "${selectedText}"\n\n`
-    setInput(quoted)
     textareaRef.current?.focus()
     // Move cursor to end
     setTimeout(() => {
@@ -73,18 +87,27 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
     }, 10)
   }, [selectedText, disabled])
 
-  const send = async () => {
-    if (!input.trim() || loading || disabled) return
-    const userMsg = input.trim()
+  const send = async (override?: Extract<ChatInput, { kind: 'text' | 'visual' }>, selection = selectedText) => {
+    if (loading || historyLoading || disabled) return
+    const command = override || parseChatInput(input, !!selection)
+    if (command.kind === 'help' || command.kind === 'empty') { textareaRef.current?.focus(); return }
+    const asVisual = command.kind === 'visual'
+    const userMsg = !asVisual && selection ? `${command.question}\n\n${selection.split('\n').map(line => `> ${line}`).join('\n')}` : command.question
+    const scope = scopeRef.current
     setInput('')
     setError('')
-    onSelectedTextUsed?.()
 
     const newHistory: Message[] = [...messages, { role: 'user', content: userMsg }]
     setMessages(newHistory)
     setLoading(true)
 
     try {
+      if (asVisual && projectId) {
+        const visual = await startWebVisual(projectId, { question: userMsg, ...(sourceId ? { source_id: sourceId } : {}),
+          ...(selection ? { selection } : {}), ...(agent ? { agent } : {}) })
+        if (scope === scopeRef.current) { setMessages([...newHistory, { role: 'assistant', content: '', visual_id: visual.id }]); onSelectedTextUsed?.() }
+        return
+      }
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -128,17 +151,26 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
         }
       }
 
-      setMessages([...newHistory, { role: 'assistant', content: assistantText }])
+      if (scope === scopeRef.current) { setMessages([...newHistory, { role: 'assistant', content: assistantText }]); onSelectedTextUsed?.() }
     } catch (e: any) {
-      setError(e.message || 'Something went wrong')
-      setMessages(newHistory)
+      if (scope === scopeRef.current) { setError(e.message || 'Something went wrong'); setMessages(newHistory); setInput(asVisual ? `/visual ${command.question}` : command.question) }
     } finally {
-      setLoading(false)
-      textareaRef.current?.focus()
+      if (scope === scopeRef.current) { setLoading(false); textareaRef.current?.focus() }
     }
   }
 
+  useEffect(() => {
+    if (!visualSelectionRequest || visualSelectionRequest.scope !== scopeRef.current || !agent || loading || historyLoading || disabled || handledVisualRequest.current === visualSelectionRequest.id) return
+    handledVisualRequest.current = visualSelectionRequest.id
+    onVisualSelectionHandled?.()
+    void send({ kind: 'visual', question: 'Explain the selected passage visually.' }, visualSelectionRequest.text)
+  }, [visualSelectionRequest, agent, loading, historyLoading, disabled])
+
+  const chooseVisual = () => { setInput('/visual '); textareaRef.current?.focus() }
+
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.nativeEvent.isComposing) return
+    if (e.key === 'Tab' && !e.shiftKey && isVisualCommandPrefix(input)) { e.preventDefault(); chooseVisual(); return }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       send()
@@ -194,11 +226,13 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
           flexShrink: 0,
         }}>
           <span>✏️</span>
-          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            Selection ready — edit the prompt below or press Enter to send
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span title={selectedText} style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedText}</span>
+            <span style={{ fontSize: 11 }}>Selection attached — ask a question or type /visual</span>
           </span>
           <button
-            onClick={() => { onSelectedTextUsed?.(); setInput('') }}
+            onClick={() => onSelectedTextUsed?.()}
+            aria-label="Remove selection"
             style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 14 }}
           >✕</button>
         </div>
@@ -220,7 +254,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
         {messages.map((msg, i) => (
           <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
             <div style={{
-              maxWidth: '85%',
+              maxWidth: msg.visual_id ? '100%' : '85%', width: msg.visual_id ? '100%' : undefined, minWidth: 0,
               padding: '10px 14px',
               borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
               background: msg.role === 'user' ? 'var(--accent)' : '#252525',
@@ -230,7 +264,9 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
               whiteSpace: msg.role === 'user' ? 'pre-wrap' : undefined,
             }}>
               {msg.role === 'assistant' ? (
-                <Markdown>{msg.content}</Markdown>
+                msg.visual_id && projectId ? <VisualExplanation key={msg.visual_id} id={msg.visual_id} transport={webVisualTransport(projectId)}
+                  onFollowUp={question => { setInput(question); textareaRef.current?.focus() }} />
+                : <Markdown>{msg.content}</Markdown>
               ) : msg.content}
             </div>
           </div>
@@ -259,14 +295,15 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
       </div>
 
       {/* Input area */}
+      {!loading && <ChatCommandHint input={input} hasSelection={!!selectedText} onChoose={chooseVisual} />}
       <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, flexShrink: 0 }}>
         <textarea
           ref={textareaRef}
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          disabled={disabled || loading}
-          placeholder={disabled ? 'Load a PDF first…' : 'Ask something… (Enter to send, Shift+Enter for newline)'}
+          disabled={disabled || loading || historyLoading}
+          placeholder={disabled ? 'Load a PDF first…' : selectedText ? 'Ask about the selection, or type /visual…' : 'Ask a question, or type /visual…'}
           rows={3}
           style={{
             flex: 1,
@@ -285,8 +322,8 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
           }}
         />
         <button
-          onClick={send}
-          disabled={disabled || loading || !input.trim()}
+          onClick={() => send()}
+          disabled={disabled || loading || historyLoading || !input.trim()}
           style={{
             background: disabled || !input.trim() ? '#2a2a2a' : 'var(--accent)',
             color: disabled || !input.trim() ? '#6b7280' : '#fff',
