@@ -6,7 +6,7 @@ import type { Database as DatabaseType } from 'better-sqlite3'
 import type { PdfpalConfig } from './config.js'
 import { ensureDataDirectories } from './config.js'
 
-const CURRENT_SCHEMA = 8
+const CURRENT_SCHEMA = 9
 
 function columnExists(db: DatabaseType, table: string, column: string): boolean {
   return (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some(row => row.name === column)
@@ -213,6 +213,19 @@ function migrate(db: DatabaseType): void {
       if (!columnExists(db, 'kindle_turns', 'visual_id')) db.exec('ALTER TABLE kindle_turns ADD COLUMN visual_id TEXT REFERENCES visual_explanations(id) ON DELETE SET NULL')
       if (!columnExists(db, 'kindle_turns', 'response_mode')) db.exec("ALTER TABLE kindle_turns ADD COLUMN response_mode TEXT NOT NULL DEFAULT 'text'")
       db.prepare("INSERT INTO schema_migrations(version, applied_at) VALUES (8, datetime('now'))").run()
+    })()
+  }
+  if (!db.prepare('SELECT 1 FROM schema_migrations WHERE version=9').get()) {
+    db.transaction(() => {
+      db.exec(`ALTER TABLE extension_clients ADD COLUMN label TEXT;
+        CREATE TABLE extension_pairing_requests (
+          id TEXT PRIMARY KEY, proof_hash TEXT NOT NULL, origin TEXT NOT NULL, server_origin TEXT NOT NULL,
+          status TEXT NOT NULL CHECK(status IN ('pending','approved','claimed','denied','cancelled','expired')),
+          created_at TEXT NOT NULL, expires_at INTEGER NOT NULL,
+          client_id TEXT REFERENCES extension_clients(id)
+        );
+        CREATE INDEX extension_pairing_expiry ON extension_pairing_requests(expires_at);
+        INSERT INTO schema_migrations(version,applied_at) VALUES (9,datetime('now'));`)
     })()
   }
 }

@@ -6,23 +6,25 @@ Book questions use the book title and author, conversation history, previously d
 
 ## Install
 
-From the pdfpal repository:
+Companion **0.5.0** is bundled with the repository's pdfpal **2.1.0** build. That pdfpal version has not yet been published to npm; use a source checkout until it is released:
 
 ```sh
-npm install
+npm ci
 npm run build
-npm run build:extension
+npm start
 ```
 
-1. Open `chrome://extensions` in desktop Chrome and enable **Developer mode**.
-2. Choose **Load unpacked** and select the `extension/dist` folder. If using the packaged ZIP, extract it first and select the folder containing `manifest.json`.
-3. Pin **pdfpal Kindle Companion** to the browser toolbar.
-4. Open your book in [Kindle for Web](https://read.amazon.com/) and refresh the tab if it was already open when you installed the extension.
-5. Click the extension toolbar icon to open its side panel. This click also grants permission for a screenshot of the active tab when needed.
+1. In pdfpal, choose **Extension** from the projects home or **Kindle extension** from a project.
+2. Click **Download Chrome extension** and extract the ZIP to a folder you will keep.
+3. Open `chrome://extensions` in desktop Chrome, enable **Developer mode**, choose **Load unpacked**, and select the extracted folder containing `manifest.json`.
+4. Pin **pdfpal Kindle Companion** to the toolbar. Open Kindle for Web and refresh an already-open book tab.
+5. Click the toolbar icon to open the panel. This action also grants screenshot permission for region capture.
 
-Supported reader hosts for this first build: `read.amazon.com`, `ler.amazon.com.br`, and `read.amazon.co.uk`. English prose is the initial OCR target.
+Contributors can load `extension/dist` directly after the root build. The archive is generated at `extension/package/companion.zip`; no manual packaging step is needed.
 
-For ordinary updates, replace the files in the installed extension folder and click **Reload** on its existing entry in `chrome://extensions`. Refresh the Kindle tab too. Do not remove the extension first: Chrome clears its local settings when it is removed. Restart pdfpal when an update also changes the server.
+Supported readers: `read.amazon.com`, `ler.amazon.com.br`, and `read.amazon.co.uk`. English prose is the initial OCR target. The native Kindle PC application is not supported.
+
+For updates, replace files in the installed folder and click **Reload** on its existing Chrome entry, then refresh Kindle. Do not remove the extension first: removal clears its stored connection. Restart pdfpal when updating the server too.
 
 ### One-time upgrade to a stable extension ID
 
@@ -34,26 +36,33 @@ The pinned ID is `billjanehfdgcakkbbefbjobocjlinen`. Keep the checked-in manifes
 
 ## Connect once
 
-Start the updated server (`npm run dev` from this repository, or your usual pdfpal command). In another terminal, generate a pairing code:
+1. Start pdfpal with `pdfpal serve` (or `npm start` in a source checkout).
+2. Click **Connect to pdfpal** in the companion.
+3. In the local browser tab, review the access description and click **Allow connection**.
+4. Return to Kindle and choose a project. A single project is selected automatically; an empty library offers **Create project**.
+
+The request expires after five minutes. You can close the panel during approval and reopen it to finish. **Open approval tab** reopens a lost tab, **Cancel** stops the request, and **Retry** reconnects after a stopped server. Normal reloads, browser restarts, and updates keep the same connection and conversations.
+
+For a different server port, expand **Address & manual pairing** and enter the address shown on pdfpal's Extension page. Only HTTP loopback addresses (`127.0.0.1` or `localhost`) are accepted. Disconnect before switching an established connection to another server.
+
+The web **Extension** page lists paired connections and lets you name or revoke them. Disconnecting keeps notes and stored records but revokes access. Removing the extension or losing its credentials requires fresh pairing; that new connection does not automatically inherit the old connection's private conversations. A connection can access all projects: the project picker selects context, not a permission scope.
+
+### Manual fallback and CLI management
+
+An older server can still use a single-use code:
 
 ```sh
 pdfpal extension pair
-# From a source checkout, this also works:
+# In a source checkout:
 node dist/cli/index.js extension pair
 ```
 
-Open the **Connection and settings** button at the top right, then **Connect to pdfpal**. Keep the default `http://127.0.0.1:8200` address unless the server uses another port, paste the code and click **Connect**. The single-use code expires after five minutes. Pairing and server startup must use the same pdfpal data directory. Only HTTP loopback addresses (`127.0.0.1` or `localhost`) are accepted. Reloading the same installation preserves pairing; the first fixed-ID upgrade described above needs a fresh code.
-
-Choose a research project, or select **New project** to create one without leaving Kindle. The connection and project choice are remembered across browser restarts. The access token stays in extension-only storage; content scripts do not receive it.
-
-Manage or revoke connections from the command line:
+Expand **Address & manual pairing**, paste the code, and click **Connect to pdfpal**. Generate it using the same data directory as the running server. Codes expire after five minutes.
 
 ```sh
 pdfpal extension list
 pdfpal extension revoke <connection-id>
 ```
-
-**Disconnect** in the panel also revokes a reachable server connection. If the server is offline, forgetting the browser's connection cannot revoke the server-side token; use the revoke command when the server is available again. A new pairing creates a separate connection and conversation history.
 
 ## Capture a passage
 
@@ -85,7 +94,7 @@ OCR code, WebAssembly and English language data are bundled with the extension. 
 
 ## Explain visually
 
-Version 0.4.1 uses a slash command for graphical explanations with your configured agent, including Codex. Type `/visual how attention works` in the chatbox. With a passage attached, `/visual` alone explains that selection; add a question after the command to focus the explanation. Ordinary questions continue to produce text answers.
+Use a slash command for graphical explanations with your configured agent, including Codex. Type `/visual how attention works` in the chatbox. With a passage attached, `/visual` alone explains that selection; add a question after the command to focus the explanation. Ordinary questions continue to produce text answers.
 
 The chatbox placeholder mentions `/visual`. Typing `/` shows a command suggestion and an example; click it or press Tab to complete `/visual`. Submitting a bare command without an attached selection shows usage guidance without invoking an agent. The previous checkbox and extra **Explain visually** buttons have been removed. In pdfpal's web PDF reader, **Explain visually** is available directly in the text-selection popup.
 
@@ -100,19 +109,23 @@ Scenes use validated vector shapes and bundled interactions. The model cannot su
 - **Refresh the Kindle tab** after loading or reloading the extension, so its content script is present.
 - **Region capture requests permission:** click the extension's toolbar icon while the Kindle tab is active, then try again. Opening the panel through Chrome's side-panel menu alone may not grant screenshot access.
 - **No selection found:** use **Capture region**. Kindle can render words as images instead of native text.
-- **The page changed:** wait until navigation and layout settle, then capture again. The prototype rejects OCR completion after a location, page image, viewport, URL or reader interaction changes.
+- **The page changed:** wait until navigation and layout settle, then capture again. The companion rejects OCR completion after a location, page image, viewport, URL or reader interaction changes.
 - **Missing title or location:** fill in the fields manually. Live regional reader metadata still needs validation.
 - **Poor OCR:** increase the book font size and capture a smaller passage. Dark themes are normalized automatically. Code, equations and tables need careful correction.
 - **Cannot reach pdfpal:** start or restart the updated server and check its port. Your usual global installation might still be an older version; `npm run dev` in this checkout runs the updated source.
-- **Code expired or connection revoked:** generate a fresh code and connect again.
+- **Request expired or connection revoked:** click **Connect to pdfpal** and approve a new request. If using manual pairing, generate a fresh code. A stopped server or provider authentication error does not require a new pairing.
 - **Agent failed:** check that the agent configured in pdfpal is installed and authenticated. Fix the agent setup, then submit a new question.
 
 ## Development and verification
 
+Guided pairing tests cover allow/deny/expiry/cancel, interrupted requests, lost claim responses, project selection, and connection management. Package smoke tests install and exercise the downloaded artifact outside the checkout. The pinned identity and update regression protect existing connections.
+
 ```sh
-npm run build:extension
+npm run build
 npm run test:extension
 npm test
+npm run test:archive
+npm run test:package
 ```
 
 Tests use a fresh Chromium profile, synthetic reader pages and original text. They exercise frame selection, actual local OCR, stale-result rejection, session drafts, export metadata and region screenshots. Browser integrations pair with a real temporary pdfpal server and fixture agents, recover a 32-second answer after reopening, render Markdown/math and save idempotent notes. Layout checks cover metadata-only book questions, automatic native selections, removing attachments without losing input, consumed selections, dark message colors and a visible composer at 320px and 390px widths. Backend tests cover saved excerpt context, scoped clearing, authority, isolation, optional research and migrations. They do not log into Amazon, invoke a real AI provider or access existing personal data.

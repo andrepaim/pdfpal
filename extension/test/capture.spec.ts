@@ -164,9 +164,10 @@ test('pairs with real pdfpal, resumes an answer beyond 30 seconds, follows up an
     const other = (await app.inject({ method: 'POST', url: '/api/projects', payload: { title: 'Another project' } })).json();
     const code = new ExtensionAuth(db).pairCode().code;
     await panel.getByRole('button', { name: 'Connection and settings', exact: true }).click();
+    await panel.locator('#advanced-connection').evaluate((e: HTMLDetailsElement) => e.open = true);
     await panel.locator('#server-url').fill(`http://127.0.0.1:${address.port}`);
     await panel.locator('#pair-code').fill(code);
-    await panel.getByRole('button', { name: 'Connect', exact: true }).click();
+    await panel.locator('#settings-dialog').getByRole('button', { name: 'Connect to pdfpal', exact: true }).click();
     await expect(panel.locator('#connection-status')).toContainText('Connected');
     await panel.locator('#project').selectOption(project.id);
     await selectNative();
@@ -221,9 +222,10 @@ test('chat layout supports book questions without a capture and removable automa
     const project = (await app.inject({ method: 'POST', url: '/api/projects', payload: { title: 'Reading & understanding' } })).json();
     const code = new ExtensionAuth(db).pairCode().code;
     await panel.getByRole('button', { name: 'Connection and settings', exact: true }).click();
+    await panel.locator('#advanced-connection').evaluate((e: HTMLDetailsElement) => e.open = true);
     await panel.locator('#server-url').fill(`http://127.0.0.1:${(app.server.address() as { port: number }).port}`);
     await panel.locator('#pair-code').fill(code);
-    await panel.getByRole('button', { name: 'Connect', exact: true }).click();
+    await panel.locator('#settings-dialog').getByRole('button', { name: 'Connect to pdfpal', exact: true }).click();
     await expect(panel.locator('#question')).toBeEnabled();
     await expect(panel.locator('#agent-label')).toHaveText('Codex');
     await expect(panel.locator('#selection-banner')).toBeHidden();
@@ -272,5 +274,13 @@ test('chat layout supports book questions without a capture and removable automa
     await expect(panel.locator('#messages .chat-turn')).toHaveCount(0);
     await expect(panel.locator('.empty-state')).toBeVisible();
     expect((await app.inject({ url: `/api/projects/${project.id}/notes` })).json()).toHaveLength(0);
+    const clientId = await panel.evaluate(async () => ((await chrome.storage.local.get('companionConnection')).companionConnection as { clientId: string }).clientId);
+    await writeFile(agentPath, '#!/usr/bin/env node\nprocess.stdin.resume();process.stdin.on("end",()=>{process.stderr.write("OAuth session expired in fixture provider");process.exitCode=1;});\n', { mode: 0o700 });
+    await panel.locator('#question').fill('A question with an expired provider session');
+    await panel.locator('#question').press('Enter');
+    await expect(panel.locator('#companion-status')).toContainText('OAuth session expired');
+    await expect(panel.locator('#connection-status')).toContainText('Connected');
+    expect(await panel.evaluate(async () => ((await chrome.storage.local.get('companionConnection')).companionConnection as { clientId: string }).clientId)).toBe(clientId);
+
   } finally { await app.close(); db.close(); }
 });

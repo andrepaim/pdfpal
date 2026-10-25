@@ -10,6 +10,7 @@ import NoteEditor from './pages/NoteEditor'
 import App from './App'  // legacy reader (now used as PaperReader)
 import ProjectChat from './pages/ProjectChat'
 import VisualPage from './pages/VisualPage'
+import ExtensionsPage from './pages/ExtensionsPage'
 import LoginPage from './components/LoginPage'
 
 // ── Error boundary ────────────────────────────────────────────────────────────
@@ -63,6 +64,8 @@ function Root() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/extensions" element={<ExtensionsPage />} />
+        <Route path="/extensions/connect" element={<ExtensionsPage />} />
         {/* Projects list — home */}
         <Route path="/" element={<ProjectsPage user={user} />} />
 

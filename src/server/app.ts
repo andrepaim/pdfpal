@@ -20,6 +20,9 @@ import { resolvePdf, excerptFromText } from '../core/pdf.js'
 import { relatedPapers } from '../core/research.js'
 import { PdfpalError } from '../core/types.js'
 import { registerExtensionRoutes } from './extension.js'
+import { registerExtensionManagement } from './extension-management.js'
+import { ExtensionError } from '../core/extension-auth.js'
+import { fileURLToPath } from 'node:url'
 import { ZodError } from 'zod'
 import { VisualExplanationService, VisualError } from '../core/visual-explanations.js'
 import { registerVisualRoutes } from './visual-explanations.js'
@@ -40,6 +43,7 @@ export async function buildServer(config: PdfpalConfig) {
   await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024 } })
 
   app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof ExtensionError) return reply.status(error.status).send({ detail: error.message, code: error.code })
     if (error instanceof VisualError) return reply.status(error.status).send({ detail: error.message })
     if (error instanceof ZodError) return reply.status(400).send({ detail: error.issues.map(issue => issue.message).join('; ') })
     if (error instanceof app.multipartErrors.RequestFileTooLargeError) {
@@ -139,8 +143,16 @@ export async function buildServer(config: PdfpalConfig) {
   registerResearchRoutes(app, db, config)
   registerVisualRoutes(app, visuals)
   const kindle = await registerExtensionRoutes(app, db, config, visuals)
+  await registerExtensionManagement(app, db)
+  app.addHook('onSend', async (request, reply) => {
+    if (request.url.split('?')[0]?.startsWith('/extensions')) {
+      reply.header('Content-Security-Policy', "frame-ancestors 'none'")
+      reply.header('X-Frame-Options', 'DENY')
+      reply.header('Referrer-Policy', 'no-referrer')
+    }
+  })
 
-  const frontend = [path.resolve('frontend/dist'), path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../frontend/dist')].find(candidate => fs.existsSync(path.join(candidate, 'index.html')))
+  const frontend = [fileURLToPath(new URL('../../frontend/dist', import.meta.url))].find(candidate => fs.existsSync(path.join(candidate, 'index.html')))
   if (frontend) {
     await app.register(staticPlugin, { root: frontend, wildcard: false })
     app.setNotFoundHandler((request, reply) => request.url.startsWith('/api/') ? reply.status(404).send({ detail: 'Not Found' }) : reply.sendFile('index.html'))

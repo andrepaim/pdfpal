@@ -188,6 +188,7 @@ export default function ProjectsPage({ user }: { user: User }) {
           <span style={{ fontWeight: 800, fontSize: 16, color: '#fff', letterSpacing: '-0.5px' }}>pdfpal</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <a href="/extensions" style={{ color: '#a5b4fc', fontSize: 12 }}>▤ Extension</a>
           {user.picture && <img src={user.picture} style={{ width: 28, height: 28, borderRadius: '50%' }} alt="" />}
           <span style={{ fontSize: 12, color: '#6b7280' }}>{user.email}</span>
           <button

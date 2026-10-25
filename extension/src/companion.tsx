@@ -5,35 +5,15 @@ import VisualExplanation, { type VisualTransport } from '../../frontend/src/comp
 import ChatCommandHint from '../../frontend/src/components/ChatCommandHint';
 import { isVisualCommandPrefix, parseChatInput, type ChatInput } from '../../src/shared/chat-command';
 import { bookIdentity, errorMessage, type Draft, type Metadata } from './shared';
+import { GuidedConnection, BridgeError, baseUrl, api, bridge, type Connection } from './connection';
 
 type Capture = Pick<Draft, 'text' | 'originalText' | 'metadata' | 'method' | 'capturedAt'> & { scope?: 'selection' | 'book' };
-type Connection = { base: string; token: string; clientId: string; projectId: string };
 type Turn = { id: string; question: string; answer: string | null; status: 'pending' | 'running' | 'complete' | 'failed';
   error: string | null; capture: Capture; research: Array<{ source_title: string; page_number: number }>; visual_id?: string | null; response_mode?: 'text' | 'visual' };
 type Ask = { request_id: string; project_id: string; capture: Capture; question: string; include_project: boolean; response_mode?: 'text' | 'visual' };
-class BridgeError extends Error { constructor(public status: number, message: string) { super(message); } }
 const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const snapshot = (draft: Draft): Capture => ({ text: draft.text, originalText: draft.originalText, metadata: { ...draft.metadata }, method: draft.method, capturedAt: draft.capturedAt });
-function baseUrl(value: string): string {
-  const url = new URL(value);
-  if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(url.hostname) || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
-    throw new Error('Use a local address such as http://127.0.0.1:8200.');
-  }
-  return url.origin;
-}
 const identity = bookIdentity;
-async function api<T>(connection: Connection, path: string, body?: object, method = body ? 'POST' : 'GET'): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(`${baseUrl(connection.base)}/api/extension${path}`, { method,
-      headers: { authorization: `Bearer ${connection.token}`, ...(body ? { 'content-type': 'application/json' } : {}) },
-      ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(15_000), credentials: 'omit' });
-  } catch { throw new Error('Cannot reach pdfpal. Start or restart the updated server at the address above, then retry.'); }
-  if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('Update and restart the pdfpal server to enable the Kindle companion.');
-  const result = await response.json();
-  if (!response.ok) throw new BridgeError(response.status, result.detail || `pdfpal returned ${response.status}.`);
-  return result;
-}
 
 export function mountCompanion(getDraft: () => Draft | undefined, flush: () => Promise<void>) {
   let connection: Connection | undefined;
@@ -41,12 +21,21 @@ export function mountCompanion(getDraft: () => Draft | undefined, flush: () => P
     connection = values.companionConnection as Connection | undefined;
   });
   let connecting = false;
+  const guided = new GuidedConnection();
   let currentBook: Metadata | undefined;
   let attachedId: string | undefined, seenDraftId: string | undefined;
   let attachmentVersion = 0, attachmentLoading = false;
   let currentKey = '', generation = 0, working = false, captureBusy = false, loading = false;
   let turns: Turn[] = [];
   let renderedRoots: ReturnType<typeof createRoot>[] = [];
+  let followTail = true;
+  const messages = el('messages');
+  messages.addEventListener('scroll', () => { followTail = messages.scrollHeight - messages.clientHeight - messages.scrollTop < 100; });
+  // Restoring selections, loading fonts, and opening project controls can resize history
+  // after its initial render. Keep the tail visible only while the reader is following it.
+  const historySize = new ResizeObserver(() => {
+    if (followTail && !turns.at(-1)?.visual_id) messages.scrollTo({ top: messages.scrollHeight, behavior: 'instant' });
+  });
   const commandRoot = createRoot(el('chat-command'));
   const pendingKey = () => `kindle-request:${currentKey}`;
   function message(value: string, error = false) {
@@ -87,6 +76,7 @@ export function mountCompanion(getDraft: () => Draft | undefined, flush: () => P
   function renderTurns() {
     const area = el('messages');
     const follow = area.scrollHeight - area.scrollTop - area.clientHeight < 100 || !area.querySelector('.chat-turn');
+    historySize.disconnect(); followTail = follow;
     renderedRoots.forEach(root => root.unmount()); renderedRoots = [];
     area.replaceChildren();
     if (!turns.length) {
@@ -97,7 +87,7 @@ export function mountCompanion(getDraft: () => Draft | undefined, flush: () => P
         ? 'Explore an idea, connect it to what you know, or select a passage to ask about it.'
         : 'Connect to your local pdfpal to start a conversation. You can also capture and export selections.';
       empty.append(icon, heading, hint);
-      if (!connection) { const connect = document.createElement('button'); connect.className = 'primary'; connect.textContent = 'Connect to pdfpal'; connect.onclick = settings; empty.append(connect); }
+      if (!connection) { const button = document.createElement('button'); button.className = 'primary'; button.textContent = 'Connect to pdfpal'; button.onclick = () => { settings(); perform(() => connect(true)); }; empty.append(button); }
       area.append(empty);
     }
     for (const turn of turns) {
@@ -137,6 +127,8 @@ export function mountCompanion(getDraft: () => Draft | undefined, flush: () => P
       else { const spinner = document.createElement('span'); spinner.className = 'spinner'; answer.append(spinner, 'Thinking…'); }
       area.append(article);
     }
+    historySize.observe(area);
+    for (const article of area.children) historySize.observe(article);
     if (follow) requestAnimationFrame(() => {
       const latest = area.lastElementChild as HTMLElement | null;
       const visual = turns.at(-1);
@@ -153,30 +145,39 @@ export function mountCompanion(getDraft: () => Draft | undefined, flush: () => P
     const connected = connection;
     const list = await api<Array<{ id: string; title: string }>>(connected, '/projects');
     if (connection !== connected) return;
-    el<HTMLSelectElement>('project').replaceChildren(...list.map(project => new Option(project.title, project.id)));
-    if (!list.some(project => project.id === connected.projectId)) connected.projectId = list[0]?.id || '';
+    el<HTMLSelectElement>('project').replaceChildren(new Option('Choose a project…', ''), ...list.map(project => new Option(project.title, project.id)));
+    if (!list.some(project => project.id === connected.projectId)) connected.projectId = list.length === 1 ? list[0].id : '';
     el<HTMLSelectElement>('project').value = connected.projectId;
     el('project-controls').hidden = false; el('new-project-form').hidden = list.length > 0;
     await persist(); update(getDraft(), captureBusy, currentBook);
+    if (!list.length) settings();
+    else if (!connected.projectId) message('Choose a project above to start chatting.');
   }
-  async function connect() {
+  async function connect(interactive = false) {
     if (connecting) return;
     connecting = true;
     el<HTMLButtonElement>('connect').disabled = true;
+    el<HTMLInputElement>('server-url').disabled = true; el<HTMLInputElement>('pair-code').disabled = true;
     try {
       await restored;
       const base = baseUrl(el<HTMLInputElement>('server-url').value.trim());
       const code = el<HTMLInputElement>('pair-code').value.trim();
-      if (code) {
-        const response = await fetch(`${base}/api/extension/pair`, { method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ code, origin: `chrome-extension://${chrome.runtime.id}` }), credentials: 'omit', signal: AbortSignal.timeout(15_000) });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.detail || 'Pairing failed.');
+      el('manage-connections').setAttribute('href', `${base}/extensions`); el('manage-connections').hidden = false;
+      if (connection && connection.base !== base) throw new Error('Disconnect from your current server before changing its address.');
+      if (code && interactive && !connection) {
+        const result = await bridge<{ token: string; client_id: string }>(base, '/pair', { code, origin: `chrome-extension://${chrome.runtime.id}` });
         connection = { base, token: result.token, clientId: result.client_id, projectId: '' };
         el<HTMLInputElement>('pair-code').value = ''; await persist();
       }
-      if (!connection || connection.base !== base) throw new Error('Run pdfpal extension pair and paste its code to connect.');
+      if (!connection) {
+        el('cancel-connect').hidden = false; el('open-approval').hidden = false;
+        connection = await guided.run(base, value => { el('connection-status').textContent = value; el('pairing-status').textContent = value; }, interactive);
+        if (!connection) return;
+      }
       const status = await api<{ agent: string }>(connection, '/status');
+      el('pairing-status').textContent = 'Connected. You can return to your book.';
+      el('manage-connections').setAttribute('href', `${base}/extensions`);
+      el('manage-connections').hidden = false;
       el('connection-label').textContent = 'Connected to pdfpal';
       el('connection-status').textContent = `Connected · ${status.agent} agent`;
       el('agent-label').textContent = status.agent.charAt(0).toUpperCase() + status.agent.slice(1);
@@ -186,8 +187,19 @@ export function mountCompanion(getDraft: () => Draft | undefined, flush: () => P
     } catch (error) {
       el<HTMLDetailsElement>('connection-section').open = true;
       settings();
-      el('connection-status').textContent = error instanceof TypeError ? 'Cannot reach pdfpal. Start the updated server and check its address.' : errorMessage(error);
-    } finally { connecting = false; el<HTMLButtonElement>('connect').disabled = false; controls(); }
+      if (error instanceof BridgeError && error.status === 401 && connection) {
+        connection = undefined; await chrome.storage.local.remove('companionConnection');
+        generation++; currentKey = ''; working = false; turns = []; renderTurns();
+        el('project-controls').hidden = true;
+      }
+      const detail = errorMessage(error);
+      el('connection-status').textContent = detail; el('pairing-status').textContent = detail;
+      el<HTMLButtonElement>('connect').textContent = connection ? 'Retry' : 'Connect to pdfpal';
+    } finally {
+      connecting = false; el<HTMLButtonElement>('connect').disabled = false;
+      el<HTMLInputElement>('server-url').disabled = false; el<HTMLInputElement>('pair-code').disabled = false;
+      el('cancel-connect').hidden = !(await guided.pending()); el('open-approval').hidden = el('cancel-connect').hidden; controls();
+    }
   }
   function merge(turn: Turn) {
     const found = turns.findIndex(item => item.id === turn.id);
@@ -308,7 +320,15 @@ export function mountCompanion(getDraft: () => Draft | undefined, flush: () => P
     } finally { if (expected === generation) { working = false; controls(); } }
   }
 
-  el('connect').onclick = () => perform(connect);
+  el('connect').onclick = () => perform(() => connect(true));
+  el('open-approval').onclick = () => perform(async () => {
+    const pending = await guided.pending();
+    if (pending) await chrome.tabs.create({ url: `${baseUrl(pending.base)}/extensions/connect?request=${pending.id}` });
+  });
+  el('cancel-connect').onclick = () => perform(async () => {
+    const status = await guided.cancel(); el('cancel-connect').hidden = true; el('open-approval').hidden = true;
+    el('pairing-status').textContent = status; el('connection-status').textContent = status;
+  });
   el('settings').onclick = settings;
   el('close-settings').onclick = () => el<HTMLDialogElement>('settings-dialog').close();
   el('remove-selection').onclick = () => { detach(); el('question').focus(); };
@@ -323,9 +343,12 @@ export function mountCompanion(getDraft: () => Draft | undefined, flush: () => P
     await restored;
     const previous = connection; connection = undefined; generation++; currentKey = ''; working = false;
     await chrome.storage.local.remove('companionConnection');
-    if (previous) await api(previous, '/connection', undefined, 'DELETE').catch(() => {});
+    let revoked = true;
+    if (previous) { try { await api(previous, '/connection', undefined, 'DELETE'); } catch { revoked = false; } }
     el('project-controls').hidden = true; el('disconnect').hidden = true;
-    el('connection-label').textContent = 'Connect to pdfpal'; el('connection-status').textContent = 'Disconnected. Capture and export still work.';
+    el('connection-label').textContent = 'Connect to pdfpal'; el('connection-status').textContent = revoked ? 'Disconnected. Capture and export still work.' : 'Forgot locally. Server revocation failed; disconnect it on the Extension page when pdfpal is running.';
+    el('pairing-status').textContent = el('connection-status').textContent;
+    el<HTMLButtonElement>('connect').textContent = 'Connect to pdfpal';
     el<HTMLDetailsElement>('connection-section').open = true; update(getDraft(), captureBusy, currentBook); renderTurns();
   });
   el<HTMLSelectElement>('project').onchange = () => perform(async () => {
@@ -351,7 +374,8 @@ export function mountCompanion(getDraft: () => Draft | undefined, flush: () => P
   el('retry-chat').onclick = () => perform(() => history(generation));
   perform(async () => {
     await restored;
-    if (connection) { el<HTMLInputElement>('server-url').value = connection.base; await connect(); }
+    const pending = await guided.pending();
+    if (connection || pending) { el<HTMLInputElement>('server-url').value = (connection || pending)!.base; await connect(); }
     controls();
   });
   renderTurns();

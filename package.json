@@ -1,7 +1,7 @@
 {
   "name": "pdfpal",
-  "version": "2.0.0",
-  "description": "Local PDF research assistant and CLI",
+  "version": "2.1.0",
+  "description": "Local reading assistant for PDFs and Kindle, with a web reader, Chrome extension, and CLI",
   "license": "MIT",
   "type": "module",
   "workspaces": [
@@ -15,13 +15,15 @@
     "dist/",
     "frontend/dist/",
     "skills/",
-    "scripts/install-skill.sh"
+    "scripts/install-skill.sh",
+    "extension/dist/",
+    "extension/package/"
   ],
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "build": "npm run build:server && npm run build --workspace frontend",
+    "build": "npm run build:server && npm run build --workspace frontend && npm run build:extension",
     "build:server": "tsc -p tsconfig.json",
     "dev": "tsx src/cli/index.ts serve --no-open",
     "start": "node dist/cli/index.js",
@@ -32,11 +34,13 @@
     "test:watch": "tsx --test --watch test/**/*.test.ts",
     "test:e2e": "npm run build && npm exec --workspace frontend playwright test",
     "build:extension": "npm run build --workspace extension",
-    "test:extension": "npm run build:server && npm run test --workspace extension",
+    "test:extension": "npm run build && npm exec --workspace extension -- playwright test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prepare": "npm run build",
     "skill:install": "bash scripts/install-skill.sh",
-    "skill:uninstall": "bash scripts/install-skill.sh --uninstall"
+    "skill:uninstall": "bash scripts/install-skill.sh --uninstall",
+    "test:package": "node scripts/test-package.mjs",
+    "test:archive": "node scripts/test-extension-archive.mjs"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",
@@ -54,6 +58,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.2.1",
     "c8": "^11.0.0",
+    "fflate": "0.8.2",
     "tsx": "^4.20.3",
     "typescript": "~5.9.2"
   }

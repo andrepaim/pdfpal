@@ -533,6 +533,7 @@ export default function ProjectView() {
           {navItem('highlights', '🖊', 'Highlights')}
           {navItem('notes', '📝', 'Notes', project?.note_count)}
           {navItem('chats', '💬', 'Chats', project?.chat_count || undefined)}
+          <a href="/extensions" style={{ display: 'block', color: '#a5b4fc', fontSize: 12, padding: '12px 10px' }}>▤ Kindle extension</a>
         </div>
         <div style={{ padding: 12, borderTop: '1px solid var(--border)' }}>
           <button

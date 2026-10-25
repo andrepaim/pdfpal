@@ -35,9 +35,10 @@ test('visual explanations work in Kindle, project chat and the PDF reader, inclu
     const panel = await context.newPage();
     await panel.goto(`chrome-extension://${id}/panel.html?tabId=${tabId}`);
     await panel.getByRole('button', { name: 'Connection and settings', exact: true }).click();
+    await panel.locator('#advanced-connection').evaluate((e: HTMLDetailsElement) => e.open = true);
     await panel.locator('#server-url').fill(base);
     await panel.locator('#pair-code').fill(new ExtensionAuth(db).pairCode().code);
-    await panel.getByRole('button', { name: 'Connect', exact: true }).click();
+    await panel.locator('#settings-dialog').getByRole('button', { name: 'Connect to pdfpal', exact: true }).click();
     await expect(panel.locator('#question')).toBeEnabled();
     await expect(panel.locator('#question')).toHaveAttribute('placeholder', /\/visual/);
     await expect(panel.locator('#visual-mode')).toHaveCount(0);

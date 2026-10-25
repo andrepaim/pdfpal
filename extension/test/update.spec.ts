@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { buildServer } from '../../dist/server/app.js';
 import { loadConfig } from '../../dist/core/config.js';
 import { openDatabase } from '../../dist/core/database.js';
+import { randomUUID } from 'node:crypto';
+import { visualFixture } from '../../test/fixtures/visual';
 import { ExtensionAuth } from '../../dist/core/extension-auth.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -55,13 +57,33 @@ test('pairing survives reload, an update from another directory and a browser re
     });
     await page.goto(`chrome-extension://${id}/panel.html`);
     await page.getByRole('button', { name: 'Connection and settings', exact: true }).click();
+    await page.locator('#advanced-connection').evaluate((e: HTMLDetailsElement) => e.open = true);
     await page.locator('#server-url').fill(base);
     await page.locator('#pair-code').fill(new ExtensionAuth(db).pairCode().code);
-    await page.getByRole('button', { name: 'Connect', exact: true }).click();
+    await page.locator('#settings-dialog').getByRole('button', { name: 'Connect to pdfpal', exact: true }).click();
     await expect(page.locator('#connection-status')).toContainText('Connected');
     await expect(page.locator('#project')).toHaveValue(project.id);
     const original = await credentials(page);
     expect(original.projectId).toBe(project.id);
+    const visualId = randomUUID(), conversationId = randomUUID(), turnId = randomUUID();
+    const metadata = { title: 'Persistent book', author: '', location: '', asin: 'UPDATE0001', url: 'https://read.amazon.com/?asin=UPDATE0001' };
+    const capture = { metadata, text: 'A persistent passage', originalText: 'A persistent passage', method: 'text', capturedAt: new Date().toISOString() };
+    db.prepare(`INSERT INTO visual_explanations(id,project_id,client_id,request_id,request_hash,question,status,definition_json,references_json,request_json,created_at,updated_at)
+      VALUES (?,?,?,?,'hash','Visual question','complete',?,'[]','{}','2020-01-01','2020-01-01')`).run(visualId, project.id, original.clientId, randomUUID(), JSON.stringify(visualFixture));
+    db.prepare('INSERT INTO kindle_conversations VALUES (?,?,?,?,?,?)').run(conversationId, original.clientId, project.id, 'https://read.amazon.com/UPDATE0001', 'Persistent book', '2020-01-01');
+    db.prepare(`INSERT INTO kindle_turns(id,client_id,conversation_id,request_id,request_hash,capture_json,question,status,answer,created_at,updated_at,visual_id)
+      VALUES (?,?,?,?,'hash',?,'Question','complete','Existing answer','2020-01-01','2020-01-01',?)`).run(turnId, original.clientId, conversationId, randomUUID(), JSON.stringify(capture), visualId);
+    const historySurvived = async (panel: Page) => {
+      const current = await credentials(panel); expect(current.clientId).toBe(original.clientId); expect(current.projectId).toBe(original.projectId);
+      const result = await panel.evaluate(async ({ base, metadata, visualId }) => {
+        const value = (await chrome.storage.local.get('companionConnection')).companionConnection as { token: string; projectId: string };
+        const headers = { authorization: `Bearer ${value.token}`, 'content-type': 'application/json' };
+        const history = await (await fetch(`${base}/api/extension/history`, { method: 'POST', headers, body: JSON.stringify({ project_id: value.projectId, metadata }) })).json();
+        const visual = await (await fetch(`${base}/api/extension/projects/${value.projectId}/visuals/${visualId}`, { headers })).json();
+        return { answer: history.turns[0]?.answer, visual: visual.definition?.title };
+      }, { base, metadata, visualId });
+      expect(result).toEqual({ answer: 'Existing answer', visual: visualFixture.title });
+    };
 
     const reopen = async () => {
       const panel = await context!.newPage();
@@ -74,6 +96,7 @@ test('pairing survives reload, an update from another directory and a browser re
     await manager.locator('#dev-reload-button').click();
     page = await reopen();
     expect((await credentials(page)).token === original.token).toBe(true);
+    await historySurvived(page);
 
     const cdp = await context.browser()!.newBrowserCDPSession();
     const installed = await cdp.send('Extensions.loadUnpacked', { path: second });
@@ -82,12 +105,14 @@ test('pairing survives reload, an update from another directory and a browser re
     expect(await page.evaluate(() => chrome.runtime.getManifest().version)).toBe(manifest.version);
     await expect(page.locator('#settings-dialog')).not.toBeVisible();
     expect((await credentials(page)).token === original.token).toBe(true);
+    await historySurvived(page);
 
     await context.close(); context = await launch(second);
     page = await reopen();
     expect(await page.evaluate(() => chrome.runtime.id)).toBe(id);
     await expect(page.locator('#project')).toHaveValue(project.id);
     expect((await credentials(page)).token === original.token).toBe(true);
+    await historySurvived(page);
     expect((db.prepare('SELECT COUNT(*) n FROM extension_clients').get() as { n: number }).n).toBe(1);
   } finally {
     await context?.close(); await app.close(); db.close();

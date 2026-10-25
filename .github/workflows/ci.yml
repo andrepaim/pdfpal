@@ -47,3 +47,34 @@ jobs:
         run: cd frontend && npx playwright install --with-deps chromium
       - name: Run Playwright tests against Fastify
         run: cd frontend && npx playwright test
+
+  extension-tests:
+    runs-on: ubuntu-latest
+    needs: typescript-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install and build all interfaces
+        run: npm ci
+      - name: Install extension test browser
+        run: npm exec --workspace extension -- playwright install --with-deps chromium
+      - name: Test extension and guided pairing
+        run: npm exec --workspace extension -- playwright test
+      - name: Verify reproducible archive
+        run: npm run test:archive
+      - name: Install and exercise npm tarball outside checkout
+        run: npm run test:package
+      - name: Upload extension browser diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-test-results
+          path: extension/test-results/
+      - name: Upload matching extension archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdfpal-kindle-companion
+          path: extension/package/

@@ -17,8 +17,8 @@ import { ExtensionAuth } from '../core/extension-auth.js'
 
 const program = new Command()
   .name('pdfpal')
-  .description('Local PDF research assistant')
-  .version('2.0.0')
+  .description('Local reading assistant for PDFs and Kindle')
+  .version('2.1.0')
   .option('--json', 'emit machine-readable JSON')
 
 let database: Database | undefined

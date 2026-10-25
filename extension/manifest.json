@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "pdfpal Kindle Companion",
   "description": "Read Kindle with local passage capture, pdfpal AI chat, and project notes.",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "minimum_chrome_version": "116",
   "permissions": [
     "sidePanel",

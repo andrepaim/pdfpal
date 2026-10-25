@@ -20,7 +20,13 @@
     </section>
   </main>
   <dialog id="settings-dialog" class="utility-dialog"><div class="dialog-header"><h2>Connection &amp; settings</h2><button id="close-settings" class="icon-button" aria-label="Close settings">×</button></div><div class="dialog-content">
-    <details id="connection-section" open><summary id="connection-label">Connect to pdfpal</summary><p class="hint">Run <code>pdfpal extension pair</code> in a terminal and paste the code here.</p><label for="server-url">pdfpal address</label><input id="server-url" value="http://127.0.0.1:8200" type="url" spellcheck="false"><label for="pair-code">Pairing code</label><input id="pair-code" type="password" autocomplete="off" placeholder="Paste the pairing code"><div class="actions"><button id="connect" class="primary">Connect</button><button id="disconnect" hidden>Disconnect</button></div></details>
+    <details id="connection-section" open><summary id="connection-label">Connect to pdfpal</summary>
+      <p class="hint">Connect once, then approve in your local pdfpal tab.</p>
+      <div class="actions"><button id="connect" class="primary">Connect to pdfpal</button><button id="open-approval" hidden>Open approval tab</button><button id="cancel-connect" hidden>Cancel</button><button id="disconnect" hidden>Disconnect</button></div>
+      <p id="pairing-status" class="hint" role="status" aria-live="polite"></p>
+      <details id="advanced-connection"><summary>Address &amp; manual pairing</summary><label for="server-url">pdfpal address</label><input id="server-url" value="http://127.0.0.1:8200" type="url" spellcheck="false"><label for="pair-code">Pairing code (optional)</label><input id="pair-code" type="password" autocomplete="off" placeholder="Paste a code for an older server"><p class="hint">Start pdfpal with <code>pdfpal serve</code>. For an older server, run <code>pdfpal extension pair</code> using the same data directory and paste the code here.</p></details>
+    </details>
+    <a id="manage-connections" target="_blank" rel="noreferrer" hidden>Manage connections in pdfpal ↗</a>
     <form id="new-project-form" hidden><label for="project-title">New project title</label><input id="project-title" maxlength="1000" required><button type="submit" class="primary">Create project</button></form>
     <label class="checkbox"><input id="include-project" type="checkbox"> Include relevant project PDFs</label><p class="hint">English OCR runs locally. Reviewed text is sent to your paired pdfpal server when you ask or save. AI requests use the agent shown in the chat header.</p>
   </div></dialog>

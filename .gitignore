@@ -11,3 +11,5 @@ extension/*.zip
 *.db
 *.db-shm
 *.db-wal
+extension/package/
+*.tgz

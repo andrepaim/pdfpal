@@ -22,3 +22,5 @@ input,textarea,select { border:1px solid var(--border); background:var(--bg); bo
 .capture-tools { flex-wrap:wrap; }
 
 .composer .chat-command-hint { margin:0 0 8px; }
+#connection-section .actions { flex-wrap:wrap; margin:12px 0; }
+#pairing-status { overflow-wrap:anywhere; }

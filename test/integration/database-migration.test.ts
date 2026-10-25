@@ -18,15 +18,15 @@ test('opens and migrates a legacy sessions database', () => {
     assert.equal((db.prepare('SELECT COUNT(*) count FROM projects').get() as { count: number }).count, 1)
     assert.equal((db.prepare('SELECT COUNT(*) count FROM sources').get() as { count: number }).count, 1)
     assert.equal((db.prepare('SELECT COUNT(*) count FROM chat_messages').get() as { count: number }).count, 1)
-    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 8)
+    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 9)
   } finally { cleanup(config, db) }
 })
 
-test('a fresh database provisions reading progress and the Kindle companion at schema version 8', () => {
+test('a fresh database provisions reading progress and the Kindle companion at schema version 9', () => {
   const config = testConfig()
   const db = openDatabase(config)
   try {
-    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 8)
+    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 9)
     assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name='kindle_conversations'").get())
     assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='collections'").get())
     assert.ok((db.prepare('PRAGMA table_info(sources)').all() as Array<{ name: string }>).some(c => c.name === 'collection_id'))
@@ -52,7 +52,7 @@ test('adds the rects column when migrating a pre-existing annotations table', ()
   legacy.close()
   const db = openDatabase(config)
   try {
-    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 8)
+    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 9)
     const row = db.prepare('SELECT rects FROM annotations WHERE id=?').get('a1') as { rects: string | null }
     assert.equal(row.rects, null)
   } finally { cleanup(config, db) }
@@ -72,7 +72,7 @@ test('drops a pre-existing artifacts table when migrating an older database', ()
   legacy.close()
   const db = openDatabase(config)
   try {
-    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 8)
+    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 9)
     assert.equal(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='artifacts'").get(), undefined)
   } finally { cleanup(config, db) }
 })
@@ -93,7 +93,7 @@ test('adds page progress to a version 5 database without changing existing sourc
 
   const db = openDatabase(config)
   try {
-    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 8)
+    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 9)
     const source = db.prepare('SELECT title,pages,last_page_read FROM sources WHERE id=?').get('s1') as { title: string; pages: number; last_page_read: number }
     assert.deepEqual(source, { title: 'Existing Book', pages: 370, last_page_read: 1 })
   } finally { cleanup(config, db) }
@@ -108,7 +108,7 @@ test('version 6 upgrade backs up the database and preserves notes, chat and read
     INSERT INTO chat_sessions VALUES ('c','p','s','Existing chat','2020-01-01','2020-01-01');
     INSERT INTO chat_messages(session_id,role,content,created_at) VALUES ('c','user','Keep this conversation','2020-01-01');
     DROP TABLE visual_explanations; DROP TABLE extension_saved_notes; DROP TABLE kindle_turns; DROP TABLE kindle_conversations;
-    DROP TABLE extension_clients; DROP TABLE extension_pair_codes; DELETE FROM schema_migrations WHERE version>=7;
+    DROP TABLE extension_pairing_requests; DROP TABLE extension_clients; DROP TABLE extension_pair_codes; DELETE FROM schema_migrations WHERE version>=7;
   `)
   before.close()
   const backups = new Set(fs.readdirSync(config.backupsDir))
@@ -130,7 +130,7 @@ test('version 7 upgrade preserves paired connections, Kindle turns and existing 
   before.exec(`
     INSERT INTO projects VALUES ('p','Existing project','','2020-01-01','2020-01-01');
     INSERT INTO notes VALUES ('n','p',NULL,'Existing note','Keep this','2020-01-01','2020-01-01');
-    INSERT INTO extension_clients VALUES ('client','existing-token-hash','chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','2020-01-01',NULL);
+    INSERT INTO extension_clients(id,token_hash,origin,created_at,revoked_at) VALUES ('client','existing-token-hash','chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','2020-01-01',NULL);
     INSERT INTO kindle_conversations VALUES ('conversation','client','p','book-key','Book','2020-01-01');
     INSERT INTO kindle_turns(id,client_id,conversation_id,request_id,request_hash,capture_json,question,status,answer,created_at,updated_at)
       VALUES ('turn','client','conversation','request','hash','{}','Question','complete','Existing answer','2020-01-01','2020-01-01');
@@ -138,7 +138,7 @@ test('version 7 upgrade preserves paired connections, Kindle turns and existing 
     ALTER TABLE kindle_turns DROP COLUMN visual_id;
     ALTER TABLE kindle_turns DROP COLUMN response_mode;
     DROP TABLE visual_explanations;
-    DELETE FROM schema_migrations WHERE version=8;
+    DROP TABLE extension_pairing_requests; ALTER TABLE extension_clients DROP COLUMN label; DELETE FROM schema_migrations WHERE version>=8;
   `)
   before.close()
   const backups = new Set(fs.readdirSync(config.backupsDir)), db = openDatabase(config)
@@ -146,7 +146,25 @@ test('version 7 upgrade preserves paired connections, Kindle turns and existing 
     assert.equal((db.prepare("SELECT token_hash FROM extension_clients WHERE id='client'").get() as { token_hash: string }).token_hash, 'existing-token-hash')
     assert.deepEqual(db.prepare("SELECT answer,response_mode,visual_id FROM kindle_turns WHERE id='turn'").get(), { answer: 'Existing answer', response_mode: 'text', visual_id: null })
     assert.equal((db.prepare("SELECT content FROM notes WHERE id='n'").get() as { content: string }).content, 'Keep this')
-    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 8)
+    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 9)
     assert.equal(fs.readdirSync(config.backupsDir).filter(file => !backups.has(file)).length, 1)
   } finally { cleanup(config, db) }
+})
+
+test('version 8 upgrade keeps credentials and visual ownership and runs only once', () => {
+  const config = testConfig(), before = openDatabase(config)
+  before.exec(`INSERT INTO extension_clients(id,token_hash,origin,created_at) VALUES ('client','hash','chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','2020-01-01');
+    INSERT INTO projects VALUES ('p','Project','','2020-01-01','2020-01-01');
+    INSERT INTO visual_explanations(id,project_id,client_id,request_id,request_hash,question,status,references_json,request_json,created_at,updated_at)
+      VALUES ('v','p','client','r','h','Question','complete','[]','{}','2020-01-01','2020-01-01');
+    DROP TABLE extension_pairing_requests; ALTER TABLE extension_clients DROP COLUMN label; DELETE FROM schema_migrations WHERE version=9;`)
+  before.close()
+  const backups = fs.readdirSync(config.backupsDir).length, db = openDatabase(config)
+  assert.deepEqual(db.prepare("SELECT token_hash,label FROM extension_clients WHERE id='client'").get(), { token_hash: 'hash', label: null })
+  assert.equal((db.prepare("SELECT client_id FROM visual_explanations WHERE id='v'").get() as { client_id: string }).client_id, 'client')
+  assert.equal(fs.readdirSync(config.backupsDir).length, backups + 1)
+  db.close()
+  const reopened = openDatabase(config)
+  try { assert.equal(fs.readdirSync(config.backupsDir).length, backups + 1) }
+  finally { cleanup(config, reopened) }
 })
