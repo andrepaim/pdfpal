@@ -1,6 +1,6 @@
 # Make the Kindle companion a first-class pdfpal interface
 
-Status: implementation and local verification complete; master delivery and remote CI verification are in progress.
+Status: complete. Implemented, verified locally and in GitHub CI, and delivered to `master`.
 
 Reviewed on 2026-10-23 against local `master` at `6ffde76`, including the uncommitted Kindle companion, visual explanations, selection popup, slash command, and icon work. This document supersedes the earlier high-level promotion plan. The [original extension plan](kindle-browser-extension-plan.md) remains historical context.
 
@@ -264,25 +264,25 @@ Files: complete intended source change set and release/task documentation.
 - [x] Finish coherent commits by concern; keep each buildable where practical. Stage explicit paths and inspect staged diffs for downloaded PDFs, secrets, generated browser artifacts, and unrelated work.
 - [x] Fetch the current remote, integrate any new `origin/master` changes on the integration branch, resolve conflicts, and rerun checks affected by those changes.
 - [x] Run the final typecheck, backend coverage suite, complete build, web browser suite, extension browser suite, and installed-package test on the candidate commit. Record actual results rather than copying historical totals.
-- [ ] If updating the running local app, first ensure no chat/visual job is active. Restart after the final frontend build and verify hashed JS assets are served as JavaScript; static routes are registered at server startup.
-- [ ] Merge into local `master` and push normally to `origin/master`; do not force-push. Verify the remote commit and CI result. If new remote changes land first, integrate and revalidate.
-- [ ] Record the delivered extension/server versions, archive location, commit, and verification evidence. State npm registry publication status explicitly; prepare release notes without treating merge as publication.
+- [x] If updating the running local app, first ensure no chat/visual job is active. Restart after the final frontend build and verify hashed JS assets are served as JavaScript; static routes are registered at server startup.
+- [x] Merge into local `master` and push normally to `origin/master`; do not force-push. Verify the remote commit and CI result. If new remote changes land first, integrate and revalidate.
+- [x] Record the delivered extension/server versions, archive location, commit, and verification evidence. State npm registry publication status explicitly; prepare release notes without treating merge as publication.
 
 Acceptance: the intended changes are on remote `master`, CI is green for the pushed commit, old healthy pairings still work, and unrelated local files remain uncommitted. If a required check fails, this task stays open.
 
 ## Final acceptance checklist
 
-- [ ] README presents the web reader, Kindle companion, and CLI as supported interfaces.
-- [ ] The installed web app supplies its matching, complete extension package.
-- [ ] First-time guided pairing works without terminal code generation.
-- [ ] Approval is explicit; denial, expiry, revocation, and cancellation are enforced.
-- [ ] Panel/browser/server interruption and lost responses are recoverable without duplicate clients.
-- [ ] Healthy upgrades preserve client ID, token, project, conversation history, and private visuals.
-- [ ] Project setup is clear for an empty library and for multiple projects.
-- [ ] Normal text chat, selection chat, `/visual`, OCR, and saved notes still work.
-- [ ] Package installation and runtime work outside the source checkout.
-- [ ] All required checks pass on the commit pushed to `master`.
-- [ ] Documentation distinguishes master delivery from npm publication and accurately describes provider data flow.
+- [x] README presents the web reader, Kindle companion, and CLI as supported interfaces.
+- [x] The installed web app supplies its matching, complete extension package.
+- [x] First-time guided pairing works without terminal code generation.
+- [x] Approval is explicit; denial, expiry, revocation, and cancellation are enforced.
+- [x] Panel/browser/server interruption and lost responses are recoverable without duplicate clients.
+- [x] Healthy upgrades preserve client ID, token, project, conversation history, and private visuals.
+- [x] Project setup is clear for an empty library and for multiple projects.
+- [x] Normal text chat, selection chat, `/visual`, OCR, and saved notes still work.
+- [x] Package installation and runtime work outside the source checkout.
+- [x] All required checks pass on the commit pushed to `master`.
+- [x] Documentation distinguishes master delivery from npm publication and accurately describes provider data flow.
 
 ## Implementation evidence — 2026-10-25
 
@@ -295,3 +295,11 @@ Acceptance: the intended changes are on remote `master`, CI is green for the pus
 - Setup, approval, and the Kindle visual pane were inspected visually using synthetic content. README screenshots are committed under `screenshots/`.
 - The chat scrolling check caught a resize-after-reopen issue; a resize observer now preserves following the latest text response without pulling readers away from earlier messages or visual steps.
 - npm registry and Chrome Web Store publication are not part of this delivery and have not been performed.
+
+### Delivery verification
+
+- Implementation delivered to remote `master` at `35c3b7264c6cced140906225dd4b850c725e5413` through normal fast-forward integration and push.
+- [GitHub CI run 40231108244](https://github.com/andrepaim/pdfpal/actions/runs/40231108244) passed all three jobs: backend/typecheck/build, web E2E, and extension/browser/archive/installed-package checks.
+- The running local app was restarted after verifying zero active reading jobs. Its database migrated from schema 8 to 9; hash comparisons confirmed unchanged connection IDs/token hashes, notes, and Kindle turns. The configured agent remains Codex.
+- `http://127.0.0.1:8200/extensions` returns the updated page, serves JavaScript with the correct content type, and advertises companion 0.5.0. Existing paired connections can continue using their credentials.
+- Only the unrelated downloaded PDFs and their Windows metadata remain untracked. No credentials, databases, browser profiles, or generated test artifacts were committed.
