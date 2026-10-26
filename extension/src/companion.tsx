@@ -198,7 +198,11 @@ export function mountCompanion(getDraft: () => Draft | undefined, flush: () => P
     } finally {
       connecting = false; el<HTMLButtonElement>('connect').disabled = false;
       el<HTMLInputElement>('server-url').disabled = false; el<HTMLInputElement>('pair-code').disabled = false;
-      el('cancel-connect').hidden = !(await guided.pending()); el('open-approval').hidden = el('cancel-connect').hidden; controls();
+      el('cancel-connect').hidden = !(await guided.pending()); el('open-approval').hidden = el('cancel-connect').hidden;
+      // Without a Kindle book, the conversation key stays empty after pairing or
+      // restoring credentials, so update() does not refresh the welcome message.
+      if (!turns.length) renderTurns();
+      else controls();
     }
   }
   function merge(turn: Turn) {

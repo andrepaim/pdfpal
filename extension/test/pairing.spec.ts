@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { buildServer } from '../../dist/server/app.js';
 import { loadConfig } from '../../dist/core/config.js';
 import { openDatabase } from '../../dist/core/database.js';
+import { ExtensionAuth } from '../../dist/core/extension-auth.js';
 
 const extensionPath = fileURLToPath(new URL('../dist', import.meta.url));
 async function setup() {
@@ -41,6 +42,41 @@ async function setup() {
     async restartBrowser() { await context.close(); context = await launch(); },
     async close() { await context.close(); await app.close(); db.close(); await rm(temporary, { recursive: true, force: true }); } };
 }
+
+for (const method of ['guided', 'manual'] as const) test(`${method} pairing refreshes the empty conversation without an open book`, async () => {
+  const s = await setup();
+  try {
+    const project = await s.project('Reading');
+    const panel = await s.panel();
+    const empty = panel.locator('#messages .empty-state');
+    const connect = empty.getByRole('button', { name: 'Connect to pdfpal', exact: true });
+    await expect(connect).toBeVisible();
+    if (method === 'guided') {
+      const approval = await s.begin(panel);
+      await approval.getByRole('button', { name: 'Allow connection' }).click();
+    } else {
+      await panel.getByRole('button', { name: 'Connection and settings', exact: true }).click();
+      await panel.locator('#advanced-connection').evaluate((element: HTMLDetailsElement) => element.open = true);
+      await panel.locator('#server-url').fill(s.base);
+      await panel.locator('#pair-code').fill(new ExtensionAuth(s.db).pairCode().code);
+      await panel.locator('#connect').click();
+    }
+    await expect(panel.locator('#project')).toHaveValue(project.id);
+    await expect(connect).toHaveCount(0);
+    await expect(empty).not.toContainText('Connect to your local pdfpal');
+    await expect(empty).toContainText('Explore an idea');
+    await panel.reload();
+    await expect(panel.locator('#project')).toHaveValue(project.id);
+    await expect(connect).toHaveCount(0);
+    await expect(empty).toContainText('Explore an idea');
+    await panel.getByRole('button', { name: 'Connection and settings', exact: true }).click();
+    await panel.locator('#connection-label').click();
+    await panel.locator('#disconnect').click();
+    await panel.locator('#close-settings').click();
+    await expect(connect).toBeVisible();
+    await expect(empty).toContainText('Connect to your local pdfpal');
+  } finally { await s.close(); }
+});
 
 test('guided approval survives a closed panel and restart; empty library creates a project; management revokes', async ({}, info) => {
   const s = await setup();

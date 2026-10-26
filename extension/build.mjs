@@ -44,6 +44,12 @@ for (const directory of [...packages].sort()) {
   }
 }
 for (const file of ['manifest.json', 'panel.html', 'README.md']) await cp(path.join(root, file), path.join(out, file));
+// Reuse the web app's branding for Chrome's toolbar and extension listing.
+await mkdir(path.join(out, 'icons'), { recursive: true });
+const icons = new Set([...Object.values(manifest.icons), ...Object.values(manifest.action.default_icon)]);
+for (const icon of icons) {
+  await cp(path.join(root, '../frontend/public', path.basename(icon)), path.join(out, icon));
+}
 const tesseract = path.dirname(require.resolve('tesseract.js/package.json'));
 const core = path.dirname(require.resolve('tesseract.js-core/package.json'));
 const english = path.dirname(require.resolve('@tesseract.js-data/eng/package.json'));
