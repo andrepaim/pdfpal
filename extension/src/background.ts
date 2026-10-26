@@ -1,8 +1,28 @@
 import { draftKey, errorMessage, isKindle, MAX_IMAGE_LENGTH, type Draft, type Reply, type Snapshot } from './shared';
 
+async function configurePanel(tabId: number): Promise<void> {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    await chrome.sidePanel.setOptions({
+      tabId, enabled: isKindle(tab.pendingUrl || tab.url), path: `panel.html?tabId=${tabId}`,
+    });
+  } catch { /* A tab can close while its panel options are being updated. */ }
+}
+async function configurePanels(): Promise<void> {
+  // Also clear the global panel left by earlier extension versions.
+  await chrome.sidePanel.setOptions({ enabled: false });
+  await Promise.all((await chrome.tabs.query({})).map(tab => tab.id === undefined ? undefined : configurePanel(tab.id)));
+}
+const refreshPanels = () => { void configurePanels().catch(error => console.warn('Could not configure Kindle side panels:', error)); };
+refreshPanels();
+chrome.runtime.onStartup.addListener(refreshPanels);
+chrome.tabs.onActivated.addListener(({ tabId }) => { void configurePanel(tabId); });
+
 // Open from the action listener so the click also grants activeTab for screenshots.
 chrome.action.onClicked.addListener(tab => {
-  if (tab.id !== undefined) void chrome.sidePanel.open({ tabId: tab.id });
+  if (tab.id !== undefined && isKindle(tab.url)) {
+    void chrome.sidePanel.open({ tabId: tab.id }).catch(error => console.warn('Could not open Kindle side panel:', error));
+  }
 });
 // Only extension pages can read drafts; the Kindle page receives no saved content.
 void chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
@@ -132,6 +152,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
 });
 chrome.tabs.onRemoved.addListener(tabId => { void serialize(tabId, () => chrome.storage.session.remove([draftKey(tabId), `book-details:${tabId}`, `selection-state:${tabId}`])); });
 chrome.tabs.onUpdated.addListener((tabId, change) => {
+  if (change.status || change.url) void configurePanel(tabId);
   if (change.status === 'loading' || change.url) {
     void serialize(tabId, () => chrome.storage.session.remove(draftKey(tabId)));
   }

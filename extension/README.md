@@ -24,6 +24,8 @@ Contributors can load `extension/dist` directly after the root build. The archiv
 
 Supported readers: `read.amazon.com`, `ler.amazon.com.br`, and `read.amazon.co.uk`. English prose is the initial OCR target. The native Kindle PC application is not supported.
 
+The side panel is available only on supported Kindle tabs. Switching to another site hides it; returning to the Kindle tab restores an already-open panel. Navigating that tab away from Kindle closes its panel. The toolbar icon remains available, but opens the panel only on Kindle.
+
 For updates, replace files in the installed folder and click **Reload** on its existing Chrome entry, then refresh Kindle. Do not remove the extension first: removal clears its stored connection. Restart pdfpal when updating the server too.
 
 ### One-time upgrade to a stable extension ID

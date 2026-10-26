@@ -34,9 +34,6 @@
   "background": {
     "service_worker": "background.js"
   },
-  "side_panel": {
-    "default_path": "panel.html"
-  },
   "content_scripts": [
     {
       "matches": [
