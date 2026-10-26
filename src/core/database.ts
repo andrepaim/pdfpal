@@ -94,6 +94,9 @@ function migrate(db: DatabaseType): void {
   add('media_type', 'TEXT')
   add('byte_size', 'INTEGER')
   add('content_hash', 'TEXT')
+  add('author', 'TEXT')
+  add('kindle_book_key', 'TEXT')
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS source_kindle_book ON sources(project_id, kindle_book_key) WHERE type='kindle'")
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS source_chunks (

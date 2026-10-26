@@ -57,6 +57,8 @@ Finding papers is legwork, and by now agents are better at it than we are: they 
 
 The [Kindle Companion](extension/README.md) brings the same dark chat pane to Kindle for Web. Ask about the open book, attach native selections or locally recognized image text, generate visual explanations with `/visual`, and save passages or answers as project notes. Conversations survive closing the panel and normal extension updates.
 
+Keep books in a project with **Add Source → Kindle book**, or use **Book details → Add book to project** in the companion. **Open in Kindle ↗** launches the reader in a new tab and selects the associated project in the connected companion. These entries store book references; full Kindle text is not imported or indexed.
+
 Book questions use title/author, previous discussion, and captured or saved excerpts. The full Kindle book is not imported. Relevant project PDFs can be included explicitly; a project does not need PDFs to support Kindle chat.
 
 ![Kindle companion showing a visual explanation beside the chat composer](screenshots/7-kindle-companion.png)
@@ -103,7 +105,7 @@ Select text in the PDF reader and choose **Explain visually** from its popup, or
 
 ## Install and run
 
-The guided extension setup below is included in the repository's **2.1.0** build (companion **0.5.0**). It has not yet been published to npm. To use it now, follow the source installation instructions below; the registry command installs whichever version is currently published.
+The guided extension setup below is included in the repository's **2.1.0** build (companion **0.6.1**). It has not yet been published to npm. To use it now, follow the source installation instructions below; the registry command installs whichever version is currently published.
 
 ```bash
 npm install -g pdfpal

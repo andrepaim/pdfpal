@@ -4,7 +4,8 @@ import Markdown from '../../frontend/src/components/Markdown';
 import VisualExplanation, { type VisualTransport } from '../../frontend/src/components/VisualExplanation';
 import ChatCommandHint from '../../frontend/src/components/ChatCommandHint';
 import { isVisualCommandPrefix, parseChatInput, type ChatInput } from '../../src/shared/chat-command';
-import { bookIdentity, errorMessage, type Draft, type Metadata } from './shared';
+import { bookIdentity, errorMessage, type BookProject, type Draft, type Metadata } from './shared';
+import { kindleBookUrl, sameLocalServer } from '../../src/shared/kindle-book';
 import { GuidedConnection, BridgeError, baseUrl, api, bridge, type Connection } from './connection';
 
 type Capture = Pick<Draft, 'text' | 'originalText' | 'metadata' | 'method' | 'capturedAt'> & { scope?: 'selection' | 'book' };
@@ -15,12 +16,13 @@ const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as
 const snapshot = (draft: Draft): Capture => ({ text: draft.text, originalText: draft.originalText, metadata: { ...draft.metadata }, method: draft.method, capturedAt: draft.capturedAt });
 const identity = bookIdentity;
 
-export function mountCompanion(getDraft: () => Draft | undefined, flush: () => Promise<void>) {
+export function mountCompanion(getDraft: () => Draft | undefined, flush: () => Promise<void>, getTabId: () => number | undefined) {
   let connection: Connection | undefined;
   const restored = chrome.storage.local.get('companionConnection').then(values => {
     connection = values.companionConnection as Connection | undefined;
   });
   let connecting = false;
+  let projectIds = new Set<string>(), bookContext = '', bookProjectVersion = 0, bookProjectLoading = false, savingBook = false;
   const guided = new GuidedConnection();
   let currentBook: Metadata | undefined;
   let attachedId: string | undefined, seenDraftId: string | undefined;
@@ -42,7 +44,7 @@ export function mountCompanion(getDraft: () => Draft | undefined, flush: () => P
     el('companion-status').textContent = value; el('companion-status').dataset.error = String(error);
   }
   function attached() { const draft = getDraft(); return draft?.id === attachedId && draft?.status === 'ready' && draft.text.trim() ? draft : undefined; }
-  function usable() { return !!connection?.projectId && !!currentBook && !captureBusy && !attachmentLoading; }
+  function usable() { return !!connection?.projectId && !!currentBook && !captureBusy && !attachmentLoading && !bookProjectLoading; }
   function detach() {
     const draft = getDraft();
     attachedId = undefined; attachmentVersion++; attachmentLoading = false;
@@ -55,7 +57,9 @@ export function mountCompanion(getDraft: () => Draft | undefined, flush: () => P
     for (const id of ['ask', 'explain', 'save-passage']) el<HTMLButtonElement>(id).disabled = !usable() || working || loading || (id !== 'ask' && !selection);
     el<HTMLTextAreaElement>('question').disabled = !usable() || working || loading;
     el<HTMLButtonElement>('ask').disabled ||= !el<HTMLTextAreaElement>('question').value.trim();
-    el<HTMLSelectElement>('project').disabled = working;
+    el<HTMLSelectElement>('project').disabled = working || bookProjectLoading;
+    el<HTMLButtonElement>('save-book').disabled = !usable() || savingBook || !currentBook?.title.trim();
+    el('save-book').hidden = !connection;
     el<HTMLButtonElement>('clear-chat').disabled = !turns.length || working || loading;
     el('selection-banner').hidden = !selection;
     el('explain').hidden = !selection;
@@ -140,11 +144,39 @@ export function mountCompanion(getDraft: () => Draft | undefined, flush: () => P
   }
   function perform(action: () => Promise<unknown>) { void action().catch(error => { message(errorMessage(error), true); controls(); }); }
   async function persist() { if (connection) await chrome.storage.local.set({ companionConnection: connection }); }
+  async function chooseBookProject(connected: Connection, metadata: Metadata, key: string, version: number) {
+    try {
+      const tabId = getTabId();
+      const [matches, saved] = await Promise.all([
+        api<Array<{ project_id: string }>>(connected, `/books?url=${encodeURIComponent(metadata.url)}`),
+        tabId === undefined ? Promise.resolve({} as Record<string, unknown>) : chrome.storage.session.get([`kindle-project:${tabId}`, `kindle-project-choice:${tabId}`]),
+      ]);
+      if (connection !== connected || version !== bookProjectVersion || key !== bookContext) return;
+      const bookKey = kindleBookUrl(metadata.url).key;
+      const hint = saved[`kindle-project:${tabId}`] as BookProject | undefined;
+      const choice = saved[`kindle-project-choice:${tabId}`] as BookProject | undefined;
+      const valid = (value: BookProject | undefined) => value && sameLocalServer(value.base, connected.base) && value.bookKey === bookKey && projectIds.has(value.projectId);
+      // URL hints are not authority: verify the book belongs to that project.
+      const requested = valid(choice) ? choice!.projectId
+        : valid(hint) && matches.some(match => match.project_id === hint!.projectId) ? hint!.projectId
+        : matches.length === 1 && projectIds.has(matches[0].project_id) ? matches[0].project_id : '';
+      if (requested && requested !== connected.projectId) {
+        connected.projectId = requested; el<HTMLSelectElement>('project').value = requested;
+        await persist();
+        if (version === bookProjectVersion) update(getDraft(), captureBusy, currentBook);
+      }
+    } catch (error) {
+      if (version === bookProjectVersion && !(error instanceof BridgeError && error.status === 404)) message('Could not match this book to a project. Choose a project above.', true);
+    } finally {
+      if (version === bookProjectVersion) { bookProjectLoading = false; controls(); }
+    }
+  }
   async function projects() {
     if (!connection) return;
     const connected = connection;
     const list = await api<Array<{ id: string; title: string }>>(connected, '/projects');
     if (connection !== connected) return;
+    projectIds = new Set(list.map(project => project.id));
     el<HTMLSelectElement>('project').replaceChildren(new Option('Choose a project…', ''), ...list.map(project => new Option(project.title, project.id)));
     if (!list.some(project => project.id === connected.projectId)) connected.projectId = list.length === 1 ? list[0].id : '';
     el<HTMLSelectElement>('project').value = connected.projectId;
@@ -270,6 +302,13 @@ export function mountCompanion(getDraft: () => Draft | undefined, flush: () => P
   function update(capture: Draft | undefined, busy: boolean, metadata: Metadata | undefined) {
     captureBusy = busy;
     currentBook = metadata;
+    let context = '';
+    try { if (connection && metadata && projectIds.size) context = `${connection.base}:${connection.clientId}:${getTabId()}:${kindleBookUrl(metadata.url).key}`; } catch { /* The library page is not a book. */ }
+    if (context !== bookContext) {
+      bookContext = context; const version = ++bookProjectVersion;
+      bookProjectLoading = !!context;
+      if (context && connection && metadata) void chooseBookProject(connection, metadata, context, version);
+    }
     let key = '';
     try { if (connection && metadata) key = `${connection.base}:${connection.clientId}:${connection.projectId}:${identity(metadata)}`; } catch { /* Wait for a reader URL. */ }
     if (key !== currentKey) {
@@ -357,7 +396,26 @@ export function mountCompanion(getDraft: () => Draft | undefined, flush: () => P
   });
   el<HTMLSelectElement>('project').onchange = () => perform(async () => {
     if (!connection) return;
-    connection.projectId = el<HTMLSelectElement>('project').value; await persist(); update(getDraft(), captureBusy, currentBook);
+    bookProjectVersion++; bookProjectLoading = false;
+    connection.projectId = el<HTMLSelectElement>('project').value;
+    const tabId = getTabId();
+    if (tabId !== undefined && currentBook) {
+      try { await chrome.storage.session.set({ [`kindle-project-choice:${tabId}`]: { base: connection.base, projectId: connection.projectId, bookKey: kindleBookUrl(currentBook.url).key } }); } catch { /* Book identity may still be loading. */ }
+    }
+    await persist(); update(getDraft(), captureBusy, currentBook);
+  });
+  el('save-book').onclick = () => perform(async () => {
+    await flush();
+    if (!connection?.projectId || !currentBook || savingBook || bookProjectLoading) return;
+    const connected = connection, projectId = connected.projectId, metadata = { ...currentBook };
+    savingBook = true; el('book-save-status').textContent = ''; controls();
+    try {
+      await api(connected, `/projects/${encodeURIComponent(projectId)}/books`, { url: metadata.url, title: metadata.title, author: metadata.author });
+      el<HTMLDialogElement>('preview').close();
+      message('Book added to your project. Open it from the Sources list in pdfpal.');
+    } catch (error) {
+      el('book-save-status').textContent = errorMessage(error);
+    } finally { savingBook = false; controls(); }
   });
   el('new-project').onclick = () => { el('new-project-form').hidden = false; settings(); el('project-title').focus(); };
   el('new-project-form').onsubmit = event => {
@@ -376,6 +434,11 @@ export function mountCompanion(getDraft: () => Draft | undefined, flush: () => P
   el('ask').onclick = () => perform(() => ask()); el('explain').onclick = () => perform(() => ask(true));
   el('save-passage').onclick = () => perform(() => saveNote());
   el('retry-chat').onclick = () => perform(() => history(generation));
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'session' && changes[`kindle-project:${getTabId()}`]) {
+      bookContext = ''; update(getDraft(), captureBusy, currentBook);
+    }
+  });
   perform(async () => {
     await restored;
     const pending = await guided.pending();

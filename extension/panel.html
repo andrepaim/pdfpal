@@ -31,7 +31,10 @@
     <label class="checkbox"><input id="include-project" type="checkbox"> Include relevant project PDFs</label><p class="hint">English OCR runs locally. Reviewed text is sent to your paired pdfpal server when you ask or save. AI requests use the agent shown in the chat header.</p>
   </div></dialog>
   <dialog id="preview" class="utility-dialog"><div class="dialog-header"><h2>Book &amp; selection</h2><button id="close-preview" class="icon-button" aria-label="Close passage review">×</button></div><div class="dialog-content">
+    <button id="refresh-book" class="quiet">Refresh details</button><p id="book-details-status" class="hint" role="status"></p>
     <label for="title">Book title</label><input id="title" maxlength="1000" placeholder="Book title"><label for="author">Author</label><input id="author" maxlength="1000" placeholder="Optional"><label for="location">Reading location</label><input id="location" maxlength="1000" placeholder="Optional · e.g. Location 420">
+    <button id="save-book" hidden>Add book to project</button>
+    <p id="book-save-status" class="hint" role="status"></p>
     <div id="passage-fields" hidden><div class="section-title"><label for="text">Passage text</label><span id="method" class="badge"></span></div><textarea id="text" rows="9" maxlength="60000" spellcheck="false" placeholder="Recognized text will appear here"></textarea><p id="quality" class="hint"></p><details id="image-details" hidden><summary>Compare with captured image</summary><img id="image" alt="Captured passage before text recognition"></details><div class="actions"><button id="copy">Copy Markdown</button><button id="export">Export JSON</button><button id="retry" hidden>Retry OCR</button></div><button id="clear" class="quiet">Discard capture</button></div>
   </div></dialog>
   <script src="panel.js"></script>

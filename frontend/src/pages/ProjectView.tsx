@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { projectsApi, sourcesApi, collectionsApi, notesApi, chatApi, searchApi, highlightsApi, type Project, type Source, type Collection, type Note, type ChatSession, type SearchPassage, type Highlight } from '../lib/api'
 import SearchPaperModal from '../components/SearchPaperModal'
 import { timeAgo } from '../lib/time'
+import { kindleLaunchUrl } from '../../../src/shared/kindle-book'
 
 type Tab = 'sources' | 'search' | 'notes' | 'chats' | 'highlights'
 
@@ -19,6 +20,7 @@ function SourceRow({ source, projectId, drag }: {
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
   const [title, setTitle] = useState(source.title || source.url || '')
+  const kindleUrl = source.type === 'kindle' && source.url ? kindleLaunchUrl(source.url, projectId, window.location.origin) : null
 
   const commit = async () => {
     const next = title.trim()
@@ -37,13 +39,13 @@ function SourceRow({ source, projectId, drag }: {
       draggable={!editing}
       onDragStart={e => { e.stopPropagation(); e.dataTransfer.effectAllowed = 'move'; drag.onDragStart({ kind: 'source', id: source.id }) }}
       onDragEnd={drag.onDragEnd}
-      onClick={() => !editing && navigate(`/projects/${projectId}/sources/${source.id}`)}
+      onClick={() => { if (!editing) { if (kindleUrl) window.open(kindleUrl, '_blank', 'noopener,noreferrer'); else navigate(`/projects/${projectId}/sources/${source.id}`) } }}
       style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 12px', display: 'flex', alignItems: 'center', gap: 10, cursor: editing ? 'default' : 'pointer' }}
       onMouseEnter={e => (e.currentTarget.style.borderColor = '#3a3a3a')}
       onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
     >
       <div style={{ fontSize: 16, flexShrink: 0, color: '#6b7280' }}>⠿</div>
-      <div style={{ fontSize: 16, flexShrink: 0 }}>📄</div>
+      <div style={{ fontSize: 16, flexShrink: 0 }}>{kindleUrl ? '📖' : '📄'}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         {editing ? (
           <input autoFocus value={title} onChange={e => setTitle(e.target.value)} onBlur={commit}
@@ -53,6 +55,7 @@ function SourceRow({ source, projectId, drag }: {
         ) : (
           <>
             <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.title || source.url || 'Untitled'}</div>
+            {source.author && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{source.author}</div>}
             {source.excerpt && (
               <div style={{ fontSize: 11, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>{source.excerpt}</div>
             )}
@@ -60,7 +63,7 @@ function SourceRow({ source, projectId, drag }: {
         )}
       </div>
       <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
-        {source.pages > 0
+        {kindleUrl ? <><span style={{ color: '#a5b4fc', fontSize: 11 }}>Kindle</span><a href={kindleUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ color: '#a5b4fc', fontSize: 12 }}>Open in Kindle ↗</a></> : source.pages > 0
           ? <span style={{ background: '#212121', border: '1px solid var(--border)', borderRadius: 6, padding: '2px 8px', fontSize: 10, color: '#6b7280' }}>{source.pages}p</span>
           : <span style={{ background: '#7f1d1d', border: '1px solid #991b1b', borderRadius: 6, padding: '2px 8px', fontSize: 10, color: '#fca5a5' }}>⚠ Failed</span>}
         <button onClick={e => { e.stopPropagation(); setTitle(source.title || source.url || ''); setEditing(true) }} title="Rename"
@@ -230,7 +233,7 @@ function SourcesTab({ projectId }: { projectId: string }) {
         {!loading && sources.length === 0 && collections.length === 0 && (
           <div style={{ textAlign: 'center', paddingTop: 60, color: '#4b5563' }}>
             <div style={{ fontSize: 36, marginBottom: 12 }}>📄</div>
-            <div>No sources yet. Add a PDF or create a collection to organize your papers.</div>
+            <div>No sources yet. Add a PDF or Kindle book, or create a collection.</div>
           </div>
         )}
 
@@ -256,10 +259,10 @@ function SourcesTab({ projectId }: { projectId: string }) {
         )}
 
         <div onClick={() => setShowAdd(true)} style={{ border: '2px dashed #333', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: '#4b5563', cursor: 'pointer', padding: '14px 0', fontSize: 12, marginTop: 6 }}>
-          <span>＋</span><span>Search, paste a URL, or upload a PDF…</span>
+          <span>＋</span><span>Add a paper, PDF, or Kindle book…</span>
         </div>
       </div>
-      {showAdd && <SearchPaperModal projectId={projectId} onClose={() => { setShowAdd(false); reload() }} onAdded={s => { setShowAdd(false); setSources(prev => [s, ...prev]) }} />}
+      {showAdd && <SearchPaperModal projectId={projectId} onClose={() => { setShowAdd(false); reload() }} onAdded={s => { setShowAdd(false); setSources(prev => [s, ...prev.filter(source => source.id !== s.id)]) }} />}
     </div>
   )
 }

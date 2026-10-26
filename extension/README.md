@@ -6,7 +6,7 @@ Book questions use the book title and author, conversation history, previously d
 
 ## Install
 
-Companion **0.5.0** is bundled with the repository's pdfpal **2.1.0** build. That pdfpal version has not yet been published to npm; use a source checkout until it is released:
+Companion **0.6.1** is bundled with the repository's pdfpal **2.1.0** build. That pdfpal version has not yet been published to npm; use a source checkout until it is released:
 
 ```sh
 npm ci
@@ -65,6 +65,16 @@ Expand **Address & manual pairing**, paste the code, and click **Connect to pdfp
 pdfpal extension list
 pdfpal extension revoke <connection-id>
 ```
+
+## Keep a Kindle book in a project
+
+In pdfpal, choose **Add Source → Kindle book**, paste the URL from an open Kindle book, and enter its title and optional author. The book appears in Sources with a **Kindle** label and **Open in Kindle ↗** link. You can rename it, file it into a collection, or remove the reference without affecting your Amazon library. Adding the same book to the same project again keeps one entry.
+
+From the companion, select a project and open **Book details → Add book to project** to save the current book. The updated local pdfpal server is required. Only the reference is stored; the full book is not downloaded or indexed for project search/chat.
+
+Opening **ⓘ Book details** refreshes metadata from the reader and its frames, including hidden headers. Use **Refresh details** if Kindle is still loading. If no title is available, the form explains how to enter it manually; author and reading location are optional. Refreshing preserves your edits, and old cached blank values no longer override detected metadata.
+
+**Open in Kindle ↗** opens a new tab. When you open the companion there, it selects the originating project if connected to the same local server. The link's project hint stays in the browser and is removed from the address by the extension. For books opened directly in Kindle, a single matching project is selected automatically; books in multiple projects keep the current selection. You can always change the project manually. Captured passages and saved notes continue to work as before.
 
 ## Capture a passage
 

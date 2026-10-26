@@ -16,6 +16,9 @@ let busy = false;
 let epoch = 0;
 let editTimer: ReturnType<typeof setTimeout> | undefined;
 let savePromise = Promise.resolve();
+type BookField = 'title' | 'author' | 'location';
+const editedBookFields = new Set<BookField>();
+let refreshingBook = false;
 let companion: ReturnType<typeof mountCompanion> | undefined;
 const fixedTab = Number(new URLSearchParams(window.location.search).get('tabId')) || undefined;
 function status(message: string, error = false) {
@@ -45,6 +48,20 @@ function render() {
   }
   controls();
 }
+async function restoreBookDetails(metadata: Metadata, id: number, generation: number): Promise<Metadata> {
+  const saved = (await chrome.storage.session.get(`book-details:${id}`))[`book-details:${id}`] as
+    { identity: string; title?: string; author?: string; edited?: BookField[] } | undefined;
+  if (generation !== epoch || saved?.identity !== bookIdentity(metadata)) return metadata;
+  const restored = { ...metadata };
+  for (const field of ['title', 'author'] as const) {
+    // Older panels saved blank fields just by closing the dialog. Do not let
+    // those blanks hide details that the reader can now supply.
+    if (typeof saved[field] === 'string' && (saved[field]!.trim() || saved.edited?.includes(field))) {
+      restored[field] = saved[field]!; editedBookFields.add(field);
+    }
+  }
+  return restored;
+}
 async function saveEdits(): Promise<void> {
   clearTimeout(editTimer);
   if (!book) return;
@@ -52,7 +69,11 @@ async function saveEdits(): Promise<void> {
   const values = { text: text.value, title: title.value, author: author.value, location: location.value };
   book = { ...book, title: title.value, author: author.value, location: location.value };
   element('reader').textContent = book.title || 'Kindle book';
-  if (tabId) await chrome.storage.session.set({ [`book-details:${tabId}`]: { identity: bookIdentity(book), title: book.title, author: book.author } });
+  if (tabId && editedBookFields.size) await chrome.storage.session.set({ [`book-details:${tabId}`]: {
+    identity: bookIdentity(book), edited: [...editedBookFields],
+    ...(editedBookFields.has('title') ? { title: book.title } : {}),
+    ...(editedBookFields.has('author') ? { author: book.author } : {}),
+  } });
   if (tabId !== currentTab || draft?.id !== currentDraft?.id) return;
   if (!draft) { companion?.update(draft, busy, book); return; }
   const message = { type: 'edit', tabId: draft.tabId, id: draft.id, ...values };
@@ -64,6 +85,7 @@ async function saveEdits(): Promise<void> {
   controls();
 }
 for (const input of [text, title, author, location]) input.addEventListener('input', () => {
+  if (input !== text) editedBookFields.add(input.id as BookField);
   controls(); clearTimeout(editTimer);
   editTimer = setTimeout(() => { void saveEdits().catch(error => status(errorMessage(error), true)); }, 250);
 });
@@ -72,6 +94,7 @@ async function chooseTab(force = false): Promise<void> {
   const id = next?.id && isKindle(next.url) ? next.id : undefined;
   if (!force && id === tabId && id !== undefined) return;
   clearTimeout(editTimer); const generation = ++epoch; tabId = id; draft = undefined; book = undefined;
+  editedBookFields.clear();
   await stopOcr();
   if (generation !== epoch) return;
   busy = false; element('progress').hidden = true;
@@ -80,9 +103,9 @@ async function chooseTab(force = false): Promise<void> {
     const [loadedDraft, metadata] = await Promise.all([request<Draft | undefined>({ type: 'get', tabId: id }), request<Metadata>({ type: 'book', tabId: id })]);
     if (generation !== epoch) return;
     draft = loadedDraft; book = metadata;
-    const saved = (await chrome.storage.session.get(`book-details:${id}`))[`book-details:${id}`] as { identity: string; title: string; author: string } | undefined;
+    const restored = await restoreBookDetails(book, id, generation);
     if (generation !== epoch) return;
-    if (saved?.identity === bookIdentity(book)) book = { ...book, title: saved.title, author: saved.author };
+    book = restored;
     element('reader').textContent = book.title || next.title || 'Kindle book';
   }
   render();
@@ -135,9 +158,45 @@ function perform(action: () => Promise<void>) {
 element('capture').onclick = () => perform(() => capture('capture-selection'));
 element('region').onclick = () => perform(() => capture('capture-region'));
 element('retry').onclick = () => perform(runOcr);
-function review() { render(); const dialog = element<HTMLDialogElement>('preview'); if (!dialog.open) dialog.showModal(); }
+async function refreshBookDetails() {
+  if (!tabId || refreshingBook || busy) return;
+  const id = tabId, generation = epoch;
+  refreshingBook = true; element<HTMLButtonElement>('refresh-book').disabled = true;
+  element('book-details-status').textContent = 'Reading book details…';
+  try {
+    let fresh = await request<Metadata>({ type: 'book', tabId: id });
+    if (id !== tabId || generation !== epoch) return;
+    fresh = await restoreBookDetails(fresh, id, generation);
+    if (id !== tabId || generation !== epoch || !element<HTMLDialogElement>('preview').open) return;
+    for (const field of ['title', 'author', 'location'] as const) {
+      if (editedBookFields.has(field)) fresh[field] = element<HTMLInputElement>(field).value;
+      else if (!fresh[field] && book && bookIdentity(book) === bookIdentity(fresh)) fresh[field] = book[field];
+    }
+    book = fresh;
+    if (draft && bookIdentity(draft.metadata) === bookIdentity(book)) {
+      draft = { ...draft, metadata: { ...draft.metadata, title: book.title, author: book.author,
+        ...(editedBookFields.has('location') ? { location: book.location } : {}) } };
+    }
+    element('reader').textContent = book.title || 'Kindle book';
+    const metadata = draft?.metadata || book;
+    title.value = metadata.title; author.value = metadata.author; location.value = metadata.location;
+    controls();
+    element('book-details-status').textContent = book.title
+      ? 'Book details refreshed. You can edit them before adding the book.'
+      : 'Kindle has not exposed a book title yet. Enter it below, or show the reader toolbar and refresh details. Author and location are optional.';
+  } catch (error) {
+    if (id === tabId && generation === epoch) element('book-details-status').textContent = errorMessage(error);
+  } finally {
+    refreshingBook = false; element<HTMLButtonElement>('refresh-book').disabled = false;
+  }
+}
+function review() {
+  render(); const dialog = element<HTMLDialogElement>('preview'); if (!dialog.open) dialog.showModal();
+  perform(refreshBookDetails);
+}
 element('review').onclick = review;
 element('book-details').onclick = review;
+element('refresh-book').onclick = () => perform(refreshBookDetails);
 element('close-preview').onclick = () => element<HTMLDialogElement>('preview').close();
 element('preview').addEventListener('close', () => perform(saveEdits));
 element('clear').onclick = () => perform(async () => {
@@ -176,5 +235,5 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
 });
 addEventListener('pagehide', () => { void stopOcr(); });
-companion = mountCompanion(() => draft, saveEdits);
+companion = mountCompanion(() => draft, saveEdits, () => tabId);
 render(); perform(chooseTab);

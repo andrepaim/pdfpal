@@ -13,6 +13,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import RelatedPanel from './components/RelatedPanel'
+import { kindleLaunchUrl } from '../../src/shared/kindle-book'
 
 interface User { email: string; name: string; picture: string }
 
@@ -318,6 +319,16 @@ export default function App({ user }: { user: User }) {
         </button>
       </div>
     )
+  }
+
+  if (source?.type === 'kindle' && source.url && projectId) {
+    return <main style={{ padding: 32, color: '#e5e7eb', background: 'var(--bg)', minHeight: '100vh' }}>
+      <button onClick={() => navigate(`/projects/${projectId}`)}>← Back to project</button>
+      <h1>{source.title}</h1>
+      {source.author && <p>{source.author}</p>}
+      <p>This book opens in Kindle for Web. Use the pdfpal extension to discuss it and save passages.</p>
+      <a href={kindleLaunchUrl(source.url, projectId, window.location.origin)} target="_blank" rel="noreferrer" style={{ color: '#a5b4fc' }}>Open in Kindle ↗</a>
+    </main>
   }
 
   const tabBtn = (panel: RightPanel, label: string) => (

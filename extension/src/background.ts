@@ -1,4 +1,7 @@
-import { draftKey, errorMessage, isKindle, MAX_IMAGE_LENGTH, type Draft, type Reply, type Snapshot } from './shared';
+import { bookIdentity, draftKey, errorMessage, isKindle, MAX_IMAGE_LENGTH, type Draft, type Metadata, type Reply, type Snapshot } from './shared';
+import { readBookMetadata } from './book-metadata';
+import { kindleBookUrl } from '../../src/shared/kindle-book';
+import { baseUrl } from './connection';
 
 async function configurePanel(tabId: number): Promise<void> {
   try {
@@ -41,6 +44,25 @@ async function reader(tabId: number): Promise<chrome.tabs.Tab> {
   const tab = await chrome.tabs.get(tabId);
   if (!isKindle(tab.url)) throw new Error('Open a book in Kindle for Web, then click the extension icon.');
   return tab;
+}
+async function readBook(tabId: number): Promise<Metadata> {
+  const tab = await reader(tabId);
+  const url = tab.url!;
+  let asin = '';
+  try { asin = kindleBookUrl(url).asin; } catch { /* The library is not a book. */ }
+  const book: Metadata = { url, asin, title: '', author: '', location: '' };
+  // Host permissions allow this without relying on an old or missing content
+  // script. Hidden reader headers can still contain the book's details.
+  const frames = await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, func: readBookMetadata })
+    .catch(() => chrome.scripting.executeScript({ target: { tabId, frameIds: [0] }, func: readBookMetadata }).catch(() => []));
+  for (const frame of frames.sort((a, b) => a.frameId - b.frameId)) {
+    const value = frame.result;
+    if (!value || (value.asin && asin && value.asin.toUpperCase() !== asin)) continue;
+    for (const field of ['title', 'author', 'location'] as const) if (!book[field] && value[field]) book[field] = value[field];
+  }
+  const current = await reader(tabId);
+  if (bookIdentity({ ...book, url: current.url! }) !== bookIdentity(book)) throw new Error('The book changed. Open Book details again.');
+  return book;
 }
 async function frameRequest<T>(tabId: number, type: string, frameId = 0): Promise<T> {
   let response: Reply<T>;
@@ -106,7 +128,7 @@ async function handle(message: Record<string, unknown>): Promise<unknown> {
   const tabId = message.tabId;
   if (!Number.isInteger(tabId) || (tabId as number) < 0) throw new Error('Choose a Kindle tab first.');
   const id = tabId as number;
-  if (message.type === 'book') { await reader(id); return (await frameRequest<Snapshot>(id, 'snapshot')).metadata; }
+  if (message.type === 'book') return readBook(id);
   if (message.type === 'get') return readDraft(id);
   if (message.type === 'capture-selection') return captureSelection(id);
   if (message.type === 'capture-region') return captureRegion(id);
@@ -140,6 +162,16 @@ async function handle(message: Record<string, unknown>): Promise<unknown> {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
+  if (message?.type === 'book-launch' && sender.id === chrome.runtime.id && sender.frameId === 0 && sender.tab?.id && isKindle(sender.url)) {
+    const tabId = sender.tab.id;
+    void serialize(tabId, async () => {
+      if (typeof message.projectId !== 'string' || !message.projectId || message.projectId.length > 200 || typeof message.base !== 'string') throw new Error('Invalid project link.');
+      const hint = { base: baseUrl(message.base), projectId: message.projectId, bookKey: kindleBookUrl(sender.url!).key };
+      await chrome.storage.session.remove(`kindle-project-choice:${tabId}`);
+      await chrome.storage.session.set({ [`kindle-project:${tabId}`]: hint });
+    }).then(() => reply({ ok: true }), () => reply({ ok: false }));
+    return true;
+  }
   if (message?.type === 'native-selection' && sender.id === chrome.runtime.id && sender.tab?.id && isKindle(sender.tab.url)) {
     void chrome.runtime.sendMessage({ type: 'kindle-selection-ready', tabId: sender.tab.id }).catch(() => {});
     return;
@@ -150,7 +182,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   void serialize(Number(message.tabId), () => handle(message)).then(value => reply({ ok: true, value }), error => reply({ ok: false, error: errorMessage(error) }));
   return true;
 });
-chrome.tabs.onRemoved.addListener(tabId => { void serialize(tabId, () => chrome.storage.session.remove([draftKey(tabId), `book-details:${tabId}`, `selection-state:${tabId}`])); });
+chrome.tabs.onRemoved.addListener(tabId => { void serialize(tabId, () => chrome.storage.session.remove([draftKey(tabId), `book-details:${tabId}`, `selection-state:${tabId}`, `kindle-project:${tabId}`, `kindle-project-choice:${tabId}`])); });
 chrome.tabs.onUpdated.addListener((tabId, change) => {
   if (change.status || change.url) void configurePanel(tabId);
   if (change.status === 'loading' || change.url) {

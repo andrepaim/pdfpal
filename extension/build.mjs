@@ -21,7 +21,7 @@ await rm(out, { recursive: true, force: true });
 await mkdir(path.join(out, 'ocr'), { recursive: true });
 const bundle = await build({
   absWorkingDir: root,
-  entryPoints: ['src/background.ts', 'src/capture.ts', 'src/panel.ts'],
+  entryPoints: ['src/background.ts', 'src/capture.ts', 'src/panel.ts', 'src/launch.ts'],
   bundle: true, outdir: out, format: 'iife', target: 'chrome116',
   define: { 'process.env.NODE_ENV': '"production"' }, jsx: 'automatic',
   loader: { '.woff': 'file', '.woff2': 'file', '.ttf': 'file' }, assetNames: 'assets/[name]-[hash]',

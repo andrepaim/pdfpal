@@ -63,6 +63,7 @@ export default function ProjectChat() {
       collectionsApi.list(projectId),
     ]).then(([sources, history, collections]) => {
       if (!active) return
+      sources = sources.filter(source => source.type !== 'kindle')
       setSources(sources)
       // When arriving via "Ask this collection", start with only that
       // collection's subtree active; otherwise every source is in context.
@@ -195,7 +196,7 @@ export default function ProjectChat() {
         <div style={{ flex: 1, overflow: 'auto' }}>
           {sources.length === 0 && (
             <div style={{ padding: 16, color: '#4b5563', fontSize: 12, textAlign: 'center' }}>
-              No sources in this project yet.
+              No PDFs available for project chat. Add a PDF or discuss a Kindle book in the companion.
             </div>
           )}
           {sources.map(s => {

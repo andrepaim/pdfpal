@@ -1,25 +1,12 @@
-import { MAX_IMAGE_LENGTH, errorMessage, type Metadata, type Rect, type Snapshot } from './shared';
+import { MAX_IMAGE_LENGTH, errorMessage, type Rect, type Snapshot } from './shared';
+import { readBookMetadata } from './book-metadata';
 
 // An isolated content script in each matching frame. No hooks into Kindle's JS.
 let lastSelection: { text: string; pageKey: string } | undefined;
 let cancelRegion: (() => void) | undefined;
 let revision = 0;
 const visible = (element: Element) => element.getBoundingClientRect().width > 0 && element.getBoundingClientRect().height > 0;
-function content(selector: string): string {
-  const element = [...document.querySelectorAll(selector)].find(visible);
-  return element?.textContent?.trim() || '';
-}
-function metadata(): Metadata {
-  const url = location.href.startsWith('http') ? location.href : document.referrer;
-  let asin = '';
-  try { const parsed = new URL(url); asin = parsed.searchParams.get('asin') || parsed.pathname.match(/\/([A-Z0-9]{10})(?:\/|$)/)?.[1] || ''; } catch { /* Metadata is optional. */ }
-  return {
-    title: content('[data-testid="book-title"], #reader-book-title, .kp-notebook-title') || document.title.replace(/\s*[-|]\s*Kindle.*$/i, ''),
-    author: content('[data-testid="book-author"], .kp-notebook-author'),
-    location: content('[data-testid="reader-location"], #kindleReader_footer .location, [aria-label^="Location "], [aria-label^="Localização "]'),
-    url, asin,
-  };
-}
+const metadata = readBookMetadata;
 function pageKey(): string {
   const image = document.querySelector<HTMLImageElement>('.kg-full-page-img img');
   const identity = [location.href, metadata().location, image?.currentSrc, innerWidth, innerHeight, revision, document.querySelector('#kr-fullpage-app')?.getAttribute('data-location')].join('|');

@@ -12,7 +12,9 @@ export interface Project {
 export interface Source {
   id: string
   project_id: string
-  type: 'pdf' | 'url' | 'text'
+  type: 'pdf' | 'url' | 'text' | 'kindle'
+  author?: string | null
+  kindle_book_key?: string | null
   url: string | null
   title: string | null
   pdf_text: string | null

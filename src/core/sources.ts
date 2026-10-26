@@ -10,6 +10,8 @@ import { ProjectService } from './projects.js'
 import { RetrievalService } from './retrieval.js'
 import type { Source } from './types.js'
 import { PdfpalError } from './types.js'
+import { z } from 'zod'
+import { kindleBookUrl } from '../shared/kindle-book.js'
 
 const now = () => new Date().toISOString()
 
@@ -37,6 +39,32 @@ export class SourceService {
     if (!matches.length) throw new PdfpalError('SOURCE_NOT_FOUND', `Source not found: ${selector}`, 3)
     if (matches.length > 1) throw new PdfpalError('AMBIGUOUS_SOURCE', `Source title is ambiguous: ${selector}`, 4, matches.map(({ id, title }) => ({ id, title })))
     return matches[0]!
+  }
+
+  addKindle(projectSelector: string, input: unknown): Source {
+    const project = this.projects.resolve(projectSelector)
+    const book = z.object({ url: z.string().max(4000), title: z.string().trim().min(1).max(1000),
+      author: z.string().trim().max(1000).default(''), collection_id: z.string().optional() }).strict().parse(input)
+    let normalized: ReturnType<typeof kindleBookUrl>
+    try { normalized = kindleBookUrl(book.url) }
+    catch (error) { throw new PdfpalError('INVALID_KINDLE_URL', (error as Error).message, 2) }
+    const collectionId = book.collection_id ? this.collections.resolve(project.id, book.collection_id).id : null
+    const existing = this.db.prepare("SELECT * FROM sources WHERE project_id=? AND type='kindle' AND kindle_book_key=?").get(project.id, normalized.key) as Source | undefined
+    if (existing) return existing
+    const id = randomUUID(), timestamp = now()
+    this.db.transaction(() => {
+      this.db.prepare(`INSERT INTO sources(id,project_id,type,url,title,author,kindle_book_key,pages,created_at,accessed_at,collection_id)
+        VALUES (?,?,'kindle',?,?,?,?,0,?,?,?)`).run(id, project.id, normalized.url, book.title, book.author, normalized.key, timestamp, timestamp, collectionId)
+      this.db.prepare('UPDATE projects SET accessed_at=? WHERE id=?').run(timestamp, project.id)
+    })()
+    return this.resolve(project.id, id)
+  }
+
+  kindleProjects(url: string): Array<{ project_id: string; source_id: string }> {
+    let key: string
+    try { key = kindleBookUrl(url).key }
+    catch { return [] }
+    return this.db.prepare("SELECT project_id, id AS source_id FROM sources WHERE type='kindle' AND kindle_book_key=?").all(key) as Array<{ project_id: string; source_id: string }>
   }
 
   async add(projectSelector: string, location: string | { filename: string; bytes: Buffer }, title?: string, collectionSelector?: string): Promise<Source> {
@@ -102,6 +130,9 @@ export class SourceService {
     const source = this.resolve(projectSelector, sourceSelector)
     const target = this.projects.resolve(targetProjectSelector)
     if (source.project_id === target.id) throw new PdfpalError('SAME_PROJECT', 'Source is already in the target project', 4)
+    if (source.type === 'kindle' && this.kindleProjects(source.url!).some(book => book.project_id === target.id)) {
+      throw new PdfpalError('DUPLICATE_KINDLE_BOOK', 'This Kindle book is already in the target project.', 4)
+    }
     this.db.transaction(() => {
       // Collections are project-scoped, so a cross-project move unfiles the source.
       this.db.prepare('UPDATE sources SET project_id=?, collection_id=NULL, accessed_at=? WHERE id=?').run(target.id, now(), source.id)
@@ -141,6 +172,7 @@ export class SourceService {
     const targets = sourceSelector ? [this.resolve(projectSelector, sourceSelector)] : this.list(projectSelector)
     let total = 0
     for (const source of targets) {
+      if (source.type === 'kindle') continue
       let text = source.pdf_text ?? ''
       if (refetch) {
         const location = source.url ?? source.original_location ?? this.pdfPath(source)

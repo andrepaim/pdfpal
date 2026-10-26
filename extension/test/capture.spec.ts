@@ -43,6 +43,55 @@ async function selectNative() {
   // Let the content script remember the selection before the panel takes focus.
   await frame.waitForFunction(() => getSelection()?.toString().includes('Reading connects'));
 }
+
+test('book details read hidden reader-frame metadata and ignore old blank overrides', async () => {
+  await reader.route('https://read.amazon.com/other-book*', route => route.fulfill({ contentType: 'text/html', body: '<ion-header><ion-title>Wrong book</ion-title></ion-header>' }));
+  await reader.evaluate(() => {
+    document.title = 'Kindle for Web';
+    document.body.replaceChildren();
+    const unrelated = document.createElement('iframe'); unrelated.src = 'https://read.amazon.com/other-book?asin=OTHERBOOK1';
+    const frame = document.createElement('iframe'); frame.id = 'KindleReaderIFrame';
+    frame.srcdoc = '<meta name="author" content="Frame Author"><ion-header hidden><ion-title>Book inside the reader</ion-title></ion-header><ion-footer><ion-title>Location 246</ion-title></ion-footer>';
+    document.body.append(unrelated, frame);
+  });
+  await expect(reader.frameLocator('#KindleReaderIFrame').locator('ion-title').first()).toHaveText('Book inside the reader');
+  await panel.evaluate(async tabId => {
+    await chrome.storage.session.set({ [`book-details:${tabId}`]: { identity: 'https://read.amazon.com/TESTBOOK01', title: '', author: '' } });
+  }, tabId);
+  await panel.reload();
+  await panel.getByRole('button', { name: 'Book details and captured passage' }).click();
+  await expect(panel.locator('#title')).toHaveValue('Book inside the reader');
+  await expect(panel.locator('#author')).toHaveValue('Frame Author');
+  await expect(panel.locator('#location')).toHaveValue('Location 246');
+});
+
+test('opening book details refreshes late metadata and preserves manual edits', async () => {
+  await reader.evaluate(() => { document.title = 'Amazon Kindle'; document.body.replaceChildren(); });
+  await panel.reload();
+  await panel.getByRole('button', { name: 'Book details and captured passage' }).click();
+  await expect(panel.locator('#book-details-status')).toContainText('Enter it below');
+  await expect(panel.locator('#title')).toHaveValue('');
+  await expect(panel.locator('#title')).toBeEnabled();
+  await panel.getByRole('button', { name: 'Close passage review' }).click();
+  await reader.evaluate(() => {
+    document.body.innerHTML = '<ion-header><ion-title>Loaded after the panel</ion-title></ion-header><meta name="author" content="Late Author">';
+  });
+  await panel.getByRole('button', { name: 'Book details and captured passage' }).click();
+  await expect(panel.locator('#title')).toHaveValue('Loaded after the panel');
+  await expect(panel.locator('#author')).toHaveValue('Late Author');
+  await panel.locator('#title').fill('My corrected title');
+  await panel.locator('#author').fill('');
+  await panel.getByRole('button', { name: 'Refresh details', exact: true }).click();
+  await expect(panel.locator('#book-details-status')).toContainText('refreshed');
+  await expect(panel.locator('#title')).toHaveValue('My corrected title');
+  await expect(panel.locator('#author')).toHaveValue('');
+  await panel.getByRole('button', { name: 'Close passage review' }).click();
+  await expect.poll(() => panel.evaluate(async tabId => (await chrome.storage.session.get(`book-details:${tabId}`))[`book-details:${tabId}`], tabId)).toMatchObject({ title: 'My corrected title', author: '' });
+  await panel.reload();
+  await panel.getByRole('button', { name: 'Book details and captured passage' }).click();
+  await expect(panel.locator('#title')).toHaveValue('My corrected title');
+  await expect(panel.locator('#author')).toHaveValue('');
+});
 async function imagePage(dark: boolean) {
   await reader.evaluate(({ passage, dark }) => {
     document.querySelector('iframe')!.remove();

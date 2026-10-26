@@ -1,4 +1,6 @@
-export const KINDLE_ORIGINS = ['https://read.amazon.com', 'https://ler.amazon.com.br', 'https://read.amazon.co.uk'];
+import { KINDLE_ORIGINS } from '../../src/shared/kindle-book';
+export { KINDLE_ORIGINS };
+export type BookProject = { base: string; projectId: string; bookKey: string };
 export const MAX_IMAGE_LENGTH = 6_000_000;
 export type Rect = { x: number; y: number; width: number; height: number };
 export type Metadata = { title: string; author: string; location: string; url: string; asin: string };

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "pdfpal Kindle Companion",
   "description": "Read Kindle with local passage capture, pdfpal AI chat, and project notes.",
-  "version": "0.5.0",
+  "version": "0.6.1",
   "minimum_chrome_version": "116",
   "icons": {
     "16": "icons/favicon-16.png",
@@ -35,6 +35,11 @@
     "service_worker": "background.js"
   },
   "content_scripts": [
+    {
+      "matches": ["https://read.amazon.com/*", "https://ler.amazon.com.br/*", "https://read.amazon.co.uk/*"],
+      "js": ["launch.js"],
+      "run_at": "document_start"
+    },
     {
       "matches": [
         "https://read.amazon.com/*",

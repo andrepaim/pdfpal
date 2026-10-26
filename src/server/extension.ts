@@ -5,6 +5,7 @@ import type { PdfpalConfig } from '../core/config.js'
 import { ExtensionAuth, ExtensionError } from '../core/extension-auth.js'
 import { KindleService, kindleCapture, kindleMetadata } from '../core/kindle.js'
 import { ProjectService } from '../core/projects.js'
+import { SourceService } from '../core/sources.js'
 import { PdfpalError } from '../core/types.js'
 import { VisualExplanationService, VisualError } from '../core/visual-explanations.js'
 import { EXTENSION_ORIGIN, PAIRING_PROTOCOL, PAIRING_POLL_MS } from '../shared/extension-pairing.js'
@@ -20,6 +21,7 @@ const saveSchema = z.object({ request_id: requestId, project_id: projectId, capt
 
 export async function registerExtensionRoutes(app: FastifyInstance, db: Database, config: PdfpalConfig, visuals: VisualExplanationService) {
   const auth = new ExtensionAuth(db), kindle = new KindleService(db, config, visuals), projects = new ProjectService(db)
+  const sources = new SourceService(db, config)
   await app.register(async bridge => {
     const clients = new WeakMap<FastifyRequest, string>()
     const client = (request: FastifyRequest) => clients.get(request)!
@@ -71,6 +73,14 @@ export async function registerExtensionRoutes(app: FastifyInstance, db: Database
     bridge.get('/status', async request => ({ client_id: client(request), agent: config.agent }))
     bridge.delete('/connection', async request => { auth.revoke(client(request)); return { ok: true } })
     bridge.get('/projects', async () => projects.list())
+    bridge.get('/books', async request => {
+      const { url } = z.object({ url: z.string().max(4000) }).parse(request.query)
+      return sources.kindleProjects(url)
+    })
+    bridge.post('/projects/:projectId/books', { bodyLimit: 10_000 }, async request => {
+      const { projectId: id } = z.object({ projectId }).parse(request.params)
+      return sources.addKindle(id, request.body)
+    })
     bridge.post('/projects', { bodyLimit: 4000 }, async request => {
       const body = z.object({ title: z.string().trim().min(1).max(1000) }).strict().parse(request.body)
       return projects.create(body.title)

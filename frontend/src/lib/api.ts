@@ -34,7 +34,9 @@ export interface Project {
 export interface Source {
   id: string
   project_id: string
-  type: 'pdf' | 'url' | 'text'
+  type: 'pdf' | 'url' | 'text' | 'kindle'
+  author?: string | null
+  kindle_book_key?: string | null
   url?: string
   title?: string
   pages: number
@@ -78,6 +80,8 @@ export const projectsApi = {
 }
 
 export const sourcesApi = {
+  addKindle: (projectId: string, book: { url: string; title: string; author?: string }) =>
+    apiFetch<Source>(`/projects/${projectId}/kindle-books`, { method: 'POST', body: JSON.stringify(book) }),
   list: (projectId: string) => apiFetch<Source[]>(`/projects/${projectId}/sources`),
   get: (projectId: string, sourceId: string) =>
     apiFetch<Source>(`/projects/${projectId}/sources/${sourceId}`),

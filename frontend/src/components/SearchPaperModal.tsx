@@ -3,6 +3,7 @@
  */
 import { useState, useRef, type KeyboardEvent } from 'react'
 import { sourcesApi, searchApi, type Source, type SearchResult } from '../lib/api'
+import KindleBookForm from './KindleBookForm'
 
 interface Props {
   projectId: string
@@ -10,7 +11,7 @@ interface Props {
   onAdded: (s: Source) => void
 }
 
-type Tab = 'url' | 'search' | 'upload'
+type Tab = 'url' | 'search' | 'upload' | 'kindle'
 
 const MAX_PDF_SIZE = 25 * 1024 * 1024
 
@@ -204,7 +205,7 @@ export default function SearchPaperModal({ projectId, onClose, onAdded }: Props)
         <div style={{ marginBottom: 16 }}>
           <h3 style={{ color: '#fff', margin: '0 0 4px', fontSize: 15 }}>Add a source</h3>
           <p style={{ color: '#6b7280', fontSize: 12, margin: 0 }}>
-            Search for a paper, paste a URL, or upload a PDF.
+            Search for a paper, upload a PDF, or link a Kindle book.
           </p>
         </div>
 
@@ -213,9 +214,11 @@ export default function SearchPaperModal({ projectId, onClose, onAdded }: Props)
           {tabBtn('search', '🔍 Search papers')}
           {tabBtn('url', '🔗 Paste URL')}
           {tabBtn('upload', '📄 Upload PDF')}
+          {tabBtn('kindle', 'Kindle book')}
         </div>
 
         {/* Search tab */}
+        {tab === 'kindle' && <KindleBookForm projectId={projectId} onAdded={onAdded} onClose={onClose} />}
         {tab === 'search' && (
           <>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexShrink: 0 }}>

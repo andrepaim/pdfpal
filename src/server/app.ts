@@ -81,6 +81,7 @@ export async function buildServer(config: PdfpalConfig) {
   })
   app.delete<{ Params: Pick<Params, 'projectId' | 'sourceId'> }>('/api/projects/:projectId/sources/:sourceId', async request => { sources.remove(request.params.projectId, request.params.sourceId); return { ok: true } })
   app.post<{ Params: Pick<Params, 'projectId'>; Body: { url: string; title?: string; collection_id?: string } }>('/api/projects/:projectId/sources', async request => sources.add(request.params.projectId, request.body.url, request.body.title, request.body.collection_id))
+  app.post<{ Params: Pick<Params, 'projectId'> }>('/api/projects/:projectId/kindle-books', { bodyLimit: 10_000 }, async request => sources.addKindle(request.params.projectId, request.body))
   app.post<{ Params: Pick<Params, 'projectId'>; Querystring: { collection_id?: string } }>('/api/projects/:projectId/sources/upload', async request => {
     projects.resolve(request.params.projectId)
     const file = await request.file()
@@ -97,6 +98,7 @@ export async function buildServer(config: PdfpalConfig) {
   })
   app.get<{ Params: Pick<Params, 'projectId' | 'sourceId'> }>('/api/projects/:projectId/sources/:sourceId/file', async (request, reply) => {
     const source = sources.resolve(request.params.projectId, request.params.sourceId)
+    if (source.type === 'kindle') throw new PdfpalError('KINDLE_LINK', 'Open this book in Kindle for Web.', 2)
     const local = sources.pdfPath(source)
     if (local) return reply.type('application/pdf').send(fs.createReadStream(local))
     // URL-only sources from pre-TypeScript databases remain readable. New
