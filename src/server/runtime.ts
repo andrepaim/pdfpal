@@ -26,10 +26,14 @@ export async function startRuntime(config: PdfpalConfig, port = config.port) {
     const temporary = `${filename}.${process.pid}.tmp`
     fs.writeFileSync(temporary, JSON.stringify({ ...identity, origin, secret }), { mode: 0o600 })
     fs.renameSync(temporary, filename)
-    return { server, origin, identity, async close() {
+    return { server, origin, identity, async close(onPhase: (phase: string) => void = () => {}) {
+      onPhase('closing-http')
       const closing = server!.close()
       await AgentService.cancelAll()
+      onPhase('agents-stopped')
+      server!.server.closeIdleConnections()
       await closing
+      onPhase('database-closed')
     } }
   } catch (error) {
     await server?.close().catch(() => {})

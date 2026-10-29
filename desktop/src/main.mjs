@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
-import { preferences, restoreBounds, safeRoute } from './preferences.mjs'
+import { preferences, restoreBounds, safeRoute, startupArguments } from './preferences.mjs'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
 const m1 = process.argv.includes('--m1-smoke')
@@ -20,11 +20,14 @@ for (const [flag, env] of [['--data-dir=', 'PDFPAL_DATA_DIR'], ['--db=', 'PDFPAL
   if (arg) process.env[env] = arg.slice(flag.length)
 }
 app.setName('pdfpal')
-app.setPath('userData', process.env.PDFPAL_DESKTOP_PROFILE ?? path.join(app.getPath('appData'), 'pdfpal-desktop'))
-app.setAppUserModelId('io.pdfpal.desktop')
+const profile = process.env.PDFPAL_DESKTOP_PROFILE ?? path.join(app.getPath('appData'), 'pdfpal-desktop')
+fs.mkdirSync(profile, { recursive: true })
+app.setPath('userData', profile)
+if (process.platform === 'win32') app.setAppUserModelId('io.pdfpal.desktop')
 const prefs = preferences(path.join(app.getPath('userData'), 'desktop.json'))
 let backend, window, tray, ready, pendingReceipt, stopping = false, exited = true, booting = false, crashRetries = 0, secondLaunches = 0
 let recoveryFixture
+const shutdownPhases = []
 let restoreWindowState = false
 const pending = new Map()
 let rpcId = 0
@@ -85,7 +88,10 @@ async function aiSettings() {
 }
 function startupArgs() {
   if (!ready) return []
-  return ['--hidden', `--data-dir=${ready.startup.dataDir}`, `--db=${ready.startup.dbPath}`, `--port=${ready.startup.port}`, `--profile=${app.getPath('userData')}`]
+  return startupArguments(ready.startup, app.getPath('userData'))
+}
+function loginEnabled() {
+  return process.platform === 'win32' && app.getLoginItemSettings({ path: process.execPath }).launchItems.some(item => item.name === 'io.pdfpal.desktop' && item.enabled)
 }
 function updateTray() {
   if (!tray) return
@@ -95,9 +101,9 @@ function updateTray() {
     { label: 'Open in browser', enabled: !!ready, click: () => openBrowser(ready.origin) },
     { label: 'AI settings', enabled: !!ready, click: () => { void aiSettings().catch(error => dialog.showErrorBox('AI settings', error.message)) } },
     { label: 'Start with Windows', type: 'checkbox', enabled: !!ready && process.platform === 'win32',
-      checked: !!ready && app.getLoginItemSettings({ path: process.execPath, args: startupArgs() }).openAtLogin,
+      checked: !!ready && loginEnabled(),
       click: item => {
-        try { app.setLoginItemSettings({ openAtLogin: item.checked, path: process.execPath, args: startupArgs() }); savePrefs({ startAtLogin: item.checked }) }
+        try { app.setLoginItemSettings({ name: 'io.pdfpal.desktop', openAtLogin: item.checked, path: process.execPath, args: startupArgs() }); savePrefs({ startAtLogin: item.checked }) }
         catch (error) { dialog.showErrorBox('Startup preference', error.message) }
         updateTray()
       } },
@@ -108,9 +114,8 @@ function updateTray() {
 }
 async function requestQuit(testChoice) {
   if (stopping) return
-  if (testChoice === 'cancel') { await shutdown(); return true }
   let active = 0
-  try { active = (await rpc('status')).active } catch {}
+  if (testChoice !== 'cancel') { try { active = (await rpc('status')).active } catch {} }
   if (active && testChoice !== 'cancel') {
     if (!testChoice) showWindow()
     const choice = testChoice === 'keep' ? { response: 0 } : await dialog.showMessageBox(window, {
@@ -118,6 +123,20 @@ async function requestQuit(testChoice) {
       buttons: ['Keep running', 'Quit and cancel requests'], defaultId: 0, cancelId: 0,
     })
     if (choice.response === 0) return false
+  }
+  if (window && !window.isDestroyed() && ownedOrigin(window.webContents.getURL())) {
+    let timer
+    const flushed = await Promise.race([
+      window.webContents.executeJavaScript('window.pdfpalFlushPending ? window.pdfpalFlushPending().then(() => true, () => false) : true').catch(() => false),
+      new Promise(resolve => { timer = setTimeout(() => resolve(false), testChoice === 'cancel' ? 2000 : 5000) }),
+    ])
+    clearTimeout(timer)
+    if (!flushed && testChoice !== 'cancel') {
+      showWindow()
+      const choice = await dialog.showMessageBox(window, { type: 'warning', title: 'Some changes could not be saved',
+        message: 'Keep editing and retry the save, or quit without saving the pending changes.', buttons: ['Keep editing', 'Quit without saving'], defaultId: 0, cancelId: 0 })
+      if (choice.response === 0) return false
+    }
   }
   await shutdown()
   return true
@@ -131,15 +150,17 @@ async function shutdown(code = 0) {
   if (backend && !exited) backend.postMessage({ type: 'stop' })
   let forced = false
   const timer = setTimeout(() => { forced = true; backend?.kill() }, 7000)
-  await closed; clearTimeout(timer)
+  const backendCode = await closed; clearTimeout(timer)
   rejectPending()
   if (temporary) {
     try { fs.rmSync(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }) } catch { code = 1 }
   }
-  if (forced) code = 1
+  const failed = forced || (typeof backendCode === 'number' && backendCode !== 0)
+  if (failed) code = 1
   if (pendingReceipt) {
-    pendingReceipt.checks.push(forced ? 'backend-forced-stop' : 'backend-graceful-stop')
-    if (forced) pendingReceipt.status = 'shutdown_failed'
+    pendingReceipt.shutdownPhases = shutdownPhases
+    pendingReceipt.checks.push(failed ? 'backend-stop-failed' : 'backend-graceful-stop')
+    if (failed) pendingReceipt.status = 'shutdown_failed'
     fs.writeFileSync(process.env.PDFPAL_M0_RECEIPT, JSON.stringify(pendingReceipt, null, 2))
   }
   tray?.destroy()
@@ -158,6 +179,7 @@ async function boot() {
     const initial = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('Local service startup timed out. Retry from the tray.')), process.env.PDFPAL_M0_LIVE === '1' ? 270000 : 45000)
       child.on('message', message => {
+        if (message.type === 'shutdown-progress') shutdownPhases.push(message.phase)
         if (message.type === 'rpc-result') {
           const request = pending.get(message.id)
           if (request) { clearTimeout(request.timer); pending.delete(message.id); message.error ? request.reject(new Error(message.error)) : request.resolve(message.result) }
@@ -230,6 +252,14 @@ async function smokeTest() {
   if (ready.providers?.agents.some(agent => agent.generation !== 'passed')) pendingReceipt.status = 'provider_gate_failed'
   if (m1) {
     check(tray && !tray.isDestroyed(), 'Tray was not created')
+    if (process.platform === 'win32' && !recoveryFixture) {
+      const registration = { name: `pdfpal-acceptance-${process.pid}`, path: process.execPath, args: startupArgs() }
+      try {
+        app.setLoginItemSettings({ ...registration, openAtLogin: true })
+        check(app.getLoginItemSettings({ path: process.execPath }).launchItems.some(item => item.name === registration.name && item.enabled), 'Windows login registration failed')
+        pendingReceipt.checks.push('windows-login-registration')
+      } finally { app.setLoginItemSettings({ ...registration, openAtLogin: false }) }
+    }
     prefs.update({ hideNotice: true })
     const origin = ready.origin
     const ask = (agent = 'claude', message = 'Explain the source briefly.') => fetch(`${origin}/api/chat`, { method: 'POST', headers: { 'content-type': 'application/json', connection: 'close' },

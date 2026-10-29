@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { preferences, restoreBounds, safeRoute } from '../src/preferences.mjs'
+import { preferences, restoreBounds, safeRoute, startupArguments } from '../src/preferences.mjs'
 
 test('window bounds return to an available monitor and fit small displays', () => {
   const displays = [{ workArea: { x: 0, y: 0, width: 1024, height: 768 } }]
@@ -22,4 +22,9 @@ test('preferences survive relaunch and reject external or malformed routes', () 
     fs.writeFileSync(file, 'broken json')
     assert.equal(preferences(file).value.route, '/')
   } finally { fs.rmSync(folder, { recursive: true, force: true }) }
+})
+
+test('Windows startup preserves paths containing spaces as individual arguments', () => {
+  const args = startupArguments({ dataDir: 'C:\\My Library', dbPath: 'C:\\My Library\\pdfpal.db', port: 8200 }, 'C:\\Profile Folder')
+  assert.deepEqual(args, ['--hidden', '"--data-dir=C:\\My Library"', '"--db=C:\\My Library\\pdfpal.db"', '--port=8200', '"--profile=C:\\Profile Folder"'])
 })

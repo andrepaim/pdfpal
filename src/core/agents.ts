@@ -11,7 +11,7 @@ export type AgentName = 'claude' | 'codex' | 'opencode'
 function commandAvailable(binary: string): boolean {
   if (path.isAbsolute(binary)) return fs.existsSync(binary)
   const command = process.platform === 'win32' ? 'where' : 'which'
-  return spawnSync(command, [binary], { stdio: 'ignore' }).status === 0
+  return spawnSync(command, [binary], { stdio: 'ignore', windowsHide: true, timeout: 1500 }).status === 0
 }
 
 export class AgentService {

@@ -5,6 +5,14 @@ export function safeRoute(route) {
   return typeof route === 'string' && route.startsWith('/') && !route.startsWith('//') && !/[\\\u0000-\u001f]/.test(route) ? route : '/'
 }
 
+export function startupArguments(startup, profile) {
+  // Electron's Windows login registration joins args into a command line.
+  const quote = value => /[\s"]/.test(value) ? `"${value.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1')}"` : value
+  return ['--hidden', ...[
+    `--data-dir=${startup.dataDir}`, `--db=${startup.dbPath}`, `--port=${startup.port}`, `--profile=${profile}`,
+  ].map(quote)]
+}
+
 export function restoreBounds(saved, displays) {
   const fallback = { width: Math.min(1250, displays[0]?.workArea.width ?? 1250), height: Math.min(850, displays[0]?.workArea.height ?? 850) }
   if (!saved || !['x', 'y', 'width', 'height'].every(key => Number.isFinite(saved[key]))) return fallback

@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { registerPendingSave } from '../lib/persistence'
 import { useNavigate, useParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -16,6 +17,34 @@ export default function NoteEditor() {
   const [saved, setSaved] = useState(true)
   const [preview, setPreview] = useState(true)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const draft = useRef<{ title: string; content: string; revision: number } | null>(null)
+  const revision = useRef(0)
+  const inFlight = useRef<Promise<void>>(Promise.resolve())
+
+  const flushSave = useCallback(() => {
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = null
+    if (!draft.current || !projectId || !noteId) return inFlight.current
+    const snapshot = draft.current
+    draft.current = null
+    setSaving(true)
+    const request = inFlight.current.catch(() => {}).then(async () => {
+      setSaving(true)
+      await notesApi.update(projectId, noteId, { title: snapshot.title, content: snapshot.content })
+      setSaving(false); setSaved(draft.current === null && revision.current === snapshot.revision)
+    }).catch(error => {
+      if (revision.current === snapshot.revision) draft.current ??= snapshot
+      setSaving(false); setSaved(false)
+      throw error
+    })
+    inFlight.current = request
+    return request
+  }, [projectId, noteId])
+
+  useEffect(() => {
+    const unregister = registerPendingSave(flushSave)
+    return () => { void flushSave().catch(() => {}).finally(unregister) }
+  }, [flushSave])
 
   useEffect(() => {
     if (projectId && noteId) {
@@ -27,13 +56,9 @@ export default function NoteEditor() {
 
   const scheduleSave = (newTitle: string, newContent: string) => {
     setSaved(false)
+    draft.current = { title: newTitle, content: newContent, revision: ++revision.current }
     if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(async () => {
-      if (!projectId || !noteId) return
-      setSaving(true)
-      await notesApi.update(projectId, noteId, { title: newTitle, content: newContent })
-      setSaving(false); setSaved(true)
-    }, 1000)
+    saveTimer.current = setTimeout(() => { void flushSave().catch(() => {}) }, 1000)
   }
 
   const updateTitle = (v: string) => { setTitle(v); scheduleSave(v, content) }

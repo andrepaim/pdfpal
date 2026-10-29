@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadConfig, saveAgentPreference } from './dist/core/config.js'
 import { AgentService } from './dist/core/agents.js'
@@ -7,7 +8,7 @@ let runtime, config, stopping = false
 process.parentPort.on('message', async ({ data }) => {
   if (data.type === 'stop') {
     stopping = true
-    await runtime?.close()
+    await runtime?.close(phase => process.parentPort.postMessage({ type: 'shutdown-progress', phase }))
     process.exit(0)
   }
   if (data.type !== 'rpc') return
@@ -67,7 +68,7 @@ try {
   if (process.env.PDFPAL_M0_LIVE === '1') providers = await (await import('./providers.mjs')).checkProviders(true)
   const agents = await new AgentService(config).inspect()
   process.parentPort.postMessage({ type: 'ready', origin, checks, providers, fixture, agents, agent: config.agent,
-    startup: { dataDir: config.dataDir, dbPath: config.dbPath, port: config.port } })
+    startup: { dataDir: path.resolve(config.dataDir), dbPath: path.resolve(config.dbPath), port: config.port } })
 } catch (error) {
   const { existingServer } = await import('./dist/server/runtime.js')
   const existing = config && error.code === 'SERVER_ALREADY_RUNNING' ? await existingServer(config.dbPath) : undefined
