@@ -27,6 +27,8 @@ win:
   requestedExecutionLevel: asInvoker
 nsis:
   artifactName: pdfpal-Setup-${version}-${arch}.exe
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
   oneClick: false
   perMachine: false
   allowElevation: false

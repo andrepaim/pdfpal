@@ -43,6 +43,8 @@ jobs:
             ${{ runner.temp }}/pdfpal-windows-m0/smoke.*.log
             ${{ runner.temp }}/pdfpal-windows-m0/ai-settings.png
             ${{ runner.temp }}/pdfpal-windows-m0/setup.png
+            ${{ runner.temp }}/pdfpal-windows-m0/branding-*/*-windows.png
+            ${{ runner.temp }}/pdfpal-windows-m0/branding-*/*-reference.png
       - name: Verify packaging did not replace CLI native modules
         shell: pwsh
         run: |

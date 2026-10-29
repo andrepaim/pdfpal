@@ -13,6 +13,8 @@ if (-not $SkipPackagedChecks) {
 }
 $tools = Join-Path $WorkRoot 'tools'
 $stage = Join-Path $WorkRoot 'stage'
+& "$PSScriptRoot/windows-branding.ps1" -SourceRoot $SourceRoot -WorkRoot $WorkRoot
+if ($LASTEXITCODE -ne 0) { throw 'Windows branding checks failed' }
 foreach ($entry in Get-ChildItem (Join-Path $SourceRoot 'desktop/stage')) {
     if ($entry.Name -ne 'node_modules') { Copy-Item $entry.FullName $stage -Recurse -Force }
 }

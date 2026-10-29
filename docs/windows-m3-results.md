@@ -45,6 +45,16 @@ One hosted Windows run exceeded the initial uninstall polling limit; the next ru
 
 ## User-facing artifacts and documentation
 
+### Preview.2 branding correction
+
+The installed Start menu entry was masked by an older `Electron.lnk` targeting `%LOCALAPPDATA%\pdfpal-alpha-m1\pdfpal Alpha.exe` with the same `io.pdfpal.desktop` AppUserModelID. Both shortcuts existed; Windows reported the old Electron name. Installation now removes that obsolete shortcut only when both its exact known pdfpal-alpha target and AppUserModelID match. Other Electron shortcuts and similarly named paths are retained. The existing shortcut was backed up and repaired locally; `Get-StartApps` then reported **pdfpal**.
+
+The original ICO encoded every size as PNG; the Windows GDI consumer reproduced the reported corrupted small icons. Preview.2 uses conventional bottom-up 32-bit DIB images with transparency masks through 128px, retaining a PNG at 256px. Intermediate 20/24/40px frames and progressive downsampling improve small/DPI-scaled icons. Installer and uninstaller icons are configured explicitly. The existing logo artwork is retained.
+
+Native checks compare Windows-decoded icon pixels at 16/20/24/32/40/48/64px against an independently resized logo, and exercise owned/foreign shortcuts, similar paths, repeat repair, and the isolated installer's no-op. These checks run in the Windows M3 driver. The corrected installer is **pdfpal-Setup-2.1.0-preview.2-x64.exe**.
+
+Platform references: [Microsoft's icon-resource layout](https://devblogs.microsoft.com/oldnewthing/20101018-00/?p=12513/) and [AppUserModelID shortcut properties](https://learn.microsoft.com/en-us/windows/win32/shell/appids).
+
 The production preview is `artifacts/pdfpal-Setup-2.1.0-preview.1-x64.exe`, with `pdfpal-desktop-release.json` explicitly declaring `signed: false`. The full application remains available in `artifacts/win-unpacked` for engineering diagnosis. Runtime and bundled-UI third-party notices plus pdfpal's MIT license are included; Electron/Chromium license files remain with the executable. License notices can be opened from the update dialog.
 
 The [Windows quickstart](windows-quickstart.md) covers installation, setup, first PDF, tray behavior, update/uninstall, library locations, and a support template. Earlier alpha launchers used `%LOCALAPPDATA%\pdfpal-m0-test`, whereas the regular Start menu app uses the normal Windows CLI library. A separately supplied **Open alpha test library.cmd** can reopen that test library after installation.

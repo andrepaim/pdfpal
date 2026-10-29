@@ -15,6 +15,14 @@
   pdfpal_not_running:
 !macroend
 
+!macro customInstall
+  InitPluginsDir
+  File /oname=$PLUGINSDIR\pdfpal-repair-shortcuts.ps1 "${BUILD_RESOURCES_DIR}\repair-shortcuts.ps1"
+  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\pdfpal-repair-shortcuts.ps1" -AppId "${APP_ID}"'
+  Pop $R0
+  Pop $R1
+!macroend
+
 !macro customUnInstall
   ; An upgrade keeps the existing Windows-startup preference at the same path.
   ${ifNot} ${isUpdated}
