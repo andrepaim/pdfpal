@@ -282,7 +282,7 @@ The download page should offer **Download for Windows** prominently and retain *
 
 ## Implementation tasks
 
-Sizes are relative: S is contained, M spans several related components, L crosses multiple runtime or packaging boundaries. All tasks below are pending.
+Sizes are relative: S is contained, M spans several related components, L crosses multiple runtime or packaging boundaries. WIN-02 has passed locally and in Windows CI. WIN-01 and WIN-03 have implementation evidence, with the Claude live-account gate still open. The remaining tasks are pending. See the [M0 results](windows-m0-results.md) for the current evidence.
 
 | ID | Task and deliverable | Size | Dependencies | Acceptance evidence |
 | --- | --- | --- | --- | --- |

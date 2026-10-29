@@ -21,16 +21,17 @@ Status: packaged runtime proof passes; Claude live-account gate awaits renewed a
 | Native Windows environment | Windows NT build 26300 x64, invoked through Windows PowerShell 5.1 from WSL |
 | Packaged runtime | Electron 45.1.0 with embedded Node 24.22.1 |
 | SQLite | v13.0.3 works in the isolated desktop tree; root CLI dependency retained |
-| Packaged backend and UI smoke | Passed all seven checks, including graceful stop |
-| Packaged runtime without system Node on PATH | Passed the same seven checks |
+| Packaged backend and UI smoke | Passed all seven checks locally and on the fresh hosted Windows CI runner, including graceful stop |
+| Packaged runtime without system Node on PATH | Passed the same seven checks locally and in hosted Windows CI |
 | Provider/process tests | Seven tests passed on both Linux Node and native Windows Node, including owned-descendant cleanup and preservation of an unrelated process |
 | Codex subscription generation | Codex 0.164.0, ChatGPT account mode, expected answer received from inside packaged backend |
 | Claude installation | Official WinGet package installed and verified as Claude Code 2.1.302 |
 | Claude subscription generation | Cached account detected, then generation rejected an expired OAuth session; sign-in required |
 | Existing regression suite | `npm test` passed: 109 tests before the additional process-tree test, with 88.84% line coverage; the added test also passes on both platforms |
 | Existing npm distribution | `npm run test:package` passed outside the checkout, including guided pairing, fixture chat, and saved note |
+| Hosted regression workflow | TypeScript/coverage, reader browser tests, Kindle extension tests, reproducible archive, and installed npm tarball checks all passed |
 
-The executable and generated receipts are under `%TEMP%\pdfpal-windows-m0` on Windows. The unsigned executable is `artifacts\win-unpacked\pdfpal M0.exe`. Generated artifacts and private local evidence are excluded from git. CI is configured but has not been claimed as a completed hosted run.
+The executable and generated receipts are under `%TEMP%\pdfpal-windows-m0` on Windows. The unsigned executable is `artifacts\win-unpacked\pdfpal M0.exe`. Generated artifacts and private local evidence are excluded from git. The [hosted Windows feasibility run](https://github.com/andrepaim/pdfpal/actions/runs/40869854332) passed and provides both evidence receipts and the unsigned application as downloadable artifacts. The changes are reviewable in [draft PR 6](https://github.com/andrepaim/pdfpal/pull/6).
 
 ## Failures resolved during implementation
 
