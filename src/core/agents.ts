@@ -109,7 +109,7 @@ export class AgentService {
     try {
       const result = await runProbe(binary, args, { cwd, stdin, signal, timeoutMs, maxBytes: 2 * 1024 * 1024 })
       if (result.failure === 'cancelled') throw new PdfpalError('AGENT_CANCELLED', 'The AI request was cancelled.')
-      if (result.failure === 'timeout') throw new PdfpalError('AGENT_TIMEOUT', 'Agent request timed out after five minutes')
+      if (result.failure === 'timeout') throw new PdfpalError('AGENT_TIMEOUT', 'The assistant took too long to respond. Retry, or check its connection in AI settings.')
       if (result.failure === 'output_limit') throw new PdfpalError('AGENT_OUTPUT_LIMIT', 'The agent response exceeded the size limit.')
       const out = result.stdout, err = result.stderr
       if (result.code !== 0) throw providerError(err || out)

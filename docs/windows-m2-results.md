@@ -2,6 +2,8 @@
 
 Date: 2026-10-29.
 
+Status: implementation and local packaged verification complete; [review PR 8](https://github.com/andrepaim/pdfpal/pull/8) is stacked on M1. Fresh-account usability and the live Claude gate remain manual acceptance.
+
 M2 adds guided assistant setup, connection checks, and recovery to the accepted M1 desktop alpha. The application remains an unsigned unpacked engineering build; installation/signing/upgrade distribution is M3.
 
 ## User journey
@@ -39,9 +41,9 @@ The security review added or verified these boundaries:
 
 - Core regression suite: 119 tests passed with coverage thresholds, including private-error classification, selective cancellation, atomic executable configuration, hostile origins/hosts, and absence of privileged desktop HTTP routes.
 - Desktop helper tests: preferences plus setup-command quoting, main-frame/origin restrictions, recovery descriptions, and bounded redacted diagnostics.
-- Browser tests: setup completion/resume, no passive generation, assistant selection, separate billing acknowledgement, install/sign-in consent, connection success/offline/cancellation, service retry, diagnostic preview/export, and existing notes behavior.
-- Full reader suite was exercised. Its initial CSP failures in screenshot-data reads were fixed and all PDF appearance tests subsequently passed.
-- Kindle/visual regression tests were exercised. The old raw-error expectation was updated to the safe sign-in message; preserving non-Windows discovery semantics restored the PDF-selection visual flow. The affected capture/visual tests passed after those fixes.
+- Full reader browser suite: 52 tests passed, including setup completion/resume, no passive generation, assistant selection, separate billing acknowledgement, install/sign-in consent, connection success/offline/cancellation, service retry, diagnostic preview/export, and existing notes behavior.
+- Initial CSP failures in screenshot-data reads were fixed; PDF appearance, selection, and reading-position tests pass.
+- Full Kindle companion browser suite: 23 tests passed. The old raw-error expectation was updated to the safe sign-in message; preserving non-Windows discovery semantics restored the PDF-selection visual flow. The affected capture/visual tests passed after those fixes.
 - Native Windows fixtures cover account, API, signed-out, unknown, missing, unsupported, offline, and PATH-refresh states without changing personal credentials.
 - Packaged Windows acceptance covers first-launch UI, no passive generation, a real renderer/preload connection test, completion persistence, cancellation, redacted diagnostics, rejected privileged actions, tray/background answers, paired extension access, crash recovery, and graceful shutdown. The same path is exercised with system Node absent from PATH.
 - One real Codex 0.164.0 account-authenticated question passed through the packaged reader with the new isolated invocation flags. Routine acceptance uses a deterministic native fixture; it is not evidence of real Claude inference.
@@ -60,5 +62,7 @@ npm ci
 node desktop/scripts/stage.mjs
 ./desktop/scripts/windows-m2.ps1 -SourceRoot (Get-Location).Path
 ```
+
+A Windows test copy is prepared at `%LOCALAPPDATA%\pdfpal-alpha-m2`. Quit the previous build from its tray, then run **Launch pdfpal test.cmd** there. It uses the existing `%LOCALAPPDATA%\pdfpal-m0-test` library and normal desktop profile; setup appears once until completed.
 
 The driver defaults to the existing `%TEMP%\pdfpal-windows-m1` build/cache directory for local iteration. Receipts and `setup.png` / `ai-settings.png` are stored there. `-SkipInstall` reuses locked dependencies. `-LiveCodex` opts into one real fixed-question request using provider allowance; CI does not enable it.
