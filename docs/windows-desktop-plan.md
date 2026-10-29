@@ -2,7 +2,7 @@
 
 Status: proposed implementation plan. No desktop functionality is implemented by this document.
 
-Implementation update: M0's packaged Windows runtime and Codex live-account proof are implemented. Claude's live-account gate awaits renewed native Windows authentication. See [M0 results](windows-m0-results.md) for evidence and remaining limits; subsequent milestones remain pending.
+Implementation update: the user accepted the working M0 build. M1 now implements the tray, desktop lifecycle, native provider integration, preferences, server ownership, and shared-library safeguards. See [M0 results](windows-m0-results.md) and [M1 results](windows-m1-results.md) for evidence and remaining limits. Guided setup and installer work remain later milestones.
 
 Date: 2026-10-29.
 

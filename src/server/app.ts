@@ -58,7 +58,7 @@ export async function buildServer(config: PdfpalConfig) {
   app.get('/api/health', async () => ({ status: 'ok' }))
   app.get('/api/auth/me', async () => ({ email: 'local@localhost', name: 'Local User', picture: '' }))
   app.post('/api/auth/logout', async () => ({ ok: true }))
-  app.get('/api/agents', async () => ({ default: config.agent, agents: new AgentService(config).list() }))
+  app.get('/api/agents', async () => ({ default: config.agent, agents: await new AgentService(config).inspect() }))
 
   app.get('/api/projects', async () => projects.list())
   app.post<{ Body: { title: string; description?: string } }>('/api/projects', async request => projects.create(request.body.title, request.body.description))
@@ -240,8 +240,11 @@ function registerResearchRoutes(app: any, db: import('better-sqlite3').Database,
 }
 
 export async function startServer(config: PdfpalConfig, options: { openBrowser: boolean }): Promise<void> {
-  const app = await buildServer(config)
-  await app.listen({ host: config.host, port: config.port })
+  const { startRuntime } = await import('./runtime.js')
+  const runtime = await startRuntime(config)
+  const stop = () => { void runtime.close().then(() => process.exit(0)) }
+  process.once('SIGINT', stop)
+  process.once('SIGTERM', stop)
   const url = `http://localhost:${config.port}`
   process.stdout.write(`pdfpal: running at ${url}\n`)
   if (options.openBrowser) await open(url).catch(() => process.stderr.write(`pdfpal: open ${url} in your browser\n`))

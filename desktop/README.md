@@ -1,80 +1,61 @@
-# Windows desktop feasibility build
+# pdfpal desktop alpha
 
-This is the M0 engineering build for the [Windows desktop plan](../docs/windows-desktop-plan.md). It packages the existing reader and backend in Electron and exercises the runtime boundaries before adding the setup assistant, tray, and installer.
+The Windows M1 alpha adds a system tray and desktop lifecycle to the [M0 runtime proof](../docs/windows-m0-results.md). The implementation plan is in [Windows desktop plan](../docs/windows-desktop-plan.md).
 
-The tooling is deliberately outside the root npm workspace. Installing the CLI does not install Electron. Desktop production dependencies are staged independently; the ordinary Node native module remains untouched.
+## Run the alpha
+
+Extract the entire unsigned application artifact and run `pdfpal Alpha.exe`. Keep its DLLs, resources, and other files together. The signed installer is a later milestone.
+
+The normal application uses `%USERPROFILE%\.pdfpal`, matching the native Windows CLI. `PDFPAL_DATA_DIR`, `PDFPAL_DB`, `PDFPAL_PORT`, provider executable overrides, and the existing configuration file keep their CLI meanings. Windows and WSL have different home directories and therefore different default libraries; concurrent Windows/WSL access to the same SQLite file through a network path is not part of this alpha's validation.
+
+Closing the window hides it to the tray. Click the tray icon to reopen; its menu includes Open pdfpal, Open in browser, AI settings, Start with Windows, Retry service, and Quit. An active answer continues while hidden, and Quit offers to keep running or cancel requests. A second launch focuses the existing window. If the tray is unavailable, closing the window offers normal quit behavior instead.
+
+AI settings selects an installed assistant and persists the default in the shared configuration. The reader's assistant selector also persists through a narrow desktop bridge. Existing browser selections stay local to that browser. Environment overrides remain authoritative; clear `PDFPAL_AGENT` if you want the UI to change the configured default. Guided installation and login are in M2.
+
+Window bounds, maximized state, last route, and the one-time tray notice are stored separately in `%APPDATA%\pdfpal-desktop\desktop.json`. Start with Windows is optional and uses Windows' login registration with the selected library/port arguments. An unpacked alpha must remain in its folder for that registration to work; turn it off before moving or removing the folder.
+
+If another updated CLI server owns the library, the app offers its validated browser URL or Retry. It does not adopt or stop that server. An unrelated occupied port produces an error and Retry. Exit old M0 builds before testing M1; they predate the ownership protocol.
 
 ## Build and test on Windows
 
-Build the existing application first, using Node.js 22 or newer:
+From the source checkout, with Node.js 22 or newer:
 
 ```powershell
 npm ci
 node desktop/scripts/stage.mjs
-./desktop/scripts/windows-m0.ps1 -SourceRoot (Get-Location).Path
+./desktop/scripts/windows-m1.ps1 -SourceRoot (Get-Location).Path
 ```
 
-The PowerShell runner also accepts a UNC source checkout, including a WSL checkout. It copies the generated stage onto a Windows drive before invoking npm and electron-builder. Its default build directory is `$env:TEMP\pdfpal-windows-m0`.
+The driver also supports UNC/WSL source checkouts, copying the generated stage onto a Windows drive before running npm or packaging. Its default build directory is `%TEMP%\pdfpal-windows-m1`. `artifacts\win-unpacked\pdfpal Alpha.exe` is the executable.
 
-The runner installs locked build tooling and runtime dependencies, runs the provider/process unit tests under native Windows Node, packages an unsigned Windows x64 directory, and launches the packaged executable twice. The second launch removes system Node.js from PATH. Both runs use fresh disposable libraries and verify:
+The driver installs locked dependencies, runs native process/ownership tests, compiles a deterministic test-provider executable with Windows' Framework compiler, packages the app, and exercises the actual chat HTTP route with that fixture. It repeats the packaged tests with system Node removed from PATH. Receipts exclude account identifiers, raw authentication, prompts, answers, and executable paths.
 
-- HTTP startup and project creation in SQLite.
-- PDF fixture upload and text/page extraction in the utility process.
-- Bundled extension metadata and frontend JavaScript availability.
-- Database close, reopen, and persistence.
-- Actual React reader mounting inside a sandboxed Electron window.
-- Graceful backend exit and removal of the disposable library.
+Packaged tests cover PDF import, database reopen, frontend and extension assets, actual React/preload loading, tray hide/reopen, an answer completing while hidden, authenticated extension access while hidden, persisted assistant/window/route preferences, validation of IPC arguments, second-launch focusing, backend crash recovery with saved history, and cancellation on quit.
 
-Evidence is written to `packaged-receipt.json` and `no-system-node-receipt.json` in the build directory. A failure exits nonzero; a receipt is emitted only after backend shutdown. CI runs the same driver without personal account credentials.
+Add `-LiveCodex` to send one fixed fixture-source question through your real local Codex account in the packaged reader. It consumes provider allowance and is never enabled in CI. The regular acceptance test uses a fake provider and must not be presented as real model inference. `-SkipInstall` supports local iteration after installing the same dependency locks.
 
-To additionally test real subscription-backed answers inside the packaged utility process:
+For the smaller original runtime smoke, `windows-m0.ps1` still runs the M0 checks against the current binary. Its optional `-LiveProviders` uses real Claude/Codex connection prompts. M1 fixture mode and real-provider mode should be run separately.
 
-```powershell
-./desktop/scripts/windows-m0.ps1 -SourceRoot (Get-Location).Path -LiveProviders
+## Architecture and compatibility
+
+Electron 45.1.0 and electron-builder 26.18.0 are isolated from root npm workspaces. Installing the CLI does not install Electron. `desktop/package-lock.json` locks build tooling and `runtime-lock.json` locks the staged runtime; no native rebuild runs against the CLI's development tree.
+
+The desktop stage uses `better-sqlite3` 13.0.3's N-API binaries and `@napi-rs/canvas` 0.1.100. The CLI retains its dependency range. PDF.js treats Electron utility processes as browsers, so the backend supplies DOM primitives and its in-process worker before loading the server. See [M0 results](../docs/windows-m0-results.md) for the original compatibility failures and their resolution.
+
+One utility process owns the local backend and official agent child processes. The renderer is sandboxed, with Node integration off and context isolation on. Its preload can only request an allowlisted assistant change and observe assistant-change notifications; the main process validates the owning frame and app origin. HTTP/HTTPS external links open in the system browser.
+
+Startup and migrations are serialized by a separate SQLite lease with a 15-second startup wait. Ordinary database writes retain the existing five-second busy timeout. A different lease gives one server ownership of a canonical database path and is released by the OS after process death. Private owner metadata is checked against a live challenge endpoint before offering a browser URL. Newer database schemas are rejected before migration or journal changes. Normal compatible CLI writes remain available while desktop serves the library.
+
+Agent execution now uses the shared Windows resolver and process runner throughout chat, visual explanations, Kindle jobs, and CLI asks. It resolves native Claude/Codex executables without interpolating prompts into `.cmd` commands, hides background console windows, bounds output/time, tracks active requests, and cancels owned process trees during explicit shutdown. It preserves existing Claude/Codex/OpenCode arguments and provider billing modes.
+
+The backend automatically retries one unexpected crash without replaying AI requests. Startup failures and repeated crashes stay actionable through the tray. Abruptly killing the entire Electron process tree, a power loss, and a fully clean nontechnical user installation remain broader release-hardening checks; the alpha does not claim to cover every forced-exit scenario.
+
+## Validation commands
+
+```bash
+npm test
+node --test desktop/test/preferences.test.mjs
+npm run test:package
 ```
 
-This sends one fixed connection prompt through each installed, account-authenticated agent and consumes the user's provider allowance. API and external-provider modes are diagnosed but do not silently incur usage. A failed or missing live provider gate exits nonzero and is recorded in the receipt. Raw authentication output, answers, executable paths, and account identifiers are excluded from receipts.
-
-`-SkipInstall` is available for local iteration after dependencies have already been installed from the same lockfiles. CI should always install dependencies.
-
-For passive discovery from the source checkout after `npm run build:server`:
-
-```powershell
-node desktop/scripts/check-providers.mjs
-```
-
-For a user-requested connection test of one provider only:
-
-```powershell
-node desktop/scripts/check-providers.mjs --live --agent=claude
-node desktop/scripts/check-providers.mjs --live --agent=codex
-```
-
-These standalone diagnostics require Node.js. The packaged application uses its embedded runtime.
-
-## Runtime decisions proved by M0
-
-Electron is pinned to 45.1.0 and electron-builder to 26.18.0. Build tools have their own `package-lock.json`; `runtime-lock.json` locks the staged production tree. Changing the root runtime dependencies requires regenerating and reviewing the runtime lock against the stage's generated `package.json`.
-
-The desktop uses `better-sqlite3` 13.0.3, whose N-API Windows binaries work with the embedded runtime. The CLI remains on its existing dependency range. The first Windows experiment with v12.11.1 failed to compile against Electron 45's V8 API. See the upstream [v13 release description](https://github.com/WiseLibs/better-sqlite3/releases/tag/v13.0.0). Native rebuilds and install scripts are disabled in the isolated stage because the selected runtime packages include their native binaries.
-
-PDF.js treats Electron utility processes as browsers. The backend explicitly supplies the DOM primitives from `@napi-rs/canvas` 0.1.100 and an in-process PDF.js worker before loading the server. This allows extraction without a browser DOM or browser Worker in that process. The reader still uses its normal browser PDF worker.
-
-The main process waits asynchronously for Electron readiness and receives the exact backend origin through a private message channel. It does not trust a health response from an arbitrary occupied port. The renderer has Node integration disabled, context isolation enabled, and sandboxing enabled. External windows and navigation away from the owned origin are blocked in this engineering build.
-
-## Provider compatibility
-
-| Provider | Installation and discovery | Account check | Answer invocation used by the proof |
-| --- | --- | --- | --- |
-| Claude Code | Explicit executable, PATH executables, native `.local/bin` fallback; exclude Claude Desktop's WindowsApps alias. Official WinGet package `Anthropic.ClaudeCode` tested. | `claude auth status`, with unknown JSON/modes preserved as unknown | `--print --tools ""`, fixed prompt on stdin |
-| Codex | Explicit executable, native PATH candidate, native `.local/bin` fallback, npm package's vendor binary. No `.cmd` shell interpolation or system Node required for native invocation. | `codex login status`, conservative recognition of account/API/signed-out messages | `--ask-for-approval never exec --skip-git-repo-check --sandbox read-only -`, fixed prompt on stdin |
-
-Claude Code 2.1.302 and Codex 0.164.0 were detected under native Windows during M0. A cached Claude account status initially reported a login, but inference failed because its OAuth session had expired. The harness distinguishes this from a successful connection. Authenticate through `claude auth login`; do not copy credentials between Windows and WSL.
-
-Provider installation and authentication references: [Claude setup](https://code.claude.com/docs/en/setup), [Claude command reference](https://code.claude.com/docs/en/cli-reference), [Claude integration conditions](https://code.claude.com/docs/en/legal-and-compliance), [Codex CLI](https://learn.chatgpt.com/docs/cli), and [Codex authentication](https://learn.chatgpt.com/docs/auth). This integration runs official binaries under the user's identity. It does not provide its own OAuth implementation or intermediate subscription credentials.
-
-## What follows this proof
-
-The executable in `artifacts/win-unpacked/pdfpal M0.exe` is an unsigned engineering artifact. Launching it normally opens the existing reader against the configured local library; closing its window exits this M0 build. The production tray, single-instance behavior, server/library ownership coordination, setup wizard, installer, signing, and updates belong to the following milestones.
-
-The proof tests a native Windows developer machine, including a restricted-PATH run. That establishes independence from a system Node executable at runtime; it does not replace clean Windows user/VM installer acceptance, provider login usability, full process-crash containment, or the later cross-interface regression matrix.
+The Windows CI workflow runs the same native driver and uploads receipts plus `pdfpal-windows-m1-unsigned`. Existing Linux CI covers core coverage, reader browser tests, companion browser tests, and npm distribution. See [M1 results](../docs/windows-m1-results.md) for recorded outcomes and remaining scope.

@@ -16,3 +16,7 @@ extension/package/
 desktop/stage/
 desktop/artifacts/
 desktop/evidence/
+*.startup-lock*
+*.server-lock*
+*.write-lock*
+*.server.json

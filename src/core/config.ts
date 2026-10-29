@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { z } from 'zod'
+import { acquireLease } from './locking.js'
 
 const ConfigSchema = z.object({
   dataDir: z.string(),
@@ -83,4 +84,18 @@ export function loadConfig(overrides: Partial<PdfpalConfig> = {}): PdfpalConfig 
 
 export function ensureDataDirectories(config: PdfpalConfig): void {
   for (const dir of [config.dataDir, config.filesDir, config.backupsDir]) fs.mkdirSync(dir, { recursive: true })
+}
+
+export function saveAgentPreference(config: PdfpalConfig, agent: PdfpalConfig['agent']): void {
+  const value = ConfigSchema.shape.agent.parse(agent)
+  const filename = path.join(config.dataDir, 'config.json')
+  const release = acquireLease(`${filename}.write-lock`, 5000)
+  try {
+    const existing = fs.existsSync(filename) ? JSON.parse(fs.readFileSync(filename, 'utf8')) : {}
+    const temporary = `${filename}.${process.pid}.tmp`
+    fs.writeFileSync(temporary, `${JSON.stringify({ ...existing, agent: value }, null, 2)}\n`, { mode: 0o600 })
+    fs.renameSync(temporary, filename)
+    // Environment overrides keep the same precedence as the CLI.
+    config.agent = process.env.PDFPAL_AGENT ? ConfigSchema.shape.agent.parse(process.env.PDFPAL_AGENT) : value
+  } finally { release() }
 }

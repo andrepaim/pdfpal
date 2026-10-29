@@ -4,19 +4,20 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 
 export type DesktopAgent = 'claude' | 'codex'
-export type ProbeResult = { code: number | null; stdout: string; stderr: string; failure?: 'timeout' | 'output_limit' | 'spawn' }
+export type ProbeResult = { code: number | null; stdout: string; stderr: string; failure?: 'timeout' | 'output_limit' | 'spawn' | 'cancelled' }
 
 /** Bounded diagnostics only. Never return raw authentication output to the UI. */
-export function runProbe(binary: string, args: string[], options: { timeoutMs?: number; maxBytes?: number; stdin?: string; cwd?: string } = {}): Promise<ProbeResult> {
+export function runProbe(binary: string, args: string[], options: { timeoutMs?: number; maxBytes?: number; stdin?: string; cwd?: string; signal?: AbortSignal } = {}): Promise<ProbeResult> {
+  if (options.signal?.aborted) return Promise.resolve({ code: null, stdout: '', stderr: '', failure: 'cancelled' })
   return new Promise(resolve => {
     const child = spawn(binary, args, { windowsHide: true, detached: process.platform !== 'win32',
       cwd: options.cwd ?? os.tmpdir(), stdio: ['pipe', 'pipe', 'pipe'] })
     const stdout: Buffer[] = [], stderr: Buffer[] = []
     let bytes = 0, done = false, failure: ProbeResult['failure']
     const finish = (result: ProbeResult) => {
-      if (!done) { done = true; clearTimeout(timer); resolve(result) }
+      if (!done) { done = true; clearTimeout(timer); options.signal?.removeEventListener('abort', abort); resolve(result) }
     }
-    const stop = (reason: 'timeout' | 'output_limit') => {
+    const stop = (reason: 'timeout' | 'output_limit' | 'cancelled') => {
       if (failure || done) return
       failure = reason
       if (!child.pid) return
@@ -28,6 +29,8 @@ export function runProbe(binary: string, args: string[], options: { timeoutMs?: 
       } else { try { process.kill(-child.pid, 'SIGKILL') } catch { child.kill('SIGKILL') } }
     }
     const timer = setTimeout(() => stop('timeout'), options.timeoutMs ?? 5000)
+    const abort = () => stop('cancelled')
+    options.signal?.addEventListener('abort', abort, { once: true })
     const collect = (chunk: Buffer, output: boolean) => {
       if (failure) return
       bytes += chunk.length
@@ -90,16 +93,17 @@ export function parseAuth(agent: DesktopAgent, result: ProbeResult): 'account' |
   return 'unknown'
 }
 
-export async function discoverAgent(agent: DesktopAgent, binary?: string) {
+export async function discoverAgent(agent: DesktopAgent, binary?: string, signal?: AbortSignal) {
   let found = false
   for (const executable of agentCandidates(agent, { binary })) {
+    if (signal?.aborted) break
     try { if (!fs.statSync(executable).isFile()) continue } catch { continue }
     found = true
-    const version = await runProbe(executable, ['--version'])
+    const version = await runProbe(executable, ['--version'], { signal })
     const text = `${version.stdout}\n${version.stderr}`
     const match = agent === 'claude' ? text.match(/(\d+\.\d+\.\d+)[^\r\n]*\(Claude Code\)/i) : text.match(/codex-cli\s+(\S+)/i)
     if (version.code !== 0 || !match) continue
-    const auth = await runProbe(executable, agent === 'claude' ? ['auth', 'status'] : ['login', 'status'])
+    const auth = await runProbe(executable, agent === 'claude' ? ['auth', 'status'] : ['login', 'status'], { signal })
     return { agent, state: 'installed' as const, executable, version: match[1]!, auth: parseAuth(agent, auth) }
   }
   return { agent, state: found ? 'unusable' as const : 'missing' as const, auth: 'unknown' as const }

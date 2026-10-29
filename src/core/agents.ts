@@ -1,9 +1,10 @@
-import { spawn, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { PdfpalConfig } from './config.js'
 import { PdfpalError } from './types.js'
+import { agentCandidates, discoverAgent, runProbe } from './agent-discovery.js'
 
 export type AgentName = 'claude' | 'codex' | 'opencode'
 
@@ -14,13 +15,41 @@ function commandAvailable(binary: string): boolean {
 }
 
 export class AgentService {
+  private static readonly requests = new Map<AbortController, Promise<unknown>>()
+  private static readonly inspections = new Map<AbortController, Promise<unknown>>()
+  static get activeCount(): number { return this.requests.size }
+  static async cancelAll(): Promise<void> {
+    const pending = [...this.requests.values(), ...this.inspections.values()]
+    for (const controller of [...this.requests.keys(), ...this.inspections.keys()]) controller.abort()
+    await Promise.allSettled(pending)
+  }
+
+  inspect() {
+    const controller = new AbortController()
+    const request = this.inspectWithSignal(controller.signal)
+    AgentService.inspections.set(controller, request)
+    return request.finally(() => AgentService.inspections.delete(controller))
+  }
+
+  private async inspectWithSignal(signal: AbortSignal) {
+    const agents = this.list()
+    if (process.platform !== 'win32') return agents
+    return Promise.all(agents.map(async item => {
+      if (item.id === 'opencode') return item
+      const status = await discoverAgent(item.id, this.binary(item.id), signal)
+      return { ...item, available: status.state === 'installed', auth: status.auth }
+    }))
+  }
+
   constructor(private readonly config: PdfpalConfig) {}
 
   list(): Array<{ id: AgentName; label: string; available: boolean }> {
     return (['claude', 'codex', 'opencode'] as AgentName[]).map(id => ({
       id,
       label: id[0]!.toUpperCase() + id.slice(1),
-      available: commandAvailable(this.binary(id)),
+      available: process.platform === 'win32' && id !== 'opencode'
+        ? agentCandidates(id, { binary: this.binary(id) }).some(file => fs.existsSync(file))
+        : commandAvailable(this.binary(id)),
     }))
   }
 
@@ -28,8 +57,21 @@ export class AgentService {
     return agent === 'claude' ? this.config.claudeBin : agent === 'codex' ? this.config.codexBin : this.config.opencodeBin
   }
 
-  async invoke(prompt: string, agent = this.config.agent, model = this.config.model): Promise<string> {
-    const binary = this.binary(agent)
+  invoke(prompt: string, agent = this.config.agent, model = this.config.model): Promise<string> {
+    const controller = new AbortController()
+    const request = this.run(prompt, agent, model, controller.signal)
+    AgentService.requests.set(controller, request)
+    return request.finally(() => AgentService.requests.delete(controller))
+  }
+
+  private async run(prompt: string, agent: AgentName, model: string, signal: AbortSignal): Promise<string> {
+    let binary = this.binary(agent)
+    if (process.platform === 'win32' && agent !== 'opencode') {
+      const status = await discoverAgent(agent, binary, signal)
+      if (signal.aborted) throw new PdfpalError('AGENT_CANCELLED', 'The AI request was cancelled.')
+      if (status.state !== 'installed') throw new PdfpalError('AGENT_NOT_FOUND', `The ${agent} executable needs installation or repair.`)
+      binary = status.executable
+    }
     if (!commandAvailable(binary)) throw new PdfpalError('AGENT_NOT_FOUND', `The "${agent}" agent CLI is not installed or not on PATH`)
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), `pdfpal-${agent}-`))
     let args: string[]
@@ -52,41 +94,21 @@ export class AgentService {
       args.push('--agent', 'pdfpal', prompt)
     }
     try {
-      return await new Promise<string>((resolve, reject) => {
-        const child = spawn(binary, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] })
-        const stdout: Buffer[] = []
-        const stderr: Buffer[] = []
-        child.stdout.on('data', data => stdout.push(Buffer.from(data)))
-        child.stderr.on('data', data => stderr.push(Buffer.from(data)))
-        child.on('error', reject)
-        // Some valid command-line programs exit without reading stdin (for
-        // example a probe executable or a failed agent). Treat the resulting
-        // broken pipe as a process outcome instead of an uncaught exception.
-        child.stdin.on('error', error => {
-          if ((error as NodeJS.ErrnoException).code !== 'EPIPE') reject(error)
-        })
-        const timer = setTimeout(() => {
-          child.kill('SIGKILL')
-          reject(new PdfpalError('AGENT_TIMEOUT', 'Agent request timed out after five minutes'))
-        }, 300_000)
-        child.on('close', code => {
-          clearTimeout(timer)
-          const out = Buffer.concat(stdout).toString('utf8').trim()
-          const err = Buffer.concat(stderr).toString('utf8').trim()
-          if (code !== 0) return reject(new PdfpalError('AGENT_FAILED', err || out || `${agent} exited with status ${code}`))
-          if (agent !== 'opencode') return resolve(out)
-          const text = out.split(/\r?\n/).flatMap(line => {
-            try {
-              const event = JSON.parse(line) as { type?: string; part?: { type?: string; text?: string } }
-              return event.type === 'text' && event.part?.type === 'text' ? [event.part.text ?? ''] : []
-            } catch { return [] }
-          }).join('').trim()
-          if (!text) return reject(new PdfpalError('AGENT_FAILED', err || 'OpenCode produced no answer'))
-          resolve(text)
-        })
-        if (stdin) child.stdin.end(stdin)
-        else child.stdin.end()
-      })
+      const result = await runProbe(binary, args, { cwd, stdin, signal, timeoutMs: 300_000, maxBytes: 2 * 1024 * 1024 })
+      if (result.failure === 'cancelled') throw new PdfpalError('AGENT_CANCELLED', 'The AI request was cancelled.')
+      if (result.failure === 'timeout') throw new PdfpalError('AGENT_TIMEOUT', 'Agent request timed out after five minutes')
+      if (result.failure === 'output_limit') throw new PdfpalError('AGENT_OUTPUT_LIMIT', 'The agent response exceeded the size limit.')
+      const out = result.stdout, err = result.stderr
+      if (result.code !== 0) throw new PdfpalError('AGENT_FAILED', err || out || `${agent} exited with status ${result.code}`)
+      if (agent !== 'opencode') return out
+      const text = out.split(/\r?\n/).flatMap(line => {
+        try {
+          const event = JSON.parse(line) as { type?: string; part?: { type?: string; text?: string } }
+          return event.type === 'text' && event.part?.type === 'text' ? [event.part.text ?? ''] : []
+        } catch { return [] }
+      }).join('').trim()
+      if (!text) throw new PdfpalError('AGENT_FAILED', err || 'OpenCode produced no answer')
+      return text
     } finally {
       fs.rmSync(cwd, { recursive: true, force: true })
     }

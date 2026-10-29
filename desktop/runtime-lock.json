@@ -1,11 +1,11 @@
 {
-  "name": "pdfpal-desktop-m0",
+  "name": "pdfpal-desktop-alpha",
   "version": "2.1.0",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
-      "name": "pdfpal-desktop-m0",
+      "name": "pdfpal-desktop-alpha",
       "version": "2.1.0",
       "dependencies": {
         "@fastify/cors": "^11.1.0",

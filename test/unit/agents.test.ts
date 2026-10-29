@@ -35,6 +35,19 @@ function executable(config: ReturnType<typeof testConfig>, name: string, body: s
   return file
 }
 
+test('shutdown cancels active agent requests and removes them from activity tracking', async () => {
+  const config = testConfig()
+  config.claudeBin = executable(config, 'slow-agent', 'sleep 60; printf answer')
+  const request = new AgentService(config).invoke('prompt')
+  const rejected = assert.rejects(request, { code: 'AGENT_CANCELLED' })
+  assert.equal(AgentService.activeCount, 1)
+  await new Promise(resolve => setTimeout(resolve, 50))
+  await AgentService.cancelAll()
+  await rejected
+  assert.equal(AgentService.activeCount, 0)
+  fs.rmSync(config.dataDir, { recursive: true, force: true })
+})
+
 test('Codex and OpenCode output adapters parse successful responses', async () => {
   const config = testConfig()
   config.codexBin = executable(config, 'codex', "cat >/dev/null; printf 'codex answer'")

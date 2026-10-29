@@ -4,6 +4,8 @@ import { randomUUID } from 'node:crypto'
 import Database from 'better-sqlite3'
 import type { Database as DatabaseType } from 'better-sqlite3'
 import type { PdfpalConfig } from './config.js'
+import { acquireLease, assertMigrationAllowed, databasePath } from './locking.js'
+import { PdfpalError } from './types.js'
 import { ensureDataDirectories } from './config.js'
 
 const CURRENT_SCHEMA = 9
@@ -32,13 +34,26 @@ function backupExisting(db: DatabaseType, config: PdfpalConfig): void {
 
 export function openDatabase(config: PdfpalConfig): DatabaseType {
   ensureDataDirectories(config)
-  const db = new Database(config.dbPath)
-  db.pragma('journal_mode = WAL')
-  db.pragma('busy_timeout = 5000')
-  db.pragma('foreign_keys = ON')
-  backupExisting(db, config)
-  migrate(db)
-  return db
+  fs.mkdirSync(path.dirname(config.dbPath), { recursive: true })
+  const canonical = databasePath(config.dbPath)
+  // Startup includes backups/migration and can take longer than an ordinary
+  // write on a busy machine. Serialize it without reducing the normal timeout.
+  const release = acquireLease(`${canonical}.startup-lock`, 15000)
+  let db: DatabaseType | undefined
+  try {
+    db = new Database(canonical)
+    const version = tableExists(db, 'schema_migrations')
+      ? (db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get() as { version: number }).version ?? 0 : 0
+    if (version > CURRENT_SCHEMA) throw new PdfpalError('NEWER_DATABASE', 'This library needs a newer pdfpal version. Update pdfpal before opening it.')
+    if (version < CURRENT_SCHEMA) assertMigrationAllowed(config.dbPath)
+    db.pragma('journal_mode = WAL')
+    db.pragma('busy_timeout = 5000')
+    db.pragma('foreign_keys = ON')
+    backupExisting(db, config)
+    db.transaction(() => migrate(db!)).immediate()
+    return db
+  } catch (error) { db?.close(); throw error }
+  finally { release() }
 }
 
 function migrate(db: DatabaseType): void {

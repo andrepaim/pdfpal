@@ -19,6 +19,10 @@ export function useAgent() {
   const [agent, setAgent] = useState<string>('')
 
   useEffect(() => {
+    const unsubscribe = window.pdfpalDesktop?.onAgentChanged(id => {
+      localStorage.setItem(STORAGE_KEY, id)
+      setAgent(id)
+    })
     fetch('/api/agents')
       .then(r => (r.ok ? r.json() : null))
       .then(data => {
@@ -28,16 +32,21 @@ export function useAgent() {
         const stored = localStorage.getItem(STORAGE_KEY)
         const availableIds = all.filter(a => a.available).map(a => a.id)
         const effective =
-          stored && availableIds.includes(stored) ? stored : data.default
+          stored && availableIds.includes(stored) ? stored : availableIds.includes(data.default) ? data.default : availableIds[0] ?? data.default
         localStorage.setItem(STORAGE_KEY, effective)
         setAgent(effective)
       })
       .catch(() => {})
+    return unsubscribe
   }, [])
 
   const selectAgent = (id: string) => {
     localStorage.setItem(STORAGE_KEY, id)
     setAgent(id)
+    void window.pdfpalDesktop?.setAgent(id).then(effective => {
+      localStorage.setItem(STORAGE_KEY, effective)
+      setAgent(effective)
+    }).catch(() => {})
   }
 
   const available = agents.filter(a => a.available)

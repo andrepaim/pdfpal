@@ -7,15 +7,19 @@ const root = path.resolve(desktop, '..')
 const stage = path.join(desktop, 'stage')
 await fs.mkdir(stage, { recursive: true })
 const pkg = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'))
-await fs.writeFile(path.join(stage, 'package.json'), JSON.stringify({ name: 'pdfpal-desktop-m0', version: pkg.version,
-  private: true, type: 'module', main: 'main.mjs', description: 'pdfpal Windows feasibility build', author: 'pdfpal contributors',
+await fs.writeFile(path.join(stage, 'package.json'), JSON.stringify({ name: 'pdfpal-desktop-alpha', version: pkg.version,
+  private: true, type: 'module', main: 'main.mjs', description: 'pdfpal desktop alpha', author: 'pdfpal contributors',
   // v13 uses N-API and ships platform binaries; v12 fails against Electron 45's V8.
   dependencies: { ...pkg.dependencies, 'better-sqlite3': '13.0.3', '@napi-rs/canvas': '0.1.100' } }, null, 2))
 await fs.copyFile(path.join(desktop, 'runtime-lock.json'), path.join(stage, 'package-lock.json'))
 for (const [source, destination] of [
   ['dist', 'dist'], ['frontend/dist', 'frontend/dist'], ['extension/package', 'extension/package'],
   ['test/fixtures/sample.pdf', 'sample.pdf'], ['desktop/src/main.mjs', 'main.mjs'], ['desktop/src/backend.mjs', 'backend.mjs'],
+  ['desktop/src/preload.cjs', 'preload.cjs'], ['desktop/src/preferences.mjs', 'preferences.mjs'],
+  ['desktop/test/runtime.test.mjs', 'test/runtime.test.mjs'],
 ]) await fs.cp(path.join(root, source), path.join(stage, destination), { recursive: true })
+const runtimeTest = path.join(stage, 'test/runtime.test.mjs')
+await fs.writeFile(runtimeTest, (await fs.readFile(runtimeTest, 'utf8')).replaceAll('../stage/dist/', '../dist/'))
 const tests = await fs.readFile(path.join(root, 'test/unit/agent-discovery.test.ts'), 'utf8')
 await fs.writeFile(path.join(stage, 'discovery.test.mjs'), ts.transpileModule(tests.replace('../../src/core/', './dist/core/'), {
   compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.ESNext },

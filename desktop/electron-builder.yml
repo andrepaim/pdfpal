@@ -1,5 +1,5 @@
-appId: io.pdfpal.desktop.m0
-productName: pdfpal M0
+appId: io.pdfpal.desktop
+productName: pdfpal Alpha
 electronVersion: 45.1.0
 asar: true
 asarUnpack:
