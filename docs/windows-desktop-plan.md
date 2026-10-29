@@ -282,7 +282,7 @@ The download page should offer **Download for Windows** prominently and retain *
 
 ## Implementation tasks
 
-Sizes are relative: S is contained, M spans several related components, L crosses multiple runtime or packaging boundaries. WIN-02 has passed locally and in Windows CI. WIN-01 and WIN-03 have implementation evidence, with the Claude live-account gate still open. The remaining tasks are pending. See the [M0 results](windows-m0-results.md) for the current evidence.
+Sizes are relative: S is contained, M spans several related components, L crosses multiple runtime or packaging boundaries. M0 and the M1 alpha implementation are delivered; the table remains the work breakdown for the complete desktop release. M1 covers shared discovery/execution, server lifecycle and migration coordination, desktop window/tray behavior, settings, and the core reading journey. See [M0 results](windows-m0-results.md) and [M1 results](windows-m1-results.md) for acceptance evidence; guided setup, installer, and later release gates remain pending.
 
 | ID | Task and deliverable | Size | Dependencies | Acceptance evidence |
 | --- | --- | --- | --- | --- |

@@ -2,7 +2,7 @@
 
 Date: 2026-10-29.
 
-Status: implementation and local Windows acceptance complete; hosted CI verification in progress.
+Status: implementation, local Windows acceptance, and hosted CI verification complete. Review the changes in [PR 7](https://github.com/andrepaim/pdfpal/pull/7), stacked on the M0 work.
 
 ## Delivered behavior
 
@@ -22,7 +22,7 @@ Status: implementation and local Windows acceptance complete; hosted CI verifica
 
 | Check | Result |
 | --- | --- |
-| Core regression suite | 114 tests passed with coverage thresholds |
+| Core regression suite | 115 tests passed with coverage thresholds |
 | Existing npm package | Installed outside checkout; guided pairing, fixture chat, and saved note passed |
 | Preferences | Three tests pass for persistence, malformed routes, corruption fallback, removed/small monitors, and quoted Windows startup paths |
 | Note persistence | Eight note browser tests pass, including immediate desktop flush and an earlier failed save followed by a newer queued draft |
@@ -35,6 +35,8 @@ Status: implementation and local Windows acceptance complete; hosted CI verifica
 | Real provider integration | Codex 0.164.0 returned the expected fixed response through the packaged reader's HTTP chat route using account authentication |
 | System Node independence | Packaged acceptance also passes with Node absent from PATH |
 | Crash recovery | Forced backend termination, automatic restart, history restoration, and subsequent graceful cancellation/quit passed locally |
+| Hosted Windows acceptance | [Passed](https://github.com/andrepaim/pdfpal/actions/runs/40882260523), including the restricted-PATH run, login registration, and crash recovery |
+| Hosted browser and distribution regressions | [Passed](https://github.com/andrepaim/pdfpal/actions/runs/40882260565): core, reader, Kindle companion, archive, and installed npm package |
 
 The deterministic alpha acceptance uses a compiled fake Claude provider. Real Codex was tested separately with `-LiveCodex`. These are distinct results; no fresh Claude login or live answer is claimed by this milestone.
 
@@ -42,9 +44,13 @@ The runtime now uses canonical database paths and OS-managed SQLite leases. An e
 
 The crash-recovery test exposed a shutdown delay from provider discovery and renderer requests. Discovery now receives the shutdown cancellation signal, and explicit Quit destroys the renderer before awaiting backend cleanup. The scenario then passed with a graceful backend exit rather than the force-stop fallback.
 
+Hosted Windows acceptance also exposed a late-request shutdown race in its restricted-PATH run. The service now rejects new inference/discovery work once shutdown starts and drains connections as they become idle while preserving active writes. Both normal and restricted-PATH hosted runs then passed through `closing-http`, `agents-stopped`, and `database-closed` with no forced backend stop.
+
 ## Artifacts and user test
 
 The local Windows executable is `%TEMP%\pdfpal-windows-m1\artifacts\win-unpacked\pdfpal Alpha.exe`. Keep the entire unpacked directory together. Closing it keeps it running; use the tray's Quit action before replacing it or returning to an older build.
+
+A stable copy is prepared at `C:\Users\andre\AppData\Local\pdfpal-alpha-m1`. Its **Launch pdfpal test.cmd** uses the existing `%LOCALAPPDATA%\pdfpal-m0-test` library and port 8210, initializes Codex as the default only if no configuration exists, and allows later assistant changes through AI settings. Close the previous M0 build before launching this copy.
 
 A separate test launcher can select the existing M0 test library without changing the normal Windows CLI library. The normal executable uses the same Windows home/configuration conventions as the CLI. Windows and WSL default homes differ; cross-OS SQLite sharing is not a validated alpha workflow.
 
