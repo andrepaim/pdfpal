@@ -41,6 +41,8 @@ Installer fixtures have a separate application ID/executable/shortcut/startup na
 
 Initial heavily concurrent local regression runs exposed reader/companion timing failures. The full reader suite passed with two workers and the full companion suite passed on its subsequent uncontended run; no unrelated reader implementation was changed. The first preservation harness incorrectly resolved a PDF basename relative to the library instead of its `files` folder, and its uninstall check raced shortcut removal after the executable disappeared. The harness now uses the managed files folder and waits for all uninstall indicators; the native matrix then passed.
 
+One hosted Windows run exceeded the initial uninstall polling limit; the next run of the same application passed all 16 checks. The harness now allows a bounded 120 seconds for NSIS's separate uninstall process, requires removal of its registry entry as well as the executable/shortcut, checks the launcher exit code, and reports remaining test files/processes if removal fails.
+
 ## User-facing artifacts and documentation
 
 The production preview is `artifacts/pdfpal-Setup-2.1.0-preview.1-x64.exe`, with `pdfpal-desktop-release.json` explicitly declaring `signed: false`. The full application remains available in `artifacts/win-unpacked` for engineering diagnosis. Runtime and bundled-UI third-party notices plus pdfpal's MIT license are included; Electron/Chromium license files remain with the executable. License notices can be opened from the update dialog.

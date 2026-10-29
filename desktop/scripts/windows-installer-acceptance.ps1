@@ -19,6 +19,7 @@ $profile = Join-Path $caseRoot 'profile'
 $control = Join-Path $caseRoot 'control.json'
 $snapshot = Join-Path $caseRoot 'library-snapshot.json'
 $exe = Join-Path $install 'pdfpal-test.exe'
+$shortcut = Join-Path ([Environment]::GetFolderPath('StartMenu')) 'Programs\pdfpal Installer Test.lnk'
 $appId = 'io.pdfpal.desktop.installer-acceptance'
 $checks = New-Object 'System.Collections.Generic.List[string]'
 $process = $null
@@ -40,6 +41,23 @@ function Finish($p, [int]$Timeout = 120000) {
 function Check([bool]$Condition, [string]$Name) { if (-not $Condition) { throw "Acceptance failed: $Name" }; $checks.Add($Name); Write-Host "Passed: $Name" }
 function Install([string]$File) { $p = Launch $File ("/S /currentuser /D=" + $install); if ((Finish $p) -ne 0) { throw 'Per-user installer failed' } }
 function Uninstaller { return @(Get-ChildItem $install -Filter 'Uninstall*.exe')[0].FullName }
+function Wait-Uninstalled([string]$Shortcut) {
+    # NSIS relaunches its uninstaller from TEMP; the launching process can exit
+    # before removal finishes. Allow a bounded window for hosted-runner delays.
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        $registered = @(Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq 'pdfpal Installer Test' }).Count
+        $applicationPresent = Test-Path $exe
+        $shortcutPresent = Test-Path $Shortcut
+        if (-not $applicationPresent -and -not $shortcutPresent -and $registered -eq 0) { return $true }
+        Start-Sleep -Milliseconds 500
+    } while ($timer.Elapsed.TotalSeconds -lt 120)
+    Write-Host "Uninstall incomplete: application=$applicationPresent shortcut=$shortcutPresent registrations=$registered"
+    if (Test-Path $install) { Write-Host ("Remaining installation entries: " + ((Get-ChildItem $install -Force | Select-Object -ExpandProperty Name) -join ', ')) }
+    $remaining = @(Get-CimInstance Win32_Process -Filter "Name='pdfpal-test.exe'" -OperationTimeoutSec 5 | Where-Object { $_.ExecutablePath -eq $exe }).Count
+    Write-Host "Isolated reader processes remaining: $remaining"
+    return $false
+}
 function Snapshot([string]$Mode) {
     & node (Join-Path $SourceRoot 'desktop/scripts/installer-snapshot.mjs') (Join-Path $WorkRoot 'stage') $data $Mode $snapshot
     if ($LASTEXITCODE -ne 0) { throw 'Library preservation failed' }
@@ -87,7 +105,6 @@ try {
     Check (Test-Path $exe) 'fresh-per-user-install'
     $info = (Get-Item $exe).VersionInfo
     Check ($info.ProductName -eq 'pdfpal Installer Test' -and $info.FileDescription -eq 'pdfpal Installer Test') 'application-branding-and-version-resources'
-    $shortcut = Join-Path ([Environment]::GetFolderPath('StartMenu')) 'Programs\pdfpal Installer Test.lnk'
     $shell = New-Object -ComObject WScript.Shell
     Check ((Test-Path $shortcut) -and $shell.CreateShortcut($shortcut).TargetPath -eq $exe) 'start-menu-shortcut'
     $process = Start-Reader 'baseline'
@@ -135,13 +152,9 @@ try {
     Snapshot 'check'
     $uninstall = Uninstaller
     $p = Launch $uninstall '/S /currentuser'
-    Finish $p | Out-Null
-    for ($i = 0; $i -lt 300; $i++) {
-        $registered = @(Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq "pdfpal Installer Test" }).Count
-        if (-not (Test-Path $exe) -and -not (Test-Path $shortcut) -and $registered -eq 0) { break }
-        Start-Sleep -Milliseconds 100
-    }
-    Check (-not (Test-Path $exe) -and -not (Test-Path $shortcut)) 'uninstall-removes-application-and-shortcut'
+    $uninstallCode = Finish $p
+    Write-Host "Uninstaller launcher exit code: $uninstallCode"
+    Check (($uninstallCode -eq 0) -and (Wait-Uninstalled $shortcut)) 'uninstall-removes-application-and-shortcut'
     Check (-not ((Get-ItemProperty $runKey).PSObject.Properties.Name -contains $appId)) 'uninstall-removes-owned-startup-registration'
     Snapshot 'check'
     Check (Test-Path (Join-Path $profile 'desktop.json')) 'uninstall-retains-desktop-preferences'
@@ -161,5 +174,5 @@ try {
         [IO.File]::WriteAllText($control, '{"quit":true}')
         if (-not $process.WaitForExit(15000)) { & "$env:SystemRoot/System32/taskkill.exe" /PID $process.Id /T /F | Out-Null }
     }
-    if (Test-Path $exe) { $u = Uninstaller; $p = Launch $u '/S /currentuser'; Finish $p | Out-Null; for ($i = 0; $i -lt 300 -and (Test-Path $exe); $i++) { Start-Sleep -Milliseconds 100 } }
+    if (Test-Path $exe) { $u = Uninstaller; $p = Launch $u '/S /currentuser'; Finish $p | Out-Null; Wait-Uninstalled $shortcut | Out-Null }
 }
