@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pdfpal — beta session recorder</title>
+<style>
+body{font:16px/1.5 system-ui,sans-serif;background:#111318;color:#e8eaf0;max-width:850px;margin:40px auto;padding:0 24px}h1{font-size:25px}h2{font-size:19px;margin-top:28px}label{display:block;margin:14px 0}input,select,button{font:inherit;color:inherit;background:#222630;border:1px solid #515a6d;border-radius:6px;padding:8px}input[type=checkbox]{margin-right:9px}button{cursor:pointer;margin:4px 8px 4px 0}button:disabled{opacity:.45;cursor:default}.muted{color:#afb7c8}.notice{border-left:3px solid #82b5ff;padding-left:15px}#status{min-height:25px;color:#a0d4a9}pre{white-space:pre-wrap;font-size:13px}a{color:#a9cfff}fieldset{border:1px solid #414956;border-radius:8px;margin:20px 0}
+</style>
+<h1>pdfpal beta session recorder</h1>
+<p class="notice">For the observer. Let the reader follow the Windows quickstart unaided. Record clicks here as they happen. This page stays on this computer and sends nothing.</p>
+<p id="build" class="muted"></p><p id="status" role="status"></p>
+<label>Load a saved report for follow-up <input id="load" type="file" accept=".json,application/json"></label>
+<fieldset><legend>Session</legend>
+<label>Anonymous participant ID <input id="participant" placeholder="P01" pattern="P[0-9]{2,4}" maxlength="5" required></label>
+<label>Starting point <select id="cohort"><option value="">Choose…</option><option value="existing-agent">Assistant already installed and signed in</option><option value="missing-agent">Assistant installation or sign-in needed</option></select></label>
+<label>Assistant <select id="provider"><option value="claude">Claude Code</option><option value="codex">Codex</option><option value="none">Reading without AI</option></select></label>
+<label><input id="eligible" type="checkbox">Participant confirms an eligible provider account</label>
+<label><input id="nontechnical" type="checkbox">Participant does not routinely use developer tools</label>
+<label>Windows environment <select id="environment"><option value="existing-account">Existing Windows account</option><option value="fresh-windows-account">Fresh Windows account (observer verified)</option><option value="sandbox">Windows Sandbox</option></select></label>
+</fieldset>
+<h2>Observed milestones</h2><p class="muted">The clock began when the installer launched. A failed or stopped session is useful evidence too; save it with its missing milestones.</p>
+<div id="milestones"></div>
+<label><input id="tray" type="checkbox">Closed to tray and reopened the completed answer successfully</label>
+<h2>Outcome</h2>
+<label><input id="help" type="checkbox">Maintainer help was needed</label>
+<label>Barrier <select id="barrier"><option value="none">None</option><option value="installer">Installer / Windows prompt</option><option value="provider-install">Assistant installation</option><option value="sign-in">Account sign-in</option><option value="connection">Connection / usage limit</option><option value="reading">Reading / PDF / answer</option><option value="other">Other</option></select></label>
+<label>Explanation usefulness <select id="rating"><option value="">Not rated / no answer</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select> (1 low, 5 high)</label>
+<h2>Follow-up</h2>
+<label>Status <select id="followup"><option value="pending">Not due yet</option><option value="returned">Confirmed use on another day within 14 days</option><option value="not-returned">Confirmed no return use in 14 days</option><option value="no-response">No follow-up response</option></select></label>
+<p><button id="save">Save anonymous JSON report</button></p>
+<p class="muted">Do not add PDFs, account names, prompts, answers, passwords, or diagnostics to this report. In Windows Sandbox, copy the downloaded JSON to <strong>C:\PDFPalResults</strong> before closing the sandbox.</p>
+<details><summary>Baseline detected before installation</summary><pre id="baseline"></pre><p class="muted">Command discovery checks PATH only. It cannot prove that an assistant or Node.js is absent everywhere. A clean Windows-account test needs observer confirmation.</p></details>
+<script id="session" type="application/json">@@PDFPAL_SESSION@@</script>
+<script>
+'use strict';
+let initial;
+try { initial=JSON.parse(document.getElementById('session').textContent) } catch { initial={version:'unknown',startedAt:new Date().toISOString(),preflight:{}} }
+let sessionId=crypto.randomUUID(), startedAt=initial.startedAt, preflight=initial.preflight, version=initial.version, followupOnly=false;
+let events={setupShownMs:null,pdfOpenedMs:null,answerReceivedMs:null};
+const baselineKeys=['windowsBuild','nodeOnPath','npmOnPath','gitOnPath','claudeOnPath','codexOnPath','priorLibrary','priorDesktopPreferences','elevated','installerSignatureStatus'];
+const cleanBaseline=value=>Object.fromEntries(baselineKeys.filter(key=>Object.hasOwn(value??{},key)&&(
+ key==='windowsBuild'?Number.isSafeInteger(value[key])&&value[key]>0:
+ key==='installerSignatureStatus'?['Valid','UnknownError','NotSigned','HashMismatch','NotTrusted','NotSupportedFileFormat','Incompatible'].includes(value[key]):typeof value[key]==='boolean'
+)).map(key=>[key,value[key]]));
+preflight=cleanBaseline(preflight);
+const $=id=>document.getElementById(id);
+const stages=[['setupShownMs','Setup is visible'],['pdfOpenedMs','First PDF is open'],['answerReceivedMs','First answer received']];
+function draw(){
+ $('build').textContent=`Desktop ${version} · session ${sessionId}`;
+ $('baseline').textContent=JSON.stringify(preflight,null,2);
+ $('milestones').replaceChildren();
+ stages.forEach(([key,label],index)=>{
+  const button=document.createElement('button');
+  button.textContent=events[key]===null?label:`${label}: ${(events[key]/1000).toFixed(1)}s`;
+  button.disabled=followupOnly||events[key]!==null||(index>0&&events[stages[index-1][0]]===null);
+  button.onclick=()=>{events[key]=Math.max(0,Date.now()-Date.parse(startedAt));draw()};
+  $('milestones').append(button);
+ });
+}
+$('save').onclick=()=>{
+ if(!/^P\d{2,4}$/.test($('participant').value)||!$('cohort').value){$('status').textContent='Use an anonymous ID such as P01 and choose the starting point.';return}
+ if($('followup').value!=='pending'&&events.answerReceivedMs===null){$('status').textContent='Return-use follow-up applies to participants who received an answer.';return}
+ if(events.answerReceivedMs!==null&&$('provider').value==='none'){$('status').textContent='Choose the assistant used for the answer, or leave the answer milestone unrecorded.';return}
+ if($('rating').value&&events.answerReceivedMs===null){$('status').textContent='Usefulness can be rated after an answer was received.';return}
+ if(['not-returned','no-response'].includes($('followup').value)&&Date.now()-Date.parse(startedAt)<14*86400000){$('status').textContent='Wait for the 14-day follow-up window before finalizing non-return or no response.';return}
+ if($('followup').value==='returned'&&new Date().toISOString().slice(0,10)===startedAt.slice(0,10)){$('status').textContent='Return use must be on another day.';return}
+ const report={format:1,sessionId,participantId:$('participant').value,cohort:$('cohort').value,provider:$('provider').value,eligibleAccount:$('eligible').checked,nonTechnical:$('nontechnical').checked,environment:$('environment').value,desktopVersion:version,startedAt,updatedAt:new Date().toISOString(),preflight,events,neededHelp:$('help').checked,barrier:$('barrier').value,trayPassed:$('tray').checked,usefulness:$('rating').value?Number($('rating').value):null,followup:$('followup').value};
+ const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));
+ const link=document.createElement('a');link.href=url;link.download=`session-${sessionId}.json`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+ $('status').textContent='Report saved through your browser. Review the JSON before sharing it.';
+};
+$('load').onchange=async()=>{
+ try{
+  const report=JSON.parse(await $('load').files[0].text());
+  if(report.format!==1||!/^P\d{2,4}$/.test(report.participantId)||!report.events||!report.sessionId)throw Error();
+  sessionId=report.sessionId;startedAt=report.startedAt;preflight=cleanBaseline(report.preflight);version=report.desktopVersion;events=Object.fromEntries(stages.map(([key])=>[key,report.events[key]??null]));followupOnly=true;
+  $('participant').value=report.participantId;$('cohort').value=report.cohort;$('provider').value=report.provider;$('environment').value=report.environment;
+  $('eligible').checked=report.eligibleAccount;$('nontechnical').checked=report.nonTechnical;$('help').checked=report.neededHelp;$('tray').checked=report.trayPassed;
+  $('barrier').value=report.barrier;$('rating').value=report.usefulness??'';$('followup').value=report.followup;draw();$('status').textContent='Saved session loaded; update the follow-up and save again.';
+ }catch{$('status').textContent='Could not load this session report.'}
+};
+draw();
+</script></html>

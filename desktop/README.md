@@ -2,9 +2,11 @@
 
 M3 adds a branded per-user Windows installer, versioned desktop releases, guarded upgrades/uninstall, manual update checking, license notices, and signing configuration to the accepted M2 desktop application. See the [Windows quickstart](../docs/windows-quickstart.md), [M3 results](../docs/windows-m3-results.md), and [implementation plan](../docs/windows-desktop-plan.md).
 
+M4 adds repeatable engineering measurements and an offline beta field-test kit. See [M4 results](../docs/windows-m4-results.md) and the [observer guide](../docs/windows-beta-guide.md). Actual participant results, clean-account provider login, reference-machine validation and publisher signing remain release gates.
+
 ## Install the preview
 
-Run **pdfpal-Setup-2.1.0-preview.2-x64.exe**, then open **pdfpal** from the Start menu. Quit an earlier running pdfpal instance from its tray first. The current test candidate is unsigned; publisher signing is an explicit release gate. The installer installs for the current user without requesting administrator privileges. It keeps application files separate from the library, retains data on uninstall, and refuses to force-close a running instance.
+Run **pdfpal-Setup-2.1.0-preview.3-x64.exe**, then open **pdfpal** from the Start menu. Quit an earlier running pdfpal instance from its tray first. The current test candidate is unsigned; publisher signing is an explicit release gate. The installer installs for the current user without requesting administrator privileges. It keeps application files separate from the library, retains data on uninstall, and refuses to force-close a running instance.
 
 The unpacked artifact remains available for engineering checks as `win-unpacked/pdfpal.exe`; keep the entire folder together if using it.
 
@@ -30,7 +32,7 @@ node desktop/scripts/stage.mjs
 ./desktop/scripts/windows-m3.ps1 -SourceRoot (Get-Location).Path
 ```
 
-The driver also supports UNC/WSL source checkouts, copying the generated stage onto a Windows drive before running npm or packaging. Its default build directory is `%TEMP%\pdfpal-windows-m1`. `artifacts\pdfpal-Setup-2.1.0-preview.2-x64.exe` is the installer and `artifacts\win-unpacked\pdfpal.exe` is its application.
+The driver also supports UNC/WSL source checkouts, copying the generated stage onto a Windows drive before running npm or packaging. Its default build directory is `%TEMP%\pdfpal-windows-m1`. `artifacts\pdfpal-Setup-2.1.0-preview.3-x64.exe` is the installer and `artifacts\win-unpacked\pdfpal.exe` is its application.
 
 The driver installs locked dependencies, runs native process/ownership and setup-state tests, compiles a deterministic test-provider executable with Windows' Framework compiler, packages the app, and exercises the actual chat HTTP route with that fixture. It repeats the packaged tests with Node removed from the inherited PATH. Discovery can refresh registered Windows PATH entries; a genuinely clean machine without Node remains a manual acceptance check. Provider launches resolve native executables rather than npm shell wrappers. Receipts exclude account identifiers, raw authentication, prompts, answers, and executable paths.
 
@@ -56,6 +58,12 @@ Use `-SkipInstall` only after installing the same dependency locks. `-SkipPackag
 
 A deterministic, labelled reader demo can be recorded with `node desktop/scripts/record-demo.mjs` after building and installing the Playwright browser. It uses a sample PDF and simulated assistant, without a personal account or provider usage. CI saves the video as a separate artifact.
 
+## Beta engineering and field-test kit
+
+After staging, run `windows-m4.ps1 -SourceRoot <checkout>` under native Windows for 20 fresh process launches, a 60-second tray-idle measurement, and 50 background-answer/reopen/second-launch/graceful-quit cycles. It builds a separate unsigned acceptance executable, library and profile. Measurements distinguish private working set, total working set and private committed bytes, and normalize CPU by machine capacity. The normal production build cannot enable the internal file-control harness.
+
+After the M3 installer build, run `node desktop/scripts/create-beta-kit.mjs <artifacts> <local-Windows-kit-folder>`. It verifies installer identity/bytes and includes an offline observer recorder and a Sandbox launcher that regenerates host mappings after moves. Testers need neither Node.js nor terminal commands. Aggregate collected anonymous reports with `node desktop/scripts/beta-report.mjs <results-folder>`. Invitations, real account sign-in, signing credentials and publication are separate maintainer actions. The kit never treats empty or simulated data as participant acceptance.
+
 ## Architecture and compatibility
 
 Electron 45.1.0 and electron-builder 26.18.0 are isolated from root npm workspaces. Installing the CLI does not install Electron. `desktop/package-lock.json` locks build tooling and `runtime-lock.json` locks the staged runtime; no native rebuild runs against the CLI's development tree.
@@ -74,7 +82,7 @@ The backend automatically retries one unexpected crash without replaying AI requ
 
 ```bash
 npm test
-node --test desktop/test/preferences.test.mjs desktop/test/setup.test.mjs desktop/test/updates.test.mjs
+node --test desktop/test/preferences.test.mjs desktop/test/setup.test.mjs desktop/test/updates.test.mjs desktop/test/beta.test.mjs
 npm run test:package
 ```
 

@@ -7,10 +7,12 @@ import { spawn } from 'node:child_process'
 import { provider, setupScript, trustedSender, recoveryMessage, diagnostics } from './setup.mjs'
 import { checkDesktopUpdates, releasePage } from './updates.mjs'
 import { preferences, restoreBounds, restoreLibraryRoute, safeRoute, startupArguments } from './preferences.mjs'
+import { betaOptions, betaAcceptance } from './beta-acceptance.mjs'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
 const metadata = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).pdfpalDesktop ?? {}
 const applicationId = metadata.appId ?? 'io.pdfpal.desktop'
+const beta = process.argv.includes('--beta-acceptance') ? betaOptions(metadata) : undefined
 const installationCheck = process.argv.includes('--installer-acceptance')
 const m2 = process.argv.includes('--m2-smoke')
 const m1 = m2 || process.argv.includes('--m1-smoke')
@@ -296,7 +298,9 @@ async function boot() {
     if (exited) throw new Error('The local service stopped during startup. Retry.')
     if (!smoke && (!process.argv.includes('--hidden') || !tray || !prefs.value.setupComplete)) showWindow()
     booting = false; updateTray()
-    if (installationCheck) {
+    if (beta) {
+      await betaAcceptance({ options: beta, app, window, ready, tray, showWindow, requestQuit, secondLaunches: () => secondLaunches })
+    } else if (installationCheck) {
       const { installedAcceptance } = await import('./installer-acceptance.mjs')
       await installedAcceptance({ app, window, ready, prefs, requestQuit, shutdown })
     } else if (smoke) await smokeTest()

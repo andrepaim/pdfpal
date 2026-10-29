@@ -20,7 +20,7 @@ for (const [source, destination] of [
   ['dist', 'dist'], ['frontend/dist', 'frontend/dist'], ['extension/package', 'extension/package'],
   ['test/fixtures/sample.pdf', 'sample.pdf'], ['desktop/src/main.mjs', 'main.mjs'], ['desktop/src/backend.mjs', 'backend.mjs'],
   ['desktop/src/preload.cjs', 'preload.cjs'],
-  ...['setup.mjs', 'updates.mjs', 'installer-acceptance.mjs', 'recovery.html', 'recovery.js', 'recovery.css'].map(name => [`desktop/src/${name}`, name]), ['desktop/src/preferences.mjs', 'preferences.mjs'],
+  ...['setup.mjs', 'updates.mjs', 'installer-acceptance.mjs', 'beta-acceptance.mjs', 'recovery.html', 'recovery.js', 'recovery.css'].map(name => [`desktop/src/${name}`, name]), ['desktop/src/preferences.mjs', 'preferences.mjs'],
   ['desktop/test/runtime.test.mjs', 'test/runtime.test.mjs'],
   ['desktop/test/setup-native.mjs', 'test/setup-native.mjs'],
   ['desktop/test/setup.test.mjs', 'test/setup.test.mjs'],

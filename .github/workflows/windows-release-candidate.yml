@@ -29,7 +29,7 @@ jobs:
         run: node --input-type=module -e "import {signingConfiguration} from './desktop/scripts/build-installer.mjs'; signingConfiguration(true); console.log('Signing credentials configured.')"
       - run: npm ci
       - run: npm test
-      - run: node --test desktop/test/preferences.test.mjs desktop/test/setup.test.mjs desktop/test/updates.test.mjs
+      - run: node --test desktop/test/preferences.test.mjs desktop/test/setup.test.mjs desktop/test/updates.test.mjs desktop/test/beta.test.mjs
       - run: node desktop/scripts/stage.mjs
       - name: Build and verify signed candidate with installer acceptance
         shell: pwsh
