@@ -61,8 +61,9 @@ test('missing assistants get explicit installation help and reading without AI r
 test('optional connection tests report success and offline failures inline', async ({ page }) => {
   await page.goto('/');
   const modal = page.getByRole('dialog');
-  await modal.getByRole('button', { name: 'Test connection' }).click();
-  await expect(modal.getByText(/Last verified:/)).toBeVisible();
+  const connection = modal.getByRole('group', { name: 'Codex connection', exact: true });
+  await connection.getByRole('button', { name: 'Test connection' }).click();
+  await expect(connection.getByText(/Last verified:/)).toBeVisible();
   await page.evaluate(() => localStorage.setItem('test-mode', 'offline'));
   await modal.getByRole('button', { name: 'Test connection' }).click();
   await expect(modal.getByRole('alert')).toContainText('internet connection');
@@ -74,7 +75,10 @@ test('closing during a test cancels it and unfinished setup resumes on next laun
   await page.evaluate(() => localStorage.setItem('test-mode', 'slow'));
   const modal = page.getByRole('dialog');
   await modal.getByRole('button', { name: 'Test connection' }).click();
-  await expect(modal.getByRole('button', { name: 'Cancel test' })).toBeVisible();
+  await modal.getByRole('button', { name: 'Cancel test' }).click();
+  await expect(modal.getByRole('button', { name: 'Test connection' })).toBeEnabled();
+  await modal.getByRole('button', { name: 'Test connection' }).click();
+  await expect(modal.getByRole('button', { name: 'Cancel test' })).toBeEnabled();
   await page.keyboard.press('Escape');
   await expect(modal).not.toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('cancelled'))).toBe('true');

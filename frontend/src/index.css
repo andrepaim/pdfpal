@@ -168,14 +168,18 @@ body {
 .ai-settings-actions details { margin-left: auto; color: var(--muted); }
 .ai-settings-actions summary { cursor: pointer; }
 .ai-settings-actions details button { display: block; margin-top: 8px; }
-.ai-settings-test, .ai-settings-confirm { margin-top: 16px; padding: 16px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; }
-.ai-settings-test h3, .ai-settings-confirm h3 { font-size: 13px; margin: 0 0 8px; font-weight: 600; }
-.ai-settings-test h3 span { font-weight: 400; font-size: 11px; color: var(--muted); margin-left: 6px; }
-.ai-settings-test p, .ai-settings-confirm p { font-size: 12px; color: var(--muted); line-height: 1.6; margin: 0 0 12px; }
-.ai-settings-test .ai-settings-actions, .ai-settings-confirm .ai-settings-actions { padding: 0; }
+.ai-settings-confirm { margin-top: 16px; padding: 16px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; }
+.ai-settings-confirm h3 { font-size: 13px; margin: 0 0 8px; font-weight: 600; }
+.ai-settings-confirm p { font-size: 12px; color: var(--muted); line-height: 1.6; margin: 0 0 12px; }
+.ai-settings-confirm .ai-settings-actions { padding: 0; }
 .ai-settings-notice { color: #a7f3d0; font-size: 12px; line-height: 1.6; margin: 0 0 16px; }
-.ai-settings-test .ai-settings-verified { color: #a7f3d0; }
-.ai-settings-billing { display: flex; align-items: start; gap: 8px; font-size: 12px; line-height: 1.6; margin-top: 16px; color: #fcd34d; }
+.ai-settings-connection { margin: 0 15px; padding: 12px 0; border-top: 1px solid var(--border); }
+.ai-settings-connection-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12px; }
+.ai-settings-connection-actions button { padding: 0; border: 0; background: transparent; color: #a5b4fc; font-size: 12px; cursor: pointer; }
+.ai-settings-connection-actions > span { color: var(--muted); font-size: 11px; }
+.ai-settings-connection p { margin: 8px 0 0; font-size: 11px; line-height: 1.6; color: var(--muted); }
+.ai-settings-connection .ai-settings-verified { color: #a7f3d0; }
+.ai-settings-billing { display: flex; align-items: start; gap: 8px; font-size: 12px; line-height: 1.6; margin: 12px 15px; color: #fcd34d; }
 .desktop-status { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 999; max-width: min(640px, calc(100vw - 40px)); padding: 14px 18px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); box-shadow: 0 8px 30px #0007; font-size: 13px; line-height: 1.6; }
 .desktop-status button { margin-left: 12px; background: transparent; border: 0; color: #a5b4fc; cursor: pointer; }
 .ai-settings pre { background: var(--bg); color: var(--muted); border-radius: 8px; padding: 12px; overflow: auto; max-height: 300px; font-size: 11px; }

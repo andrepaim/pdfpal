@@ -160,21 +160,29 @@ export default function AISettings() {
         {error && <p role="alert" className="ai-settings-error">{error}</p>}
         {notice && <p role="status" className="ai-settings-notice">{notice}</p>}
         {loading ? <p role="status" className="ai-settings-loading">Checking installed assistants…</p> : <>
-          <fieldset className="ai-settings-options" disabled={saving || testing}>
+          <fieldset className="ai-settings-options" disabled={saving}>
             <legend className="sr-only">Default assistant</legend>
             {agents.filter(item => !firstRun || supported(item.id) || item.available || item.id === selected).map(assistant => <div key={assistant.id} className={`ai-settings-card${selected === assistant.id ? ' is-selected' : ''}`}>
               <label className={`ai-settings-option${selected === assistant.id ? ' is-selected' : ''}${!assistant.available ? ' is-unavailable' : ''}`}>
                 <input type="radio" name="assistant" value={assistant.id} checked={selected === assistant.id}
-                  disabled={!assistant.available} onChange={() => { setSelected(assistant.id); setBillingAccepted(false); setError(''); setNotice('') }} />
+                  disabled={!assistant.available || testing} onChange={() => { setSelected(assistant.id); setBillingAccepted(false); setError(''); setNotice('') }} />
                 <span className="ai-settings-option-text"><strong>{label(assistant)}</strong><span>{status(assistant)}{assistant.version && ` · ${assistant.version}`}</span></span>
                 {selected === assistant.id && assistant.available && <span className="ai-settings-selected">Selected</span>}
               </label>
               {supported(assistant.id) && bridge.setupAction && <div className="ai-settings-actions">
-                <button type="button" onClick={() => setConsent({ agent: assistant.id, action: assistant.available ? 'login' : 'install' })}>
+                <button type="button" disabled={testing} onClick={() => setConsent({ agent: assistant.id, action: assistant.available ? 'login' : 'install' })}>
                   {assistant.available ? `Sign in${assistant.auth === 'account' ? ' again' : ''}` : `${assistant.state === 'unsupported' ? 'Update' : assistant.state === 'unusable' ? 'Repair' : 'Install'} ${label(assistant)}`}
                 </button>
-                <button type="button" onClick={() => { void bridge.setupAction?.(assistant.id, 'docs').catch(() => setError('Could not open the official setup guide.')) }}>Official setup guide</button>
-                <details><summary>Advanced</summary><button type="button" onClick={() => { void choose(assistant.id) }}>Choose application…</button></details>
+                <button type="button" disabled={testing} onClick={() => { void bridge.setupAction?.(assistant.id, 'docs').catch(() => setError('Could not open the official setup guide.')) }}>Official setup guide</button>
+                <details><summary>Advanced</summary><button type="button" disabled={testing} onClick={() => { void choose(assistant.id) }}>Choose application…</button></details>
+              </div>}
+              {selected === assistant.id && needsBilling && <label className="ai-settings-billing"><input type="checkbox" checked={billingAccepted} disabled={testing} onChange={event => setBillingAccepted(event.target.checked)} />I understand this configuration may charge separately from my subscription.</label>}
+              {selected === assistant.id && assistant.available && supported(assistant.id) && bridge.testConnection && <div className="ai-settings-connection" role="group" aria-label={`${label(assistant)} connection`}>
+                <div className="ai-settings-connection-actions">
+                  {testing ? <><span role="status">Testing {label(assistant)}…</span><button type="button" onClick={() => { void cancelTest() }}>Cancel test</button></> : <><button type="button" disabled={!canUse} onClick={() => { void test() }}>Test connection</button><span>Optional</span></>}
+                </div>
+                <p>Sends a short test using your {label(assistant)} allowance. No document text is sent.</p>
+                {assistant.testedAt && <p className="ai-settings-verified">Last verified: {new Date(assistant.testedAt).toLocaleString()}</p>}
               </div>}
             </div>)}
           </fieldset>
@@ -183,14 +191,7 @@ export default function AISettings() {
         {consent && <section className="ai-settings-confirm" aria-label="Confirm assistant setup">
           <h3>{consent.action === 'install' ? `Install ${consent.agent === 'claude' ? 'Claude Code' : 'Codex'}?` : 'Sign in with your account?'}</h3>
           <p>{consent.action === 'install' ? 'This opens a PowerShell window and runs the provider’s official installer. It downloads and installs the assistant for your Windows user. No separate Node.js installation is required.' : 'This opens the assistant’s official sign-in flow in a separate window. Choose your Claude or ChatGPT account to use its included allowance. Your password is entered only with the provider.'}</p>
-          <div className="ai-settings-actions"><button type="button" onClick={() => { void launch() }} disabled={saving}>Open {consent.action === 'install' ? 'official installer' : 'sign-in'}</button><button type="button" onClick={() => setConsent(undefined)} disabled={saving}>Back</button></div>
-        </section>}
-        {needsBilling && <label className="ai-settings-billing"><input type="checkbox" checked={billingAccepted} disabled={saving || testing} onChange={event => setBillingAccepted(event.target.checked)} />I understand this configuration may charge separately from my subscription.</label>}
-        {current?.available && supported(current.id) && bridge.testConnection && <section className="ai-settings-test">
-          <h3>Check the connection <span>Optional</span></h3>
-          <p>Sends a short fixed test using your provider allowance. No document contents are included.</p>
-          {current.testedAt && <p className="ai-settings-verified">Last verified: {new Date(current.testedAt).toLocaleString()}</p>}
-          {testing ? <div className="ai-settings-actions"><span role="status">Testing connection…</span><button type="button" onClick={() => { void cancelTest() }}>Cancel test</button></div> : <button type="button" className="ai-settings-cancel" disabled={saving || loading || !canUse} onClick={() => { void test() }}>Test connection</button>}
+          <div className="ai-settings-actions"><button type="button" onClick={() => { void launch() }} disabled={saving || testing}>Open {consent.action === 'install' ? 'official installer' : 'sign-in'}</button><button type="button" onClick={() => setConsent(undefined)} disabled={saving || testing}>Back</button></div>
         </section>}
         <p className="ai-settings-help">Uses your installed assistant and its current account. Provider usage limits apply. Sign-in detection does not verify remaining allowance.</p>
         <button type="button" className="ai-settings-refresh" onClick={() => { setNotice(''); void refresh() }} disabled={loading || saving || testing}>Check again</button>
