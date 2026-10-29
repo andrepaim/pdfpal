@@ -38,3 +38,15 @@ export function preferences(filename) {
     },
   }
 }
+
+/** An alpha launcher may have last opened a project in another library. */
+export async function restoreLibraryRoute(saved, origin, request = fetch) {
+  const route = safeRoute(saved)
+  const project = route.match(/^\/projects\/([a-f0-9-]{36})(?:\/|$)/i)?.[1]
+  if (!project) return route
+  try {
+    const response = await request(`${origin}/api/projects/${project}`, { signal: AbortSignal.timeout(2000) })
+    await response.body?.cancel().catch(() => {})
+    return response.status === 404 ? '/' : route
+  } catch { return route }
+}

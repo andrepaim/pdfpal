@@ -5,13 +5,17 @@ import os from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawn } from 'node:child_process'
 import { provider, setupScript, trustedSender, recoveryMessage, diagnostics } from './setup.mjs'
-import { preferences, restoreBounds, safeRoute, startupArguments } from './preferences.mjs'
+import { checkDesktopUpdates, releasePage } from './updates.mjs'
+import { preferences, restoreBounds, restoreLibraryRoute, safeRoute, startupArguments } from './preferences.mjs'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
+const metadata = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).pdfpalDesktop ?? {}
+const applicationId = metadata.appId ?? 'io.pdfpal.desktop'
+const installationCheck = process.argv.includes('--installer-acceptance')
 const m2 = process.argv.includes('--m2-smoke')
 const m1 = m2 || process.argv.includes('--m1-smoke')
-const smoke = m1 || process.argv.includes('--m0-smoke')
-const temporary = smoke ? fs.mkdtempSync(path.join(os.tmpdir(), 'pdfpal-desktop-')) : undefined
+const smoke = installationCheck || m1 || process.argv.includes('--m0-smoke')
+const temporary = smoke && !installationCheck ? fs.mkdtempSync(path.join(os.tmpdir(), 'pdfpal-desktop-')) : undefined
 if (temporary) {
   process.env.PDFPAL_DATA_DIR = temporary
   process.env.PDFPAL_DB = path.join(temporary, 'pdfpal.db')
@@ -26,7 +30,7 @@ nativeTheme.themeSource = 'dark'
 const profile = process.env.PDFPAL_DESKTOP_PROFILE ?? path.join(app.getPath('appData'), 'pdfpal-desktop')
 fs.mkdirSync(profile, { recursive: true })
 app.setPath('userData', profile)
-if (process.platform === 'win32') app.setAppUserModelId('io.pdfpal.desktop')
+if (process.platform === 'win32') app.setAppUserModelId(applicationId)
 const prefs = preferences(path.join(app.getPath('userData'), 'desktop.json'))
 let backend, window, tray, ready, pendingReceipt, stopping = false, exited = true, booting = false, crashRetries = 0, secondLaunches = 0
 const recoveryURL = pathToFileURL(path.join(root, 'recovery.html')).href
@@ -34,6 +38,7 @@ const journal = diagnostics(path.join(profile, 'diagnostics.json'))
 let lastAgents = [], diagnosticPreview, setupProcess, setupPending = false, loadedOrigin, failureCode = 'STARTING', existingOrigin
 let serviceState = { state: 'starting' }
 let testing = false, testEpoch = 0
+let updateState = { state: 'idle', currentVersion: app.getVersion(), distribution: metadata.distribution ?? 'unsigned' }, updateRequest
 let recoveryScreenPassed = false
 let recoveryFixture
 const shutdownPhases = []
@@ -94,12 +99,25 @@ async function aiSettings() {
   window.webContents.send('pdfpal:open-ai-settings')
   return before
 }
+async function openUpdates() {
+  showWindow()
+  if (window.webContents.getURL() === recoveryURL) return
+  window.webContents.send('pdfpal:open-updates')
+}
+async function checkUpdates() {
+  if (updateRequest) return updateRequest
+  updateRequest = checkDesktopUpdates(app.getVersion()).then(result => {
+    updateState = { ...result, distribution: metadata.distribution ?? 'unsigned' }
+    return updateState
+  }).finally(() => { updateRequest = undefined })
+  return updateRequest
+}
 function startupArgs() {
   if (!ready) return []
   return startupArguments(ready.startup, app.getPath('userData'))
 }
 function loginEnabled() {
-  return process.platform === 'win32' && app.getLoginItemSettings({ path: process.execPath }).launchItems.some(item => item.name === 'io.pdfpal.desktop' && item.enabled)
+  return process.platform === 'win32' && app.getLoginItemSettings({ path: process.execPath }).launchItems.some(item => item.name === applicationId && item.enabled)
 }
 function updateTray() {
   if (!tray) return
@@ -111,10 +129,11 @@ function updateTray() {
     { label: 'Start with Windows', type: 'checkbox', enabled: !!ready && process.platform === 'win32',
       checked: !!ready && loginEnabled(),
       click: item => {
-        try { app.setLoginItemSettings({ name: 'io.pdfpal.desktop', openAtLogin: item.checked, path: process.execPath, args: startupArgs() }); savePrefs({ startAtLogin: item.checked }) }
+        try { app.setLoginItemSettings({ name: applicationId, openAtLogin: item.checked, path: process.execPath, args: startupArgs() }); savePrefs({ startAtLogin: item.checked }) }
         catch (error) { dialog.showErrorBox('Startup preference', error.message) }
         updateTray()
       } },
+    { label: 'Check for updates…', click: () => { void openUpdates() } },
     { label: 'Diagnostics', click: () => { showWindow(); if (loadedOrigin && !window.webContents.getURL().startsWith('file:')) window.webContents.send('pdfpal:open-diagnostics'); else void window.loadURL(recoveryURL) } },
     { label: 'Retry service', enabled: !ready && !booting, click: () => { crashRetries = 0; void boot() } },
     { type: 'separator' },
@@ -178,7 +197,7 @@ async function shutdown(code = 0) {
 function ensureWindow() {
   if (!window || window.isDestroyed()) {
       window = new BrowserWindow({ ...restoreBounds(prefs.value.bounds, screen.getAllDisplays()), show: false, minWidth: 600, minHeight: 400,
-        backgroundColor: '#0f0f0f', webPreferences: { preload: path.join(root, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true } })
+        backgroundColor: '#0f0f0f', icon: path.join(root, 'frontend/dist/icon-512.png'), webPreferences: { preload: path.join(root, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true } })
       restoreWindowState = true
       window.webContents.setWindowOpenHandler(({ url }) => { openBrowser(url); return { action: 'deny' } })
       window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
@@ -267,13 +286,20 @@ async function boot() {
       })
     })
     ready = initial
-    if (loadedOrigin !== ready.origin || window.webContents.getURL() === recoveryURL) await window.loadURL(ready.origin + safeRoute(prefs.value.route))
+    if (loadedOrigin !== ready.origin || window.webContents.getURL() === recoveryURL) {
+      const route = await restoreLibraryRoute(prefs.value.route, ready.origin)
+      if (route !== prefs.value.route) savePrefs({ route })
+      await window.loadURL(ready.origin + route)
+    }
     loadedOrigin = ready.origin
     journal.record('READY'); setServiceState({ state: 'ready', interrupted: crashRetries > 0 })
     if (exited) throw new Error('The local service stopped during startup. Retry.')
     if (!smoke && (!process.argv.includes('--hidden') || !tray || !prefs.value.setupComplete)) showWindow()
     booting = false; updateTray()
-    if (smoke) await smokeTest()
+    if (installationCheck) {
+      const { installedAcceptance } = await import('./installer-acceptance.mjs')
+      await installedAcceptance({ app, window, ready, prefs, requestQuit, shutdown })
+    } else if (smoke) await smokeTest()
   } catch (error) {
     booting = false; ready = undefined; updateTray()
     if (backend && !exited) {
@@ -440,6 +466,15 @@ else {
       return callback(...args)
     })
   }
+  handle('updates-state', () => updateState, true)
+  handle('check-updates', checkUpdates, true)
+  handle('download-update', () => { if (updateState.state !== 'available') throw new Error('Check for an available update first'); openBrowser(updateState.downloadURL); return true }, true)
+  handle('release-notes', () => { openBrowser(updateState.releaseURL ?? releasePage); return true }, true)
+  handle('open-licenses', async () => {
+    const error = await shell.openPath(path.join(process.resourcesPath, 'THIRD_PARTY_NOTICES.txt'))
+    if (error) throw new Error('The license file could not be opened. Find THIRD_PARTY_NOTICES.txt in the application resources folder.')
+    return true
+  }, true)
   handle('set-agent', setAgent)
   handle('setup-state', inspectSetup)
   handle('setup-status', () => ({ complete: prefs.value.setupComplete === true }))

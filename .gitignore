@@ -20,3 +20,7 @@ desktop/evidence/
 *.server-lock*
 *.write-lock*
 *.server.json
+
+# Private Windows signing credentials belong outside the repository.
+*.pfx
+*.p12

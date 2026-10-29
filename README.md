@@ -276,3 +276,7 @@ The implementation follows that split:
 The 2.1.0 package build contains the compiled TypeScript server/CLI, built React frontend, unpacked Chrome extension, and matching ZIP with bundled OCR assets. Runtime state stays local under `~/.pdfpal` by default, while external network edges are limited to source URLs, OpenAlex, Semantic Scholar, and capabilities provided by the selected agent. It is intended for local, single-user operation.
 
 *AI to read deeper, not to avoid reading.*
+
+## Windows desktop preview
+
+An optional Windows desktop app provides guided Claude/Codex setup, a system tray, and a per-user installer. The CLI remains available independently. See the [Windows quickstart](docs/windows-quickstart.md) and [desktop build guide](desktop/README.md). Current engineering installers are unsigned; public release signing and clean-account acceptance remain pending.

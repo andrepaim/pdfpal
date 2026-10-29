@@ -1,0 +1,45 @@
+name: Signed Windows release candidate
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Desktop version (for example 2.1.0)
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  candidate:
+    if: github.repository == 'andrepaim/pdfpal' && github.ref == 'refs/heads/master'
+    runs-on: windows-latest
+    timeout-minutes: 40
+    environment: windows-release
+    env:
+      PDFPAL_DESKTOP_VERSION: ${{ inputs.version }}
+      PDFPAL_PUBLISHER_NAME: ${{ vars.PDFPAL_PUBLISHER_NAME }}
+      CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Validate signing configuration without printing credentials
+        run: node --input-type=module -e "import {signingConfiguration} from './desktop/scripts/build-installer.mjs'; signingConfiguration(true); console.log('Signing credentials configured.')"
+      - run: npm ci
+      - run: npm test
+      - run: node --test desktop/test/preferences.test.mjs desktop/test/setup.test.mjs desktop/test/updates.test.mjs
+      - run: node desktop/scripts/stage.mjs
+      - name: Build and verify signed candidate with installer acceptance
+        shell: pwsh
+        run: ./desktop/scripts/windows-m3.ps1 -SourceRoot $env:GITHUB_WORKSPACE -WorkRoot "$env:RUNNER_TEMP/pdfpal-windows-release" -Signed
+      - name: Keep verified candidate for review (no publication)
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdfpal-windows-signed-candidate
+          compression-level: 0
+          path: |
+            ${{ runner.temp }}/pdfpal-windows-release/artifacts/pdfpal-Setup-*.exe
+            ${{ runner.temp }}/pdfpal-windows-release/artifacts/pdfpal-desktop-release.json
+            ${{ runner.temp }}/pdfpal-windows-release/installer-receipt.json

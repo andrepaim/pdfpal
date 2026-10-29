@@ -2,7 +2,7 @@
 
 Status: proposed implementation plan. No desktop functionality is implemented by this document.
 
-Implementation update: the user accepted M0 and M1, including the themed AI settings dialog. M2 adds guided setup, optional connection tests, recovery screens, diagnostics, and reviewed desktop security boundaries. See [M0 results](windows-m0-results.md), [M1 results](windows-m1-results.md), and [M2 results](windows-m2-results.md) for evidence and explicit remaining manual gates. The signed installer and release distribution remain M3.
+Implementation update: the user accepted M0 and M1, including the themed AI settings dialog. M2 adds guided setup, optional connection tests, recovery screens, diagnostics, and reviewed desktop security boundaries. See [M0 results](windows-m0-results.md), [M1 results](windows-m1-results.md), and [M2 results](windows-m2-results.md) for evidence and explicit remaining manual gates. M3 now adds an unsigned per-user installer, guarded upgrade/uninstall, update checks, branding, license notices, and a gated signing workflow. See [M3 results](windows-m3-results.md). A verified publisher signing identity and clean-account user acceptance remain release gates; no public release has been published.
 
 Date: 2026-10-29.
 

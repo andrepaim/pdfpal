@@ -1,14 +1,16 @@
-# pdfpal desktop alpha
+# pdfpal Windows desktop preview
 
-The Windows M2 alpha adds guided assistant setup and recovery to the system tray and desktop lifecycle to the [M0 runtime proof](../docs/windows-m0-results.md). The implementation plan is in [Windows desktop plan](../docs/windows-desktop-plan.md).
+M3 adds a branded per-user Windows installer, versioned desktop releases, guarded upgrades/uninstall, manual update checking, license notices, and signing configuration to the accepted M2 desktop application. See the [Windows quickstart](../docs/windows-quickstart.md), [M3 results](../docs/windows-m3-results.md), and [implementation plan](../docs/windows-desktop-plan.md).
 
-## Run the alpha
+## Install the preview
 
-Extract the entire unsigned application artifact and run `pdfpal Alpha.exe`. Keep its DLLs, resources, and other files together. The signed installer is a later milestone.
+Run **pdfpal-Setup-2.1.0-preview.1-x64.exe**, then open **pdfpal** from the Start menu. Quit an earlier running pdfpal instance from its tray first. The current test candidate is unsigned; publisher signing is an explicit release gate. The installer installs for the current user without requesting administrator privileges. It keeps application files separate from the library, retains data on uninstall, and refuses to force-close a running instance.
+
+The unpacked artifact remains available for engineering checks as `win-unpacked/pdfpal.exe`; keep the entire folder together if using it.
 
 The normal application uses `%USERPROFILE%\.pdfpal`, matching the native Windows CLI. `PDFPAL_DATA_DIR`, `PDFPAL_DB`, `PDFPAL_PORT`, provider executable overrides, and the existing configuration file keep their CLI meanings. Windows and WSL have different home directories and therefore different default libraries; concurrent Windows/WSL access to the same SQLite file through a network path is not part of this alpha's validation.
 
-Closing the window hides it to the tray. Click the tray icon to reopen; its menu includes Open pdfpal, Open in browser, AI settings, Start with Windows, Diagnostics, Retry service, and Quit. An active answer continues while hidden, and Quit offers to keep running or cancel requests. A second launch focuses the existing window. If the tray is unavailable, closing the window offers normal quit behavior instead.
+Closing the window hides it to the tray. Click the tray icon to reopen; its menu includes Open pdfpal, Open in browser, AI settings, Start with Windows, Check for updates, Diagnostics, Retry service, and Quit. An active answer continues while hidden, and Quit offers to keep running or cancel requests. A second launch focuses the existing window. If the tray is unavailable, closing the window offers normal quit behavior instead.
 
 Explicit Quit first flushes pending note saves and reading progress. A failed note save offers to keep editing or explicitly quit without saving. Windows session shutdown uses a bounded flush and cancellation path.
 
@@ -16,7 +18,7 @@ AI settings opens a themed in-app dialog with installed assistants, account/bill
 
 Window bounds, maximized state, last route, and the one-time tray notice are stored separately in `%APPDATA%\pdfpal-desktop\desktop.json`. Start with Windows is optional and uses Windows' login registration with the selected library/port arguments. An unpacked alpha must remain in its folder for that registration to work; turn it off before moving or removing the folder.
 
-If another updated CLI server owns the library, the app offers its validated browser URL or Retry. It does not adopt or stop that server. An unrelated occupied port produces an error and Retry. Exit old M0 builds before testing M1; they predate the ownership protocol.
+If another updated CLI server owns the library, the app offers its validated browser URL or Retry. It does not adopt or stop that server. An unrelated occupied port produces an error and Retry. Exit old M0 builds before using the current desktop; they predate the ownership protocol.
 
 ## Build and test on Windows
 
@@ -25,18 +27,34 @@ From the source checkout, with Node.js 22 or newer:
 ```powershell
 npm ci
 node desktop/scripts/stage.mjs
-./desktop/scripts/windows-m2.ps1 -SourceRoot (Get-Location).Path
+./desktop/scripts/windows-m3.ps1 -SourceRoot (Get-Location).Path
 ```
 
-The driver also supports UNC/WSL source checkouts, copying the generated stage onto a Windows drive before running npm or packaging. Its default build directory is `%TEMP%\pdfpal-windows-m1`. `artifacts\win-unpacked\pdfpal Alpha.exe` is the executable.
+The driver also supports UNC/WSL source checkouts, copying the generated stage onto a Windows drive before running npm or packaging. Its default build directory is `%TEMP%\pdfpal-windows-m1`. `artifacts\pdfpal-Setup-2.1.0-preview.1-x64.exe` is the installer and `artifacts\win-unpacked\pdfpal.exe` is its application.
 
-The driver installs locked dependencies, runs native process/ownership and setup-state tests, compiles a deterministic test-provider executable with Windows' Framework compiler, packages the app, and exercises the actual chat HTTP route with that fixture. It repeats the packaged tests with system Node removed from PATH. Receipts exclude account identifiers, raw authentication, prompts, answers, and executable paths.
+The driver installs locked dependencies, runs native process/ownership and setup-state tests, compiles a deterministic test-provider executable with Windows' Framework compiler, packages the app, and exercises the actual chat HTTP route with that fixture. It repeats the packaged tests with Node removed from the inherited PATH. Discovery can refresh registered Windows PATH entries; a genuinely clean machine without Node remains a manual acceptance check. Provider launches resolve native executables rather than npm shell wrappers. Receipts exclude account identifiers, raw authentication, prompts, answers, and executable paths.
 
 Packaged tests cover first-launch setup, explicit connection verification/cancellation, persisted completion, a local startup-recovery screen with retry, redacted diagnostics, PDF import, database reopen, frontend and extension assets, actual React/preload loading, tray hide/reopen, an answer completing while hidden, authenticated extension access while hidden, persisted assistant/window/route preferences, validation of IPC arguments, second-launch focusing, backend crash recovery with saved history, and cancellation on quit.
 
-Add `-LiveCodex` to send one fixed fixture-source question through your real local Codex account in the packaged reader. It consumes provider allowance and is never enabled in CI. The regular acceptance test uses a fake provider and must not be presented as real model inference. `-SkipInstall` supports local iteration after installing the same dependency locks.
+The smaller `windows-m2.ps1` driver accepts `-LiveCodex` to send one fixed fixture-source question through your real local Codex account in the packaged reader. It consumes provider allowance and is never enabled in CI. The regular acceptance test uses a fake provider and must not be presented as real model inference. `-SkipInstall` supports local iteration after installing the same dependency locks.
 
-For the smaller original runtime smoke, `windows-m0.ps1` still runs the M0 checks against the current binary. Its optional `-LiveProviders` uses real Claude/Codex connection prompts. M1 fixture mode and real-provider mode should be run separately.
+For the smaller original runtime smoke, `windows-m0.ps1` still runs the M0 checks against the current binary. Its optional `-LiveProviders` uses real Claude/Codex connection prompts. Fixture mode and real-provider mode should be run separately.
+
+## Installer and release checks
+
+The M3 driver first runs packaged acceptance, builds the production preview, then makes two isolated unsigned installer fixtures for upgrade testing. The fixtures use their own app ID, executable, Start menu entry, startup registration, and temporary library. A fixture manifest/hash check prevents accidentally passing a production installer into the destructive installer acceptance loop.
+
+The native matrix covers fresh per-user install, application resources, Start menu target, launch from an unrelated directory, cancelled upgrade, refusal to close a running app, graceful quit, upgrade while a real CLI server keeps serving the same library, startup-preference preservation, version change, uninstall, and reinstall. SQLite integrity and exact fixture PDF/note/highlight/collection/history/extension-identity snapshots are checked throughout. No normal installation or personal library is installed over or removed by this test.
+
+`build-installer.mjs` uses the pinned v26 builder options. Unsigned mode explicitly disables signing and ignores ambient certificate links. Signed mode requires `PDFPAL_PUBLISHER_NAME` plus `CSC_LINK`/`WIN_CSC_LINK`, or a Windows-store `PDFPAL_CERTIFICATE_SHA1`. It enables `forceCodeSigning` and verifies the application and installer have valid, timestamped Authenticode signatures from the expected publisher before writing a signed release manifest. Failed builds remove stale release metadata. No private key is written into build configuration.
+
+The **Signed Windows release candidate** workflow is manual, limited to `master`, and uses the protected `windows-release` environment. Configure its publisher variable and `WINDOWS_CSC_LINK` / `WINDOWS_CSC_KEY_PASSWORD` secrets there; do not commit certificates or paste credentials into an issue. It uploads a reviewable candidate and test receipt. It does not publish releases. Windows-store signing is also available for a local build with an existing signing provider/certificate.
+
+Desktop versions live in `desktop/version.json`, independently of the npm CLI version. An explicit `PDFPAL_DESKTOP_VERSION` build override must be a valid version. The initial update flow checks only when requested, reads stable `desktop-v…` releases from the official repository, and requires the matching application ID, signed-manifest flag, platform/architecture, filename, size, SHA-256, and official download URL. Downloads open in the browser; installation is user-initiated. Unsigned previews and npm releases are not offered as updates.
+
+Use `-SkipInstall` only after installing the same dependency locks. `-SkipPackagedChecks` exists for local installer iteration after packaged acceptance; CI runs the full driver. Acceptance fixtures use store compression for speed, while the production candidate uses normal compression. The two fixture versions use the current code and exercise installer/data-preservation mechanics; they are not proof of an upgrade from a historical signed release that does not yet exist.
+
+A deterministic, labelled reader demo can be recorded with `node desktop/scripts/record-demo.mjs` after building and installing the Playwright browser. It uses a sample PDF and simulated assistant, without a personal account or provider usage. CI saves the video as a separate artifact.
 
 ## Architecture and compatibility
 
@@ -56,8 +74,8 @@ The backend automatically retries one unexpected crash without replaying AI requ
 
 ```bash
 npm test
-node --test desktop/test/preferences.test.mjs desktop/test/setup.test.mjs
+node --test desktop/test/preferences.test.mjs desktop/test/setup.test.mjs desktop/test/updates.test.mjs
 npm run test:package
 ```
 
-The Windows CI workflow runs the same native driver and uploads receipts plus `pdfpal-windows-m2-unsigned`. Existing Linux CI covers core coverage, reader browser tests, companion browser tests, and npm distribution. See [M2 results](../docs/windows-m2-results.md) for recorded outcomes and remaining scope.
+The Windows CI workflow runs the same native driver and uploads receipts plus `pdfpal-windows-m3-installer-unsigned` and `pdfpal-windows-m3-unpacked-unsigned`. Existing Linux CI covers core coverage, reader browser tests, companion browser tests, and npm distribution. See [M3 results](../docs/windows-m3-results.md) for recorded outcomes and remaining release gates.

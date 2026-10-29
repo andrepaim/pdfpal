@@ -189,3 +189,7 @@ body {
 .ai-settings-header, .ai-settings-footer { flex-shrink: 0; }
 .ai-settings-content { overflow: auto; min-height: 0; }
 .ai-settings-footer { flex-wrap: wrap; }
+.desktop-updates .ai-settings-content { padding-top: 8px; padding-bottom: 24px; }
+.desktop-updates h3 { font-size: 16px; margin: 16px 0 0; }
+.desktop-updates .ai-settings-actions { padding: 20px 0 0; }
+.desktop-update-notes { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 20px; color: var(--muted); font-size: 12px; line-height: 1.7; }

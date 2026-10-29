@@ -1,3 +1,4 @@
+export interface DesktopUpdateState { state: 'idle' | 'available' | 'current' | 'unpublished' | 'error'; currentVersion: string; distribution?: string; version?: string; publisher?: string; notes?: string; message?: string }
 export interface DesktopAssistant {
   id: string; label: string; available: boolean; state?: string; version?: string; auth?: string; testedAt?: string
 }
@@ -8,6 +9,12 @@ declare global {
   interface Window {
     pdfpalFlushPending?: () => Promise<void>
     pdfpalDesktop?: {
+      updatesState?(): Promise<DesktopUpdateState>
+      checkUpdates?(): Promise<DesktopUpdateState>
+      downloadUpdate?(): Promise<boolean>
+      releaseNotes?(): Promise<boolean>
+      openLicenses?(): Promise<boolean>
+      onOpenUpdates?(callback: () => void): () => void
       setupStatus?(): Promise<{ complete: boolean }>
       setupState?(): Promise<DesktopSetupState>
       completeSetup?(): Promise<boolean>

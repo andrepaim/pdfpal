@@ -13,6 +13,7 @@ import VisualPage from './pages/VisualPage'
 import ExtensionsPage from './pages/ExtensionsPage'
 import LoginPage from './components/LoginPage'
 import { flushPendingSaves } from './lib/persistence'
+import DesktopUpdates from './components/DesktopUpdates'
 import DesktopStatus from './components/DesktopStatus'
 import AISettings from './components/AISettings'
 
@@ -103,6 +104,7 @@ createRoot(document.getElementById('root')!).render(
       <Root />
       <AISettings />
       <DesktopStatus />
+      <DesktopUpdates />
     </ErrorBoundary>
   </StrictMode>,
 )

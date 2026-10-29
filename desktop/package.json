@@ -9,6 +9,8 @@
   "scripts": {
     "stage": "node scripts/stage.mjs",
     "package": "electron-builder --config electron-builder.yml --dir",
-    "probe": "node scripts/check-providers.mjs"
+    "probe": "node scripts/check-providers.mjs",
+    "installer": "node scripts/build-installer.mjs",
+    "test": "node --test test/preferences.test.mjs test/setup.test.mjs test/updates.test.mjs"
   }
 }

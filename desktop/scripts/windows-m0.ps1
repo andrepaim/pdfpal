@@ -20,6 +20,7 @@ New-Item -ItemType Directory -Force -Path $tools,$stage | Out-Null
 Copy-Item (Join-Path $SourceRoot 'desktop/package.json') $tools -Force
 Copy-Item (Join-Path $SourceRoot 'desktop/package-lock.json') $tools -Force
 Copy-Item (Join-Path $SourceRoot 'desktop/electron-builder.yml') $WorkRoot -Force
+Copy-Item (Join-Path $SourceRoot 'desktop/build') $WorkRoot -Recurse -Force
 foreach ($entry in Get-ChildItem (Join-Path $SourceRoot 'desktop/stage')) {
     if ($entry.Name -ne 'node_modules') { Copy-Item $entry.FullName $stage -Recurse -Force }
 }
@@ -29,6 +30,7 @@ try {
         Run-Checked { npm.cmd ci --prefix $tools --ignore-scripts --no-audit --no-fund }
         Run-Checked { npm.cmd ci --prefix $stage --omit=dev --ignore-scripts --no-audit --no-fund }
     }
+    Run-Checked { node (Join-Path $SourceRoot 'desktop/scripts/notices.mjs') $stage $SourceRoot }
     Run-Checked { node (Join-Path $stage 'discovery.test.mjs') }
     Run-Checked { node (Join-Path $stage 'test/runtime.test.mjs') }
     Run-Checked { node (Join-Path $tools 'node_modules/electron-builder/cli.js') --config electron-builder.yml --win --x64 --dir }
@@ -37,7 +39,7 @@ try {
     $env:PDFPAL_M0_LIVE = if ($LiveProviders) { '1' } else { '0' }
     $env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + [Environment]::GetEnvironmentVariable('Path', 'Machine')
     Remove-Item $env:PDFPAL_M0_RECEIPT -ErrorAction SilentlyContinue
-    $exe = Join-Path $WorkRoot 'artifacts/win-unpacked/pdfpal Alpha.exe'
+    $exe = Join-Path $WorkRoot 'artifacts/win-unpacked/pdfpal.exe'
     $env:PDFPAL_DESKTOP_PROFILE = Join-Path $WorkRoot 'smoke-profile'
     Remove-Item $env:PDFPAL_DESKTOP_PROFILE -Recurse -Force -ErrorAction SilentlyContinue
     $env:PDFPAL_SETTINGS_PREVIEW = Join-Path $WorkRoot 'ai-settings.png'

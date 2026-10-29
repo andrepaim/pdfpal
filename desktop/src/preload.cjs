@@ -1,4 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron')
+let openUpdates, updatesPending = false
+ipcRenderer.on('pdfpal:open-updates', () => { if (openUpdates) openUpdates(); else updatesPending = true })
 let openSettings
 let settingsPending = false
 ipcRenderer.on('pdfpal:open-ai-settings', () => {
@@ -7,6 +9,16 @@ ipcRenderer.on('pdfpal:open-ai-settings', () => {
 })
 
 contextBridge.exposeInMainWorld('pdfpalDesktop', {
+  updatesState: () => ipcRenderer.invoke('pdfpal:updates-state'),
+  checkUpdates: () => ipcRenderer.invoke('pdfpal:check-updates'),
+  downloadUpdate: () => ipcRenderer.invoke('pdfpal:download-update'),
+  releaseNotes: () => ipcRenderer.invoke('pdfpal:release-notes'),
+  openLicenses: () => ipcRenderer.invoke('pdfpal:open-licenses'),
+  onOpenUpdates: callback => {
+    openUpdates = callback
+    if (updatesPending) queueMicrotask(() => { if (updatesPending && openUpdates) { updatesPending = false; openUpdates() } })
+    return () => { if (openUpdates === callback) openUpdates = undefined }
+  },
   setupStatus: () => ipcRenderer.invoke('pdfpal:setup-status'),
   setupState: () => ipcRenderer.invoke('pdfpal:setup-state'),
   completeSetup: () => ipcRenderer.invoke('pdfpal:complete-setup'),
