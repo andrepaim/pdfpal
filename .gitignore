@@ -13,3 +13,6 @@ extension/*.zip
 *.db-wal
 extension/package/
 *.tgz
+desktop/stage/
+desktop/artifacts/
+desktop/evidence/

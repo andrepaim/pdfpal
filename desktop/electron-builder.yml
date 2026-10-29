@@ -1,0 +1,18 @@
+appId: io.pdfpal.desktop.m0
+productName: pdfpal M0
+electronVersion: 45.1.0
+asar: true
+asarUnpack:
+  - '**/*.node'
+directories:
+  app: stage
+  output: artifacts
+files:
+  - '**/*'
+win:
+  target: dir
+  signAndEditExecutable: false
+linux:
+  target: dir
+# better-sqlite3 v13 uses N-API; install its Windows binary in the isolated stage.
+npmRebuild: false

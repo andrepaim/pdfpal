@@ -1,0 +1,52 @@
+name: Windows desktop feasibility
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'src/**'
+      - 'frontend/**'
+      - 'extension/**'
+      - 'test/unit/agent-discovery.test.ts'
+      - '.github/workflows/windows-m0.yml'
+      - 'package*.json'
+
+jobs:
+  packaged-windows:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx tsx --test test/unit/agent-discovery.test.ts
+      - run: node desktop/scripts/stage.mjs
+      - name: Build and exercise packaged application
+        shell: pwsh
+        run: ./desktop/scripts/windows-m0.ps1 -SourceRoot $env:GITHUB_WORKSPACE -WorkRoot "$env:RUNNER_TEMP/pdfpal-windows-m0"
+      - name: Keep packaged evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-m0-evidence
+          path: |
+            ${{ runner.temp }}/pdfpal-windows-m0/packaged-receipt.json
+            ${{ runner.temp }}/pdfpal-windows-m0/no-system-node-receipt.json
+            ${{ runner.temp }}/pdfpal-windows-m0/smoke.*.log
+      - name: Verify packaging did not replace CLI native modules
+        shell: pwsh
+        run: |
+          $env:PDFPAL_DATA_DIR = "$env:RUNNER_TEMP/pdfpal-cli-after-packaging"
+          node dist/cli/index.js --json project create "CLI after packaging"
+          if ($LASTEXITCODE -ne 0) { throw 'CLI regression after packaging' }
+      - name: Keep unsigned engineering application
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdfpal-windows-m0-unsigned
+          compression-level: 0
+          path: ${{ runner.temp }}/pdfpal-windows-m0/artifacts/win-unpacked/
