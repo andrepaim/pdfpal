@@ -10,13 +10,20 @@ $receipt = Get-Content (Join-Path $artifact 'beta-build-receipt.json') -Raw | Co
 $exe = Join-Path $artifact 'win-unpacked/pdfpal-test.exe'
 if ($receipt.appId -ne 'io.pdfpal.desktop.installer-acceptance' -or $receipt.executable -ne 'pdfpal-test.exe' -or
     $receipt.sha256 -ne (Get-FileHash -LiteralPath $exe).Hash.ToLowerInvariant()) { throw 'Use only the isolated beta acceptance build' }
-$caseRoot = Join-Path ([IO.Path]::GetTempPath()) ('pdfpal-beta-' + [Guid]::NewGuid().ToString())
+# .NET and Node can choose different TMP/TEMP priorities on hosted Windows.
+# Use the same API as the packaged Node startup guard.
+$nativeTemporary = & node -p "require('os').tmpdir()"
+if ($LASTEXITCODE -ne 0 -or -not [IO.Path]::IsPathRooted($nativeTemporary)) { throw 'Native Node temporary directory unavailable' }
+$caseRoot = Join-Path $nativeTemporary ('pdfpal-beta-' + [Guid]::NewGuid().ToString())
 $data = Join-Path $caseRoot 'library'
 $profile = Join-Path $caseRoot 'profile'
 $control = Join-Path $caseRoot 'control.json'
 $state = Join-Path $caseRoot 'state.json'
 New-Item -ItemType Directory -Force $data,$profile | Out-Null
 $script:reader = $null
+$script:standardOutput = $null
+$script:standardError = $null
+$script:allPaintObserved = $true
 $script:seen = @{}
 $startup = New-Object 'System.Collections.Generic.List[double]'
 $checks = New-Object 'System.Collections.Generic.List[string]'
@@ -55,6 +62,7 @@ function Start-Reader([switch]$Missing) {
     $listener.Start(); $port = $listener.LocalEndpoint.Port; $listener.Stop()
     $info = New-Object Diagnostics.ProcessStartInfo
     $info.FileName = $exe; $info.Arguments = '--beta-acceptance'; $info.UseShellExecute = $false; $info.WorkingDirectory = $caseRoot
+    $info.RedirectStandardOutput = $true; $info.RedirectStandardError = $true
     foreach ($entry in @{
         PDFPAL_BETA_DIRECTORY=$caseRoot; PDFPAL_DATA_DIR=$data; PDFPAL_DB=(Join-Path $data 'pdfpal.db'); PDFPAL_DESKTOP_PROFILE=$profile;
         PDFPAL_PORT=[string]$port; PDFPAL_AGENT='claude'; PDFPAL_M0_LIVE='0'; PDFPAL_M1_LIVE_CODEX='0'; PDFPAL_FIXTURE_MODE='account';
@@ -65,15 +73,18 @@ function Start-Reader([switch]$Missing) {
     foreach ($key in @('PDFPAL_M0_SMOKE','PDFPAL_M2_FAILURE_FIXTURE','PDFPAL_INSTALLER_ACCEPTANCE_RECEIPT','PDFPAL_INSTALLER_ACCEPTANCE_CONTROL')) { $info.EnvironmentVariables.Remove($key) }
     $timer = [Diagnostics.Stopwatch]::StartNew()
     $script:reader = [Diagnostics.Process]::Start($info)
+    $script:standardOutput = $script:reader.StandardOutput.ReadToEndAsync()
+    $script:standardError = $script:reader.StandardError.ReadToEndAsync()
     do {
         if ($script:reader.HasExited) { throw "Reader exited before usable UI ($($script:reader.ExitCode))" }
         $result = Read-State
         if ($result -and $result.state -eq 'ready') { break }
-        if ($timer.Elapsed.TotalSeconds -gt 45) { throw 'Usable library view timed out' }
+        if ($timer.Elapsed.TotalSeconds -gt 45) { throw "Usable library view timed out (phase: $($result.phase))" }
         Start-Sleep -Milliseconds 20
     } while ($true)
     $elapsed = $timer.Elapsed.TotalMilliseconds
-    if (-not $result.tray -or -not $result.visible) { throw 'Usable reader/tray is missing' }
+    if ($result.version -ne $receipt.version -or -not $result.tray -or -not $result.visible) { throw 'Usable reader/tray or matching build version is missing' }
+    if (-not $result.paintObserved) { $script:allPaintObserved = $false }
     $script:seen = @{}
     Remember-Tree | Out-Null
     return $elapsed
@@ -161,6 +172,8 @@ try {
         Command 'cycle' | Out-Null
         # Real second launch must focus this window without creating a backend.
         $second = [Diagnostics.Process]::Start($script:reader.StartInfo)
+        $secondOutput = $second.StandardOutput.ReadToEndAsync()
+        $secondError = $second.StandardError.ReadToEndAsync()
         if (-not $second.WaitForExit(10000) -or $second.ExitCode -ne 0) { throw 'Second launch did not focus the existing instance' }
         for ($attempt = 0; $attempt -lt 20; $attempt++) {
             $shown = Command 'show'
@@ -183,7 +196,7 @@ try {
     $report = [ordered]@{
         format=1; status='functional-checks-passed'; startedAt=$startedAt; completedAt=[DateTime]::UtcNow.ToString('o'); performanceAcceptance='pending-reference-machine'; version=$receipt.version; platform='win32'; signed=$false; evidence='packaged-fixture-on-existing-development-account';
         machine=@{windows=$os.Caption;build=$os.BuildNumber;logicalProcessors=$machine.NumberOfLogicalProcessors;ramGiB=[Math]::Round($machine.TotalPhysicalMemory/1GB,1);cpu=$cpu.Name;referenceMachine=$false};
-        startup=@{definition='fresh process launch to rendered usable home; OS caches retained; setup/provider probes excluded';runs=$StartupRuns;samplesMs=$startup.ToArray();p95Ms=$p95;targetMs=5000;withinBudget=($p95 -le 5000)};
+        startup=@{definition='fresh process launch to usable home DOM; frame observation reported separately; OS caches retained; setup/provider probes excluded';allFramesObserved=$script:allPaintObserved;runs=$StartupRuns;samplesMs=$startup.ToArray();p95Ms=$p95;targetMs=5000;withinBudget=($p95 -le 5000)};
         idle=$idle; tray=@{cycles=$TrayCycles;fixtureAnswersExpected=($TrayCycles+1);unrelatedProcessesTerminated=0};
         checks=$checks.ToArray(); cleanAccountAcceptance='pending'; realProviderLogin='pending'; publisherSigning='pending'
     }
@@ -199,4 +212,5 @@ try {
         try { Command 'quit' } catch {}
         if (-not $script:reader.WaitForExit(15000)) { & "$env:SystemRoot/System32/taskkill.exe" /PID $script:reader.Id /T /F | Out-Null }
     }
+    if ($script:standardError -and $script:standardError.IsCompleted) { Write-Host $script:standardError.Result }
 }

@@ -12,7 +12,11 @@ import { betaOptions, betaAcceptance } from './beta-acceptance.mjs'
 const root = path.dirname(fileURLToPath(import.meta.url))
 const metadata = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).pdfpalDesktop ?? {}
 const applicationId = metadata.appId ?? 'io.pdfpal.desktop'
-const beta = process.argv.includes('--beta-acceptance') ? betaOptions(metadata) : undefined
+let beta
+if (process.argv.includes('--beta-acceptance')) {
+  try { beta = betaOptions(metadata) }
+  catch { console.error('Beta acceptance requires isolated metadata and a matching temporary library/profile.'); app.exit(2) }
+}
 const installationCheck = process.argv.includes('--installer-acceptance')
 const m2 = process.argv.includes('--m2-smoke')
 const m1 = m2 || process.argv.includes('--m1-smoke')
@@ -313,6 +317,7 @@ async function boot() {
       const timer = setTimeout(() => child.kill(), 7000)
       await closed; clearTimeout(timer)
     }
+    if (beta) { console.error(`Beta startup failed: ${error.code ?? error.message}`); await shutdown(1); return }
     if (smoke && m2 && process.env.PDFPAL_M2_FAILURE_FIXTURE === '1' && error.code === 'EADDRINUSE') {
       failureCode = error.code
       await window.loadURL(recoveryURL)

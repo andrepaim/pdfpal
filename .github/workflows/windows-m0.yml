@@ -40,8 +40,6 @@ jobs:
           $kit = "$env:RUNNER_TEMP/pdfpal-beta-kit"
           node desktop/scripts/create-beta-kit.mjs "$env:RUNNER_TEMP/pdfpal-windows-m0/artifacts" $kit
           if ($LASTEXITCODE -ne 0) { throw 'Beta kit generation failed' }
-          & "$env:SystemRoot/System32/WindowsPowerShell/v1.0/powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$kit/payload/Start-Test.ps1" -PrepareOnly
-          if ($LASTEXITCODE -ne 0) { throw 'Native beta recorder preparation failed' }
           & "$env:SystemRoot/System32/WindowsPowerShell/v1.0/powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$kit/Open-Sandbox.ps1" -PrepareOnly
           if ($LASTEXITCODE -ne 0) { throw 'Portable Sandbox configuration failed' }
       - name: Keep packaged evidence

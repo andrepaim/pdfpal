@@ -38,8 +38,17 @@ export async function betaAcceptance({ options, app, window, ready, tray, showWi
     if (!response.ok) throw new Error(`Beta fixture HTTP ${response.status}`)
     return response.json()
   }
+  await publish({ state: 'starting', phase: 'library' })
   await wait(libraryReady, 'Library did not become usable')
-  await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+  await publish({ state: 'starting', phase: 'paint' })
+  // A hosted/locked Windows desktop can stop compositor callbacks completely.
+  // Record that limitation instead of hanging or claiming a painted frame.
+  let paintTimer
+  const paintObserved = await Promise.race([
+    evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))'),
+    new Promise(resolve => { paintTimer = setTimeout(() => resolve(false), 1000) }),
+  ])
+  clearTimeout(paintTimer)
   let fixture
   const fixtureFile = path.join(options.directory, 'fixture.json')
   if (fs.existsSync(fixtureFile)) fixture = JSON.parse(fs.readFileSync(fixtureFile, 'utf8'))
@@ -118,5 +127,5 @@ export async function betaAcceptance({ options, app, window, ready, tray, showWi
   }
   const watcher = fs.watch(options.directory, (_event, name) => { if (name === 'control.json') void read() })
   watcher.unref()
-  await publish({ state: 'ready', tray: !!tray, visible: window.isVisible() })
+  await publish({ state: 'ready', tray: !!tray, visible: window.isVisible(), paintObserved })
 }

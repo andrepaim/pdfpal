@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL('../../', import.meta.url))
 const escapeXML = value => value.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&apos;')
 export function sandboxConfiguration(directory) {
   if (!/^[A-Za-z]:[\\/]/.test(directory) || /[\r\n]/.test(directory)) throw new Error('Use a local Windows drive for the Sandbox kit')
-  return `<Configuration>\n  <Networking>Enable</Networking>\n  <ClipboardRedirection>Disable</ClipboardRedirection>\n  <AudioInput>Disable</AudioInput>\n  <VideoInput>Disable</VideoInput>\n  <PrinterRedirection>Disable</PrinterRedirection>\n  <MemoryInMB>8192</MemoryInMB>\n  <MappedFolders>\n    <MappedFolder><HostFolder>${escapeXML(path.win32.join(directory,'payload'))}</HostFolder><SandboxFolder>C:\\PDFPalTest</SandboxFolder><ReadOnly>true</ReadOnly></MappedFolder>\n    <MappedFolder><HostFolder>${escapeXML(path.win32.join(directory,'results'))}</HostFolder><SandboxFolder>C:\\PDFPalResults</SandboxFolder><ReadOnly>false</ReadOnly></MappedFolder>\n  </MappedFolders>\n  <LogonCommand><Command>cmd.exe /d /c &quot;C:\\PDFPalTest\\Start test.cmd&quot;</Command></LogonCommand>\n</Configuration>\n`
+  return `<Configuration>\n  <Networking>Enable</Networking>\n  <ClipboardRedirection>Disable</ClipboardRedirection>\n  <AudioInput>Disable</AudioInput>\n  <VideoInput>Disable</VideoInput>\n  <PrinterRedirection>Disable</PrinterRedirection>\n  <MemoryInMB>8192</MemoryInMB>\n  <MappedFolders>\n    <MappedFolder><HostFolder>${escapeXML(path.win32.join(directory,'payload'))}</HostFolder><SandboxFolder>C:\\PDFPalTest</SandboxFolder><ReadOnly>true</ReadOnly></MappedFolder>\n    <MappedFolder><HostFolder>${escapeXML(path.win32.join(directory,'results'))}</HostFolder><SandboxFolder>C:\\PDFPalResults</SandboxFolder><ReadOnly>false</ReadOnly></MappedFolder>\n  </MappedFolders>\n  <LogonCommand><Command>explorer.exe &quot;C:\\PDFPalTest&quot;</Command></LogonCommand>\n</Configuration>\n`
 }
 export async function createBetaKit(artifacts, output) {
   const manifest = JSON.parse(await fs.readFile(path.join(artifacts,'pdfpal-desktop-release.json'),'utf8'))
@@ -23,7 +23,13 @@ export async function createBetaKit(artifacts, output) {
   await fs.mkdir(payload,{recursive:true}); await fs.mkdir(path.join(output,'results'),{recursive:true})
   await fs.copyFile(installer,path.join(payload,manifest.installer))
   await fs.copyFile(path.join(artifacts,'pdfpal-desktop-release.json'),path.join(payload,'pdfpal-desktop-release.json'))
-  for (const file of ['Start test.cmd','Start-Test.ps1','Session recorder.html']) await fs.copyFile(path.join(root,'desktop/beta',file),path.join(payload,file))
+  for (const obsolete of ['Start test.cmd','Start-Test.ps1']) {
+    try { await fs.rm(path.join(payload,obsolete),{force:true}) }
+    catch { throw new Error('An obsolete launcher in the old kit cannot be removed. Build into a fresh folder and leave security protection enabled.') }
+  }
+  const template=await fs.readFile(path.join(root,'desktop/beta/Session recorder.html'),'utf8')
+  const seed={version:manifest.version,installer:{name:manifest.installer,size:manifest.size,sha256:manifest.sha256.toLowerCase()}}
+  await fs.writeFile(path.join(payload,'Session recorder.html'),template.replace('@@PDFPAL_SESSION@@',JSON.stringify(seed)))
   for (const file of ['Open Sandbox.cmd','Open-Sandbox.ps1']) await fs.copyFile(path.join(root,'desktop/beta',file),path.join(output,file))
   await fs.copyFile(path.join(root,'test/fixtures/sample.pdf'),path.join(payload,'Sample PDF.pdf'))
   await fs.copyFile(path.join(root,'docs/windows-quickstart.md'),path.join(payload,'Windows quickstart.txt'))

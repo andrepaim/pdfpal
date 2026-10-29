@@ -6,8 +6,9 @@ body{font:16px/1.5 system-ui,sans-serif;background:#111318;color:#e8eaf0;max-wid
 </style>
 <h1>pdfpal beta session recorder</h1>
 <p class="notice">For the observer. Let the reader follow the Windows quickstart unaided. Record clicks here as they happen. This page stays on this computer and sends nothing.</p>
-<p id="build" class="muted"></p><p id="status" role="status"></p>
+<p id="build" class="muted"></p><p id="status" role="status" aria-label="Session status"></p>
 <label>Load a saved report for follow-up <input id="load" type="file" accept=".json,application/json"></label>
+<details><summary>Check installer file against the supplied manifest (optional)</summary><label>Choose the supplied installer <input id="verify" type="file" accept=".exe"></label><p id="verification" role="status" aria-label="Installer verification"></p><p class="muted">This checks file identity, not publisher trust. Windows shows the publisher when you run the installer.</p></details>
 <fieldset><legend>Session</legend>
 <label>Anonymous participant ID <input id="participant" placeholder="P01" pattern="P[0-9]{2,4}" maxlength="5" required></label>
 <label>Starting point <select id="cohort"><option value="">Choose…</option><option value="existing-agent">Assistant already installed and signed in</option><option value="missing-agent">Assistant installation or sign-in needed</option></select></label>
@@ -16,7 +17,7 @@ body{font:16px/1.5 system-ui,sans-serif;background:#111318;color:#e8eaf0;max-wid
 <label><input id="nontechnical" type="checkbox">Participant does not routinely use developer tools</label>
 <label>Windows environment <select id="environment"><option value="existing-account">Existing Windows account</option><option value="fresh-windows-account">Fresh Windows account (observer verified)</option><option value="sandbox">Windows Sandbox</option></select></label>
 </fieldset>
-<h2>Observed milestones</h2><p class="muted">The clock began when the installer launched. A failed or stopped session is useful evidence too; save it with its missing milestones.</p>
+<h2>Observed milestones</h2><p>Click <strong>Begin installation timer</strong>, then double-click the supplied pdfpal installer in the same folder. Installation is started by you. Keep this observer page open.</p><button id="begin">Begin installation timer</button><p class="muted">A failed or stopped session is useful evidence too; save it with its missing milestones.</p>
 <div id="milestones"></div>
 <label><input id="tray" type="checkbox">Closed to tray and reopened the completed answer successfully</label>
 <h2>Outcome</h2>
@@ -27,13 +28,13 @@ body{font:16px/1.5 system-ui,sans-serif;background:#111318;color:#e8eaf0;max-wid
 <label>Status <select id="followup"><option value="pending">Not due yet</option><option value="returned">Confirmed use on another day within 14 days</option><option value="not-returned">Confirmed no return use in 14 days</option><option value="no-response">No follow-up response</option></select></label>
 <p><button id="save">Save anonymous JSON report</button></p>
 <p class="muted">Do not add PDFs, account names, prompts, answers, passwords, or diagnostics to this report. In Windows Sandbox, copy the downloaded JSON to <strong>C:\PDFPalResults</strong> before closing the sandbox.</p>
-<details><summary>Baseline detected before installation</summary><pre id="baseline"></pre><p class="muted">Command discovery checks PATH only. It cannot prove that an assistant or Node.js is absent everywhere. A clean Windows-account test needs observer confirmation.</p></details>
+<p class="muted">This page does not inspect installed software or accounts. The observer verifies the Windows environment and starting cohort.</p>
 <script id="session" type="application/json">@@PDFPAL_SESSION@@</script>
 <script>
 'use strict';
 let initial;
 try { initial=JSON.parse(document.getElementById('session').textContent) } catch { initial={version:'unknown',startedAt:new Date().toISOString(),preflight:{}} }
-let sessionId=crypto.randomUUID(), startedAt=initial.startedAt, preflight=initial.preflight, version=initial.version, followupOnly=false;
+let sessionId=crypto.randomUUID(), startedAt=initial.startedAt??null, preflight=initial.preflight??{}, version=initial.version, followupOnly=false;
 let events={setupShownMs:null,pdfOpenedMs:null,answerReceivedMs:null};
 const baselineKeys=['windowsBuild','nodeOnPath','npmOnPath','gitOnPath','claudeOnPath','codexOnPath','priorLibrary','priorDesktopPreferences','elevated','installerSignatureStatus'];
 const cleanBaseline=value=>Object.fromEntries(baselineKeys.filter(key=>Object.hasOwn(value??{},key)&&(
@@ -45,17 +46,31 @@ const $=id=>document.getElementById(id);
 const stages=[['setupShownMs','Setup is visible'],['pdfOpenedMs','First PDF is open'],['answerReceivedMs','First answer received']];
 function draw(){
  $('build').textContent=`Desktop ${version} · session ${sessionId}`;
- $('baseline').textContent=JSON.stringify(preflight,null,2);
+ $('begin').disabled=!!startedAt||followupOnly;
  $('milestones').replaceChildren();
  stages.forEach(([key,label],index)=>{
   const button=document.createElement('button');
   button.textContent=events[key]===null?label:`${label}: ${(events[key]/1000).toFixed(1)}s`;
-  button.disabled=followupOnly||events[key]!==null||(index>0&&events[stages[index-1][0]]===null);
+  button.disabled=!startedAt||followupOnly||events[key]!==null||(index>0&&events[stages[index-1][0]]===null);
   button.onclick=()=>{events[key]=Math.max(0,Date.now()-Date.parse(startedAt));draw()};
   $('milestones').append(button);
  });
 }
+$('begin').onclick=()=>{if(!startedAt){startedAt=new Date().toISOString();draw();$('status').textContent='Timer started. Run the supplied installer from this folder.'}};
+let verificationGeneration=0;
+$('verify').onchange=async()=>{
+ const generation=++verificationGeneration;
+ try{
+  const file=$('verify').files[0], expected=initial.installer;
+  if(!expected||!file||file.name!==expected.name||file.size!==expected.size)throw Error();
+  $('verification').textContent='Checking file…';
+  const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer()))).map(value=>value.toString(16).padStart(2,'0')).join('');
+  if(generation!==verificationGeneration)return;
+  $('verification').textContent=hash===expected.sha256?'Installer matches the supplied manifest.':'File does not match. Obtain a fresh kit before installing.';
+ }catch{if(generation===verificationGeneration)$('verification').textContent='Choose the matching installer from this kit.'}
+};
 $('save').onclick=()=>{
+ if(!startedAt){$('status').textContent='Begin the installation timer before recording a new session.';return}
  if(!/^P\d{2,4}$/.test($('participant').value)||!$('cohort').value){$('status').textContent='Use an anonymous ID such as P01 and choose the starting point.';return}
  if($('followup').value!=='pending'&&events.answerReceivedMs===null){$('status').textContent='Return-use follow-up applies to participants who received an answer.';return}
  if(events.answerReceivedMs!==null&&$('provider').value==='none'){$('status').textContent='Choose the assistant used for the answer, or leave the answer milestone unrecorded.';return}
