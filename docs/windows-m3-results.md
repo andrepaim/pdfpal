@@ -24,7 +24,7 @@ The release manifest is an attestation from the project's release pipeline, not 
 
 Unsigned builds explicitly disable signing and omit ambient certificate links. Signed builds require the publisher plus an existing certificate link or Windows-store thumbprint, enable `forceCodeSigning`, and then verify valid timestamped Authenticode signatures on both the app and installer against the expected publisher. A signed manifest is written only after that verification. Stale manifests are removed before a new build. A bounded retry handles observed transient Windows locks while writing or starting an intermediate NSIS stub; persistent access failures remain build failures.
 
-The manual **Signed Windows release candidate** workflow is restricted to `master` and the protected `windows-release` environment. Its secrets/variable names are documented in `desktop/README.md`. It uploads a candidate for review and has read-only repository permissions; it does not create a release or publish anything. No account was opened, certificate purchased, secret committed, or self-signed certificate presented as a public publisher identity.
+The manual **Signed Windows release candidate** workflow is restricted to `master` and targets the `windows-release` environment. Its environment protections and credentials still need to be configured before use. Its secrets/variable names are documented in `desktop/README.md`. It uploads a candidate for review and has read-only repository permissions; it does not create a release or publish anything. No account was opened, certificate purchased, secret committed, or self-signed certificate presented as a public publisher identity.
 
 ## Automated evidence
 
