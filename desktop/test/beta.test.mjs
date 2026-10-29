@@ -49,6 +49,15 @@ test('retention preserves pending and no-response counts without inventing confi
   report=summarizeSessions(rows.map(item=>({...item,followup:item.followup==='no-response'?'pending':item.followup})))
   assert.equal(report.returnUse.status,'awaiting-followup')
 })
+test('a later retry cannot erase the first activated session follow-up or reset its window',()=>{
+  const first=session(1,{followup:'returned'})
+  const retry=session(2,{participantId:'P01',cohort:'existing-agent',startedAt:'2026-10-17T12:00:00Z',updatedAt:'2026-10-18T12:00:00Z',usefulness:3})
+  let report=summarizeSessions([first,retry])
+  assert.equal(report.returnUse.numerator,1);assert.equal(report.returnUse.pending,0)
+  assert.equal(report.usefulness.numerator,0)
+  report=summarizeSessions([{...first,followup:'pending'},{...retry,followup:'returned'}])
+  assert.equal(report.returnUse.numerator,0);assert.equal(report.returnUse.pending,1)
+})
 test('read-only, ineligible, invalid milestone and premature follow-up reports cannot count as activation',()=>{
   const reading=session(1,{provider:'none',events:{setupShownMs:10000,pdfOpenedMs:30000,answerReceivedMs:null},usefulness:null})
   const ineligible=session(2,{eligibleAccount:false})

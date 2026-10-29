@@ -49,9 +49,13 @@ export function summarizeSessions(input) {
       status:group.length<10?'insufficient-sample':success.percent>=target&&timing<=timeTarget?'met':'missed' }]
   }))
   const activated = new Map()
+  const rated = new Map()
   for (const item of sessions) if (item.eligibleAccount && item.events.answerReceivedMs!==null) {
-    const previous=activated.get(item.participantId)
-    if (!previous || Date.parse(item.updatedAt)>Date.parse(previous.updatedAt)) activated.set(item.participantId,item)
+    // Follow up the first successful session. A later retry must not reset its
+    // retention window or erase the original session's confirmed return.
+    if (!activated.has(item.participantId)) activated.set(item.participantId,item)
+    const previous=rated.get(item.participantId)
+    if (item.usefulness!==null && (!previous || Date.parse(item.updatedAt)>Date.parse(previous.updatedAt))) rated.set(item.participantId,item)
   }
   const returnPeople=[...activated.values()]
   const returned=returnPeople.filter(item=>item.followup==='returned').length
@@ -60,7 +64,7 @@ export function summarizeSessions(input) {
   const notReturned=returnPeople.filter(item=>item.followup==='not-returned').length
   const installation=fraction(sessions.filter(item=>item.events.setupShownMs!==null).length,sessions.length)
   const support=fraction(eligible.filter(item=>item.neededHelp).length,eligible.length)
-  const ratings=returnPeople.filter(item=>item.usefulness!==null)
+  const ratings=[...rated.values()]
   const usefulness=fraction(ratings.filter(item=>item.usefulness>=4).length,ratings.length)
   return { format:1,observations:{files:input.length,sessions:sessions.length,duplicateReports:input.length-sessions.length,participants:people.length,eligibleParticipants:eligible.length,nonTechnicalEligible:eligible.filter(item=>item.nonTechnical).length},
     versions:[...new Set(sessions.map(item=>item.desktopVersion))],environments:Object.fromEntries(['fresh-windows-account','existing-account','sandbox'].map(environment=>[environment,sessions.filter(item=>item.environment===environment).length])),
