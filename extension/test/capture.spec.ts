@@ -327,7 +327,7 @@ test('chat layout supports book questions without a capture and removable automa
     await writeFile(agentPath, '#!/usr/bin/env node\nprocess.stdin.resume();process.stdin.on("end",()=>{process.stderr.write("OAuth session expired in fixture provider");process.exitCode=1;});\n', { mode: 0o700 });
     await panel.locator('#question').fill('A question with an expired provider session');
     await panel.locator('#question').press('Enter');
-    await expect(panel.locator('#companion-status')).toContainText('OAuth session expired');
+    await expect(panel.locator('#companion-status')).toContainText('needs sign-in');
     await expect(panel.locator('#connection-status')).toContainText('Connected');
     expect(await panel.evaluate(async () => ((await chrome.storage.local.get('companionConnection')).companionConnection as { clientId: string }).clientId)).toBe(clientId);
 

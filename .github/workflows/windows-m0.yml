@@ -25,11 +25,11 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npx tsx --test test/unit/agent-discovery.test.ts
-      - run: node --test desktop/test/preferences.test.mjs
+      - run: node --test desktop/test/preferences.test.mjs desktop/test/setup.test.mjs
       - run: node desktop/scripts/stage.mjs
       - name: Build and exercise packaged application
         shell: pwsh
-        run: ./desktop/scripts/windows-m1.ps1 -SourceRoot $env:GITHUB_WORKSPACE -WorkRoot "$env:RUNNER_TEMP/pdfpal-windows-m0"
+        run: ./desktop/scripts/windows-m2.ps1 -SourceRoot $env:GITHUB_WORKSPACE -WorkRoot "$env:RUNNER_TEMP/pdfpal-windows-m0"
       - name: Keep packaged evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -40,6 +40,7 @@ jobs:
             ${{ runner.temp }}/pdfpal-windows-m0/no-system-node-receipt.json
             ${{ runner.temp }}/pdfpal-windows-m0/smoke.*.log
             ${{ runner.temp }}/pdfpal-windows-m0/ai-settings.png
+            ${{ runner.temp }}/pdfpal-windows-m0/setup.png
       - name: Verify packaging did not replace CLI native modules
         shell: pwsh
         run: |
@@ -49,6 +50,6 @@ jobs:
       - name: Keep unsigned engineering application
         uses: actions/upload-artifact@v4
         with:
-          name: pdfpal-windows-m1-unsigned
+          name: pdfpal-windows-m2-unsigned
           compression-level: 0
           path: ${{ runner.temp }}/pdfpal-windows-m0/artifacts/win-unpacked/

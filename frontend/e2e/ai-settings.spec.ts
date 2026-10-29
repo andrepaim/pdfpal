@@ -28,6 +28,7 @@ test('AI settings follow the reader theme and save an available assistant', asyn
   await expect(modal.getByText('API credentials · billed separately')).toBeVisible();
   await expect(modal.getByRole('radio', { name: /OpenCode/ })).toBeDisabled();
   await modal.getByRole('radio', { name: /Codex/ }).check();
+  await modal.getByRole('checkbox').check();
   await modal.getByRole('button', { name: 'Use assistant' }).click();
   await expect(modal).not.toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('settings-test-agent'))).toBe('codex');
@@ -39,6 +40,7 @@ test('AI settings keep errors in the dialog and support escape without saving', 
   await page.evaluate(() => window.dispatchEvent(new Event('open-test-settings')));
   const modal = page.getByRole('dialog', { name: 'AI assistant' });
   await modal.getByRole('radio', { name: /Codex/ }).check();
+  await modal.getByRole('checkbox').check();
   await modal.getByRole('button', { name: 'Use assistant' }).click();
   await expect(modal.getByRole('alert')).toContainText('could not be saved');
   await page.keyboard.press('Escape');

@@ -3,9 +3,11 @@ param(
     [string]$WorkRoot = (Join-Path $env:TEMP 'pdfpal-windows-m0'),
     [switch]$LiveProviders,
     [switch]$SkipInstall,
-    [switch]$M1
+    [switch]$M1,
+    [switch]$M2
 )
 $ErrorActionPreference = 'Stop'
+if ($M2) { $M1 = $true }
 function Run-Checked([scriptblock]$Command) {
     & $Command
     if ($LASTEXITCODE -ne 0) { throw "Command failed with exit code $LASTEXITCODE" }
@@ -31,11 +33,13 @@ try {
     Run-Checked { node (Join-Path $stage 'test/runtime.test.mjs') }
     Run-Checked { node (Join-Path $tools 'node_modules/electron-builder/cli.js') --config electron-builder.yml --win --x64 --dir }
     $env:PDFPAL_M0_RECEIPT = Join-Path $WorkRoot 'packaged-receipt.json'
+    $env:PDFPAL_M2_FAILURE_FIXTURE = if ($M2) { '1' } else { '0' }
     $env:PDFPAL_M0_LIVE = if ($LiveProviders) { '1' } else { '0' }
     $env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + [Environment]::GetEnvironmentVariable('Path', 'Machine')
     Remove-Item $env:PDFPAL_M0_RECEIPT -ErrorAction SilentlyContinue
     $exe = Join-Path $WorkRoot 'artifacts/win-unpacked/pdfpal Alpha.exe'
     $env:PDFPAL_DESKTOP_PROFILE = Join-Path $WorkRoot 'smoke-profile'
+    Remove-Item $env:PDFPAL_DESKTOP_PROFILE -Recurse -Force -ErrorAction SilentlyContinue
     $env:PDFPAL_SETTINGS_PREVIEW = Join-Path $WorkRoot 'ai-settings.png'
     if ($M1) {
         $fixture = Join-Path $WorkRoot 'fixture-provider.exe'
@@ -45,9 +49,12 @@ using System;
 using System.Threading;
 public class FixtureProvider {
   public static void Main(string[] args) {
+    string mode = Environment.GetEnvironmentVariable("PDFPAL_FIXTURE_MODE");
     if (args.Length > 0 && args[0] == "--version") { Console.WriteLine("1.0.0 (Claude Code)"); return; }
-    if (args.Length > 0 && args[0] == "auth") { Console.WriteLine("{\"loggedIn\":true,\"authMethod\":\"claude.ai\"}"); return; }
-    Console.In.ReadToEnd(); Thread.Sleep(3000); Console.WriteLine("M1 background answer");
+    if (args.Length > 0 && args[0] == "--help") { Console.WriteLine(mode == "unsupported" ? "old help" : "--tools --strict-mcp-config --disallowedTools"); return; }
+    if (args.Length > 0 && args[0] == "auth") { Console.WriteLine(mode == "signed_out" ? "{\"loggedIn\":false}" : mode == "api" ? "{\"authMethod\":\"api_key\",\"token\":\"SECRET\"}" : mode == "unknown" ? "unrecognized SECRET" : "{\"loggedIn\":true,\"authMethod\":\"claude.ai\"}"); return; }
+    if (mode == "offline") { Console.Error.WriteLine("ECONNRESET token=SECRET"); Environment.Exit(1); }
+    string prompt = Console.In.ReadToEnd(); Thread.Sleep(3000); Console.WriteLine(prompt.Contains("Reply exactly PDFPAL_CONNECTION_OK") ? "PDFPAL_CONNECTION_OK" : "M1 background answer");
   }
 }
 '@
@@ -59,10 +66,11 @@ public class FixtureProvider {
         } else { Add-Type -TypeDefinition $source -OutputAssembly $fixture -OutputType ConsoleApplication }
         $env:CLAUDE_BIN = $fixture
         $env:PDFPAL_AGENT = 'claude'
+        if ($M2) { Run-Checked { node (Join-Path $stage 'test/setup-native.mjs') }; Run-Checked { node --test (Join-Path $stage 'test/setup.test.mjs') } }
     }
     $start = New-Object System.Diagnostics.ProcessStartInfo
     $start.FileName = $exe
-    $start.Arguments = if ($M1) { '--m1-smoke' } else { '--m0-smoke' }
+    $start.Arguments = if ($M2) { '--m2-smoke' } elseif ($M1) { '--m1-smoke' } else { '--m0-smoke' }
     $start.UseShellExecute = $false
     $process = New-Object System.Diagnostics.Process
     $process.StartInfo = $start
@@ -84,7 +92,7 @@ public class FixtureProvider {
         $noNode = New-Object System.Diagnostics.Process
         $noNode.StartInfo = $start
         $noNode.Start() | Out-Null
-        if (-not $noNode.WaitForExit(90000)) { taskkill.exe /PID $noNode.Id /T /F; throw 'No-system-Node smoke timed out' }
+        if (-not $noNode.WaitForExit(180000)) { taskkill.exe /PID $noNode.Id /T /F; throw 'No-system-Node smoke timed out' }
         if ($noNode.ExitCode -ne 0) { throw 'No-system-Node smoke failed' }
         Get-Content $env:PDFPAL_M0_RECEIPT
         Remove-Item $env:PDFPAL_DESKTOP_PROFILE -Recurse -Force -ErrorAction SilentlyContinue

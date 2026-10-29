@@ -226,3 +226,15 @@ test('source file endpoint falls back to its URL when the managed PDF is missing
     cleanup(config, { close() {} } as never)
   }
 })
+
+test('reader API refuses cross-site and rebinding requests while preserving same-origin access', async () => {
+  const config = testConfig(), app = await buildServer(config)
+  try {
+    const create = { method: 'POST' as const, url: '/api/projects', payload: { title: 'Untrusted document' } }
+    for (const headers of [{ host: 'attacker.example' }, { host: 'localhost:8200', origin: 'https://attacker.example' }, { host: 'localhost:8200', origin: 'null' }, { host: 'localhost:8200', 'sec-fetch-site': 'cross-site' }])
+      assert.equal((await app.inject({ ...create, headers })).statusCode, 403)
+    assert.equal((await app.inject({ url: '/api/projects' })).json().length, 0)
+    assert.equal((await app.inject({ ...create, headers: { host: 'localhost:8200', origin: 'http://localhost:8200' } })).statusCode, 200)
+    assert.equal((await app.inject({ method: 'POST', url: '/api/desktop/install', payload: { command: 'arbitrary' } })).statusCode, 404)
+  } finally { await app.close(); fs.rmSync(config.dataDir, { recursive: true, force: true }) }
+})

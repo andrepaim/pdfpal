@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { cleanup, testConfig } from '../helpers/test-utils.js'
-import { loadConfig } from '../../src/core/config.js'
+import { loadConfig, saveAgentBinary } from '../../src/core/config.js'
 
 test('loads and imports legacy config.env', () => {
   const initial = testConfig()
@@ -38,4 +38,18 @@ test('explicit configuration overrides environment values', () => {
   process.env.PDFPAL_PORT = '9001'
   try { assert.equal(loadConfig({ dataDir: initial.dataDir, port: 9002 }).port, 9002) }
   finally { if (previous === undefined) delete process.env.PDFPAL_PORT; else process.env.PDFPAL_PORT = previous; cleanup(initial, { close() {} } as never) }
+})
+
+test('choosing an assistant executable preserves unrelated configuration and environment precedence', () => {
+  const initial = testConfig(), previous = process.env.CODEX_BIN
+  try {
+    delete process.env.CODEX_BIN
+    fs.writeFileSync(`${initial.dataDir}/config.json`, JSON.stringify({ agent: 'claude', extra: 'keep' }))
+    saveAgentBinary(initial, 'codex', '/chosen/codex')
+    assert.equal(loadConfig({ dataDir: initial.dataDir }).codexBin, '/chosen/codex')
+    assert.equal(JSON.parse(fs.readFileSync(`${initial.dataDir}/config.json`, 'utf8')).extra, 'keep')
+    process.env.CODEX_BIN = '/fixed/codex'
+    assert.throws(() => saveAgentBinary(initial, 'codex', '/different/codex'))
+    assert.equal(loadConfig({ dataDir: initial.dataDir }).codexBin, '/fixed/codex')
+  } finally { if (previous === undefined) delete process.env.CODEX_BIN; else process.env.CODEX_BIN = previous; cleanup(initial, { close() {} } as never) }
 })

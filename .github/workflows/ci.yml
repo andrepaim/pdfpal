@@ -19,7 +19,7 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
       - name: Desktop preferences
-        run: node --test desktop/test/preferences.test.mjs
+        run: node --test desktop/test/preferences.test.mjs desktop/test/setup.test.mjs
       - name: Test with coverage
         run: npm test
       - name: Build application

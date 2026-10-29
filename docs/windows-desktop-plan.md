@@ -2,7 +2,7 @@
 
 Status: proposed implementation plan. No desktop functionality is implemented by this document.
 
-Implementation update: the user accepted the working M0 build. M1 now implements the tray, desktop lifecycle, native provider integration, preferences, server ownership, and shared-library safeguards. See [M0 results](windows-m0-results.md) and [M1 results](windows-m1-results.md) for evidence and remaining limits. Guided setup and installer work remain later milestones.
+Implementation update: the user accepted M0 and M1, including the themed AI settings dialog. M2 adds guided setup, optional connection tests, recovery screens, diagnostics, and reviewed desktop security boundaries. See [M0 results](windows-m0-results.md), [M1 results](windows-m1-results.md), and [M2 results](windows-m2-results.md) for evidence and explicit remaining manual gates. The signed installer and release distribution remain M3.
 
 Date: 2026-10-29.
 

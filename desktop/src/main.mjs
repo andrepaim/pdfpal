@@ -2,12 +2,14 @@ import { app, BrowserWindow, utilityProcess, Tray, Menu, nativeImage, nativeThem
 import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawn } from 'node:child_process'
+import { provider, setupScript, trustedSender, recoveryMessage, diagnostics } from './setup.mjs'
 import { preferences, restoreBounds, safeRoute, startupArguments } from './preferences.mjs'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
-const m1 = process.argv.includes('--m1-smoke')
+const m2 = process.argv.includes('--m2-smoke')
+const m1 = m2 || process.argv.includes('--m1-smoke')
 const smoke = m1 || process.argv.includes('--m0-smoke')
 const temporary = smoke ? fs.mkdtempSync(path.join(os.tmpdir(), 'pdfpal-desktop-')) : undefined
 if (temporary) {
@@ -27,6 +29,12 @@ app.setPath('userData', profile)
 if (process.platform === 'win32') app.setAppUserModelId('io.pdfpal.desktop')
 const prefs = preferences(path.join(app.getPath('userData'), 'desktop.json'))
 let backend, window, tray, ready, pendingReceipt, stopping = false, exited = true, booting = false, crashRetries = 0, secondLaunches = 0
+const recoveryURL = pathToFileURL(path.join(root, 'recovery.html')).href
+const journal = diagnostics(path.join(profile, 'diagnostics.json'))
+let lastAgents = [], diagnosticPreview, setupProcess, setupPending = false, loadedOrigin, failureCode = 'STARTING', existingOrigin
+let serviceState = { state: 'starting' }
+let testing = false, testEpoch = 0
+let recoveryScreenPassed = false
 let recoveryFixture
 const shutdownPhases = []
 let restoreWindowState = false
@@ -39,7 +47,7 @@ function rpc(command, extra = {}) {
   if (!backend || exited) return Promise.reject(new Error('pdfpal is not running'))
   return new Promise((resolve, reject) => {
     const id = ++rpcId
-    const timer = setTimeout(() => { pending.delete(id); reject(new Error('The local service did not respond. Retry.')) }, 10000)
+    const timer = setTimeout(() => { pending.delete(id); reject(new Error('The local service did not respond. Retry.')) }, command === 'test-connection' ? 65000 : 30000)
     pending.set(id, { resolve, reject, timer })
     backend.postMessage({ type: 'rpc', id, command, ...extra })
   })
@@ -53,6 +61,7 @@ function savePrefs(patch) {
   try { prefs.update(patch) }
   catch (error) {
     if (smoke) throw error
+    journal.record('PREFERENCES_FAILED')
     if (!warnedPreferences) { warnedPreferences = true; notify('pdfpal settings could not be saved', 'Check that your application settings folder is writable.') }
   }
 }
@@ -81,7 +90,9 @@ async function setAgent(agent) {
 async function aiSettings() {
   if (!ready) return showWindow()
   showWindow()
+  const before = await window.webContents.executeJavaScript('({ open: !!document.querySelector(".ai-settings[open]"), id: Number(document.querySelector(".ai-settings")?.dataset.openId ?? 0) })')
   window.webContents.send('pdfpal:open-ai-settings')
+  return before
 }
 function startupArgs() {
   if (!ready) return []
@@ -104,6 +115,7 @@ function updateTray() {
         catch (error) { dialog.showErrorBox('Startup preference', error.message) }
         updateTray()
       } },
+    { label: 'Diagnostics', click: () => { showWindow(); if (loadedOrigin && !window.webContents.getURL().startsWith('file:')) window.webContents.send('pdfpal:open-diagnostics'); else void window.loadURL(recoveryURL) } },
     { label: 'Retry service', enabled: !ready && !booting, click: () => { crashRetries = 0; void boot() } },
     { type: 'separator' },
     { label: 'Quit', click: () => { void requestQuit() } },
@@ -121,7 +133,7 @@ async function requestQuit(testChoice) {
     })
     if (choice.response === 0) return false
   }
-  if (window && !window.isDestroyed() && ownedOrigin(window.webContents.getURL())) {
+  if (window && !window.isDestroyed() && (ownedOrigin(window.webContents.getURL()) || (loadedOrigin && window.webContents.getURL().startsWith(`${loadedOrigin}/`)))) {
     let timer
     const flushed = await Promise.race([
       window.webContents.executeJavaScript('window.pdfpalFlushPending ? window.pdfpalFlushPending().then(() => true, () => false) : true').catch(() => false),
@@ -163,44 +175,14 @@ async function shutdown(code = 0) {
   tray?.destroy()
   app.exit(code)
 }
-async function boot() {
-  if (booting || stopping) return
-  booting = true; ready = undefined; updateTray()
-  try {
-    const child = utilityProcess.fork(path.join(root, 'backend.mjs'), [], {
-      env: { ...process.env, PDFPAL_M0_SMOKE: smoke ? '1' : '0' }, stdio: 'pipe', serviceName: 'pdfpal backend',
-    })
-    backend = child; exited = false
-    child.stdout?.resume()
-    if (smoke) child.stderr?.on('data', chunk => process.stderr.write(chunk)); else child.stderr?.resume()
-    const initial = await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('Local service startup timed out. Retry from the tray.')), process.env.PDFPAL_M0_LIVE === '1' ? 270000 : 45000)
-      child.on('message', message => {
-        if (message.type === 'shutdown-progress') shutdownPhases.push(message.phase)
-        if (message.type === 'rpc-result') {
-          const request = pending.get(message.id)
-          if (request) { clearTimeout(request.timer); pending.delete(message.id); message.error ? request.reject(new Error(message.error)) : request.resolve(message.result) }
-        }
-        if (message.type === 'ready') { clearTimeout(timer); resolve(message) }
-        if (message.type === 'failure') { clearTimeout(timer); reject(Object.assign(new Error(message.message), { code: message.code, existing: message.existing })) }
-      })
-      child.once('exit', code => {
-        clearTimeout(timer)
-        if (backend === child) { exited = true; rejectPending() }
-        reject(new Error(`Local service stopped (${code}).`))
-        if (!stopping && ready && backend === child && !booting) {
-          ready = undefined; updateTray()
-          if (crashRetries++ < 1 && (!smoke || recoveryFixture)) { notify('pdfpal is restarting', 'The local service stopped. Retry any interrupted question.'); void boot() }
-          else if (!smoke) dialog.showErrorBox('pdfpal service stopped', 'Use Retry service in the tray. Interrupted AI requests are not sent again automatically.')
-        }
-      })
-    })
-    ready = initial
-    if (!window || window.isDestroyed()) {
+function ensureWindow() {
+  if (!window || window.isDestroyed()) {
       window = new BrowserWindow({ ...restoreBounds(prefs.value.bounds, screen.getAllDisplays()), show: false, minWidth: 600, minHeight: 400,
         backgroundColor: '#0f0f0f', webPreferences: { preload: path.join(root, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true } })
       restoreWindowState = true
       window.webContents.setWindowOpenHandler(({ url }) => { openBrowser(url); return { action: 'deny' } })
+      window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
+      window.webContents.on('will-attach-webview', event => event.preventDefault())
       window.webContents.on('will-navigate', (event, url) => { if (!ownedOrigin(url)) event.preventDefault() })
       const rememberRoute = (_event, url, isMainFrame = true) => { if (isMainFrame && ownedOrigin(url)) { const parsed = new URL(url); savePrefs({ route: safeRoute(parsed.pathname + parsed.search + parsed.hash) }) } }
       window.webContents.on('did-navigate-in-page', rememberRoute)
@@ -216,9 +198,80 @@ async function boot() {
       })
       window.on('session-end', () => { void requestQuit('cancel') })
     }
-    await window.loadURL(ready.origin + safeRoute(prefs.value.route))
+}
+function setServiceState(state) {
+  serviceState = state
+  window?.webContents.send('pdfpal:service-state', state)
+}
+async function inspectSetup() {
+  const started = Date.now()
+  const snapshot = await rpc('inspect')
+  if (smoke) console.error(`Setup inspection completed in ${Date.now() - started}ms`)
+  lastAgents = snapshot.agents
+  return { ...snapshot, complete: prefs.value.setupComplete === true,
+    agents: snapshot.agents.map(({ fingerprint, ...agent }) => ({ ...agent,
+      testedAt: fingerprint && prefs.value.connectionTests?.[agent.id]?.fingerprint === fingerprint ? prefs.value.connectionTests[agent.id].at : undefined })) }
+}
+async function launchSetup(agent, action) {
+  provider(agent)
+  if (!['install', 'login', 'docs'].includes(action)) throw new Error('Unknown action')
+  if (action === 'docs' || process.platform !== 'win32') { await shell.openExternal(provider(agent).docs); return }
+  if (setupPending || setupProcess) throw new Error('Finish or close the existing setup window first, then check again.')
+  setupPending = true
+  try {
+    const binary = action === 'login' ? await rpc('login-command', { agent }) : undefined
+    const script = setupScript(agent, action, binary)
+    const child = spawn(path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+      ['-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
+      { cwd: os.tmpdir(), detached: true, windowsHide: false, stdio: 'ignore' })
+    setupProcess = child
+    child.once('exit', () => { if (setupProcess === child) setupProcess = undefined })
+    await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject) })
+    child.unref(); journal.record('SETUP_LAUNCHED')
+  } catch { setupProcess = undefined; journal.record('SETUP_FAILED'); throw new Error('Could not open setup. Use the official setup guide, then check again.') }
+  finally { setupPending = false }
+}
+async function boot() {
+  if (booting || stopping) return
+  booting = true; ready = undefined; failureCode = 'STARTING'; existingOrigin = undefined; journal.record('STARTING'); updateTray()
+  try {
+    ensureWindow()
+    setServiceState({ state: 'starting' })
+    if (!loadedOrigin) { await window.loadURL(recoveryURL); if (!smoke && (!process.argv.includes('--hidden') || !tray || !prefs.value.setupComplete)) showWindow() }
+    const child = utilityProcess.fork(path.join(root, 'backend.mjs'), [], {
+      env: { ...process.env, PDFPAL_M0_SMOKE: smoke ? '1' : '0' }, stdio: 'pipe', serviceName: 'pdfpal backend',
+    })
+    backend = child; exited = false
+    child.stdout?.resume()
+    if (smoke) child.stderr?.on('data', chunk => process.stderr.write(chunk)); else child.stderr?.resume()
+    const initial = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Local service startup timed out. Retry from the tray.')), process.env.PDFPAL_M0_LIVE === '1' ? 270000 : 45000)
+      child.on('message', message => {
+        if (message.type === 'shutdown-progress') shutdownPhases.push(message.phase)
+        if (message.type === 'rpc-result') {
+          const request = pending.get(message.id)
+          if (request) { clearTimeout(request.timer); pending.delete(message.id); message.error ? request.reject(Object.assign(new Error(message.error), { code: message.code })) : request.resolve(message.result) }
+        }
+        if (message.type === 'ready') { clearTimeout(timer); resolve(message) }
+        if (message.type === 'failure') { clearTimeout(timer); reject(Object.assign(new Error(message.message), { code: message.code, existing: message.existing })) }
+      })
+      child.once('exit', code => {
+        clearTimeout(timer)
+        if (backend === child) { exited = true; rejectPending() }
+        reject(new Error(`Local service stopped (${code}).`))
+        if (!stopping && ready && backend === child && !booting) {
+          journal.record('BACKEND_STOPPED'); ready = undefined; updateTray(); setServiceState({ state: 'failed' })
+          if (crashRetries++ < 1 && (!smoke || recoveryFixture)) { notify('pdfpal is restarting', 'The local service stopped. Retry any interrupted question.'); void boot() }
+          else if (!smoke) showWindow()
+        }
+      })
+    })
+    ready = initial
+    if (loadedOrigin !== ready.origin || window.webContents.getURL() === recoveryURL) await window.loadURL(ready.origin + safeRoute(prefs.value.route))
+    loadedOrigin = ready.origin
+    journal.record('READY'); setServiceState({ state: 'ready', interrupted: crashRetries > 0 })
     if (exited) throw new Error('The local service stopped during startup. Retry.')
-    if (!smoke && (!process.argv.includes('--hidden') || !tray)) showWindow()
+    if (!smoke && (!process.argv.includes('--hidden') || !tray || !prefs.value.setupComplete)) showWindow()
     booting = false; updateTray()
     if (smoke) await smokeTest()
   } catch (error) {
@@ -230,13 +283,25 @@ async function boot() {
       const timer = setTimeout(() => child.kill(), 7000)
       await closed; clearTimeout(timer)
     }
+    if (smoke && m2 && process.env.PDFPAL_M2_FAILURE_FIXTURE === '1' && error.code === 'EADDRINUSE') {
+      failureCode = error.code
+      await window.loadURL(recoveryURL)
+      for (let i = 0; i < 100; i++) {
+        if (await window.webContents.executeJavaScript('document.getElementById("title").textContent.includes("already running")')) break
+        await new Promise(resolve => setTimeout(resolve, 50))
+      }
+      if (!await window.webContents.executeJavaScript('document.getElementById("title").textContent.includes("already running")')) throw new Error('Startup recovery did not render')
+      if (!await window.webContents.executeJavaScript('window.pdfpalDesktop.setAgent("claude").then(() => false, () => true)')) throw new Error('Recovery page received provider privileges')
+      recoveryScreenPassed = true
+      process.env.PDFPAL_M2_FAILURE_FIXTURE = '0'
+      await window.webContents.executeJavaScript('document.getElementById("retry").click()')
+      return
+    }
     if (smoke) { console.error(`Desktop check failed: ${error.message}`); await shutdown(1); return }
-    const buttons = ['Retry', ...(error.existing ? ['Open existing in browser'] : []), 'Quit']
-    const choice = await dialog.showMessageBox({ type: 'error', title: 'pdfpal could not start', message: error.code === 'EADDRINUSE' ? 'Another application is using the local port pdfpal needs. Close the other pdfpal server or application, then retry.' : error.message,
-      buttons, cancelId: buttons.length - 1 })
-    if (choice.response === 0) void boot()
-    else if (error.existing && choice.response === 1) openBrowser(error.existing)
-    else await shutdown(1)
+    journal.record('START_FAILED'); failureCode = error.code ?? 'BACKEND_FAILED'; existingOrigin = error.existing
+    setServiceState({ state: 'failed' })
+    if (!loadedOrigin) await window.loadURL(recoveryURL)
+    showWindow()
   }
 }
 async function smokeTest() {
@@ -247,11 +312,40 @@ async function smokeTest() {
     node: process.versions.node, checks: ready.checks, ui, providers: ready.providers }
   check(process.env.PDFPAL_M0_RECEIPT, 'Set PDFPAL_M0_RECEIPT for evidence')
   if (ready.providers?.agents.some(agent => agent.generation !== 'passed')) pendingReceipt.status = 'provider_gate_failed'
+  if (recoveryScreenPassed && !pendingReceipt.checks.includes('startup-recovery-screen-and-retry')) pendingReceipt.checks.push('startup-recovery-screen-and-retry')
   if (m1) {
     check(tray && !tray.isDestroyed(), 'Tray was not created')
-    await aiSettings()
-    for (let i = 0; i < 100; i++) {
-      if (await window.webContents.executeJavaScript('!!document.querySelector(".ai-settings[open] input[type=radio]")')) break
+    if (m2 && !recoveryFixture) {
+      for (let i = 0; i < 350; i++) {
+        if (await window.webContents.executeJavaScript('!!document.querySelector(".ai-settings[open][aria-busy=false] input[type=radio]")')) break
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      check(await window.webContents.executeJavaScript('document.querySelector("#ai-settings-title")?.textContent === "Connect your reading assistant"'), 'First-launch setup did not open')
+      await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+    if (process.env.PDFPAL_SETTINGS_PREVIEW) fs.writeFileSync(process.env.PDFPAL_SETTINGS_PREVIEW.replace('ai-settings.png', 'setup.png'), (await window.webContents.capturePage()).toPNG())
+      check((await rpc('status')).active === 0, 'Passive discovery triggered generation')
+      await window.webContents.executeJavaScript('Array.from(document.querySelectorAll(".ai-settings button")).find(button => button.textContent === "Test connection").click()')
+      for (let i = 0; i < 350; i++) {
+        if (await window.webContents.executeJavaScript('!!document.querySelector(".ai-settings-verified")')) break
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      check(await window.webContents.executeJavaScript('!!document.querySelector(".ai-settings-verified")'), 'Explicit connection test failed')
+      await window.webContents.executeJavaScript('document.querySelector(".ai-settings-save").click()')
+      for (let i = 0; i < 100 && !prefs.value.setupComplete; i++) await new Promise(resolve => setTimeout(resolve, 50))
+      check(prefs.value.setupComplete && prefs.value.connectionTests?.claude?.at, 'Setup completion/test did not persist')
+      const cancelled = window.webContents.executeJavaScript('window.pdfpalDesktop.testConnection("claude").then(() => false, () => true)')
+      for (let i = 0; i < 200; i++) { if ((await rpc('status')).active) break; await new Promise(resolve => setTimeout(resolve, 50)) }
+      await window.webContents.executeJavaScript('window.pdfpalDesktop.cancelTest()')
+      check(await cancelled, 'Cancelling the explicit test did not reject it')
+      const report = await window.webContents.executeJavaScript('window.pdfpalDesktop.diagnostics()')
+      check(report.events.some(event => event.code === 'TEST_PASSED') && !JSON.stringify(report).includes(process.env.CLAUDE_BIN), 'Diagnostic report leaked a path or missed the test')
+      check(await window.webContents.executeJavaScript('window.pdfpalDesktop.setupAction("invalid", "install").then(() => false, () => true)'), 'Invalid privileged setup action was accepted')
+      pendingReceipt.checks.push('first-launch-no-passive-generation', 'explicit-connection-test', 'setup-completion-persisted', 'cancel-connection-test', 'redacted-diagnostics', 'invalid-setup-ipc-rejected')
+    }
+    const settingsBefore = await aiSettings()
+    await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+    for (let i = 0; i < 350; i++) {
+      if (await window.webContents.executeJavaScript(`(() => { const node = document.querySelector('.ai-settings[open][aria-busy=false]'); return !!node?.querySelector('input[type=radio]') && (${settingsBefore.open} || Number(node.dataset.openId) > ${settingsBefore.id}); })()`)) break
       await new Promise(resolve => setTimeout(resolve, 100))
     }
     const settings = await window.webContents.executeJavaScript(`(() => {
@@ -260,6 +354,7 @@ async function smokeTest() {
         options: modal?.querySelectorAll('input[type=radio]').length };
     })()`)
     check(settings.open && settings.theme === 'rgb(26, 26, 26)' && settings.options > 0, 'Themed AI settings did not open')
+    await window.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
     if (process.env.PDFPAL_SETTINGS_PREVIEW) fs.writeFileSync(process.env.PDFPAL_SETTINGS_PREVIEW, (await window.webContents.capturePage()).toPNG())
     await window.webContents.executeJavaScript('document.querySelector("[aria-label=\\"Close AI settings\\"]").click()')
     pendingReceipt.checks.push('themed-ai-settings-from-tray')
@@ -338,10 +433,53 @@ else {
   app.on('window-all-closed', () => {})
   app.on('before-quit', event => { if (!stopping) { event.preventDefault(); void requestQuit() } })
   app.on('activate', showWindow)
-  ipcMain.handle('pdfpal:set-agent', async (event, agent) => {
-    if (event.sender !== window?.webContents || event.senderFrame !== window.webContents.mainFrame || !ownedOrigin(event.senderFrame.url)) throw new Error('Untrusted sender')
-    return setAgent(agent)
+  function handle(name, callback, recovery = false) {
+    ipcMain.handle(`pdfpal:${name}`, async (event, ...args) => {
+      if (!trustedSender(event, window, ready?.origin ?? loadedOrigin, recovery ? recoveryURL : undefined)) throw new Error('Untrusted sender')
+      if (!recovery && !ready) throw new Error('The local service is restarting. Retry shortly.')
+      return callback(...args)
+    })
+  }
+  handle('set-agent', setAgent)
+  handle('setup-state', inspectSetup)
+  handle('setup-status', () => ({ complete: prefs.value.setupComplete === true }))
+  handle('complete-setup', () => { prefs.update({ setupComplete: true }); return true })
+  handle('setup-action', launchSetup)
+  handle('choose-binary', async agent => {
+    provider(agent)
+    const choice = await dialog.showOpenDialog(window, { title: 'Choose your installed assistant', properties: ['openFile'], filters: [{ name: 'Application', extensions: process.platform === 'win32' ? ['exe'] : ['*'] }] })
+    if (choice.canceled || !choice.filePaths[0]) return false
+    return rpc('choose-binary', { agent, executable: choice.filePaths[0] })
   })
+  handle('test-connection', async agent => {
+    provider(agent)
+    if (testing) throw new Error('A connection test is already running.')
+    testing = true
+    const epoch = ++testEpoch
+    try {
+      // Capture identity before invoking: changing/installing the provider invalidates verification.
+      const before = (await rpc('inspect')).agents.find(item => item.id === agent)
+      if (epoch !== testEpoch) throw Object.assign(new Error('Connection test cancelled.'), { code: 'AGENT_CANCELLED' })
+      const result = await rpc('test-connection', { agent })
+      if (epoch !== testEpoch) throw Object.assign(new Error('Connection test cancelled.'), { code: 'AGENT_CANCELLED' })
+      prefs.update({ connectionTests: { ...prefs.value.connectionTests, [agent]: { fingerprint: before.fingerprint, at: result.at } } })
+      journal.record('TEST_PASSED'); return result
+    } catch (error) { journal.record(error.code === 'AGENT_CANCELLED' ? 'TEST_CANCELLED' : 'TEST_FAILED'); throw error }
+    finally { testing = false }
+  })
+  handle('cancel-test', () => { testEpoch++; return rpc('cancel-test') })
+  handle('service-state', () => serviceState, true)
+  handle('recovery', () => ({ ...recoveryMessage(failureCode), starting: booting, existing: !!existingOrigin }), true)
+  handle('retry-service', () => { if (!booting && !ready) { crashRetries = 0; void boot() }; return true }, true)
+  handle('open-existing', () => { if (existingOrigin) openBrowser(existingOrigin) }, true)
+  handle('diagnostics', () => { diagnosticPreview = journal.preview(app.getVersion(), lastAgents); return diagnosticPreview }, true)
+  handle('export-diagnostics', async () => {
+    if (!diagnosticPreview) throw new Error('Preview diagnostics first')
+    const choice = await dialog.showSaveDialog(window, { title: 'Export diagnostics', defaultPath: 'pdfpal-diagnostics.json', filters: [{ name: 'JSON report', extensions: ['json'] }] })
+    if (choice.canceled || !choice.filePath) return false
+    fs.writeFileSync(choice.filePath, JSON.stringify(diagnosticPreview, null, 2), { mode: 0o600 }); return true
+  }, true)
+  handle('quit', () => { void requestQuit(); return true }, true)
   app.whenReady().then(async () => {
     try {
       const icon = nativeImage.createFromPath(path.join(root, 'frontend/dist/favicon-32.png'))

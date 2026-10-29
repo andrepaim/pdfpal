@@ -57,9 +57,12 @@ export function agentCandidates(agent: DesktopAgent, options: { binary?: string;
   if (options.binary && options.binary !== agent) return [options.binary]
   const dirs = (env.PATH ?? env.Path ?? '').split(platform === 'win32' ? ';' : ':').filter(dir => p.isAbsolute(dir))
   const home = options.home ?? os.homedir()
+  if (platform === 'win32' && env.APPDATA) dirs.push(p.join(env.APPDATA, 'npm'))
   const candidates = dirs.map(dir => p.join(dir, `${agent}${platform === 'win32' ? '.exe' : ''}`))
+  if (platform === 'win32' && env.LOCALAPPDATA) candidates.push(p.join(env.LOCALAPPDATA, 'Microsoft', 'WinGet', 'Links', `${agent}.exe`))
   candidates.push(p.join(home, '.local', 'bin', `${agent}${platform === 'win32' ? '.exe' : ''}`))
   if (platform === 'win32' && agent === 'codex') {
+    if (env.LOCALAPPDATA) candidates.push(p.join(env.LOCALAPPDATA, 'Programs', 'OpenAI', 'Codex', 'bin', 'codex.exe'))
     // npm Codex ships a native optional dependency. Use its executable, avoiding cmd.exe quoting and a system-Node dependency.
     const triple = process.arch === 'arm64' ? 'aarch64-pc-windows-msvc' : 'x86_64-pc-windows-msvc'
     for (const dir of dirs) {
@@ -95,16 +98,34 @@ export function parseAuth(agent: DesktopAgent, result: ProbeResult): 'account' |
 
 export async function discoverAgent(agent: DesktopAgent, binary?: string, signal?: AbortSignal) {
   let found = false
+  let unsupportedVersion: string | undefined
   for (const executable of agentCandidates(agent, { binary })) {
     if (signal?.aborted) break
     try { if (!fs.statSync(executable).isFile()) continue } catch { continue }
     found = true
     const version = await runProbe(executable, ['--version'], { signal })
     const text = `${version.stdout}\n${version.stderr}`
-    const match = agent === 'claude' ? text.match(/(\d+\.\d+\.\d+)[^\r\n]*\(Claude Code\)/i) : text.match(/codex-cli\s+(\S+)/i)
+    const match = agent === 'claude' ? text.match(/(\d+\.\d+\.\d+)[^\r\n]*\(Claude Code\)/i) : text.match(/codex-cli\s+(\d+\.\d+\.\d+(?:[-+][\w.]+)?)/i)
     if (version.code !== 0 || !match) continue
+    const help = await runProbe(executable, agent === 'claude' ? ['--help'] : ['exec', '--help'], { signal })
+    const capabilities = `${help.stdout}\n${help.stderr}`
+    const required = agent === 'claude' ? ['--tools', '--strict-mcp-config', '--disallowedTools'] : ['--ignore-user-config', '--ignore-rules', '--ephemeral', '--disable']
+    if (help.failure) continue
+    if (help.code !== 0 || !required.every(flag => capabilities.includes(flag))) { unsupportedVersion = match[1]!; continue }
     const auth = await runProbe(executable, agent === 'claude' ? ['auth', 'status'] : ['login', 'status'], { signal })
     return { agent, state: 'installed' as const, executable, version: match[1]!, auth: parseAuth(agent, auth) }
   }
+  if (unsupportedVersion) return { agent, state: 'unsupported' as const, version: unsupportedVersion, auth: 'unknown' as const }
   return { agent, state: found ? 'unusable' as const : 'missing' as const, auth: 'unknown' as const }
+}
+
+/** Refresh a running desktop process after a provider installer updates Windows PATH. */
+export async function refreshWindowsPath(signal?: AbortSignal): Promise<void> {
+  if (process.platform !== 'win32') return
+  const powershell = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+  const result = await runProbe(powershell, ['-NoProfile', '-NonInteractive', '-Command',
+    "[Environment]::ExpandEnvironmentVariables([Environment]::GetEnvironmentVariable('Path','User') + ';' + [Environment]::GetEnvironmentVariable('Path','Machine'))"], { signal })
+  if (result.code === 0 && !result.failure) {
+    process.env.PATH = [...new Set([...result.stdout.split(';'), ...(process.env.PATH ?? '').split(';')].filter(value => path.win32.isAbsolute(value)))].join(';')
+  }
 }

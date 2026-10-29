@@ -99,3 +99,19 @@ export function saveAgentPreference(config: PdfpalConfig, agent: PdfpalConfig['a
     config.agent = process.env.PDFPAL_AGENT ? ConfigSchema.shape.agent.parse(process.env.PDFPAL_AGENT) : value
   } finally { release() }
 }
+
+/** Preserve unrelated settings when a user explicitly chooses an executable. */
+export function saveAgentBinary(config: PdfpalConfig, agent: 'claude' | 'codex', executable: string): void {
+  const key = agent === 'claude' ? 'claude_bin' : 'codex_bin'
+  if (process.env[agent === 'claude' ? 'CLAUDE_BIN' : 'CODEX_BIN']) throw new Error('The executable is fixed by your startup configuration.')
+  const filename = path.join(config.dataDir, 'config.json')
+  const release = acquireLease(`${filename}.write-lock`, 5000)
+  try {
+    const existing = fs.existsSync(filename) ? JSON.parse(fs.readFileSync(filename, 'utf8')) : {}
+    const temporary = `${filename}.${process.pid}.tmp`
+    fs.writeFileSync(temporary, `${JSON.stringify({ ...existing, [key]: executable }, null, 2)}\n`, { mode: 0o600 })
+    fs.renameSync(temporary, filename)
+    if (agent === 'claude') config.claudeBin = executable
+    else config.codexBin = executable
+  } finally { release() }
+}

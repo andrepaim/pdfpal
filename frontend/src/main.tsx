@@ -13,6 +13,7 @@ import VisualPage from './pages/VisualPage'
 import ExtensionsPage from './pages/ExtensionsPage'
 import LoginPage from './components/LoginPage'
 import { flushPendingSaves } from './lib/persistence'
+import DesktopStatus from './components/DesktopStatus'
 import AISettings from './components/AISettings'
 
 // ── Error boundary ────────────────────────────────────────────────────────────
@@ -101,6 +102,7 @@ createRoot(document.getElementById('root')!).render(
     <ErrorBoundary>
       <Root />
       <AISettings />
+      <DesktopStatus />
     </ErrorBoundary>
   </StrictMode>,
 )

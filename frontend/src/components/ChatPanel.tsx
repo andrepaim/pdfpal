@@ -1,3 +1,4 @@
+import AIRecovery from './AIRecovery'
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
 import { chatApi } from '../lib/api'
 import { useAgent } from '../hooks/useAgent'
@@ -287,7 +288,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
 
         {error && (
           <div style={{ background: '#2d1515', color: '#f87171', padding: '10px 14px', borderRadius: 8, fontSize: 13 }}>
-            ⚠️ {error}
+            ⚠️ {error}<AIRecovery />
           </div>
         )}
 

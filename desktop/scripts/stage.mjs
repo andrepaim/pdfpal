@@ -15,11 +15,16 @@ await fs.copyFile(path.join(desktop, 'runtime-lock.json'), path.join(stage, 'pac
 for (const [source, destination] of [
   ['dist', 'dist'], ['frontend/dist', 'frontend/dist'], ['extension/package', 'extension/package'],
   ['test/fixtures/sample.pdf', 'sample.pdf'], ['desktop/src/main.mjs', 'main.mjs'], ['desktop/src/backend.mjs', 'backend.mjs'],
-  ['desktop/src/preload.cjs', 'preload.cjs'], ['desktop/src/preferences.mjs', 'preferences.mjs'],
+  ['desktop/src/preload.cjs', 'preload.cjs'],
+  ...['setup.mjs', 'recovery.html', 'recovery.js', 'recovery.css'].map(name => [`desktop/src/${name}`, name]), ['desktop/src/preferences.mjs', 'preferences.mjs'],
   ['desktop/test/runtime.test.mjs', 'test/runtime.test.mjs'],
+  ['desktop/test/setup-native.mjs', 'test/setup-native.mjs'],
+  ['desktop/test/setup.test.mjs', 'test/setup.test.mjs'],
 ]) await fs.cp(path.join(root, source), path.join(stage, destination), { recursive: true })
 const runtimeTest = path.join(stage, 'test/runtime.test.mjs')
 await fs.writeFile(runtimeTest, (await fs.readFile(runtimeTest, 'utf8')).replaceAll('../stage/dist/', '../dist/'))
+const setupTest = path.join(stage, 'test/setup.test.mjs')
+await fs.writeFile(setupTest, (await fs.readFile(setupTest, 'utf8')).replace('../src/setup.mjs', '../setup.mjs'))
 const tests = await fs.readFile(path.join(root, 'test/unit/agent-discovery.test.ts'), 'utf8')
 await fs.writeFile(path.join(stage, 'discovery.test.mjs'), ts.transpileModule(tests.replace('../../src/core/', './dist/core/'), {
   compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.ESNext },
