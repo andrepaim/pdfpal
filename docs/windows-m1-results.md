@@ -12,6 +12,7 @@ Status: implementation, local Windows acceptance, and hosted CI verification com
 - Explicit Quit flushes pending note saves and reading progress before destroying the renderer. Failed saves offer to keep editing. Note saves are serialized so an earlier failed request cannot restore an older draft over a newer queued edit.
 - Window bounds, maximized state, and last route persist separately from the library. Restored bounds fit an available monitor.
 - AI settings and the reader selector persist the shared default assistant atomically while retaining configuration keys and environment precedence.
+- After user UI feedback, AI settings uses an accessible in-app dialog with the reader's dark palette, assistant cards, account/billing labels, refresh, and inline errors. Electron-rendered menus also follow the app's dark theme. Browser tests cover selection, cancellation, failed save, and refreshing missing installations; packaged Windows tests verify the tray opens the themed dialog and export a fixture screenshot.
 - Optional startup with Windows preserves the selected library, database, port, and application profile.
 - Normal reader, Kindle, visual, and CLI agent calls use the shared native Windows resolver and cancellation/output-limited runner.
 - Updated CLI and desktop servers coordinate ownership. Existing servers are offered in the browser only after validating the private owner record against the running endpoint. A conflicting server is never killed or adopted.

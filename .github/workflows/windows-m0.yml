@@ -39,6 +39,7 @@ jobs:
             ${{ runner.temp }}/pdfpal-windows-m0/packaged-receipt.json
             ${{ runner.temp }}/pdfpal-windows-m0/no-system-node-receipt.json
             ${{ runner.temp }}/pdfpal-windows-m0/smoke.*.log
+            ${{ runner.temp }}/pdfpal-windows-m0/ai-settings.png
       - name: Verify packaging did not replace CLI native modules
         shell: pwsh
         run: |

@@ -36,6 +36,7 @@ try {
     Remove-Item $env:PDFPAL_M0_RECEIPT -ErrorAction SilentlyContinue
     $exe = Join-Path $WorkRoot 'artifacts/win-unpacked/pdfpal Alpha.exe'
     $env:PDFPAL_DESKTOP_PROFILE = Join-Path $WorkRoot 'smoke-profile'
+    $env:PDFPAL_SETTINGS_PREVIEW = Join-Path $WorkRoot 'ai-settings.png'
     if ($M1) {
         $fixture = Join-Path $WorkRoot 'fixture-provider.exe'
         Remove-Item $fixture -ErrorAction SilentlyContinue

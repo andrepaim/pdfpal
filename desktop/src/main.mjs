@@ -1,4 +1,4 @@
-import { app, BrowserWindow, utilityProcess, Tray, Menu, nativeImage, Notification, dialog, shell, screen, ipcMain } from 'electron'
+import { app, BrowserWindow, utilityProcess, Tray, Menu, nativeImage, nativeTheme, Notification, dialog, shell, screen, ipcMain } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -20,6 +20,7 @@ for (const [flag, env] of [['--data-dir=', 'PDFPAL_DATA_DIR'], ['--db=', 'PDFPAL
   if (arg) process.env[env] = arg.slice(flag.length)
 }
 app.setName('pdfpal')
+nativeTheme.themeSource = 'dark'
 const profile = process.env.PDFPAL_DESKTOP_PROFILE ?? path.join(app.getPath('appData'), 'pdfpal-desktop')
 fs.mkdirSync(profile, { recursive: true })
 app.setPath('userData', profile)
@@ -80,11 +81,7 @@ async function setAgent(agent) {
 async function aiSettings() {
   if (!ready) return showWindow()
   showWindow()
-  const agents = ready.agents.filter(agent => agent.available)
-  const choice = await dialog.showMessageBox(window, { type: 'info', title: 'AI settings', message: 'Choose your assistant',
-    detail: agents.length ? agents.map(agent => `${agent.label}: ${agent.auth ?? 'installed'}`).join('\n') : 'Install and sign in to Claude Code or Codex, then restart pdfpal. You can keep reading without AI.',
-    buttons: [...agents.map(agent => agent.label), 'Cancel'], cancelId: agents.length })
-  if (choice.response < agents.length) await setAgent(agents[choice.response].id)
+  window.webContents.send('pdfpal:open-ai-settings')
 }
 function startupArgs() {
   if (!ready) return []
@@ -252,6 +249,20 @@ async function smokeTest() {
   if (ready.providers?.agents.some(agent => agent.generation !== 'passed')) pendingReceipt.status = 'provider_gate_failed'
   if (m1) {
     check(tray && !tray.isDestroyed(), 'Tray was not created')
+    await aiSettings()
+    for (let i = 0; i < 100; i++) {
+      if (await window.webContents.executeJavaScript('!!document.querySelector(".ai-settings[open] input[type=radio]")')) break
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    const settings = await window.webContents.executeJavaScript(`(() => {
+      const modal = document.querySelector('.ai-settings[open]');
+      return { open: !!modal, theme: modal && getComputedStyle(modal).backgroundColor,
+        options: modal?.querySelectorAll('input[type=radio]').length };
+    })()`)
+    check(settings.open && settings.theme === 'rgb(26, 26, 26)' && settings.options > 0, 'Themed AI settings did not open')
+    if (process.env.PDFPAL_SETTINGS_PREVIEW) fs.writeFileSync(process.env.PDFPAL_SETTINGS_PREVIEW, (await window.webContents.capturePage()).toPNG())
+    await window.webContents.executeJavaScript('document.querySelector("[aria-label=\\"Close AI settings\\"]").click()')
+    pendingReceipt.checks.push('themed-ai-settings-from-tray')
     if (process.platform === 'win32' && !recoveryFixture) {
       const registration = { name: `pdfpal-acceptance-${process.pid}`, path: process.execPath, args: startupArgs() }
       try {

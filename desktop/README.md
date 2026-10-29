@@ -12,7 +12,7 @@ Closing the window hides it to the tray. Click the tray icon to reopen; its menu
 
 Explicit Quit first flushes pending note saves and reading progress. A failed note save offers to keep editing or explicitly quit without saving. Windows session shutdown uses a bounded flush and cancellation path.
 
-AI settings selects an installed assistant and persists the default in the shared configuration. The reader's assistant selector also persists through a narrow desktop bridge. Existing browser selections stay local to that browser. Environment overrides remain authoritative; clear `PDFPAL_AGENT` if you want the UI to change the configured default. Guided installation and login are in M2.
+AI settings opens a themed in-app dialog with installed assistants, account/billing status, refresh, and inline save errors. It persists the default in the shared configuration. The reader's assistant selector also persists through a narrow desktop bridge. Existing browser selections stay local to that browser. Environment overrides remain authoritative; clear `PDFPAL_AGENT` if you want the UI to change the configured default. Guided installation and login are in M2.
 
 Window bounds, maximized state, last route, and the one-time tray notice are stored separately in `%APPDATA%\pdfpal-desktop\desktop.json`. Start with Windows is optional and uses Windows' login registration with the selected library/port arguments. An unpacked alpha must remain in its folder for that registration to work; turn it off before moving or removing the folder.
 

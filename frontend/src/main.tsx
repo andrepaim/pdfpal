@@ -13,6 +13,7 @@ import VisualPage from './pages/VisualPage'
 import ExtensionsPage from './pages/ExtensionsPage'
 import LoginPage from './components/LoginPage'
 import { flushPendingSaves } from './lib/persistence'
+import AISettings from './components/AISettings'
 
 // ── Error boundary ────────────────────────────────────────────────────────────
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
@@ -99,6 +100,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       <Root />
+      <AISettings />
     </ErrorBoundary>
   </StrictMode>,
 )
