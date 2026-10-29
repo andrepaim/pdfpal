@@ -15,6 +15,9 @@ function commandAvailable(binary: string): boolean {
 }
 
 export class AgentService {
+  private static stopping = false
+  static resume(): void { this.stopping = false }
+  static stopAccepting(): void { this.stopping = true }
   private static readonly requests = new Map<AbortController, Promise<unknown>>()
   private static readonly inspections = new Map<AbortController, Promise<unknown>>()
   static get activeCount(): number { return this.requests.size }
@@ -25,6 +28,7 @@ export class AgentService {
   }
 
   inspect() {
+    if (AgentService.stopping) return Promise.resolve([])
     const controller = new AbortController()
     const request = this.inspectWithSignal(controller.signal)
     AgentService.inspections.set(controller, request)
@@ -58,6 +62,7 @@ export class AgentService {
   }
 
   invoke(prompt: string, agent = this.config.agent, model = this.config.model): Promise<string> {
+    if (AgentService.stopping) return Promise.reject(new PdfpalError('AGENT_CANCELLED', 'pdfpal is shutting down.'))
     const controller = new AbortController()
     const request = this.run(prompt, agent, model, controller.signal)
     AgentService.requests.set(controller, request)

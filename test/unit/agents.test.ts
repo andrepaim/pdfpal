@@ -48,6 +48,16 @@ test('shutdown cancels active agent requests and removes them from activity trac
   fs.rmSync(config.dataDir, { recursive: true, force: true })
 })
 
+test('shutdown rejects late inference and discovery until the service resumes', async () => {
+  const service = new AgentService(testConfig())
+  AgentService.stopAccepting()
+  try {
+    assert.deepEqual(await service.inspect(), [])
+    await assert.rejects(service.invoke('late request'), { code: 'AGENT_CANCELLED' })
+    assert.equal(AgentService.activeCount, 0)
+  } finally { AgentService.resume() }
+})
+
 test('Codex and OpenCode output adapters parse successful responses', async () => {
   const config = testConfig()
   config.codexBin = executable(config, 'codex', "cat >/dev/null; printf 'codex answer'")

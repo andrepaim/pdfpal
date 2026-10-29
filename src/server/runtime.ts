@@ -7,6 +7,7 @@ import { buildServer } from './app.js'
 
 export async function startRuntime(config: PdfpalConfig, port = config.port) {
   const release = acquireServerLease(config.dbPath)
+  AgentService.resume()
   let server: Awaited<ReturnType<typeof buildServer>> | undefined
   const canonical = databasePath(config.dbPath)
   const filename = `${canonical}.server.json`
@@ -28,12 +29,18 @@ export async function startRuntime(config: PdfpalConfig, port = config.port) {
     fs.renameSync(temporary, filename)
     return { server, origin, identity, async close(onPhase: (phase: string) => void = () => {}) {
       onPhase('closing-http')
+      AgentService.stopAccepting()
       const closing = server!.close()
-      await AgentService.cancelAll()
-      onPhase('agents-stopped')
-      server!.server.closeIdleConnections()
-      await closing
-      onPhase('database-closed')
+      // Fastify begins raw HTTP close asynchronously. Drain connections that
+      // become idle after the initial close call without aborting active writes.
+      const drain = setInterval(() => server!.server.closeIdleConnections(), 100)
+      try {
+        await AgentService.cancelAll()
+        onPhase('agents-stopped')
+        server!.server.closeIdleConnections()
+        await closing
+        onPhase('database-closed')
+      } finally { clearInterval(drain) }
     } }
   } catch (error) {
     await server?.close().catch(() => {})
