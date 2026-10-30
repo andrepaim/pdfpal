@@ -12,6 +12,7 @@ on:
       - '.github/workflows/windows-m0.yml'
       - 'package*.json'
       - 'LICENSE'
+      - '.github/workflows/windows-release.yml'
 
 jobs:
   packaged-windows:
@@ -26,7 +27,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npx tsx --test test/unit/agent-discovery.test.ts
-      - run: node --test desktop/test/preferences.test.mjs desktop/test/setup.test.mjs desktop/test/updates.test.mjs desktop/test/beta.test.mjs
+      - run: node --test desktop/test/preferences.test.mjs desktop/test/setup.test.mjs desktop/test/updates.test.mjs desktop/test/beta.test.mjs desktop/test/release.test.mjs
       - run: node desktop/scripts/stage.mjs
       - name: Build and exercise packaged application
         shell: pwsh

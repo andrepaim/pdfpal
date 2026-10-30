@@ -5,7 +5,7 @@ The desktop preview supports Windows 11 on an Intel/AMD 64-bit computer. It incl
 ## Install and start reading
 
 1. Quit any running pdfpal window **from its tray menu**. Closing the window keeps it running.
-2. Download the matching **pdfpal-Setup-…-x64.exe** desktop installer. Preview builds are shared as test artifacts; signed public downloads will appear on the [official release page](https://github.com/andrepaim/pdfpal/releases).
+2. Download the matching **pdfpal-Setup-…-x64.exe** desktop installer from the [official release page](https://github.com/andrepaim/pdfpal/releases). Engineering previews are marked **Pre-release** and may be unsigned; stable downloads require publisher signing.
 3. Run the installer. It installs for your Windows user and creates a **pdfpal** Start menu entry. At the end, leave **Run pdfpal** selected.
 4. In setup, choose Claude Code or Codex. If needed, use its **Install** or **Sign in** action, finish in the provider's window, close that window, and choose **Check again** in pdfpal. You need an eligible provider account; account usage limits apply. API credentials can charge separately, which pdfpal labels before use.
 5. Optionally choose **Test connection** inside your selected assistant's card. It uses a short test prompt and your provider allowance. You can also choose **Continue without AI**.

@@ -280,3 +280,5 @@ The 2.1.0 package build contains the compiled TypeScript server/CLI, built React
 ## Windows desktop preview
 
 An optional Windows desktop app provides guided Claude/Codex setup, a system tray, and a per-user installer. The CLI remains available independently. See the [Windows quickstart](docs/windows-quickstart.md) and [desktop build guide](desktop/README.md). Current engineering installers are unsigned; public release signing and clean-account acceptance remain pending.
+
+[Download the Windows installer from GitHub Releases](https://github.com/andrepaim/pdfpal/releases). Desktop version bumps on `master` use the [automatic release pipeline](docs/windows-release-pipeline.md); engineering previews are marked **Pre-release**.

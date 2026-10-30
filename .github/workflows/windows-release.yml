@@ -1,0 +1,142 @@
+name: Publish Windows desktop release
+
+on:
+  push:
+    branches: [master]
+    paths: ['desktop/version.json']
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/windows-release.yml'
+      - 'desktop/scripts/desktop-release.mjs'
+      - 'desktop/test/release.test.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test desktop/test/release.test.mjs
+
+  plan:
+    if: github.event_name != 'pull_request' && github.repository == 'andrepaim/pdfpal' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      channel: ${{ steps.plan.outputs.channel }}
+      publish: ${{ steps.plan.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - id: plan
+        env:
+          RELEASE_BEFORE: ${{ github.event.before }}
+        run: node desktop/scripts/desktop-release.mjs plan
+
+  regression:
+    needs: plan
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: node --test desktop/test/*.test.mjs
+      - run: npm exec --workspace frontend -- playwright install --with-deps chromium
+      - run: npm exec --workspace frontend -- playwright test
+      - run: npm exec --workspace extension -- playwright install --with-deps chromium
+      - run: npm exec --workspace extension -- playwright test
+      - run: npm run test:archive
+      - run: npm run test:package
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 40
+    environment: ${{ needs.plan.outputs.channel == 'stable' && 'windows-release' || 'windows-preview' }}
+    env:
+      RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+      PDFPAL_PUBLISHER_NAME: ${{ vars.PDFPAL_PUBLISHER_NAME }}
+      CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Require signing credentials for a stable release
+        if: needs.plan.outputs.channel == 'stable'
+        run: node --input-type=module -e "import {signingConfiguration} from './desktop/scripts/build-installer.mjs'; signingConfiguration(true)"
+      - run: npm ci
+      - run: node desktop/scripts/stage.mjs
+      - name: Build and test installer
+        shell: pwsh
+        env:
+          RELEASE_CHANNEL: ${{ needs.plan.outputs.channel }}
+        run: |
+          $signed = $env:RELEASE_CHANNEL -eq 'stable'
+          ./desktop/scripts/windows-m3.ps1 -SourceRoot $env:GITHUB_WORKSPACE -WorkRoot "$env:RUNNER_TEMP/pdfpal-desktop-release" -Signed:$signed
+      - name: Verify publication files
+        shell: pwsh
+        run: node desktop/scripts/desktop-release.mjs prepare "$env:RUNNER_TEMP/pdfpal-desktop-release/artifacts"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-release-files
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            ${{ runner.temp }}/pdfpal-desktop-release/artifacts/pdfpal-Setup-*.exe
+            ${{ runner.temp }}/pdfpal-desktop-release/artifacts/pdfpal-desktop-release.json
+            ${{ runner.temp }}/pdfpal-desktop-release/artifacts/SHA256SUMS.txt
+            ${{ runner.temp }}/pdfpal-desktop-release/artifacts/release-plan.json
+            ${{ runner.temp }}/pdfpal-desktop-release/artifacts/release-notes.md
+
+  publish:
+    needs: [plan, regression, build]
+    if: needs.plan.outputs.publish == 'true' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: desktop-publish-${{ needs.plan.outputs.version }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-release-files
+          path: release-files
+      - name: Publish tested installer to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+        run: node desktop/scripts/desktop-release.mjs publish release-files
