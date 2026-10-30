@@ -49,7 +49,7 @@ jobs:
 
   regression:
     needs: plan
-    if: needs.plan.outputs.publish == 'true'
+    if: always() && (github.event_name == 'pull_request' || needs.plan.outputs.publish == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -61,7 +61,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: node --test desktop/test/*.test.mjs
+      - run: npm --prefix desktop test
       - run: npm exec --workspace frontend -- playwright install --with-deps chromium
       - run: npm exec --workspace frontend -- playwright test
       - run: npm exec --workspace extension -- playwright install --with-deps chromium

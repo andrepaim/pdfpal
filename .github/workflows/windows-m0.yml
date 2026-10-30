@@ -35,6 +35,9 @@ jobs:
       - name: Exercise isolated beta measurement protocol
         shell: pwsh
         run: ./desktop/scripts/windows-m4.ps1 -SourceRoot $env:GITHUB_WORKSPACE -WorkRoot "$env:RUNNER_TEMP/pdfpal-windows-m0" -SkipPackagedChecks -SkipInstall -StartupRuns 3 -TrayCycles 3 -IdleSeconds 5
+      - name: Verify release files without publishing
+        shell: pwsh
+        run: node desktop/scripts/desktop-release.mjs prepare "$env:RUNNER_TEMP/pdfpal-windows-m0/artifacts"
       - name: Prepare verified local beta test kit
         shell: pwsh
         run: |

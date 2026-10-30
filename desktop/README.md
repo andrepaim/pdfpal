@@ -8,7 +8,7 @@ Windows downloads are published through the [GitHub Actions release pipeline](..
 
 ## Install the preview
 
-Run **pdfpal-Setup-2.1.0-preview.3-x64.exe**, then open **pdfpal** from the Start menu. Quit an earlier running pdfpal instance from its tray first. The current test candidate is unsigned; publisher signing is an explicit release gate. The installer installs for the current user without requesting administrator privileges. It keeps application files separate from the library, retains data on uninstall, and refuses to force-close a running instance.
+Run **pdfpal-Setup-2.1.0-preview.4-x64.exe**, then open **pdfpal** from the Start menu. Quit an earlier running pdfpal instance from its tray first. The current test candidate is unsigned; publisher signing is an explicit release gate. The installer installs for the current user without requesting administrator privileges. It keeps application files separate from the library, retains data on uninstall, and refuses to force-close a running instance.
 
 The unpacked artifact remains available for engineering checks as `win-unpacked/pdfpal.exe`; keep the entire folder together if using it.
 
@@ -34,7 +34,7 @@ node desktop/scripts/stage.mjs
 ./desktop/scripts/windows-m3.ps1 -SourceRoot (Get-Location).Path
 ```
 
-The driver also supports UNC/WSL source checkouts, copying the generated stage onto a Windows drive before running npm or packaging. Its default build directory is `%TEMP%\pdfpal-windows-m1`. `artifacts\pdfpal-Setup-2.1.0-preview.3-x64.exe` is the installer and `artifacts\win-unpacked\pdfpal.exe` is its application.
+The driver also supports UNC/WSL source checkouts, copying the generated stage onto a Windows drive before running npm or packaging. Its default build directory is `%TEMP%\pdfpal-windows-m1`. `artifacts\pdfpal-Setup-2.1.0-preview.4-x64.exe` is the installer and `artifacts\win-unpacked\pdfpal.exe` is its application.
 
 The driver installs locked dependencies, runs native process/ownership and setup-state tests, compiles a deterministic test-provider executable with Windows' Framework compiler, packages the app, and exercises the actual chat HTTP route with that fixture. It repeats the packaged tests with Node removed from the inherited PATH. Discovery can refresh registered Windows PATH entries; a genuinely clean machine without Node remains a manual acceptance check. Provider launches resolve native executables rather than npm shell wrappers. Receipts exclude account identifiers, raw authentication, prompts, answers, and executable paths.
 
