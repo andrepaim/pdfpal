@@ -37,6 +37,19 @@ test('update checks select only verified stable desktop releases, never npm or u
   assert.equal((await checkDesktopUpdates('2.1.0', async () => response([]))).state, 'unpublished')
 })
 
+test('preview.4 never offers preview.5 as a stable update', async () => {
+  const { release } = fixture('2.1.0-preview.5')
+  for (const prerelease of [true, false]) {
+    const calls = []
+    const result = await checkDesktopUpdates('2.1.0-preview.4', async url => {
+      calls.push(url)
+      return response([{ ...release, prerelease }])
+    })
+    assert.deepEqual(result, { state: 'unpublished', currentVersion: '2.1.0-preview.4' })
+    assert.deepEqual(calls, ['https://api.github.com/repos/andrepaim/pdfpal/releases?per_page=100'])
+  }
+})
+
 test('offline, rate-limited, hostile, and oversized metadata fail without exposing transport details', async () => {
   for (const request of [async () => { throw new Error('network token=SECRET') }, async () => new Response('', { status: 403 }), async () => response('invalid'), async () => new Response('x'.repeat(1024 * 1024 + 1))]) {
     const result = await checkDesktopUpdates('2.1.0', request)

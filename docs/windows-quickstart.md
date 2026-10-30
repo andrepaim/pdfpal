@@ -29,7 +29,13 @@ Windows and WSL use different home folders and default libraries. Sharing a live
 
 ## Upgrade or uninstall
 
-Choose **Check for updates** in the tray to see the current desktop version. The check uses official release metadata and only offers desktop releases marked as verified signed builds. It does not check automatically or install in the background. When a release is available, use **Download installer**, quit pdfpal from the tray, and run the new installer.
+**Stable releases.** Choose **Check for updates** in the tray to see your installed version and look for a newer signed stable release. This check only runs when requested. It reads GitHub release metadata and the manifest produced after the build verifies the publisher and timestamped Authenticode signatures. **Download installer** opens the installer URL in your browser. You quit pdfpal and run the installer yourself.
+
+**Engineering previews.** The check skips prereleases, even when you are running one. To move from one preview to the next (for example, preview.4 to preview.5):
+
+1. Open [GitHub Releases](https://github.com/andrepaim/pdfpal/releases), choose the target Windows desktop tag (for example, `desktop-v2.1.0-preview.5`), and download its `pdfpal-Setup-…-x64.exe`.
+2. To check the download, run `Get-FileHash .\pdfpal-Setup-2.1.0-preview.5-x64.exe -Algorithm SHA256` in PowerShell from the download directory, substituting your installer filename. Compare the result with the entry in that release’s `SHA256SUMS.txt`. A matching checksum confirms file integrity. An unsigned preview has no verified publisher.
+3. Save your work, choose **Quit** from the pdfpal tray menu, and run the installer under the same Windows account. It upgrades in place and keeps your library. Reopen pdfpal and use **Check for updates** to confirm the installed version.
 
 If installation says pdfpal is running, save your work, quit it from the tray, and select **Retry**. Cancelling leaves the previous version in place. The installer does not force-stop your reading session or another CLI server.
 

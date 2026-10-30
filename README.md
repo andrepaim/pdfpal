@@ -22,7 +22,7 @@ Both installation options use the same reading and project core, with independen
 
 Closing the window keeps pdfpal running in the system tray near the clock. Click the tray icon to reopen it; use **Quit** in its menu to stop the app.
 
-The Windows installer is currently an **unsigned engineering preview**, so Windows may show an unknown-publisher prompt. See the [Windows guide](docs/windows-quickstart.md) for tray settings, upgrades, uninstall, and troubleshooting.
+The Windows installer is currently an **unsigned engineering preview**, so Windows may show an unknown-publisher prompt. To upgrade between previews, download the target installer from GitHub Releases and install it under the same Windows account. The tray’s **Check for updates** only looks for signed stable releases when you request a check. See the [Windows upgrade instructions](docs/windows-quickstart.md#upgrade-or-uninstall) for checksum and installation steps.
 
 ### Linux and WSL
 
