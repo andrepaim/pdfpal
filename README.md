@@ -2,11 +2,60 @@
 
 > **AI to read deeper, not to avoid reading.**
 
-A local reading assistant for PDFs and Kindle books, with three interfaces: a web reader, a Chrome companion for Kindle for Web, and a scriptable CLI. Read with AI chat, visual explanations, notes, and highlights beside the page, powered by your configured Claude, Codex, or OpenCode agent. No separate pdfpal account or subscription; your provider’s authentication, charges, and usage limits still apply.
+A local reading assistant for PDFs and Kindle books, with AI chat, visual explanations, notes, and highlights beside the page. Use it as a **Windows desktop app** or as a **CLI and browser reader on Linux/WSL**. The optional Chrome companion brings the same reading tools to Kindle for Web.
 
-There's a lot of vibe researching going on. Feed the PDF to a chatbot and ask for the gist, watch the 20-minute YouTube explainer, skim an AI-generated summary, then walk away feeling like you read the paper. You didn't. The understanding that matters lives in exactly the parts the summary flattens: the assumptions, the derivation the author skipped, the limitation buried in section 6, the table that quietly contradicts the abstract. If your grasp of a paper ends where a summary does, you don't have one.
+Both installation options use the same reading and project core, with independent release versions. AI features use your configured assistant; there is no separate pdfpal account or subscription. Your provider’s authentication, charges, and usage limits still apply.
 
-But the answer isn't to pretend it's five years ago: print the paper, read it alone, hit a wall on page 4 (notation you forgot, a step "left as an exercise", background the author assumes you have) and either suffer through it or quietly give up. That suffering was never the point. pdfpal is the middle ground: you read the actual paper, and AI sits next to the page, unpacking the passage you're stuck on, answering questions grounded in the text instead of vibes, keeping you reading instead of pretending.
+## Install and run
+
+| Choose your setup | What you need | Get started |
+| --- | --- | --- |
+| **Windows desktop preview** | Windows 11 on an Intel/AMD 64-bit computer. No separate Node.js or Git installation for pdfpal. | [Install the Windows app](#windows-desktop-preview) |
+| **Linux / WSL: CLI and browser reader** | Git and Node.js 22 or newer. | [Install from source](#linux-and-wsl) |
+
+### Windows desktop preview
+
+1. [Open the official GitHub Releases page](https://github.com/andrepaim/pdfpal/releases) and download the **pdfpal-Setup-…-x64.exe** installer from the newest Windows desktop release, marked **Pre-release**.
+2. Run the installer, then open **pdfpal** from the Windows Start menu. If upgrading, quit the running app from its tray menu first.
+3. In setup, choose **Claude Code** or **Codex**. Follow the install/sign-in actions if needed, then check the connection. You can also choose **Continue without AI**.
+4. Create a project, import a PDF, and start reading. See the [PDF quickstart](#read-a-pdf) below.
+
+Closing the window keeps pdfpal running in the system tray near the clock. Click the tray icon to reopen it; use **Quit** in its menu to stop the app.
+
+The Windows installer is currently an **unsigned engineering preview**, so Windows may show an unknown-publisher prompt. See the [Windows guide](docs/windows-quickstart.md) for tray settings, upgrades, uninstall, and troubleshooting.
+
+### Linux and WSL
+
+Install **Git** and **Node.js 22 or newer**. For AI features, also install and authenticate a supported assistant CLI: `claude`, `codex`, or `opencode`.
+
+Run these commands in your Linux or WSL terminal:
+
+```bash
+git clone https://github.com/andrepaim/pdfpal.git
+cd pdfpal
+npm ci
+npm run build
+npm start
+```
+
+`npm start` starts the local server at `http://localhost:8200` and opens the reader in your browser. To run without opening a browser, use `npm start -- serve --no-open`.
+
+The CLI is currently installed from this repository; a release is **not yet available from the npm registry**. These source installation commands include the current reader and Kindle companion and do not install Electron or desktop build tooling.
+
+From the checkout, run CLI commands with `npm start --`, for example:
+
+```bash
+npm start -- project list
+```
+
+To use the shorter `pdfpal` command shown in the CLI and agent examples below, optionally link it from the checkout:
+
+```bash
+npm link
+pdfpal --help
+```
+
+Keep the checkout in place when using this link. AI features use your assistant’s existing authentication and provider allowance.
 
 <div align="center">
 
@@ -17,9 +66,91 @@ But the answer isn't to pretend it's five years ago: print the paper, read it al
 
 </div>
 
-## Isn't this already a thing?
+## Quickstart
 
-Sort of. There are plenty of chat-with-PDF tools: web apps where you upload a paper and ask questions, AI assistants bolted onto PDF readers, notebook tools that summarize your sources. If you've tried one, you know the pattern: a free tier capped at a couple of documents or a few dozen pages, and a paid tier that stacks one more monthly subscription on top of the Claude, Codex, or OpenCode plan you already pay for. And your library lives in their cloud, not on your machine.
+### Read a PDF
+
+1. Click **New Project** and give it a title.
+2. Click **Add Source** and search by title, paste a paper URL (arXiv, OpenReview, ACL Anthology, PMLR, a DOI link, or a direct `.pdf`), or choose **Upload PDF** to import a local file up to 25 MB.
+3. Open the source, select the passage you're stuck on to ask about it, or save it as a highlight.
+4. Switch to the **Notes** tab and write what you understood in your own words as a markdown note; it renders as you read it back.
+5. Ask a question across every source in the project from **Project Chat**.
+
+Use **Dark pages** beside the reader's zoom controls for a dark page background and light text. The setting is remembered in your browser across documents and reloads. It also changes figure and photo colors; switch it off to view their original colors.
+
+After following a reference link within a PDF, click **Back to citation** in the reader toolbar to return to your previous position and zoom. Follow several references and click it repeatedly to retrace your jumps.
+
+### Read a Kindle book
+
+1. Start pdfpal and choose **Extension** on the projects home page (or **Kindle extension** in a project).
+2. **Download Chrome extension**, extract it to a folder you will keep, and open `chrome://extensions`. Enable **Developer mode**, choose **Load unpacked**, and select the extracted folder containing `manifest.json`.
+3. Pin pdfpal to Chrome's toolbar. Open your book in [Kindle for Web](https://read.amazon.com/), refresh the tab, and click the pdfpal toolbar icon.
+4. Click **Connect to pdfpal**. In the local tab that opens, click **Allow connection**, then return to Kindle. Choose or create a project.
+5. Ask a book question, select a passage to attach it, or type `/visual <concept>`. Save useful passages and answers as project notes.
+
+No pairing code is needed for this flow. Keep pdfpal running; if it stops, restart it and Retry. **Address & manual pairing** supports custom ports and the older code-based connection flow. The web **Extension** page also lets you name and disconnect paired connections.
+
+![The local extension setup and connection management page](screenshots/8-extension-setup.png)
+
+Supported readers: `read.amazon.com`, `ler.amazon.com.br`, and `read.amazon.co.uk`, in desktop Chrome. English prose is the initial OCR target. This companion works with Kindle for Web, not the native Kindle PC application. See the [companion guide](extension/README.md) for capture, update, and troubleshooting instructions.
+
+## Features
+
+### Kindle reading
+
+The [Kindle Companion](extension/README.md) brings the same dark chat pane to Kindle for Web. Ask about the open book, attach native selections or locally recognized image text, generate visual explanations with `/visual`, and save passages or answers as project notes. Conversations survive closing the panel and normal extension updates.
+
+Keep books in a project with **Add Source → Kindle book**, or use **Book details → Add book to project** in the companion. **Open in Kindle ↗** launches the reader in a new tab and selects the associated project in the connected companion. These entries store book references; full Kindle text is not imported or indexed.
+
+Book questions use title/author, previous discussion, and captured or saved excerpts. The full Kindle book is not imported. Relevant project PDFs can be included explicitly; a project does not need PDFs to support Kindle chat.
+
+![Kindle companion showing a visual explanation beside the chat composer](screenshots/7-kindle-companion.png)
+
+### Reading & Chat
+
+- **Split-pane reader**: PDF viewer on the left, chat/notes/related on the right; resizable.
+- **Reading progress**: remembers the last page read for every source and restores it automatically the next time you open the PDF.
+- **Per-source chat**: persistent conversation history per paper, restored across sessions; renders math (KaTeX); web research is handled by the selected agent when supported.
+- **Text selection → ask or highlight**: stuck on a passage? Select it and ask about it right there, grounded in the paper, or save it as a highlight.
+- **Project chat**: ask across multiple sources at once, toggle which sources are in context, or scope to a single collection.
+
+### Visual explanations
+
+Select text in the PDF reader and choose **Explain visually** from its popup, or type `/visual <concept>` in the reader or project chat. Type `/` for a command suggestion; Tab completes `/visual`. With a passage attached, `/visual` alone explains that selection. The same command works in the [Kindle companion](extension/README.md#explain-visually). Your configured agent creates progressive diagrams with clickable details, captions, a text transcript and source labels. Expand the viewer, ask follow-ups, save the explanation to a project note, or export a self-contained HTML file for offline reading. Saved explanations reopen without another model call. Project chat also supports general-concept visual questions without PDFs using `/visual <concept>`.
+
+### Organization
+
+- **Projects**: workspaces for a research topic: sources, notes, chat history.
+- **Collections**: nested folders for organizing sources within a project; drag-and-drop, Expand/Collapse All.
+- **Notes**: markdown notes at the project or source level, rendered by default, edit in place:
+
+  ![Notes](screenshots/5-notes.png)
+- **Highlights**: every annotation across a project, grouped by source, one click back to context.
+
+### Sources & Discovery
+
+- **Paper search**: search OpenAlex by title, one click to add:
+
+  ![Search](screenshots/3-search.png)
+- **Related papers**: references and citations from Semantic Scholar, with an OpenAlex fallback when needed, one click to add:
+
+  ![Related](screenshots/2-related.png)
+- **Smart PDF resolver**: paste any URL: arXiv, OpenReview, ACL Anthology, PMLR, a DOI link, or a direct `.pdf`; tracking params stripped automatically.
+- **Project-wide full-text search**: SQLite FTS5 across every already-indexed source.
+- **Managed local copies**: PDFs are copied locally; falls back to the source URL if a managed copy is deleted.
+
+### CLI & Agent Automation
+
+- **Full CLI**: every action above is also a `pdfpal` command, with `--json` for scripting.
+- **Claude Code / Codex skill**: let an agent drive projects, sources, collections, and notes directly (see below).
+
+## Why pdfpal?
+
+There's a lot of vibe researching going on. Feed the PDF to a chatbot and ask for the gist, watch the 20-minute YouTube explainer, skim an AI-generated summary, then walk away feeling like you read the paper. You didn't. The understanding that matters lives in exactly the parts the summary flattens: the assumptions, the derivation the author skipped, the limitation buried in section 6, the table that quietly contradicts the abstract. If your grasp of a paper ends where a summary does, you don't have one.
+
+But the answer isn't to pretend it's five years ago: print the paper, read it alone, hit a wall on page 4 (notation you forgot, a step "left as an exercise", background the author assumes you have) and either suffer through it or quietly give up. That suffering was never the point. pdfpal is the middle ground: you read the actual paper, and AI sits next to the page, unpacking the passage you're stuck on, answering questions grounded in the text instead of vibes, keeping you reading instead of pretending.
+
+There are plenty of chat-with-PDF tools: web apps where you upload a paper and ask questions, AI assistants bolted onto PDF readers, notebook tools that summarize your sources. If you've tried one, you know the pattern: a free tier capped at a couple of documents or a few dozen pages, and a paid tier that stacks one more monthly subscription on top of the Claude, Codex, or OpenCode plan you already pay for. And your library lives in their cloud, not on your machine.
 
 Most of them are also built around the summary: upload, get the takeaways, move on. That's the vibe-researching workflow. pdfpal is built around the reader.
 
@@ -51,119 +182,9 @@ Finding papers is legwork, and by now agents are better at it than we are: they 
 
 4. **Read and ask questions inline**, in the same reader shown above, right where the agent left off.
 
-## Features
-
-### Kindle reading
-
-The [Kindle Companion](extension/README.md) brings the same dark chat pane to Kindle for Web. Ask about the open book, attach native selections or locally recognized image text, generate visual explanations with `/visual`, and save passages or answers as project notes. Conversations survive closing the panel and normal extension updates.
-
-Keep books in a project with **Add Source → Kindle book**, or use **Book details → Add book to project** in the companion. **Open in Kindle ↗** launches the reader in a new tab and selects the associated project in the connected companion. These entries store book references; full Kindle text is not imported or indexed.
-
-Book questions use title/author, previous discussion, and captured or saved excerpts. The full Kindle book is not imported. Relevant project PDFs can be included explicitly; a project does not need PDFs to support Kindle chat.
-
-![Kindle companion showing a visual explanation beside the chat composer](screenshots/7-kindle-companion.png)
-
-### Reading & Chat
-- **Split-pane reader**: PDF viewer on the left, chat/notes/related on the right; resizable.
-- **Reading progress**: remembers the last page read for every source and restores it automatically the next time you open the PDF.
-- **Per-source chat**: persistent conversation history per paper, restored across sessions; renders math (KaTeX); web research is handled by the selected agent when supported.
-- **Text selection → ask or highlight**: stuck on a passage? Select it and ask about it right there, grounded in the paper, or save it as a highlight.
-- **Project chat**: ask across multiple sources at once, toggle which sources are in context, or scope to a single collection.
-
-### Visual explanations
-
-Select text in the PDF reader and choose **Explain visually** from its popup, or type `/visual <concept>` in the reader or project chat. Type `/` for a command suggestion; Tab completes `/visual`. With a passage attached, `/visual` alone explains that selection. The same command works in the [Kindle companion](extension/README.md#explain-visually). Your configured agent creates progressive diagrams with clickable details, captions, a text transcript and source labels. Expand the viewer, ask follow-ups, save the explanation to a project note, or export a self-contained HTML file for offline reading. Saved explanations reopen without another model call. Project chat also supports general-concept visual questions without PDFs using `/visual <concept>`.
-
-### Organization
-- **Projects**: workspaces for a research topic: sources, notes, chat history.
-- **Collections**: nested folders for organizing sources within a project; drag-and-drop, Expand/Collapse All.
-- **Notes**: markdown notes at the project or source level, rendered by default, edit in place:
-
-  ![Notes](screenshots/5-notes.png)
-- **Highlights**: every annotation across a project, grouped by source, one click back to context.
-
-### Sources & Discovery
-- **Paper search**: search OpenAlex by title, one click to add:
-
-  ![Search](screenshots/3-search.png)
-- **Related papers**: references and citations from Semantic Scholar, with an OpenAlex fallback when needed, one click to add:
-
-  ![Related](screenshots/2-related.png)
-- **Smart PDF resolver**: paste any URL: arXiv, OpenReview, ACL Anthology, PMLR, a DOI link, or a direct `.pdf`; tracking params stripped automatically.
-- **Project-wide full-text search**: SQLite FTS5 across every already-indexed source.
-- **Managed local copies**: PDFs are copied locally; falls back to the source URL if a managed copy is deleted.
-
-### CLI & Agent Automation
-- **Full CLI**: every action above is also a `pdfpal` command, with `--json` for scripting.
-- **Claude Code / Codex skill**: let an agent drive projects, sources, collections, and notes directly (see below).
-
-## Choose how to install
-
-| Option | Install and run |
-| --- | --- |
-| **Windows desktop preview** | [Download the Windows x64 installer](https://github.com/andrepaim/pdfpal/releases/tag/desktop-v2.1.0-preview.4), run it, and open **pdfpal** from Start. Includes its runtime, a system tray, and guided Claude Code/Codex setup. [Windows guide](docs/windows-quickstart.md). |
-| **CLI and browser reader · Linux / WSL** | Clone this repository and follow the [source installation steps](#install-and-run), or install the published CLI with `npm install -g pdfpal`. Requires Node.js 22 or newer. |
-
-Both options use the same reading and project core. The Windows installer is an unsigned engineering preview; Windows may show an unknown-publisher prompt. CLI installation does not install Electron or desktop tooling. Each option uses a local library; Windows and WSL have separate default libraries. A supported, authenticated assistant is needed for AI features.
-
-## Requirements
-
-For the CLI and source installation:
-
-- Node.js 22 or newer.
-- One supported agent CLI installed and authenticated: `claude`, `codex`, or `opencode`.
-- The selected agent may use its own built-in web-search tools, depending on the agent and its configuration.
-
-## Install and run
-
-The guided extension setup below is included in the repository's **2.1.0** build (companion **0.6.1**). It has not yet been published to npm. To use it now, follow the source installation instructions below; the registry command installs whichever version is currently published.
-
-```bash
-npm install -g pdfpal
-pdfpal
-```
-
-Running `pdfpal` starts the local Fastify server at `http://localhost:8200` and opens the browser. Use `pdfpal serve --no-open` to suppress the browser.
-
-From a source checkout (including the current extension features):
-
-```bash
-git clone https://github.com/andrepaim/pdfpal.git
-cd pdfpal
-npm ci
-npm run build
-npm start
-```
-
-## Quickstart
-
-### Read a PDF
-
-1. Click **New Project** and give it a title.
-2. Click **Add Source** and search by title, paste a paper URL (arXiv, OpenReview, ACL Anthology, PMLR, a DOI link, or a direct `.pdf`), or choose **Upload PDF** to import a local file up to 25 MB.
-3. Open the source, select the passage you're stuck on to ask about it, or save it as a highlight.
-4. Switch to the **Notes** tab and write what you understood in your own words as a markdown note; it renders as you read it back.
-5. Ask a question across every source in the project from **Project Chat**.
-
-Use **Dark pages** beside the reader's zoom controls for a dark page background and light text. The setting is remembered in your browser across documents and reloads. It also changes figure and photo colors; switch it off to view their original colors.
-
-After following a reference link within a PDF, click **Back to citation** in the reader toolbar to return to your previous position and zoom. Follow several references and click it repeatedly to retrace your jumps.
-
-### Read a Kindle book
-
-1. Start pdfpal and choose **Extension** on the projects home page (or **Kindle extension** in a project).
-2. **Download Chrome extension**, extract it to a folder you will keep, and open `chrome://extensions`. Enable **Developer mode**, choose **Load unpacked**, and select the extracted folder containing `manifest.json`.
-3. Pin pdfpal to Chrome's toolbar. Open your book in [Kindle for Web](https://read.amazon.com/), refresh the tab, and click the pdfpal toolbar icon.
-4. Click **Connect to pdfpal**. In the local tab that opens, click **Allow connection**, then return to Kindle. Choose or create a project.
-5. Ask a book question, select a passage to attach it, or type `/visual <concept>`. Save useful passages and answers as project notes.
-
-No pairing code is needed for this flow. Keep pdfpal running; if it stops, restart it and Retry. **Address & manual pairing** supports custom ports and the older code-based connection flow. The web **Extension** page also lets you name and disconnect paired connections.
-
-![The local extension setup and connection management page](screenshots/8-extension-setup.png)
-
-Supported readers: `read.amazon.com`, `ler.amazon.com.br`, and `read.amazon.co.uk`, in desktop Chrome. English prose is the initial OCR target. This companion works with Kindle for Web, not the native Kindle PC application. See the [companion guide](extension/README.md) for capture, update, and troubleshooting instructions.
-
 ## CLI
+
+The examples below use the optional `pdfpal` command from the [source setup](#linux-and-wsl). Without `npm link`, run them from the checkout with `npm start --` in place of `pdfpal`.
 
 ```bash
 pdfpal project create "My Research"
@@ -180,7 +201,7 @@ Commands accept a UUID or an exact case-insensitive title. Ambiguous titles are 
 
 `skills/pdfpal-cli/` documents the full CLI (flags, exit codes, selector rules) so an agent can drive it directly; see [Research with an agent, then read](#research-with-an-agent-then-read) above for what that looks like in practice. It does not search for papers itself; that's the agent's job, using its own tools.
 
-Install it for both Claude Code and Codex (symlinks into `~/.claude/skills/` and `~/.codex/skills/`):
+From the source checkout, install it for both Claude Code and Codex (symlinks into `~/.claude/skills/` and `~/.codex/skills/`):
 
 ```bash
 npm run skill:install
@@ -190,7 +211,7 @@ Run `npm run skill:uninstall` to remove the symlinks.
 
 ## Local data
 
-pdfpal uses `~/.pdfpal` by default:
+Linux/WSL uses `~/.pdfpal` by default; the Windows app uses `%USERPROFILE%\.pdfpal`. Both store the same kinds of local data:
 
 ```text
 ~/.pdfpal/
@@ -204,9 +225,11 @@ New PDFs are copied into `files/`, while extracted text and FTS chunks live in S
 
 Existing databases are migrated in place after an automatic backup. Override the data directory with `PDFPAL_DATA_DIR` or only the database path with `PDFPAL_DB`.
 
+Windows and WSL use separate default libraries. Sharing a live SQLite library between them is not a supported preview workflow. Windows upgrades and uninstall retain your library.
+
 ## Configuration
 
-Configuration precedence is command flags, environment variables, `~/.pdfpal/config.json`, then defaults.
+Configuration precedence is command flags, environment variables, `config.json` in your library folder, then defaults. The default file is `~/.pdfpal/config.json` on Linux/WSL and `%USERPROFILE%\.pdfpal\config.json` on Windows.
 
 ```bash
 PDFPAL_AGENT=claude       # claude | codex | opencode
@@ -257,7 +280,7 @@ $loopy run the saved Local test-quality pass loop
 
 ## Architecture
 
-The web reader, Kindle companion, and CLI share TypeScript services, local storage, and agent configuration. The web reader uses the same-origin Fastify API; the extension uses a loopback bridge with revocable credentials; the CLI calls services directly. Kindle conversations are scoped to connection, project, and book, separately from PDF chat sessions. Saved notes are available in the project UI.
+The Windows desktop app, web reader, Kindle companion, and CLI share TypeScript services, local storage, and agent configuration. The desktop app hosts the reader and its local backend, with an Electron shell for the tray and Windows lifecycle. The web reader uses the same-origin Fastify API; the extension uses a loopback bridge with revocable credentials; the CLI calls services directly. Kindle conversations are scoped to connection, project, and book, separately from PDF chat sessions. Saved notes are available in the project UI.
 
 ```text
 Web reader ── HTTP ──▶ Fastify API ──┐
@@ -278,18 +301,13 @@ pdfpal CLI ───────────────────────
 
 The implementation follows that split:
 
+- [`desktop/`](desktop/) contains the optional desktop shell, installer tooling, and Windows acceptance checks. See the [desktop build guide](desktop/README.md) and [automatic release pipeline](docs/windows-release-pipeline.md).
 - [`extension/`](extension/) contains the Chrome side panel, reader capture, bundled OCR, and guided connection flow.
 - [`frontend/src`](frontend/src/) contains the reader, chat, projects, notes, collections, and source-discovery UI.
 - [`src/server`](src/server/) exposes the HTTP API and serves the built frontend.
 - [`src/cli`](src/cli/) defines the scriptable `pdfpal` commands.
 - [`src/core`](src/core/) owns projects, sources, collections, notes, retrieval, chat, PDF handling, configuration, and agent invocation.
 
-The 2.1.0 package build contains the compiled TypeScript server/CLI, built React frontend, unpacked Chrome extension, and matching ZIP with bundled OCR assets. Runtime state stays local under `~/.pdfpal` by default, while external network edges are limited to source URLs, OpenAlex, Semantic Scholar, and capabilities provided by the selected agent. It is intended for local, single-user operation.
+The 2.1.0 package build contains the compiled TypeScript server/CLI, built React frontend, unpacked Chrome extension, and matching ZIP with bundled OCR assets. Runtime state stays local in the [library folder](#local-data), while external network edges are limited to source URLs, OpenAlex, Semantic Scholar, and capabilities provided by the selected agent. It is intended for local, single-user operation.
 
 *AI to read deeper, not to avoid reading.*
-
-## Windows desktop preview
-
-An optional Windows desktop app provides guided Claude/Codex setup, a system tray, and a per-user installer. See the [Windows quickstart](docs/windows-quickstart.md) and [desktop build guide](desktop/README.md). Current engineering installers are unsigned; public release signing and clean-account acceptance remain pending.
-
-[Download the Windows installer from GitHub Releases](https://github.com/andrepaim/pdfpal/releases). Desktop version bumps on `master` use the [automatic release pipeline](docs/windows-release-pipeline.md); engineering previews are marked **Pre-release**.
