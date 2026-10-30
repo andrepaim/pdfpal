@@ -10,7 +10,7 @@ export default function DesktopUpdates() {
   const [error, setError] = useState('')
   const check = async () => {
     const current = ++generation.current
-    setChecking(true); setError('')
+    setChecking(true); setError(''); setState(undefined)
     try {
       const result = await bridge?.checkUpdates?.()
       if (current === generation.current) setState(result)
@@ -29,11 +29,12 @@ export default function DesktopUpdates() {
   return <dialog ref={dialog} className="ai-settings desktop-updates" aria-labelledby="desktop-updates-title" onClose={() => { generation.current++ }}>
     <header className="ai-settings-header"><div><span className="ai-settings-eyebrow">PDFPAL</span><h2 id="desktop-updates-title">Software updates</h2><p>{state ? `Version ${state.currentVersion}${state.distribution === 'unsigned' ? ' · Unsigned preview' : ''}` : 'Checking your desktop version…'}</p></div><button className="ai-settings-close" aria-label="Close software updates" onClick={() => dialog.current?.close()}>×</button></header>
     <div className="ai-settings-content">
-      {checking ? <p role="status" className="ai-settings-help">Checking official desktop releases…</p> : <>
+      {checking ? <p role="status" className="ai-settings-help">Checking signed stable releases…</p> : <>
         {state?.state === 'available' && <><h3>pdfpal {state.version} is available</h3><p className="ai-settings-help">Download the installer, quit pdfpal from its tray menu, then run the installer. Your library is kept.</p><p className="ai-settings-help">Publisher: {state.publisher}</p>{state.notes && <div className="desktop-update-notes">{state.notes}</div>}</>}
-        {state?.state === 'current' && <p role="status" className="ai-settings-notice">You’re up to date.</p>}
-        {state?.state === 'unpublished' && <p role="status" className="ai-settings-help">No signed desktop release has been published yet. This preview can still be used for testing.</p>}
+        {state?.state === 'current' && <p role="status" className="ai-settings-notice">No newer signed stable release is available.</p>}
+        {state?.state === 'unpublished' && <p role="status" className="ai-settings-help">No signed stable desktop release was found.</p>}
         {state?.state === 'error' && <p role="alert" className="ai-settings-error">{state.message}</p>}
+        {state?.currentVersion.includes('-') && <p className="ai-settings-help">Engineering previews may be unsigned. To update a preview manually, <a href="https://github.com/andrepaim/pdfpal/releases" target="_blank" rel="noopener noreferrer">browse previews on GitHub</a>.</p>}
         <div className="ai-settings-actions"><button onClick={() => { void action(bridge.releaseNotes) }}>Release notes</button><button onClick={() => { void action(bridge.openLicenses) }}>Open-source licenses</button></div>
       </>}
       {error && <p role="alert" className="ai-settings-error">{error}</p>}

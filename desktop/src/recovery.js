@@ -24,10 +24,13 @@ document.getElementById('updates').onclick = async () => {
   const button = document.getElementById('updates')
   button.disabled = true
   document.getElementById('update-preview').hidden = false
-  document.getElementById('update-description').textContent = 'Checking official desktop releases…'
+  document.getElementById('download-update').hidden = true
+  document.getElementById('preview-upgrade').hidden = true
+  document.getElementById('update-description').textContent = 'Checking signed stable releases…'
   try {
     const result = await bridge.checkUpdates()
-    document.getElementById('update-description').textContent = result.state === 'available' ? `Version ${result.version} is available. Download the installer, quit pdfpal, then run it.` : result.state === 'current' ? `You’re up to date (${result.currentVersion}).` : result.state === 'unpublished' ? 'No signed desktop release has been published yet.' : result.message
+    document.getElementById('update-description').textContent = result.state === 'available' ? `Version ${result.version} is available. Download the installer, quit pdfpal, then run it.` : result.state === 'current' ? `No newer signed stable release is available (installed: ${result.currentVersion}).` : result.state === 'unpublished' ? 'No signed stable desktop release was found.' : result.message
+    document.getElementById('preview-upgrade').hidden = !result.currentVersion.includes('-')
     document.getElementById('download-update').hidden = result.state !== 'available'
   } catch { document.getElementById('update-description').textContent = 'Could not check for updates. Try again later.' }
   finally { button.disabled = false }
