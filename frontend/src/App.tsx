@@ -4,6 +4,7 @@
  * Reads project_id + source_id from URL params.
  */
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { registerPendingSave } from './lib/persistence'
 import { useNavigate, useParams } from 'react-router-dom'
 import PdfViewer from './components/PdfViewer'
 import ChatPanel from './components/ChatPanel'
@@ -170,6 +171,7 @@ export default function App({ user }: { user: User }) {
   const progressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingProgress = useRef<number | null>(null)
   const lastSavedProgress = useRef<number | null>(null)
+  const progressSave = useRef<Promise<unknown> | null>(null)
   const readingContext = useRef('')
 
   const loadSource = useCallback(() => {
@@ -204,12 +206,12 @@ export default function App({ user }: { user: User }) {
     const page = pendingProgress.current
     if (page === null || page === lastSavedProgress.current) {
       pendingProgress.current = null
-      return
+      return progressSave.current
     }
     const context = `${projectId}/${sourceId}`
     pendingProgress.current = null
     lastSavedProgress.current = page
-    void sourcesApi.updateLastPageRead(projectId, sourceId, page).catch(() => {
+    progressSave.current = sourcesApi.updateLastPageRead(projectId, sourceId, page).catch(() => {
       // Progress is best-effort and must never interrupt reading. Keep a failed
       // page pending so route teardown/pagehide gets one more chance to save it.
       if (readingContext.current === context && lastSavedProgress.current === page) {
@@ -217,7 +219,9 @@ export default function App({ user }: { user: User }) {
         pendingProgress.current = page
       }
     })
+    return progressSave.current
   }, [projectId, sourceId])
+  useEffect(() => registerPendingSave(flushReadingProgress), [flushReadingProgress])
 
   const handlePageChange = useCallback((page: number) => {
     if (page === lastSavedProgress.current || page === pendingProgress.current) return

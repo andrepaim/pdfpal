@@ -21,6 +21,9 @@ try {
   // array starts at column zero; parse it without depending on lifecycle logging behavior.
   const packed = JSON.parse(output.slice(output.lastIndexOf('\n[') + 1))[0];
   assert.ok(!packed.files.some(file => /\.pdf$|Zone.Identifier|test-results|playwright-report|\.db$/.test(file.path)));
+  assert.ok(!packed.files.some(file => /^desktop\//.test(file.path)), 'The CLI tarball must exclude desktop tooling and builds');
+  const lock = JSON.parse(await readFile(path.join(root, 'package-lock.json'), 'utf8'));
+  assert.ok(!Object.keys(lock.packages).some(name => /(?:^|\/)node_modules\/(?:electron|electron-builder)$/.test(name)), 'Root npm installation must not install Electron');
   for (const name of ['dist/cli/index.js', 'frontend/dist/index.html', 'extension/package/companion.zip', 'extension/dist/manifest.json'])
     assert.ok(packed.files.some(file => file.path === name), name);
   const prefix = path.join(temporary, 'installed application');

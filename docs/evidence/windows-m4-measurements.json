@@ -1,0 +1,70 @@
+{
+  "format": 1,
+  "status": "passed",
+  "version": "2.1.0-preview.3",
+  "platform": "win32",
+  "signed": false,
+  "evidence": "packaged-fixture-on-existing-development-account",
+  "machine": {
+    "referenceMachine": false,
+    "build": "26300",
+    "logicalProcessors": 24,
+    "ramGiB": 63.8,
+    "windows": "Microsoft Windows 11 Pro",
+    "cpu": "12th Gen Intel(R) Core(TM) i9-12900F"
+  },
+  "startup": {
+    "samplesMs": [
+      795.5,
+      729.8,
+      766.1,
+      759.9,
+      740.7,
+      735.5,
+      744.5,
+      747.6,
+      738.3,
+      798.3,
+      759.8,
+      771.2,
+      767.6,
+      766,
+      779.9,
+      732.8,
+      762.9,
+      753.7,
+      765,
+      772.8
+    ],
+    "runs": 20,
+    "targetMs": 5000,
+    "definition": "fresh process launch to rendered usable home; OS caches retained; setup/provider probes excluded",
+    "p95Ms": 795.5,
+    "withinBudget": true
+  },
+  "idle": {
+    "scenario": "sample-pdf-read-then-hidden",
+    "idleSeconds": 60,
+    "appProcesses": 5,
+    "privateWorkingSetMiB": 166.54,
+    "workingSetMiB": 517.68,
+    "privateBytesMiB": 404.25,
+    "cpuPercentOfMachine": 0.013,
+    "cpuSampleSeconds": 5.04,
+    "memoryBudgetMiB": 300,
+    "memoryWithinBudget": true,
+    "cpuWithinBudget": true
+  },
+  "tray": {
+    "unrelatedProcessesTerminated": 0,
+    "cycles": 50,
+    "fixtureAnswersExpected": 51
+  },
+  "checks": [
+    "explicit-missing-executable-setup-and-continue-without-ai",
+    "repeated-background-answer-history-second-instance-and-graceful-quit"
+  ],
+  "cleanAccountAcceptance": "pending",
+  "realProviderLogin": "pending",
+  "publisherSigning": "pending"
+}

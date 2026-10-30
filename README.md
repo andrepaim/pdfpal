@@ -97,7 +97,18 @@ Select text in the PDF reader and choose **Explain visually** from its popup, or
 - **Full CLI**: every action above is also a `pdfpal` command, with `--json` for scripting.
 - **Claude Code / Codex skill**: let an agent drive projects, sources, collections, and notes directly (see below).
 
+## Choose how to install
+
+| Option | Install and run |
+| --- | --- |
+| **Windows desktop preview** | [Download the Windows x64 installer](https://github.com/andrepaim/pdfpal/releases/tag/desktop-v2.1.0-preview.4), run it, and open **pdfpal** from Start. Includes its runtime, a system tray, and guided Claude Code/Codex setup. [Windows guide](docs/windows-quickstart.md). |
+| **CLI and browser reader · Linux / WSL** | Clone this repository and follow the [source installation steps](#install-and-run), or install the published CLI with `npm install -g pdfpal`. Requires Node.js 22 or newer. |
+
+Both options use the same reading and project core. The Windows installer is an unsigned engineering preview; Windows may show an unknown-publisher prompt. CLI installation does not install Electron or desktop tooling. Each option uses a local library; Windows and WSL have separate default libraries. A supported, authenticated assistant is needed for AI features.
+
 ## Requirements
+
+For the CLI and source installation:
 
 - Node.js 22 or newer.
 - One supported agent CLI installed and authenticated: `claude`, `codex`, or `opencode`.
@@ -276,3 +287,9 @@ The implementation follows that split:
 The 2.1.0 package build contains the compiled TypeScript server/CLI, built React frontend, unpacked Chrome extension, and matching ZIP with bundled OCR assets. Runtime state stays local under `~/.pdfpal` by default, while external network edges are limited to source URLs, OpenAlex, Semantic Scholar, and capabilities provided by the selected agent. It is intended for local, single-user operation.
 
 *AI to read deeper, not to avoid reading.*
+
+## Windows desktop preview
+
+An optional Windows desktop app provides guided Claude/Codex setup, a system tray, and a per-user installer. See the [Windows quickstart](docs/windows-quickstart.md) and [desktop build guide](desktop/README.md). Current engineering installers are unsigned; public release signing and clean-account acceptance remain pending.
+
+[Download the Windows installer from GitHub Releases](https://github.com/andrepaim/pdfpal/releases). Desktop version bumps on `master` use the [automatic release pipeline](docs/windows-release-pipeline.md); engineering previews are marked **Pre-release**.

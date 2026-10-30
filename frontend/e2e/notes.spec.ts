@@ -6,6 +6,54 @@ test.describe('Notes management', () => {
     await mockAuth(page);
   });
 
+  test('desktop quit flush saves a draft before the autosave delay', async ({ page }) => {
+    await page.addInitScript(() => { window.pdfpalDesktop = { setAgent: async id => id, onAgentChanged: () => () => {} }; });
+    const project = await createProjectViaApi(page, 'Quit flush project');
+    const id = await createNoteViaApi(page, project.id, { title: 'Before' });
+    await page.goto(`/projects/${project.id}/notes/${id}`);
+    const input = page.getByPlaceholder('Note title…');
+    await expect(input).toHaveValue('Before');
+    await input.fill('Saved before quit');
+    await page.evaluate(() => window.pdfpalFlushPending!());
+    const saved = await (await page.request.get(`/api/projects/${project.id}/notes/${id}`)).json();
+    expect(saved.title).toBe('Saved before quit');
+  });
+
+  test('a failed earlier save cannot overwrite a newer queued draft', async ({ page }) => {
+    await page.addInitScript(() => { window.pdfpalDesktop = { setAgent: async id => id, onAgentChanged: () => () => {} }; });
+    const project = await createProjectViaApi(page, 'Save failure project');
+    const id = await createNoteViaApi(page, project.id, { title: 'Before' });
+    await page.goto(`/projects/${project.id}/notes/${id}`);
+    const input = page.getByPlaceholder('Note title…');
+    await expect(input).toHaveValue('Before');
+    let release!: () => void;
+    let started = false;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    await page.route(`**/api/projects/${project.id}/notes/${id}`, async route => {
+      if (route.request().method() === 'PUT' && !started) {
+        started = true;
+        await gate;
+        await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ detail: 'Fixture save failure' }) });
+      } else await route.continue();
+    });
+    await input.fill('First draft');
+    const first = page.evaluate(() => window.pdfpalFlushPending!().then(() => false, () => true));
+    await expect.poll(() => started).toBe(true);
+    await input.fill('Latest draft');
+    const second = page.evaluate(async () => {
+      const saving = window.pdfpalFlushPending!();
+      document.body.dataset.secondFlushStarted = 'true';
+      await saving;
+    });
+    await expect(page.locator('body')).toHaveAttribute('data-second-flush-started', 'true');
+    release();
+    expect(await first).toBe(true);
+    await second;
+    await page.evaluate(() => window.pdfpalFlushPending!());
+    const saved = await (await page.request.get(`/api/projects/${project.id}/notes/${id}`)).json();
+    expect(saved.title).toBe('Latest draft');
+  });
+
   test('notes tab shows empty state', async ({ page }) => {
     const project = await createProjectViaApi(page, 'Notes Empty Project');
 

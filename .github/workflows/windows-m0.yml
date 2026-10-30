@@ -1,0 +1,89 @@
+name: Windows desktop installer
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'src/**'
+      - 'frontend/**'
+      - 'extension/**'
+      - 'test/unit/agent-discovery.test.ts'
+      - '.github/workflows/windows-m0.yml'
+      - 'package*.json'
+      - 'LICENSE'
+      - '.github/workflows/windows-release.yml'
+
+jobs:
+  packaged-windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx tsx --test test/unit/agent-discovery.test.ts
+      - run: node --test desktop/test/preferences.test.mjs desktop/test/setup.test.mjs desktop/test/updates.test.mjs desktop/test/beta.test.mjs desktop/test/release.test.mjs
+      - run: node desktop/scripts/stage.mjs
+      - name: Build and exercise packaged application
+        shell: pwsh
+        run: ./desktop/scripts/windows-m3.ps1 -SourceRoot $env:GITHUB_WORKSPACE -WorkRoot "$env:RUNNER_TEMP/pdfpal-windows-m0"
+      - name: Exercise isolated beta measurement protocol
+        shell: pwsh
+        run: ./desktop/scripts/windows-m4.ps1 -SourceRoot $env:GITHUB_WORKSPACE -WorkRoot "$env:RUNNER_TEMP/pdfpal-windows-m0" -SkipPackagedChecks -SkipInstall -StartupRuns 3 -TrayCycles 3 -IdleSeconds 5
+      - name: Verify release files without publishing
+        shell: pwsh
+        run: node desktop/scripts/desktop-release.mjs prepare "$env:RUNNER_TEMP/pdfpal-windows-m0/artifacts"
+      - name: Prepare verified local beta test kit
+        shell: pwsh
+        run: |
+          $kit = "$env:RUNNER_TEMP/pdfpal-beta-kit"
+          node desktop/scripts/create-beta-kit.mjs "$env:RUNNER_TEMP/pdfpal-windows-m0/artifacts" $kit
+          if ($LASTEXITCODE -ne 0) { throw 'Beta kit generation failed' }
+          & "$env:SystemRoot/System32/WindowsPowerShell/v1.0/powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$kit/Open-Sandbox.ps1" -PrepareOnly
+          if ($LASTEXITCODE -ne 0) { throw 'Portable Sandbox configuration failed' }
+      - name: Keep packaged evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-m0-evidence
+          path: |
+            ${{ runner.temp }}/pdfpal-windows-m0/installer-receipt.json
+            ${{ runner.temp }}/pdfpal-windows-m0/beta-measurements.json
+            ${{ runner.temp }}/pdfpal-windows-m0/packaged-receipt.json
+            ${{ runner.temp }}/pdfpal-windows-m0/no-system-node-receipt.json
+            ${{ runner.temp }}/pdfpal-windows-m0/smoke.*.log
+            ${{ runner.temp }}/pdfpal-windows-m0/ai-settings.png
+            ${{ runner.temp }}/pdfpal-windows-m0/setup.png
+            ${{ runner.temp }}/pdfpal-windows-m0/branding-*/*-windows.png
+            ${{ runner.temp }}/pdfpal-windows-m0/branding-*/*-reference.png
+      - name: Verify packaging did not replace CLI native modules
+        shell: pwsh
+        run: |
+          $env:PDFPAL_DATA_DIR = "$env:RUNNER_TEMP/pdfpal-cli-after-packaging"
+          node dist/cli/index.js --json project create "CLI after packaging"
+          if ($LASTEXITCODE -ne 0) { throw 'CLI regression after packaging' }
+      - name: Keep unsigned preview installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdfpal-windows-m3-installer-unsigned
+          compression-level: 0
+          path: |
+            ${{ runner.temp }}/pdfpal-windows-m0/artifacts/pdfpal-Setup-*.exe
+            ${{ runner.temp }}/pdfpal-windows-m0/artifacts/pdfpal-desktop-release.json
+      - name: Keep unsigned engineering application
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdfpal-windows-m3-unpacked-unsigned
+          compression-level: 0
+          path: ${{ runner.temp }}/pdfpal-windows-m0/artifacts/win-unpacked/
+      - name: Keep unsigned beta field-test kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdfpal-windows-beta-kit-unsigned
+          compression-level: 0
+          path: ${{ runner.temp }}/pdfpal-beta-kit/

@@ -12,6 +12,10 @@ import ProjectChat from './pages/ProjectChat'
 import VisualPage from './pages/VisualPage'
 import ExtensionsPage from './pages/ExtensionsPage'
 import LoginPage from './components/LoginPage'
+import { flushPendingSaves } from './lib/persistence'
+import DesktopUpdates from './components/DesktopUpdates'
+import DesktopStatus from './components/DesktopStatus'
+import AISettings from './components/AISettings'
 
 // ── Error boundary ────────────────────────────────────────────────────────────
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
@@ -39,6 +43,11 @@ interface User { email: string; name: string; picture: string }
 
 function Root() {
   const [user, setUser] = useState<User | null | undefined>(undefined)
+  useEffect(() => {
+    if (!window.pdfpalDesktop) return
+    window.pdfpalFlushPending = flushPendingSaves
+    return () => { delete window.pdfpalFlushPending }
+  }, [])
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -93,6 +102,9 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       <Root />
+      <AISettings />
+      <DesktopStatus />
+      <DesktopUpdates />
     </ErrorBoundary>
   </StrictMode>,
 )

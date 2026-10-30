@@ -1,0 +1,16 @@
+{
+  "devDependencies": {
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0"
+  },
+  "name": "pdfpal-desktop-tooling",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "stage": "node scripts/stage.mjs",
+    "package": "electron-builder --config electron-builder.yml --dir",
+    "probe": "node scripts/check-providers.mjs",
+    "installer": "node scripts/build-installer.mjs",
+    "test": "node --test test/preferences.test.mjs test/setup.test.mjs test/updates.test.mjs test/beta.test.mjs test/release.test.mjs"
+  }
+}

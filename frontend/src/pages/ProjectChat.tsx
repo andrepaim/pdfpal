@@ -1,3 +1,4 @@
+import AIRecovery from '../components/AIRecovery'
 /**
  * ProjectChat.tsx — Cross-source chat for a project.
  * Left panel: source toggles. Right panel: full chat with all active sources in context.
@@ -315,7 +316,7 @@ export default function ProjectChat() {
           )}
 
           {error && (
-            <div style={{ background: '#2d1515', color: '#f87171', padding: '10px 14px', borderRadius: 8, fontSize: 13 }}>⚠️ {error}</div>
+            <div style={{ background: '#2d1515', color: '#f87171', padding: '10px 14px', borderRadius: 8, fontSize: 13 }}>⚠️ {error}<AIRecovery /></div>
           )}
 
           <div ref={bottomRef} />

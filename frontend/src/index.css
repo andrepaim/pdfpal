@@ -29,6 +29,47 @@ body {
   flex-direction: column;
 }
 
+.ai-settings {
+  width: min(540px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 24px 80px #0009;
+  color-scheme: dark;
+}
+.ai-settings::backdrop { background: #000a; backdrop-filter: blur(4px); }
+.ai-settings-header { display: flex; align-items: start; gap: 16px; padding: 24px 24px 20px; border-bottom: 1px solid var(--border); }
+.ai-settings-header h2 { margin: 0 0 6px; font-size: 20px; font-weight: 650; letter-spacing: -.3px; }
+.ai-settings-header p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.ai-settings-close { margin-left: auto; border: 0; background: transparent; color: var(--muted); padding: 0 4px; font-size: 24px; line-height: 1; cursor: pointer; }
+.ai-settings-content { padding: 20px 24px; }
+.ai-settings-options { margin: 0; padding: 0; border: 0; display: grid; gap: 10px; }
+.ai-settings-option { display: flex; align-items: center; gap: 12px; padding: 15px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
+.ai-settings-option:hover { border-color: var(--muted); }
+.ai-settings-option.is-selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg)); }
+.ai-settings-option.is-unavailable { opacity: .5; cursor: default; }
+.ai-settings-option input { accent-color: var(--accent); width: 16px; height: 16px; flex-shrink: 0; }
+.ai-settings-option-text { display: grid; gap: 4px; }
+.ai-settings-option-text strong { font-size: 14px; font-weight: 600; }
+.ai-settings-option-text > span { color: var(--muted); font-size: 12px; }
+.ai-settings-selected { color: #a5b4fc; font-size: 11px; margin-left: auto; }
+.ai-settings-help, .ai-settings-loading { color: var(--muted); font-size: 12px; line-height: 1.65; margin: 16px 0 0; }
+.ai-settings-loading { margin: 0 0 20px; }
+.ai-settings-error { margin: 0 0 16px; color: #fca5a5; background: #7f1d1d33; border: 1px solid #7f1d1d; border-radius: 8px; padding: 10px 12px; font-size: 13px; line-height: 1.5; }
+.ai-settings-refresh { background: transparent; border: 0; color: #a5b4fc; cursor: pointer; font-size: 12px; padding: 10px 0 0; }
+.ai-settings-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; }
+.ai-settings-cancel, .ai-settings-save { border-radius: 8px; padding: 9px 15px; font-size: 13px; font-weight: 500; cursor: pointer; }
+.ai-settings-cancel { background: transparent; color: var(--text); border: 1px solid var(--border); }
+.ai-settings-save { background: var(--accent); color: white; border: 1px solid var(--accent); }
+.ai-settings-save:hover { background: var(--accent-hover); }
+.ai-settings button:disabled { opacity: .5; cursor: default; }
+.ai-settings :focus-visible { outline: 2px solid #a5b4fc; outline-offset: 3px; }
+
 /* react-pdf's bundled TextLayer.css omits the selection-highlight rule that
    the official pdf.js viewer stylesheet ships. Without it, the browser's
    default ::selection paints the invisible text-layer glyphs opaque, in the
@@ -115,3 +156,40 @@ body {
   display: inline-block;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.ai-settings { width: min(600px, calc(100vw - 32px)); }
+.ai-settings-eyebrow { display: block; color: #a5b4fc; font-size: 10px; font-weight: 650; letter-spacing: 1.5px; margin-bottom: 8px; }
+.ai-settings-card { border: 1px solid var(--border); border-radius: 10px; overflow: visible; }
+.ai-settings-card.is-selected { border-color: var(--accent); }
+.ai-settings-card .ai-settings-option { border: 0; border-radius: 10px; }
+.ai-settings-card:has(.ai-settings-actions) .ai-settings-option { border-radius: 10px 10px 0 0; }
+.ai-settings-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 0 15px 12px; font-size: 12px; }
+.ai-settings-actions button { padding: 0; background: transparent; border: 0; color: #a5b4fc; font-size: 12px; cursor: pointer; }
+.ai-settings-actions details { margin-left: auto; color: var(--muted); }
+.ai-settings-actions summary { cursor: pointer; }
+.ai-settings-actions details button { display: block; margin-top: 8px; }
+.ai-settings-confirm { margin-top: 16px; padding: 16px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; }
+.ai-settings-confirm h3 { font-size: 13px; margin: 0 0 8px; font-weight: 600; }
+.ai-settings-confirm p { font-size: 12px; color: var(--muted); line-height: 1.6; margin: 0 0 12px; }
+.ai-settings-confirm .ai-settings-actions { padding: 0; }
+.ai-settings-notice { color: #a7f3d0; font-size: 12px; line-height: 1.6; margin: 0 0 16px; }
+.ai-settings-connection { margin: 0 15px; padding: 12px 0; border-top: 1px solid var(--border); }
+.ai-settings-connection-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 12px; }
+.ai-settings-connection-actions button { padding: 0; border: 0; background: transparent; color: #a5b4fc; font-size: 12px; cursor: pointer; }
+.ai-settings-connection-actions > span { color: var(--muted); font-size: 11px; }
+.ai-settings-connection p { margin: 8px 0 0; font-size: 11px; line-height: 1.6; color: var(--muted); }
+.ai-settings-connection .ai-settings-verified { color: #a7f3d0; }
+.ai-settings-billing { display: flex; align-items: start; gap: 8px; font-size: 12px; line-height: 1.6; margin: 12px 15px; color: #fcd34d; }
+.desktop-status { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 999; max-width: min(640px, calc(100vw - 40px)); padding: 14px 18px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); box-shadow: 0 8px 30px #0007; font-size: 13px; line-height: 1.6; }
+.desktop-status button { margin-left: 12px; background: transparent; border: 0; color: #a5b4fc; cursor: pointer; }
+.ai-settings pre { background: var(--bg); color: var(--muted); border-radius: 8px; padding: 12px; overflow: auto; max-height: 300px; font-size: 11px; }
+.ai-recovery-link { margin-left: 8px; background: transparent; border: 0; color: #a5b4fc; cursor: pointer; }
+.ai-settings[open] { display: flex; flex-direction: column; overflow: hidden; }
+.ai-settings > form { display: flex; flex-direction: column; min-height: 0; max-height: calc(100dvh - 34px); }
+.ai-settings-header, .ai-settings-footer { flex-shrink: 0; }
+.ai-settings-content { overflow: auto; min-height: 0; }
+.ai-settings-footer { flex-wrap: wrap; }
+.desktop-updates .ai-settings-content { padding-top: 8px; padding-bottom: 24px; }
+.desktop-updates h3 { font-size: 16px; margin: 16px 0 0; }
+.desktop-updates .ai-settings-actions { padding: 20px 0 0; }
+.desktop-update-notes { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 20px; color: var(--muted); font-size: 12px; line-height: 1.7; }

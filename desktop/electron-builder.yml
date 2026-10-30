@@ -1,0 +1,51 @@
+appId: io.pdfpal.desktop
+productName: pdfpal
+executableName: pdfpal
+electronVersion: 45.1.0
+copyright: Copyright © 2026 pdfpal contributors
+asar: true
+asarUnpack:
+  - '**/*.node'
+directories:
+  app: stage
+  output: artifacts
+  buildResources: build
+files:
+  - '**/*'
+  - '!test/**'
+  - '!discovery.test.mjs'
+extraResources:
+  - from: stage/THIRD_PARTY_NOTICES.txt
+    to: THIRD_PARTY_NOTICES.txt
+  - from: build/LICENSE.txt
+    to: LICENSE.pdfpal.txt
+win:
+  target: nsis
+  icon: build/icon.ico
+  signAndEditExecutable: true
+  signExecutable: false
+  requestedExecutionLevel: asInvoker
+nsis:
+  artifactName: pdfpal-Setup-${version}-${arch}.exe
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: false
+  createStartMenuShortcut: true
+  createDesktopShortcut: false
+  shortcutName: pdfpal
+  uninstallDisplayName: pdfpal
+  deleteAppDataOnUninstall: false
+  runAfterFinish: true
+  differentialPackage: false
+  include: build/installer.nsh
+  license: build/LICENSE.txt
+  installerLanguages:
+    - en_US
+linux:
+  target: dir
+# Native dependencies are installed only inside the isolated desktop stage.
+npmRebuild: false
+publish: null

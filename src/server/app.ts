@@ -39,6 +39,18 @@ export async function buildServer(config: PdfpalConfig) {
   const notes = new NoteService(db, config)
   const chat = new ChatService(db, config)
   const visuals = new VisualExplanationService(db, config)
+  app.addHook('onRequest', async (request, reply) => {
+    reply.header('Content-Security-Policy', "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' data: blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-src 'none'; frame-ancestors 'self'")
+    // Browser documents may use the reader API only from its own origin.
+    // The paired extension has a separate origin/token gate in its scoped routes.
+    const host = request.headers.host ?? ''
+    const local = ['127.0.0.1', 'localhost', '::1'].includes(config.host)
+    if (local && !/^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(host)) return reply.code(403).send({ code: 'FORBIDDEN', detail: 'Use the local pdfpal address.' })
+    if (request.url.startsWith('/api/') && !request.url.startsWith('/api/extension/')) {
+      if ((request.headers.origin && request.headers.origin !== `http://${host}`) || request.headers['sec-fetch-site'] === 'cross-site')
+        return reply.code(403).send({ code: 'FORBIDDEN', detail: 'Open this action from pdfpal.' })
+    }
+  })
   await app.register(cors, { origin: false })
   await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024 } })
 
@@ -58,7 +70,7 @@ export async function buildServer(config: PdfpalConfig) {
   app.get('/api/health', async () => ({ status: 'ok' }))
   app.get('/api/auth/me', async () => ({ email: 'local@localhost', name: 'Local User', picture: '' }))
   app.post('/api/auth/logout', async () => ({ ok: true }))
-  app.get('/api/agents', async () => ({ default: config.agent, agents: new AgentService(config).list() }))
+  app.get('/api/agents', async () => ({ default: config.agent, agents: await new AgentService(config).inspect() }))
 
   app.get('/api/projects', async () => projects.list())
   app.post<{ Body: { title: string; description?: string } }>('/api/projects', async request => projects.create(request.body.title, request.body.description))
@@ -240,8 +252,11 @@ function registerResearchRoutes(app: any, db: import('better-sqlite3').Database,
 }
 
 export async function startServer(config: PdfpalConfig, options: { openBrowser: boolean }): Promise<void> {
-  const app = await buildServer(config)
-  await app.listen({ host: config.host, port: config.port })
+  const { startRuntime } = await import('./runtime.js')
+  const runtime = await startRuntime(config)
+  const stop = () => { void runtime.close().then(() => process.exit(0)) }
+  process.once('SIGINT', stop)
+  process.once('SIGTERM', stop)
   const url = `http://localhost:${config.port}`
   process.stdout.write(`pdfpal: running at ${url}\n`)
   if (options.openBrowser) await open(url).catch(() => process.stderr.write(`pdfpal: open ${url} in your browser\n`))

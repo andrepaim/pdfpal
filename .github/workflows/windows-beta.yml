@@ -1,0 +1,26 @@
+name: Windows beta measurements
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  measure:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: node desktop/scripts/stage.mjs
+      - name: Full synthetic beta stress and process measurements
+        shell: pwsh
+        run: ./desktop/scripts/windows-m4.ps1 -SourceRoot $env:GITHUB_WORKSPACE -WorkRoot "$env:RUNNER_TEMP/pdfpal-windows-beta"
+      - name: Keep measurements (hosted runner, not reference-machine certification)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdfpal-windows-beta-measurements
+          path: ${{ runner.temp }}/pdfpal-windows-beta/beta-measurements.json
