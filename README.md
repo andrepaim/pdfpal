@@ -10,6 +10,63 @@ Your library, notes, highlights, and chat history stay on your machine. Relevant
 
 Available as a **Windows desktop app** or a **CLI and browser reader on Linux/WSL**, with an optional Chrome companion for Kindle for Web.
 
+## See pdfpal in action
+
+[Install and run](#install-and-run) · [Quickstart](#quickstart)
+
+### Read with AI beside the page
+
+Ask about the paper you're reading without switching tabs. Keep the text and the explanation in view together.
+
+![PDF reader with the paper on the left and a question and answer about self-attention on the right](screenshots/1-reader.png)
+
+### Turn difficult concepts into visual explanations
+
+Use `/visual` to explore a concept through progressive diagrams and follow-up questions. Here it is in the Kindle companion; visual explanations also work in the PDF reader and project chat.
+
+<img src="screenshots/7-kindle-companion.png" alt="Kindle companion showing a step-by-step visual explanation of how attention builds context" width="390">
+
+### Build a research library
+
+Group papers into collections within a project, then read them individually or ask questions across your sources.
+
+![Research project with Transformer papers organized into Core Transformer Papers and Related Techniques collections](screenshots/6-collections.png)
+
+### Keep what you understand
+
+Write what you learned in your own words and save questions to revisit as Markdown notes in your project.
+
+![Rendered research note explaining why attention replaced recurrence, with an open question to revisit](screenshots/5-notes.png)
+
+<details>
+<summary>Discovery, projects, and Kindle setup</summary>
+
+**Find your next paper**
+
+Search by title and add papers directly to your project.
+
+![Paper search results with an Add button beside each result](screenshots/3-search.png)
+
+**Follow the citation trail**
+
+Explore a paper's references and citing papers, and add useful sources as you read.
+
+![Related papers panel listing references with buttons to add them to the project](screenshots/2-related.png)
+
+**Give each research topic a home**
+
+Keep sources, notes, and conversations together in a local project.
+
+![Projects home page with a Transformer Architecture research project](screenshots/4-projects.png)
+
+**Bring pdfpal to Kindle for Web**
+
+Download the Chrome companion, connect it to your local library, and manage paired connections.
+
+![Kindle companion setup page with extension download instructions and paired connection management](screenshots/8-extension-setup.png)
+
+</details>
+
 ## Install and run
 
 | Choose your setup | What you need | Get started |
@@ -61,15 +118,6 @@ pdfpal --help
 
 Keep the checkout in place when using this link. AI features use your assistant’s existing authentication and provider allowance.
 
-<div align="center">
-
-| Read and chat, side by side | Your research, organized |
-|:---:|:---:|
-| ![Reader](screenshots/1-reader.png) | ![Projects](screenshots/4-projects.png) |
-| Ask questions about the paper you're reading, with no tab-switching | Projects, collections, notes, and chat history, all in one place |
-
-</div>
-
 ## Quickstart
 
 ### Read a PDF
@@ -94,8 +142,6 @@ After following a reference link within a PDF, click **Back to citation** in the
 
 No pairing code is needed for this flow. Keep pdfpal running; if it stops, restart it and Retry. **Address & manual pairing** supports custom ports and the older code-based connection flow. The web **Extension** page also lets you name and disconnect paired connections.
 
-![The local extension setup and connection management page](screenshots/8-extension-setup.png)
-
 Supported readers: `read.amazon.com`, `ler.amazon.com.br`, and `read.amazon.co.uk`, in desktop Chrome. English prose is the initial OCR target. This companion works with Kindle for Web, not the native Kindle PC application. See the [companion guide](extension/README.md) for capture, update, and troubleshooting instructions.
 
 ## Features
@@ -107,8 +153,6 @@ The [Kindle Companion](extension/README.md) brings the same dark chat pane to Ki
 Keep books in a project with **Add Source → Kindle book**, or use **Book details → Add book to project** in the companion. **Open in Kindle ↗** launches the reader in a new tab and selects the associated project in the connected companion. These entries store book references; full Kindle text is not imported or indexed.
 
 Book questions use title/author, previous discussion, and captured or saved excerpts. The full Kindle book is not imported. Relevant project PDFs can be included explicitly; a project does not need PDFs to support Kindle chat.
-
-![Kindle companion showing a visual explanation beside the chat composer](screenshots/7-kindle-companion.png)
 
 ### Reading & Chat
 
@@ -126,19 +170,13 @@ Select text in the PDF reader and choose **Explain visually** from its popup, or
 
 - **Projects**: workspaces for a research topic: sources, notes, chat history.
 - **Collections**: nested folders for organizing sources within a project; drag-and-drop, Expand/Collapse All.
-- **Notes**: markdown notes at the project or source level, rendered by default, edit in place:
-
-  ![Notes](screenshots/5-notes.png)
+- **Notes**: markdown notes at the project or source level, rendered by default, edit in place.
 - **Highlights**: every annotation across a project, grouped by source, one click back to context.
 
 ### Sources & Discovery
 
-- **Paper search**: search OpenAlex by title, one click to add:
-
-  ![Search](screenshots/3-search.png)
-- **Related papers**: references and citations from Semantic Scholar, with an OpenAlex fallback when needed, one click to add:
-
-  ![Related](screenshots/2-related.png)
+- **Paper search**: search OpenAlex by title, one click to add.
+- **Related papers**: references and citations from Semantic Scholar, with an OpenAlex fallback when needed, one click to add.
 - **Smart PDF resolver**: paste any URL: arXiv, OpenReview, ACL Anthology, PMLR, a DOI link, or a direct `.pdf`; tracking params stripped automatically.
 - **Project-wide full-text search**: SQLite FTS5 across every already-indexed source.
 - **Managed local copies**: PDFs are copied locally; falls back to the source URL if a managed copy is deleted.
@@ -166,9 +204,7 @@ Finding papers is legwork, and by now agents are better at it than we are: they 
    pdfpal --json source file <project-id> <source-id> <collection-id>
    ```
 
-3. **Open it in the browser**, already organized into collections:
-
-   ![Collections](screenshots/6-collections.png)
+3. **Open it in the browser**, already organized into collections, as shown in the [research library screenshot](#build-a-research-library).
 
 4. **Read and ask questions inline**, in the same reader shown above, right where the agent left off.
 
