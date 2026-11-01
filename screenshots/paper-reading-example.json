@@ -1,32 +1,42 @@
 {
   "paper": {
     "title": "Attention Is All You Need",
-    "url": "https://arxiv.org/pdf/1706.03762v7",
-    "page": 4,
-    "section": "3.2.1",
-    "footnote": 4
+    "url": "https://arxiv.org/pdf/1706.03762v7"
   },
-  "provenance": "Real PDF imported through pdfpal; passage highlighted in the browser; questions submitted through the reader to the authenticated Codex CLI. Responses are unedited. The visual was refined with a second request for clearer labels. Screenshots show the actual PDF reader.",
+  "passages": {
+    "chat": {
+      "page": 3,
+      "section": "3.1",
+      "topic": "Decoder masking and shifted inputs"
+    },
+    "visual": {
+      "page": 4,
+      "section": "3.2.1",
+      "footnote": 4,
+      "topic": "Scaled dot-product attention and softmax saturation"
+    }
+  },
+  "provenance": "Real PDF imported through pdfpal; two different passages highlighted in the browser; questions submitted through the reader to the authenticated Codex CLI. Responses are unedited. The visual was refined with a second request for clearer labels. Screenshots show the actual PDF reader.",
   "chat": [
     {
-      "id": 5,
+      "id": 9,
       "visual_id": null,
       "role": "user",
-      "content": "I’m stuck here: why does a large dot product make the gradient tiny? Why divide by √dₖ rather than dₖ? Explain footnote 4 in three short steps, under 150 words.\n\n> We suspect that for large values of\n> dk, the dot products grow large in magnitude, pushing the softmax function into regions where it has\n> extremely small gradients",
+      "content": "If the mask already blocks future tokens, why shift the decoder inputs too? Use the target 'cats sleep <EOS>' to show exactly where the answer would leak without the shift. Keep it under 140 words.\n\n> This\n> masking, combined with fact that the output embeddings are offset by one position, ensures that the\n> predictions for position i can depend only on the known outputs at positions less than i.",
       "sources_used": [
-        "ebf57a22-d431-44a2-b756-69787ca0a817"
+        "3df2c11f-9145-45d8-bab8-d8017f7782b5"
       ],
-      "created_at": "2026-11-01T11:48:57.692Z"
+      "created_at": "2026-11-01T12:04:37.367Z"
     },
     {
-      "id": 6,
+      "id": 10,
       "visual_id": null,
       "role": "assistant",
-      "content": "1. **Footnote 4 describes the score’s spread.** Assuming independent, zero-mean, unit-variance components, $q\\cdot k=\\sum_{i=1}^{d_k}q_i k_i$ has mean $0$ and variance $d_k$. Its standard deviation therefore grows as $\\sqrt{d_k}$. (*Attention Is All You Need*, p. 4.)\n\n2. **Large score differences saturate softmax.** When one score dominates, its probability approaches $1$ and others approach $0$. Softmax derivatives, such as $\\partial p_i/\\partial z_i=p_i(1-p_i)$, then approach zero. Large absolute scores alone aren’t enough: their **differences** matter.\n\n3. **Divide by the standard deviation.** Scaling by $\\sqrt{d_k}$ makes the score variance $d_k/(\\sqrt{d_k})^2=1$. Dividing by $d_k$ instead gives variance $1/d_k$, shrinking scores toward zero as dimension grows. The paper’s scaling controls spread without progressively flattening attention. (*Attention Is All You Need*, p. 4.)",
+      "content": "The mask blocks **future positions**, but allows a position to attend to **itself**. Shifting keeps that position’s correct answer out of its input.\n\nFor target `cats sleep <EOS>`:\n\n| Position | Predict | Input without shift | Shifted input |\n|---|---|---|---|\n| 1 | `cats` | `cats` ← leaks answer | `<BOS>` |\n| 2 | `sleep` | `sleep` ← leaks answer | `cats` |\n| 3 | `<EOS>` | `<EOS>` ← leaks answer | `sleep` |\n\nWithout shifting, position 2 already receives `sleep` through its own embedding; the causal mask permits self-attention there. The residual connection also carries that embedding forward.\n\nWith shifting, position 2 sees only `<BOS>` and `cats`, so it must predict `sleep` from preceding tokens.\n\n*Source: Attention Is All You Need, pp. 3, 5.*",
       "sources_used": [
-        "ebf57a22-d431-44a2-b756-69787ca0a817"
+        "3df2c11f-9145-45d8-bab8-d8017f7782b5"
       ],
-      "created_at": "2026-11-01T11:48:57.692Z"
+      "created_at": "2026-11-01T12:04:37.367Z"
     }
   ],
   "visualQuestion": "Explain the selected passage with a clean before/after softmax graph. For two keys and dₖ=64, compare score gaps 8 and 1 on the SAME sigmoid curve: p=0.9997 versus 0.731. Label both points, the score-gap axis (0, 1, 8) and probability axis (0, 0.5, 1). Show why one point lies in the flat region and the other in the steep region. Use three steps, a short title and a one-sentence introduction under 20 words. Make the main graph the first step. Keep axis labels centered inside the canvas and away from the curve. No tangent lines. Distinguish the toy numbers from the paper’s variance argument; include the chain-rule factor when comparing gradients.\n\n> We suspect that for large values of\ndk, the dot products grow large in magnitude, pushing the softmax function into regions where it has\nextremely small gradients",
