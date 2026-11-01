@@ -22,9 +22,11 @@ Ask about the paper you're reading without switching tabs. Keep the text and the
 
 ### Turn difficult concepts into visual explanations
 
-Use `/visual` to explore a concept through progressive diagrams and follow-up questions. Here it is in the Kindle companion; visual explanations also work in the PDF reader and project chat.
+Use `/visual` to explore a concept through big pictures, short explanations, and clickable details. Step through the idea, ask follow-up questions, or export it as an interactive HTML file. Available in the PDF reader, project chat, and Kindle companion.
 
-<img src="screenshots/7-kindle-companion.png" alt="Kindle companion showing a step-by-step visual explanation of how attention builds context" width="390">
+![Exported visual explanation showing how the word bank can refer to a financial institution or a riverbank, illustrated with a bank building and a river with a sailboat](screenshots/9-visual-explanation.png)
+
+An illustrative attention example rendered with pdfpal's HTML exporter, inspired by the [community ELI5 skill](https://github.com/anthropics/claude-plugins-community/blob/main/eli5/skills/eli5/SKILL.md). [Download the interactive example](screenshots/9-visual-explanation.html) and open it in your browser to explore all three steps.
 
 ### Build a research library
 
