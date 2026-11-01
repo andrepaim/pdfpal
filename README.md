@@ -18,13 +18,13 @@ Available as a **Windows desktop app** or a **CLI and browser reader on Linux/WS
 
 Select the passage you're stuck on and work through it beside the paper. In §3.1 of [*Attention Is All You Need*](https://arxiv.org/pdf/1706.03762v7), the decoder uses both masking and shifted inputs. Why are both needed? A reader asks for a concrete token sequence showing how the answer would leak without the shift.
 
-![Page 3 of Attention Is All You Need with the decoder masking and input-shift passage highlighted beside an explanation of answer leakage using a short target sequence](screenshots/1-reader.png)
+![Page 3 of Attention Is All You Need with the decoder masking and input-shift passage highlighted beside an explanation of answer leakage using a short target sequence](screenshots/reader-decoder-masking.png)
 
 ### Turn difficult concepts into visual explanations
 
 Further into the paper, §3.2.1 raises a different question: why divide attention scores by √dₖ? Use `/visual` to see the missing intuition. The graph compares a large score gap in softmax's nearly flat region with a scaled gap in a steeper region. The highlighted paragraph and footnote 4 stay in view while you explore the explanation.
 
-![Actual PDF reader showing the selected scaling passage beside an interactive softmax graph comparing the flat and steep regions](screenshots/9-visual-explanation.png)
+![Actual PDF reader showing the selected scaling passage beside an interactive softmax graph comparing the flat and steep regions](screenshots/visual-softmax-scaling.png)
 
 Both examples were generated through pdfpal using Codex and their selected PDF passages. The graph's numbers are a worked example, rather than measurements from the paper. Step through the explanation, click shapes for details, or [download the interactive HTML](screenshots/9-visual-explanation.html) to explore all three steps offline. Visual explanations also work in project chat and the Kindle companion.
 

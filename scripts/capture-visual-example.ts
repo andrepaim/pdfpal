@@ -51,7 +51,7 @@ try {
   }
   await openReader(chatSource!, 3, 'Encoder and Decoder Stacks', 960, 400)
   if (await page.locator('.katex-error').count()) throw new Error('Chat contains a math rendering error')
-  await page.screenshot({path:'screenshots/1-reader.png'})
+  await page.screenshot({path:'screenshots/reader-decoder-masking.png'})
 
   if (!chatOnly) {
     await page.setViewportSize({width:1600,height:1100})
@@ -65,7 +65,7 @@ try {
       if (!parent) throw new Error('Chat scroll container not found')
       parent.scrollTop += e.getBoundingClientRect().top - parent.getBoundingClientRect().top - 8
     })
-    await page.screenshot({path:'screenshots/9-visual-explanation.png'})
+    await page.screenshot({path:'screenshots/visual-softmax-scaling.png'})
     // Check all generated steps in the real UI, including navigation back.
     const next = card.getByRole('button',{name:'Next step',exact:true}).first()
     for(let i=1; i<record.definition!.steps.length; i++) await next.click()
