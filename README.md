@@ -2,11 +2,13 @@
 
 > **AI to read deeper, not to avoid reading.**
 
-**Use the AI subscription you already pay for to help you read PDFs and Kindle books.** pdfpal connects to your installed and authenticated Claude Code, Codex, or OpenCode CLI for chat and visual explanations beside the page. There is no separate pdfpal account, subscription fee, or artificial usage quota; your configured provider’s terms, charges, and usage limits still apply.
+**Use the AI subscription you already pay for to help you read PDFs and Kindle books.** pdfpal puts chat and visual explanations beside the page through Claude Code, Codex, or OpenCode, with no additional pdfpal subscription.
 
-Read the actual text, ask about the passage you're stuck on, and keep your notes and highlights beside it. Your library, notes, and history stay on your machine; relevant context is sent to your configured AI provider when you ask for help.
+There's a lot of vibe researching going on: skim an AI summary, watch an explainer, walk away feeling like you read the paper. Understanding lives in the details those shortcuts flatten: the assumptions, the derivation, the limitations. But going back to reading alone, getting stuck on page 4, and grinding through missing background isn't the answer either. That suffering was never the point. With pdfpal, you read the actual text while AI sits beside the page, unpacking the passage you're stuck on and keeping you moving.
 
-Use pdfpal as a **Windows desktop app** or as a **CLI and browser reader on Linux/WSL**. Both share the same reading and project core, with independent release versions. The optional Chrome companion brings the same reading tools to Kindle for Web.
+Your library, notes, highlights, and chat history stay on your machine. Relevant context goes to your configured AI provider when you ask for help; its terms, charges, and usage limits still apply.
+
+Available as a **Windows desktop app** or a **CLI and browser reader on Linux/WSL**, with an optional Chrome companion for Kindle for Web.
 
 ## Install and run
 
@@ -145,20 +147,6 @@ Select text in the PDF reader and choose **Explain visually** from its popup, or
 
 - **Full CLI**: every action above is also a `pdfpal` command, with `--json` for scripting.
 - **Claude Code / Codex skill**: let an agent drive projects, sources, collections, and notes directly (see below).
-
-## Why pdfpal?
-
-There's a lot of vibe researching going on. Feed the PDF to a chatbot and ask for the gist, watch the 20-minute YouTube explainer, skim an AI-generated summary, then walk away feeling like you read the paper. You didn't. The understanding that matters lives in exactly the parts the summary flattens: the assumptions, the derivation the author skipped, the limitation buried in section 6, the table that quietly contradicts the abstract. If your grasp of a paper ends where a summary does, you don't have one.
-
-But the answer isn't to pretend it's five years ago: print the paper, read it alone, hit a wall on page 4 (notation you forgot, a step "left as an exercise", background the author assumes you have) and either suffer through it or quietly give up. That suffering was never the point. pdfpal is the middle ground: you read the actual paper, and AI sits next to the page, unpacking the passage you're stuck on, answering questions grounded in the text instead of vibes, keeping you reading instead of pretending.
-
-There are plenty of chat-with-PDF tools: web apps where you upload a paper and ask questions, AI assistants bolted onto PDF readers, notebook tools that summarize your sources. If you've tried one, you know the pattern: a free tier capped at a couple of documents or a few dozen pages, and a paid tier that stacks one more monthly subscription on top of the Claude, Codex, or OpenCode plan you already pay for. And your library lives in their cloud, not on your machine.
-
-Most of them are also built around the summary: upload, get the takeaways, move on. That's the vibe-researching workflow. pdfpal is built around the reader.
-
-pdfpal keeps your library, notes, and history on your machine. Chat and visual explanations go through the agent CLI you've installed and authenticated, which sends the relevant context to its configured provider. Kindle OCR runs locally with bundled language data. pdfpal adds no subscription fee or artificial usage quota; provider terms and limits still apply.
-
-It's also a CLI with the same project/source/collection model as the web app (the browser and the CLI call the same core code, nothing is reimplemented twice), plus a Claude Code / Codex skill that lets an agent drive the whole thing directly. Here's what that looks like end to end.
 
 ## Research with an agent, then read
 
