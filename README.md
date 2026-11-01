@@ -2,9 +2,11 @@
 
 > **AI to read deeper, not to avoid reading.**
 
-A local reading assistant for PDFs and Kindle books, with AI chat, visual explanations, notes, and highlights beside the page. Use it as a **Windows desktop app** or as a **CLI and browser reader on Linux/WSL**. The optional Chrome companion brings the same reading tools to Kindle for Web.
+**Use the AI subscription you already pay for to help you read PDFs and Kindle books.** pdfpal connects to your installed and authenticated Claude Code, Codex, or OpenCode CLI for chat and visual explanations beside the page. There is no separate pdfpal account, subscription fee, or artificial usage quota; your configured provider’s terms, charges, and usage limits still apply.
 
-Both installation options use the same reading and project core, with independent release versions. AI features use your configured assistant; there is no separate pdfpal account or subscription. Your provider’s authentication, charges, and usage limits still apply.
+Read the actual text, ask about the passage you're stuck on, and keep your notes and highlights beside it. Your library, notes, and history stay on your machine; relevant context is sent to your configured AI provider when you ask for help.
+
+Use pdfpal as a **Windows desktop app** or as a **CLI and browser reader on Linux/WSL**. Both share the same reading and project core, with independent release versions. The optional Chrome companion brings the same reading tools to Kindle for Web.
 
 ## Install and run
 
