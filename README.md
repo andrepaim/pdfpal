@@ -16,17 +16,17 @@ Available as a **Windows desktop app** or a **CLI and browser reader on Linux/WS
 
 ### Read with AI beside the page
 
-Ask about the paper you're reading without switching tabs. Keep the text and the explanation in view together.
+Select the passage you're stuck on and work through it beside the paper. Here, a reader asks why attention scores are divided by √dₖ and how that prevents tiny gradients—the reasoning compressed into §3.2.1 and footnote 4 of [*Attention Is All You Need*](https://arxiv.org/pdf/1706.03762v7).
 
-![PDF reader with the paper on the left and a question and answer about self-attention on the right](screenshots/1-reader.png)
+![Page 4 of Attention Is All You Need with the tiny-gradient passage highlighted beside a focused explanation of softmax saturation and the square-root scaling factor](screenshots/1-reader.png)
 
 ### Turn difficult concepts into visual explanations
 
-Use `/visual` to explore a concept through big pictures, short explanations, and clickable details. Step through the idea, ask follow-up questions, or export it as an interactive HTML file. Available in the PDF reader, project chat, and Kindle companion.
+Use `/visual` on the same passage to see the missing intuition. The graph compares two points on a softmax curve: a large score gap in the nearly flat region and a scaled gap in a steeper region. The highlighted paragraph and its footnote stay in view while you explore the explanation.
 
-![Exported visual explanation showing how the word bank can refer to a financial institution or a riverbank, illustrated with a bank building and a river with a sailboat](screenshots/9-visual-explanation.png)
+![Actual PDF reader showing the selected scaling passage beside an interactive softmax graph comparing the flat and steep regions](screenshots/9-visual-explanation.png)
 
-An illustrative attention example rendered with pdfpal's HTML exporter, inspired by the [community ELI5 skill](https://github.com/anthropics/claude-plugins-community/blob/main/eli5/skills/eli5/SKILL.md). [Download the interactive example](screenshots/9-visual-explanation.html) and open it in your browser to explore all three steps.
+Both examples were generated through pdfpal using Codex and the selected PDF passage. The graph's numbers are a worked example, rather than measurements from the paper. Step through the explanation, click shapes for details, or [download the interactive HTML](screenshots/9-visual-explanation.html) to explore all three steps offline. Visual explanations also work in project chat and the Kindle companion.
 
 ### Build a research library
 

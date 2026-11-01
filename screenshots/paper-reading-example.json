@@ -1,0 +1,540 @@
+{
+  "paper": {
+    "title": "Attention Is All You Need",
+    "url": "https://arxiv.org/pdf/1706.03762v7",
+    "page": 4,
+    "section": "3.2.1",
+    "footnote": 4
+  },
+  "provenance": "Real PDF imported through pdfpal; passage highlighted in the browser; questions submitted through the reader to the authenticated Codex CLI. Responses are unedited. The visual was refined with a second request for clearer labels. Screenshots show the actual PDF reader.",
+  "chat": [
+    {
+      "id": 5,
+      "visual_id": null,
+      "role": "user",
+      "content": "I’m stuck here: why does a large dot product make the gradient tiny? Why divide by √dₖ rather than dₖ? Explain footnote 4 in three short steps, under 150 words.\n\n> We suspect that for large values of\n> dk, the dot products grow large in magnitude, pushing the softmax function into regions where it has\n> extremely small gradients",
+      "sources_used": [
+        "ebf57a22-d431-44a2-b756-69787ca0a817"
+      ],
+      "created_at": "2026-11-01T11:48:57.692Z"
+    },
+    {
+      "id": 6,
+      "visual_id": null,
+      "role": "assistant",
+      "content": "1. **Footnote 4 describes the score’s spread.** Assuming independent, zero-mean, unit-variance components, $q\\cdot k=\\sum_{i=1}^{d_k}q_i k_i$ has mean $0$ and variance $d_k$. Its standard deviation therefore grows as $\\sqrt{d_k}$. (*Attention Is All You Need*, p. 4.)\n\n2. **Large score differences saturate softmax.** When one score dominates, its probability approaches $1$ and others approach $0$. Softmax derivatives, such as $\\partial p_i/\\partial z_i=p_i(1-p_i)$, then approach zero. Large absolute scores alone aren’t enough: their **differences** matter.\n\n3. **Divide by the standard deviation.** Scaling by $\\sqrt{d_k}$ makes the score variance $d_k/(\\sqrt{d_k})^2=1$. Dividing by $d_k$ instead gives variance $1/d_k$, shrinking scores toward zero as dimension grows. The paper’s scaling controls spread without progressively flattening attention. (*Attention Is All You Need*, p. 4.)",
+      "sources_used": [
+        "ebf57a22-d431-44a2-b756-69787ca0a817"
+      ],
+      "created_at": "2026-11-01T11:48:57.692Z"
+    }
+  ],
+  "visualQuestion": "Explain the selected passage with a clean before/after softmax graph. For two keys and dₖ=64, compare score gaps 8 and 1 on the SAME sigmoid curve: p=0.9997 versus 0.731. Label both points, the score-gap axis (0, 1, 8) and probability axis (0, 0.5, 1). Show why one point lies in the flat region and the other in the steep region. Use three steps, a short title and a one-sentence introduction under 20 words. Make the main graph the first step. Keep axis labels centered inside the canvas and away from the curve. No tangent lines. Distinguish the toy numbers from the paper’s variance argument; include the chain-rule factor when comparing gradients.\n\n> We suspect that for large values of\ndk, the dot products grow large in magnitude, pushing the softmax function into regions where it has\nextremely small gradients",
+  "visual": {
+    "id": "3107f366-660d-40a5-b88c-fc5468835ffb",
+    "project_id": "591bf3bc-c413-4d0f-8544-f0fc4a8e3a24",
+    "question": "Explain the selected passage with a clean before/after softmax graph. For two keys and dₖ=64, compare score gaps 8 and 1 on the SAME sigmoid curve: p=0.9997 versus 0.731. Label both points, the score-gap axis (0, 1, 8) and probability axis (0, 0.5, 1). Show why one point lies in the flat region and the other in the steep region. Use three steps, a short title and a one-sentence introduction under 20 words. Make the main graph the first step. Keep axis labels centered inside the canvas and away from the curve. No tangent lines. Distinguish the toy numbers from the paper’s variance argument; include the chain-rule factor when comparing gradients.",
+    "status": "complete",
+    "definition": {
+      "version": 1,
+      "title": "Scaling restores softmax sensitivity",
+      "summary": "Dividing scores by √dₖ moves softmax away from saturation, making attention weights more responsive to score changes.",
+      "steps": [
+        {
+          "title": "1. Two gaps, one softmax curve",
+          "caption": "Toy example: gap 8 gives p ≈ 0.9997 in the flat region; gap 1 gives p ≈ 0.731 in a steeper region.",
+          "explanation": "For two keys, the first key’s probability depends only on the score gap Δ = s₁ − s₂: p = 1/(1 + exp(−Δ)). Both points lie on this same sigmoid. At A, increasing the gap barely changes p because it is already near 1. At B, a small gap change produces a larger probability change. The local slope is p(1 − p): approximately 0.000335 at A and 0.1966 at B. These are illustrative calculations, not measurements from the paper. The plotted curve is sampled; the labeled probabilities are rounded.",
+          "basis": "illustration",
+          "referenceIds": [],
+          "scene": {
+            "height": 420,
+            "elements": [
+              {
+                "id": "prob_label",
+                "color": "slate",
+                "type": "text",
+                "x": 130,
+                "y": 25,
+                "text": "Probability p",
+                "size": 18
+              },
+              {
+                "id": "vertical_axis",
+                "color": "slate",
+                "type": "path",
+                "points": [
+                  {
+                    "x": 45,
+                    "y": 60
+                  },
+                  {
+                    "x": 45,
+                    "y": 250
+                  }
+                ],
+                "closed": false
+              },
+              {
+                "id": "horizontal_axis",
+                "color": "slate",
+                "type": "path",
+                "points": [
+                  {
+                    "x": 45,
+                    "y": 250
+                  },
+                  {
+                    "x": 335,
+                    "y": 250
+                  }
+                ],
+                "closed": false
+              },
+              {
+                "id": "prob_zero",
+                "color": "slate",
+                "type": "text",
+                "x": 20,
+                "y": 240,
+                "text": "0",
+                "size": 18
+              },
+              {
+                "id": "prob_half",
+                "color": "slate",
+                "type": "text",
+                "x": 8,
+                "y": 155,
+                "text": "0.5",
+                "size": 18
+              },
+              {
+                "id": "prob_one",
+                "color": "slate",
+                "type": "text",
+                "x": 20,
+                "y": 70,
+                "text": "1",
+                "size": 18
+              },
+              {
+                "id": "sigmoid",
+                "color": "indigo",
+                "type": "path",
+                "points": [
+                  {
+                    "x": 47,
+                    "y": 219.7
+                  },
+                  {
+                    "x": 59,
+                    "y": 209
+                  },
+                  {
+                    "x": 71,
+                    "y": 194.3
+                  },
+                  {
+                    "x": 83,
+                    "y": 175.8
+                  },
+                  {
+                    "x": 95,
+                    "y": 155
+                  },
+                  {
+                    "x": 107,
+                    "y": 134.2
+                  },
+                  {
+                    "x": 119,
+                    "y": 115.7
+                  },
+                  {
+                    "x": 131,
+                    "y": 101
+                  },
+                  {
+                    "x": 143,
+                    "y": 90.3
+                  },
+                  {
+                    "x": 155,
+                    "y": 82.9
+                  },
+                  {
+                    "x": 167,
+                    "y": 78.1
+                  },
+                  {
+                    "x": 179,
+                    "y": 75
+                  },
+                  {
+                    "x": 191,
+                    "y": 73.1
+                  },
+                  {
+                    "x": 215,
+                    "y": 71.1
+                  },
+                  {
+                    "x": 239,
+                    "y": 70.4
+                  },
+                  {
+                    "x": 263,
+                    "y": 70.2
+                  },
+                  {
+                    "x": 287,
+                    "y": 70.057
+                  },
+                  {
+                    "x": 311,
+                    "y": 70.021
+                  },
+                  {
+                    "x": 335,
+                    "y": 70.008
+                  }
+                ],
+                "closed": false
+              },
+              {
+                "id": "tick_zero",
+                "color": "slate",
+                "type": "path",
+                "points": [
+                  {
+                    "x": 95,
+                    "y": 250
+                  },
+                  {
+                    "x": 95,
+                    "y": 257
+                  }
+                ],
+                "closed": false
+              },
+              {
+                "id": "tick_one",
+                "color": "slate",
+                "type": "path",
+                "points": [
+                  {
+                    "x": 119,
+                    "y": 250
+                  },
+                  {
+                    "x": 119,
+                    "y": 257
+                  }
+                ],
+                "closed": false
+              },
+              {
+                "id": "tick_eight",
+                "color": "slate",
+                "type": "path",
+                "points": [
+                  {
+                    "x": 287,
+                    "y": 250
+                  },
+                  {
+                    "x": 287,
+                    "y": 257
+                  }
+                ],
+                "closed": false
+              },
+              {
+                "id": "gap_zero",
+                "color": "slate",
+                "type": "text",
+                "x": 90,
+                "y": 277,
+                "text": "0",
+                "size": 18
+              },
+              {
+                "id": "gap_one",
+                "color": "slate",
+                "type": "text",
+                "x": 114,
+                "y": 277,
+                "text": "1",
+                "size": 18
+              },
+              {
+                "id": "gap_eight",
+                "color": "slate",
+                "type": "text",
+                "x": 282,
+                "y": 277,
+                "text": "8",
+                "size": 18
+              },
+              {
+                "id": "gap_label",
+                "color": "slate",
+                "type": "text",
+                "x": 110,
+                "y": 310,
+                "text": "Score gap Δ",
+                "size": 18
+              },
+              {
+                "id": "point_a",
+                "color": "rose",
+                "detail": "Gap 8: p ≈ 0.999665. The curve is almost horizontal here; dp/dΔ ≈ 0.000335.",
+                "type": "node",
+                "x": 271,
+                "y": 54.057,
+                "width": 32,
+                "height": 32,
+                "label": "A",
+                "shape": "ellipse"
+              },
+              {
+                "id": "point_b",
+                "color": "teal",
+                "detail": "Gap 1: p ≈ 0.731059. This region is much steeper; dp/dΔ ≈ 0.196612.",
+                "type": "node",
+                "x": 103,
+                "y": 99.7,
+                "width": 32,
+                "height": 32,
+                "label": "B",
+                "shape": "ellipse"
+              },
+              {
+                "id": "legend_b",
+                "color": "teal",
+                "detail": "The maximum slope is 0.25 at gap 0. Gap 1 remains relatively close to that sensitive region.",
+                "type": "node",
+                "x": 10,
+                "y": 335,
+                "width": 165,
+                "height": 72,
+                "label": "B: 1 → 0.731\nSteeper",
+                "shape": "box"
+              },
+              {
+                "id": "legend_a",
+                "color": "rose",
+                "detail": "Softmax is saturated: almost all attention weight goes to the first key. Large differences, rather than a shared offset in scores, cause this effect.",
+                "type": "node",
+                "x": 185,
+                "y": 335,
+                "width": 165,
+                "height": 72,
+                "label": "A: 8 → 0.9997\nNearly flat",
+                "shape": "box"
+              }
+            ]
+          }
+        },
+        {
+          "title": "2. Divide by 8, then follow the gradient",
+          "caption": "For dₖ = 64, [8, 0] ÷ √64 = [1, 0]. Even including the division’s chain-rule factor, sensitivity increases.",
+          "explanation": "The paper divides scores by √dₖ before softmax. Here √64 = 8, so the original gap g = 8 becomes the scaled gap Δ = g/8 = 1. Without scaling, dp/dg ≈ 0.000335. With scaling, the chain rule gives dp/dg = p(1 − p)/8 ≈ 0.1966/8 = 0.0246, about 73 times larger. Comparing only slopes on the sigmoid would give about 586 times, but that omits the factor 1/8 from scaling. These toy calculations illustrate the paper’s saturation concern. They describe the softmax contribution to a gradient; the full learning signal also depends on the loss and the rest of the model.",
+          "basis": "illustration",
+          "referenceIds": [],
+          "scene": {
+            "height": 350,
+            "elements": [
+              {
+                "id": "original",
+                "color": "rose",
+                "detail": "Original gap g = 8. Without scaling, the first weight is approximately 0.9997.",
+                "type": "node",
+                "x": 65,
+                "y": 15,
+                "width": 230,
+                "height": 66,
+                "label": "A: scores [8, 0]",
+                "shape": "box"
+              },
+              {
+                "id": "divide",
+                "color": "indigo",
+                "type": "arrow",
+                "x1": 180,
+                "y1": 86,
+                "x2": 180,
+                "y2": 139,
+                "label": "÷ √64 = ÷ 8"
+              },
+              {
+                "id": "scaled",
+                "color": "teal",
+                "detail": "Scaled gap Δ = g/8 = 1. The first weight becomes approximately 0.731.",
+                "type": "node",
+                "x": 65,
+                "y": 145,
+                "width": 230,
+                "height": 66,
+                "label": "B: scores [1, 0]",
+                "shape": "box"
+              },
+              {
+                "id": "gradient_before",
+                "color": "rose",
+                "detail": "Derivative of the first weight with respect to the original gap: dp/dg = p(1 − p).",
+                "type": "node",
+                "x": 10,
+                "y": 245,
+                "width": 165,
+                "height": 88,
+                "label": "Before\n0.000335",
+                "shape": "box"
+              },
+              {
+                "id": "gradient_after",
+                "color": "teal",
+                "detail": "With scaling, dp/dg = p(1 − p)/8 ≈ 0.0246. This is about 73 times the unscaled derivative at g = 8.",
+                "type": "node",
+                "x": 185,
+                "y": 245,
+                "width": 165,
+                "height": 88,
+                "label": "After\n0.1966 ÷ 8",
+                "shape": "box"
+              }
+            ]
+          }
+        },
+        {
+          "title": "3. Why √dₖ, rather than dₖ?",
+          "caption": "Footnote 4 concerns typical score spread: variance grows as dₖ, so standard deviation grows as √dₖ.",
+          "explanation": "Footnote 4 assumes independent query and key components with mean 0 and variance 1. Each product qᵢkᵢ then has mean 0 and variance 1. Adding dₖ independent products gives Var(q · k) = dₖ, hence standard deviation √dₖ. Variance scales with the square of a multiplier: dividing the score by √dₖ therefore makes its variance 1. Dividing by dₖ instead would make its variance 1/dₖ, shrinking typical score differences toward zero as dimension grows and making attention more uniform. For dₖ = 64, the model predicts standard deviations 8 before scaling, 1 after dividing by 8, and 1/8 after dividing by 64. These are consequences of the footnote’s simplified assumptions, not guarantees about every learned query and key. Scaling controls typical spread; it does not guarantee that every softmax input avoids saturation.",
+          "basis": "source",
+          "referenceIds": [
+            "pdf-1",
+            "pdf-2"
+          ],
+          "scene": {
+            "height": 350,
+            "elements": [
+              {
+                "id": "sum",
+                "color": "indigo",
+                "detail": "s = q · k = Σᵢ qᵢkᵢ. Under the footnote’s independence and unit-variance assumptions, the variances add.",
+                "type": "node",
+                "x": 50,
+                "y": 15,
+                "width": 260,
+                "height": 70,
+                "label": "Sum dₖ products\nVariance = dₖ",
+                "shape": "box"
+              },
+              {
+                "id": "spread_arrow",
+                "color": "indigo",
+                "type": "arrow",
+                "x1": 180,
+                "y1": 92,
+                "x2": 180,
+                "y2": 130
+              },
+              {
+                "id": "spread",
+                "color": "indigo",
+                "detail": "Standard deviation is the square root of variance. A growing spread does not mean the mean grows: it remains zero in this model.",
+                "type": "node",
+                "x": 50,
+                "y": 138,
+                "width": 260,
+                "height": 66,
+                "label": "Typical spread: √dₖ",
+                "shape": "box"
+              },
+              {
+                "id": "sqrt_branch",
+                "color": "teal",
+                "type": "arrow",
+                "x1": 115,
+                "y1": 210,
+                "x2": 92,
+                "y2": 250
+              },
+              {
+                "id": "dimension_branch",
+                "color": "amber",
+                "type": "arrow",
+                "x1": 245,
+                "y1": 210,
+                "x2": 267,
+                "y2": 250
+              },
+              {
+                "id": "sqrt_result",
+                "color": "teal",
+                "detail": "Var(s/√dₖ) = dₖ/dₖ = 1. This stabilizes the typical score scale across dimensions.",
+                "type": "node",
+                "x": 10,
+                "y": 260,
+                "width": 165,
+                "height": 80,
+                "label": "÷ √dₖ\nSpread = 1",
+                "shape": "box"
+              },
+              {
+                "id": "dimension_result",
+                "color": "amber",
+                "detail": "Var(s/dₖ) = 1/dₖ. This increasingly compresses score differences as dimension grows.",
+                "type": "node",
+                "x": 185,
+                "y": 260,
+                "width": 165,
+                "height": 80,
+                "label": "÷ dₖ\nSpread = 1/√dₖ",
+                "shape": "box"
+              }
+            ]
+          }
+        }
+      ],
+      "takeaways": [
+        "Softmax becomes insensitive when score differences put its probabilities near 0 or 1.",
+        "In this toy example, scaling increases sensitivity to the original gap about 73-fold, including the chain-rule factor.",
+        "√dₖ normalizes the footnote’s predicted standard deviation; dₖ would overcompress typical score differences."
+      ]
+    },
+    "references": [
+      {
+        "id": "pdf-1",
+        "label": "Attention Is All You Need · p. 4"
+      },
+      {
+        "id": "pdf-2",
+        "label": "Attention Is All You Need · p. 4"
+      },
+      {
+        "id": "pdf-3",
+        "label": "Attention Is All You Need · p. 5"
+      },
+      {
+        "id": "pdf-4",
+        "label": "Attention Is All You Need · p. 5"
+      },
+      {
+        "id": "pdf-5",
+        "label": "Attention Is All You Need · p. 5"
+      },
+      {
+        "id": "pdf-6",
+        "label": "Attention Is All You Need · p. 9"
+      },
+      {
+        "id": "selection",
+        "label": "Attention Is All You Need · selected passage"
+      }
+    ],
+    "error": null,
+    "note_id": null,
+    "created_at": "2026-11-01T11:49:43.424Z"
+  }
+}
