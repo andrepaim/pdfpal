@@ -1,3 +1,5 @@
+<img src="frontend/public/favicon.svg" alt="pdfpal: an open book and AI conversation bubble" width="80" height="80">
+
 # pdfpal
 
 > **AI to read deeper, not to avoid reading.**

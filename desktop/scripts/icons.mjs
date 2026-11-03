@@ -1,4 +1,4 @@
-// Render the shared open-book artwork at each target size, then encode native ICOs.
+// Render the shared book-and-conversation artwork at each target size, then encode native ICOs.
 import fs from 'node:fs/promises'
 import { createCanvas, loadImage } from '@napi-rs/canvas'
 const publicDirectory = new URL('../../frontend/public/', import.meta.url)
