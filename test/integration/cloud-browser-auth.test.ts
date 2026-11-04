@@ -1,8 +1,14 @@
-import { test } from "node:test";
+import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { buildServer } from "../../src/server/app.js";
 import { testConfig } from "../helpers/test-utils.js";
 import fs from "node:fs";
+const previousKey = process.env.PDFPAL_FIREBASE_API_KEY;
+before(() => { process.env.PDFPAL_FIREBASE_API_KEY = "synthetic-firebase-key"; });
+after(() => {
+  if (previousKey === undefined) delete process.env.PDFPAL_FIREBASE_API_KEY;
+  else process.env.PDFPAL_FIREBASE_API_KEY = previousKey;
+});
 test("hosted browser form completes local sign-in, rejects wrong origin/replay, and never echoes tokens", async () => {
   const config = testConfig(),
     app = await buildServer(config),

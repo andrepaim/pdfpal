@@ -45,7 +45,9 @@ jobs:
       - id: plan
         env:
           RELEASE_BEFORE: ${{ github.event.before }}
-        run: node desktop/scripts/desktop-release.mjs plan
+        run: |
+          node scripts/check-secrets.mjs
+          node desktop/scripts/desktop-release.mjs plan
 
   regression:
     needs: plan

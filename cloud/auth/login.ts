@@ -6,8 +6,9 @@ import {
   setPersistence,
   inMemoryPersistence,
   signOut,
+  type Auth,
 } from "firebase/auth";
-import { firebaseClient } from "../../src/shared/firebase-client";
+import { loadFirebaseClient } from "../../src/shared/firebase-client";
 const button = document.querySelector<HTMLButtonElement>("#login")!,
   status = document.querySelector<HTMLElement>("#status")!;
 const params = new URLSearchParams(location.hash.slice(1)),
@@ -23,8 +24,12 @@ if (
   status.textContent =
     "Open Google sign-in from the pdfpal desktop app to continue.";
 } else {
-  const auth = getAuth(initializeApp(firebaseClient));
-  void setPersistence(auth, inMemoryPersistence)
+  let auth: Auth | undefined;
+  void loadFirebaseClient()
+    .then(config => {
+      auth = getAuth(initializeApp(config));
+      return setPersistence(auth, inMemoryPersistence);
+    })
     .then(() => {
       button.disabled = false;
       status.textContent =
@@ -35,6 +40,7 @@ if (
         "Your browser could not start sign-in. Try again in a regular browser window.";
     });
   button.addEventListener("click", async () => {
+    if (!auth) return;
     button.disabled = true;
     status.textContent = "Choose your Google account in the sign-in window.";
     try {

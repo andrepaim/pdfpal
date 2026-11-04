@@ -1,4 +1,4 @@
-import { firebaseClient } from "../shared/firebase-client.js";
+import { firebaseClient, loadFirebaseClient } from "../shared/firebase-client.js";
 import { randomBytes, createHash, timingSafeEqual } from "node:crypto";
 import type { PdfpalConfig } from "../core/config.js";
 export interface CloudCredentials {
@@ -19,7 +19,7 @@ export function bindCloudVault(config: PdfpalConfig, vault: CredentialVault) {
 export function cloudOptions() {
   const projectId =
       process.env.PDFPAL_FIREBASE_PROJECT_ID ?? firebaseClient.projectId,
-    apiKey = process.env.PDFPAL_FIREBASE_API_KEY ?? firebaseClient.apiKey,
+    apiKey = process.env.PDFPAL_FIREBASE_API_KEY ?? "",
     clientId = process.env.PDFPAL_GOOGLE_CLIENT_ID ?? "";
   if (!/^[a-z][a-z0-9-]{4,62}$/.test(projectId))
     throw Error("Invalid Firebase project");
@@ -124,6 +124,7 @@ export class CloudAuth {
       throw Error("Sign-in expired; retry from pdfpal");
     this.pending=undefined;
     const options = cloudOptions()!;
+    options.apiKey ||= (await loadFirebaseClient(options.projectId)).apiKey;
     const google = await json(
       "https://oauth2.googleapis.com/token",
       new URLSearchParams({
@@ -182,6 +183,7 @@ export class CloudAuth {
     )
       throw Error("Sign-in expired or invalid; retry from pdfpal");
     this.pending = undefined;
+    options.apiKey ||= (await loadFirebaseClient(options.projectId)).apiKey;
     const lookup = await json(
       `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(options.apiKey)}`,
       { idToken },
@@ -216,8 +218,11 @@ export class CloudAuth {
     const epoch = this.epoch;
     const identity = this.credentials;
     if (this.credentials.expiresAt < Date.now() + 60_000) {
-      const options = cloudOptions()!,
-        result = await json(
+      const options = cloudOptions()!;
+      options.apiKey ||= (await loadFirebaseClient(options.projectId)).apiKey;
+      if (epoch !== this.epoch || !this.credentials)
+        throw Error("Account action was cancelled");
+      const result = await json(
           `https://securetoken.googleapis.com/v1/token?key=${encodeURIComponent(options.apiKey)}`,
           new URLSearchParams({
             grant_type: "refresh_token",
