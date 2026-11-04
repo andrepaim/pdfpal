@@ -1,3 +1,4 @@
+import { registerCloudRoutes } from './cloud.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import Fastify from 'fastify'
@@ -32,7 +33,7 @@ type Params = { projectId: string; sourceId: string; id: string }
 const now = () => new Date().toISOString()
 
 export async function buildServer(config: PdfpalConfig) {
-  const app = Fastify({ logger: true, bodyLimit: 30 * 1024 * 1024 })
+  const app = Fastify({ logger: { serializers: { req: request => ({ method: request.method, url: request.url?.split('?')[0] }) } }, bodyLimit: 30 * 1024 * 1024 })
   const db = openDatabase(config)
   db.prepare("UPDATE ai_jobs SET status='interrupted',error='The app stopped before this answer completed.' WHERE status='running'").run()
   const projects = new ProjectService(db)
@@ -42,13 +43,13 @@ export async function buildServer(config: PdfpalConfig) {
   const chat = new ChatService(db, config)
   const visuals = new VisualExplanationService(db, config)
   app.addHook('onRequest', async (request, reply) => {
-    reply.header('Content-Security-Policy', "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' data: blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-src 'none'; frame-ancestors 'self'")
+    reply.header('Content-Security-Policy', "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' data: blob: https://*.google-analytics.com https://*.analytics.google.com https://firebaseinstallations.googleapis.com https://firebaselogging.googleapis.com https://firebaseperformance.googleapis.com https://firebaseremoteconfig.googleapis.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-src 'none'; frame-ancestors 'self'")
     // Browser documents may use the reader API only from its own origin.
     // The paired extension has a separate origin/token gate in its scoped routes.
     const host = request.headers.host ?? ''
     const local = ['127.0.0.1', 'localhost', '::1'].includes(config.host)
     if (local && !/^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(host)) return reply.code(403).send({ code: 'FORBIDDEN', detail: 'Use the local pdfpal address.' })
-    if (request.url.startsWith('/api/') && !request.url.startsWith('/api/extension/')) {
+    if (request.url.startsWith('/api/') && !request.url.startsWith('/api/extension/') && !['/api/cloud/auth/callback','/api/cloud/auth/browser'].includes(request.url.split('?')[0]!)) {
       if ((request.headers.origin && request.headers.origin !== `http://${host}`) || request.headers['sec-fetch-site'] === 'cross-site')
         return reply.code(403).send({ code: 'FORBIDDEN', detail: 'Open this action from pdfpal.' })
     }
@@ -73,6 +74,7 @@ export async function buildServer(config: PdfpalConfig) {
   app.get('/api/health', async () => ({ status: 'ok' }))
   app.get('/api/auth/me', async () => ({ email: 'local@localhost', name: 'Local User', picture: '' }))
   app.post('/api/auth/logout', async () => ({ ok: true }))
+  const closeCloud = await registerCloudRoutes(app, db, config)
   app.get('/api/agents', async () => ({ default: config.aiMode === 'chatgpt' ? 'chatgpt' : config.agent, agents: [...(config.aiMode === 'chatgpt' ? [{ id: 'chatgpt', label: 'ChatGPT', available: true }] : []), ...await new AgentService(config).inspect()] }))
 
   app.get('/api/projects', async () => projects.list())
@@ -183,7 +185,7 @@ export async function buildServer(config: PdfpalConfig) {
     await app.register(staticPlugin, { root: frontend, wildcard: false })
     app.setNotFoundHandler((request, reply) => request.url.startsWith('/api/') ? reply.status(404).send({ detail: 'Not Found' }) : reply.sendFile('index.html'))
   }
-  app.addHook('onClose', async () => { await kindle.close(); await visuals.close(); db.close() })
+  app.addHook('onClose', async () => { await closeCloud(); await kindle.close(); await visuals.close(); db.close() })
   return app
 }
 
@@ -241,7 +243,7 @@ function registerAnnotationRoutes(app: any, db: import('better-sqlite3').Databas
     db.prepare('INSERT INTO annotations(id,source_id,project_id,page_number,x1,y1,x2,y2,text,color,rects,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').run(id, request.params.sourceId, request.params.projectId, body.page_number, body.x1, body.y1, body.x2, body.y2, body.text, body.color ?? 'yellow', body.rects ? JSON.stringify(body.rects) : null, now())
     return parseAnnotation(db.prepare('SELECT * FROM annotations WHERE id=?').get(id))
   })
-  app.patch('/api/projects/:projectId/sources/:sourceId/annotations/:id', async (request: any) => { db.prepare('UPDATE annotations SET color=? WHERE id=? AND source_id=? AND project_id=?').run(request.body.color, request.params.id, request.params.sourceId, request.params.projectId); return parseAnnotation(db.prepare('SELECT * FROM annotations WHERE id=?').get(request.params.id)) })
+  app.patch('/api/projects/:projectId/sources/:sourceId/annotations/:id', async (request: any) => { db.prepare('UPDATE annotations SET color=? WHERE id=? AND source_id=? AND project_id=?').run(request.body.color, request.params.id, request.params.sourceId, request.params.projectId); return parseAnnotation(db.prepare('SELECT * FROM annotations WHERE id=? AND source_id=? AND project_id=?').get(request.params.id, request.params.sourceId, request.params.projectId)) })
   app.delete('/api/projects/:projectId/sources/:sourceId/annotations/:id', async (request: any, reply: any) => { db.prepare('DELETE FROM annotations WHERE id=? AND source_id=? AND project_id=?').run(request.params.id, request.params.sourceId, request.params.projectId); reply.status(204).send() })
 }
 

@@ -341,3 +341,7 @@ The implementation follows that split:
 The 2.1.0 package build contains the compiled TypeScript server/CLI, built React frontend, unpacked Chrome extension, and matching ZIP with bundled OCR assets. Runtime state stays local in the [library folder](#local-data), while external network edges are limited to source URLs, OpenAlex, Semantic Scholar, and capabilities provided by the selected agent. It is intended for local, single-user operation.
 
 *AI to read deeper, not to avoid reading.*
+
+### Optional Firebase cloud library
+
+The desktop sync alpha adds Google sign-in, direct Firestore synchronization of library metadata, and opt-in telemetry. The bundled Firebase project synchronizes projects, source metadata, collections, notes, highlights and reading progress. PDF files and AI conversations remain local. Optional PDF storage requires a separately configured, billing-enabled Cloud Storage bucket. See [Firebase setup, supported data and verification](docs/firebase-setup.md).

@@ -1,0 +1,8 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    {"collectionGroup":"entities","fieldPath":"payload","indexes":[]},
+    {"collectionGroup":"changes","fieldPath":"payload","indexes":[]},
+    {"collectionGroup":"receipts","fieldPath":"signature","indexes":[]}
+  ]
+}

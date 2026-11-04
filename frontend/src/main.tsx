@@ -16,6 +16,8 @@ import { flushPendingSaves } from './lib/persistence'
 import DesktopUpdates from './components/DesktopUpdates'
 import DesktopStatus from './components/DesktopStatus'
 import AISettings from './components/AISettings'
+import CloudSettings from './components/CloudSettings'
+import TelemetrySettings from './components/TelemetrySettings'
 
 // ── Error boundary ────────────────────────────────────────────────────────────
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
@@ -103,6 +105,8 @@ createRoot(document.getElementById('root')!).render(
     <ErrorBoundary>
       <Root />
       <AISettings />
+      <CloudSettings />
+      <TelemetrySettings />
       <DesktopStatus />
       <DesktopUpdates />
     </ErrorBoundary>

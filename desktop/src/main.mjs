@@ -15,6 +15,12 @@ import { betaOptions, betaAcceptance } from './beta-acceptance.mjs'
 const root = path.dirname(fileURLToPath(import.meta.url))
 const metadata = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).pdfpalDesktop ?? {}
 const applicationId = metadata.appId ?? 'io.pdfpal.desktop'
+if (metadata.cloudPreview) {
+  process.env.PDFPAL_DATA_DIR = path.join(os.homedir(), '.pdfpal-cloud-preview')
+  delete process.env.PDFPAL_DB
+  process.env.PDFPAL_PORT = '8202'
+  process.env.PDFPAL_DESKTOP_PROFILE = path.join(app.getPath('appData'), 'pdfpal-cloud-preview')
+}
 let beta
 if (process.argv.includes('--beta-acceptance')) {
   try { beta = betaOptions(metadata) }
@@ -28,13 +34,14 @@ const temporary = smoke && !installationCheck ? fs.mkdtempSync(path.join(os.tmpd
 if (temporary) {
   process.env.PDFPAL_DATA_DIR = temporary
   process.env.PDFPAL_DB = path.join(temporary, 'pdfpal.db')
-  process.env.PDFPAL_DESKTOP_PROFILE ??= `${temporary}-profile`
+  if (metadata.cloudPreview) process.env.PDFPAL_DESKTOP_PROFILE = `${temporary}-profile`
+  else process.env.PDFPAL_DESKTOP_PROFILE ??= `${temporary}-profile`
 }
 for (const [flag, env] of [['--data-dir=', 'PDFPAL_DATA_DIR'], ['--db=', 'PDFPAL_DB'], ['--port=', 'PDFPAL_PORT'], ['--profile=', 'PDFPAL_DESKTOP_PROFILE']]) {
   const arg = process.argv.find(value => value.startsWith(flag))
   if (arg) process.env[env] = arg.slice(flag.length)
 }
-app.setName('pdfpal')
+app.setName(metadata.cloudPreview ? 'pdfpal Cloud Preview' : 'pdfpal')
 nativeTheme.themeSource = 'dark'
 const profile = process.env.PDFPAL_DESKTOP_PROFILE ?? path.join(app.getPath('appData'), 'pdfpal-desktop')
 fs.mkdirSync(profile, { recursive: true })
@@ -209,6 +216,10 @@ function ensureWindow() {
   if (!window || window.isDestroyed()) {
       window = new BrowserWindow({ ...restoreBounds(prefs.value.bounds, screen.getAllDisplays()), show: false, minWidth: 600, minHeight: 400,
         backgroundColor: '#0f0f0f', icon: path.join(root, 'frontend/dist/icon-512.png'), webPreferences: { preload: path.join(root, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true } })
+      if (metadata.cloudPreview) {
+        window.setTitle('pdfpal Cloud Preview')
+        window.webContents.on('page-title-updated', event => { event.preventDefault(); window.setTitle('pdfpal Cloud Preview') })
+      }
       restoreWindowState = true
       window.webContents.setWindowOpenHandler(({ url }) => { openBrowser(url); return { action: 'deny' } })
       window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
@@ -277,6 +288,11 @@ async function boot() {
     const initial = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('Local service startup timed out. Retry from the tray.')), process.env.PDFPAL_M0_LIVE === '1' ? 270000 : 45000)
       child.on('message', message => {
+        if (message.type === 'cloud-vault') {
+          const vault=protectedVault(path.join(profile,'cloud'),safeStorage)
+          const task=message.action==='read'?vault.read():message.action==='write'?vault.write(message.value):Promise.reject(new Error('Invalid vault action'))
+          void task.then(value=>child.postMessage({type:'cloud-vault-result',id:message.id,value}),()=>child.postMessage({type:'cloud-vault-result',id:message.id,error:true}))
+        }
         if (message.type === 'chatgpt-generate') {
           const id = message.id
           if (typeof id !== 'string' || typeof message.prompt !== 'string' || message.prompt.length > 150000) return

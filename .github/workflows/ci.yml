@@ -86,3 +86,19 @@ jobs:
         with:
           name: pdfpal-kindle-companion
           path: extension/package/
+
+  firebase-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - name: Verify Firebase transactions, ownership and PDF transfers
+        run: npm exec --yes --package=firebase-tools@15.5.1 -- firebase --config cloud/firebase.json emulators:exec --only firestore,storage --project demo-pdfpal-sync 'node --import tsx --test test/integration/cloud-firestore.test.ts'

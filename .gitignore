@@ -24,3 +24,12 @@ desktop/evidence/
 # Private Windows signing credentials belong outside the repository.
 *.pfx
 *.p12
+
+# Firebase local emulator diagnostics and generated hosting files
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+storage-debug.log*
+cloud/.env*
+cloud/hosting/
+cloud/.firebase/

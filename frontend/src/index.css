@@ -194,3 +194,22 @@ body {
 .desktop-updates h3 { font-size: 16px; margin: 16px 0 0; }
 .desktop-updates .ai-settings-actions { padding: 20px 0 0; }
 .desktop-update-notes { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 20px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+
+/* Every assistant uses the same selection card; account/model controls stay inside it. */
+.ai-settings-option-text { min-width: 0; overflow-wrap: anywhere; }
+.ai-settings-selected { flex-shrink: 0; }
+.ai-settings-provider-body { padding: 0 15px 14px; }
+.ai-settings-provider-body .ai-settings-error { margin-bottom: 12px; }
+.ai-settings-provider-body .ai-settings-actions { padding: 12px 0 0; }
+.ai-settings-provider-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.ai-settings-provider-fields label { display: grid; gap: 6px; min-width: 0; color: var(--muted); font-size: 12px; }
+.ai-settings-provider-fields select { width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); color: var(--text); font: inherit; }
+.ai-settings-provider-message { margin: 0 0 12px; color: #a7f3d0; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.ai-settings-provider-help { margin: 12px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+@media (max-width: 480px) {
+  .ai-settings-header { padding: 18px 16px; }
+  .ai-settings-content { padding: 16px; }
+  .ai-settings-footer { padding: 14px 16px; }
+  .ai-settings-provider-fields { grid-template-columns: minmax(0, 1fr); }
+  .ai-settings-option { gap: 9px; padding: 13px; }
+}

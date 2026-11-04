@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import ChatGPTSettings from './ChatGPTSettings'
+import ChatGPTSettings, { type ChatGPTState } from './ChatGPTSettings'
 import type { DesktopAssistant, DesktopSetupState } from '../desktop'
 
 const supported = (id: string) => id === 'claude' || id === 'codex'
@@ -22,6 +22,10 @@ export default function AISettings() {
   const dialog = useRef<HTMLDialogElement>(null)
   const generation = useRef(0)
   const [openId, setOpenId] = useState(0)
+  const [isOpen, setIsOpen] = useState(false)
+  const [chatgptRefresh, setChatgptRefresh] = useState(0)
+  const [chatgpt, setChatgpt] = useState<ChatGPTState>()
+  const [chatgptWorking, setChatgptWorking] = useState(false)
   const [agents, setAgents] = useState<DesktopAssistant[]>([])
   const [selected, setSelected] = useState('')
   const [loading, setLoading] = useState(false)
@@ -35,11 +39,15 @@ export default function AISettings() {
   const [consent, setConsent] = useState<{ agent: string; action: 'install' | 'login' }>()
   const current = agents.find(item => item.id === selected)
   const needsBilling = current?.auth === 'api' || current?.auth === 'external'
-  const canUse = current?.available && (!needsBilling || billingAccepted)
+  const canUse = selected === 'chatgpt'
+    ? chatgpt?.connected && !chatgpt.busy && !chatgptWorking && chatgpt.models.some(model => model.id === chatgpt.model)
+    : current?.available && (!needsBilling || billingAccepted)
+  const selectChatGPT = useCallback(() => { setSelected('chatgpt'); setBillingAccepted(false); setError(''); setNotice('') }, [])
+  const updateChatGPT = useCallback((state: ChatGPTState | undefined, working: boolean) => { setChatgpt(state); setChatgptWorking(working) }, [])
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (preserveSelection = false) => {
     const version = ++generation.current
-    setLoading(true); setError(''); setConsent(undefined)
+    setLoading(true); setError(''); setConsent(undefined); setChatgptRefresh(value => value + 1)
     try {
       let data: DesktopSetupState
       if (window.pdfpalDesktop?.setupState) data = await window.pdfpalDesktop.setupState()
@@ -52,7 +60,8 @@ export default function AISettings() {
       setAgents(data.agents)
       // Preserve explicit preferences. Only preselect a single signed-in assistant for a new user.
       const ready = data.agents.filter(item => item.available && item.auth === 'account')
-      setSelected(!data.explicit && data.complete === false ? (ready.length === 1 ? ready[0]!.id : '') : data.default)
+      setSelected(previous => preserveSelection && data.agents.some(item => item.id === previous && item.available)
+        ? previous : !data.explicit && data.complete === false ? (ready.length === 1 ? ready[0]!.id : '') : data.default)
       setBillingAccepted(false)
     } catch {
       if (version === generation.current) setError('Could not check your assistants. Check that the local service is running, then try again.')
@@ -61,12 +70,11 @@ export default function AISettings() {
 
   const open = useCallback((welcome = false) => {
     if (dialog.current?.open) { dialog.current.focus(); return }
-    setOpenId(value => value + 1); setFirstRun(welcome); setNotice(''); setConsent(undefined)
+    setIsOpen(true); setOpenId(value => value + 1); setFirstRun(welcome); setNotice(''); setConsent(undefined)
     dialog.current?.showModal()
     void refresh()
   }, [refresh])
 
-  useEffect(() => { const selected=()=>{ dialog.current?.close() };window.addEventListener('pdfpal-chatgpt-selected',selected);return()=>window.removeEventListener('pdfpal-chatgpt-selected',selected) }, [])
   useEffect(() => bridge?.onOpenAISettings?.(() => open()), [bridge, open])
   useEffect(() => {
     let active = true
@@ -84,7 +92,8 @@ export default function AISettings() {
     generation.current++
     if (testingRef.current) void bridge?.cancelTest?.().catch(() => {})
     testingRef.current = false; setTesting(false)
-    dialog.current?.close()
+    if (chatgpt?.busy || chatgptWorking) void bridge?.chatgpt?.('cancel').catch(() => {})
+    setIsOpen(false); dialog.current?.close()
   }
   const finishWithoutAI = async () => {
     if (saving) return
@@ -93,7 +102,7 @@ export default function AISettings() {
     catch { setError('Setup could not be saved. You can close this window and keep reading.') }
     finally { setSaving(false) }
   }
-  const closeAfterSave = () => { generation.current++; dialog.current?.close() }
+  const closeAfterSave = () => { generation.current++; if(chatgpt?.busy || chatgptWorking) void bridge?.chatgpt?.('cancel').catch(() => {}); setIsOpen(false); dialog.current?.close() }
   const save = async (event: FormEvent) => {
     event.preventDefault()
     if (!selected || saving || testing || !bridge || !canUse) return
@@ -104,6 +113,7 @@ export default function AISettings() {
         setSelected(effective)
         setError('Your startup configuration keeps another assistant as the default. Update that configuration to change it here.')
       } else {
+        localStorage.setItem('pdfpal.agent', effective)
         if (firstRun) await bridge.completeSetup?.()
         closeAfterSave()
       }
@@ -142,7 +152,7 @@ export default function AISettings() {
   }
   const choose = async (agent: string) => {
     setSaving(true); setError('')
-    try { if (await bridge?.chooseBinary?.(agent)) await refresh() }
+    try { if (await bridge?.chooseBinary?.(agent)) await refresh(true) }
     catch { setError('That application could not be verified or your startup configuration fixes its location. Use the official setup guide.') }
     finally { setSaving(false) }
   }
@@ -159,13 +169,13 @@ export default function AISettings() {
         <button type="button" className="ai-settings-close" onClick={close} disabled={saving} aria-label="Close AI settings">×</button>
       </header>
       <div className="ai-settings-content">
-        <ChatGPTSettings />
         {error && <p role="alert" className="ai-settings-error">{error}</p>}
         {notice && <p role="status" className="ai-settings-notice">{notice}</p>}
         {loading ? <p role="status" className="ai-settings-loading">Checking installed assistants…</p> : <>
-          <fieldset className="ai-settings-options" disabled={saving}>
+          <fieldset className="ai-settings-options" disabled={saving || chatgptWorking}>
             <legend className="sr-only">Default assistant</legend>
-            {agents.filter(item => !firstRun || supported(item.id) || item.available || item.id === selected).map(assistant => <div key={assistant.id} className={`ai-settings-card${selected === assistant.id ? ' is-selected' : ''}`}>
+            <ChatGPTSettings active={isOpen} refreshKey={chatgptRefresh} selected={selected === 'chatgpt'} disabled={saving || testing} onSelect={selectChatGPT} onStateChange={updateChatGPT} />
+            {agents.filter(item => item.id !== 'chatgpt' && (!firstRun || supported(item.id) || item.available || item.id === selected)).map(assistant => <div key={assistant.id} className={`ai-settings-card${selected === assistant.id ? ' is-selected' : ''}`}>
               <label className={`ai-settings-option${selected === assistant.id ? ' is-selected' : ''}${!assistant.available ? ' is-unavailable' : ''}`}>
                 <input type="radio" name="assistant" value={assistant.id} checked={selected === assistant.id}
                   disabled={!assistant.available || testing} onChange={() => { setSelected(assistant.id); setBillingAccepted(false); setError(''); setNotice('') }} />
@@ -189,15 +199,15 @@ export default function AISettings() {
               </div>}
             </div>)}
           </fieldset>
-          {!agents.some(assistant => assistant.available) && <p className="ai-settings-help">Install Claude Code or Codex and sign in with your account, then check again. You can keep reading without AI.</p>}
+          {!chatgpt?.connected && !agents.some(assistant => assistant.id !== 'chatgpt' && assistant.available) && <p className="ai-settings-help">Connect ChatGPT above, or install Claude Code or Codex and sign in, then check again. You can keep reading without AI.</p>}
         </>}
         {consent && <section className="ai-settings-confirm" aria-label="Confirm assistant setup">
           <h3>{consent.action === 'install' ? `Install ${consent.agent === 'claude' ? 'Claude Code' : 'Codex'}?` : 'Sign in with your account?'}</h3>
           <p>{consent.action === 'install' ? 'This opens a PowerShell window and runs the provider’s official installer. It downloads and installs the assistant for your Windows user. No separate Node.js installation is required.' : 'This opens the assistant’s official sign-in flow in a separate window. Choose your Claude or ChatGPT account to use its included allowance. Your password is entered only with the provider.'}</p>
           <div className="ai-settings-actions"><button type="button" onClick={() => { void launch() }} disabled={saving || testing}>Open {consent.action === 'install' ? 'official installer' : 'sign-in'}</button><button type="button" onClick={() => setConsent(undefined)} disabled={saving || testing}>Back</button></div>
         </section>}
-        <p className="ai-settings-help">Uses your installed assistant and its current account. Provider usage limits apply. Sign-in detection does not verify remaining allowance.</p>
-        <button type="button" className="ai-settings-refresh" onClick={() => { setNotice(''); void refresh() }} disabled={loading || saving || testing}>Check again</button>
+        <p className="ai-settings-help">ChatGPT connects directly to your plan. Claude Code and Codex use their installed applications and current accounts. Provider limits apply; sign-in detection does not verify remaining allowance.</p>
+        <button type="button" className="ai-settings-refresh" onClick={() => { setNotice(''); void refresh(true) }} disabled={loading || saving || testing || chatgptWorking}>Check again</button>
       </div>
       <footer className="ai-settings-footer">
         <button type="button" className="ai-settings-cancel" onClick={firstRun ? () => { void finishWithoutAI() } : close} disabled={saving || testing}>{firstRun ? 'Continue without AI' : 'Cancel'}</button>

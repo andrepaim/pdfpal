@@ -59,8 +59,14 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
       - run: npm ci
       - run: npm test
+      - name: Verify Firebase sync against emulators
+        run: npm exec --yes --package=firebase-tools@15.5.1 -- firebase --config cloud/firebase.json emulators:exec --only firestore,storage --project demo-pdfpal-sync 'node --import tsx --test test/integration/cloud-firestore.test.ts'
       - run: npm --prefix desktop test
       - run: npm exec --workspace frontend -- playwright install --with-deps chromium
       - run: npm exec --workspace frontend -- playwright test

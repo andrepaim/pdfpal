@@ -7,8 +7,9 @@ import type { PdfpalConfig } from './config.js'
 import { acquireLease, assertMigrationAllowed, databasePath } from './locking.js'
 import { PdfpalError } from './types.js'
 import { ensureDataDirectories } from './config.js'
+import { installSync } from '../sync/database.js'
 
-const CURRENT_SCHEMA = 10
+const CURRENT_SCHEMA = 12
 
 function columnExists(db: DatabaseType, table: string, column: string): boolean {
   return (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some(row => row.name === column)
@@ -249,6 +250,8 @@ function migrate(db: DatabaseType): void {
   db.exec(`CREATE TABLE IF NOT EXISTS ai_jobs(id TEXT PRIMARY KEY, project_id TEXT, source_id TEXT, question TEXT NOT NULL, provider TEXT NOT NULL, model TEXT, status TEXT NOT NULL, answer TEXT NOT NULL DEFAULT '', error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES (10,datetime('now'));`)
 
+  installSync(db)
+  db.exec("INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES (12,datetime('now'))")
 }
 
 /** Migrate the original sessions/messages model without requiring network access. */

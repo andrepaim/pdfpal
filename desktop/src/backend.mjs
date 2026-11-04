@@ -7,6 +7,8 @@ import { bindDirectProvider } from './dist/core/ai.js'
 import { randomUUID } from 'node:crypto'
 import { AgentService } from './dist/core/agents.js'
 
+import { bindCloudVault } from './dist/sync/auth.js'
+const vaultPending = new Map()
 const directPending = new Map()
 let runtime, config, stopping = false, connectionTest
 async function inspect() {
@@ -15,6 +17,7 @@ async function inspect() {
   return { default: config.aiMode==='chatgpt'?'chatgpt':config.agent, explicit: !!process.env.PDFPAL_AGENT || Object.hasOwn(file, 'agent'), agents }
 }
 process.parentPort.on('message', async ({ data }) => {
+  if (data.type === 'cloud-vault-result') { const job=vaultPending.get(data.id);if(job){clearTimeout(job.timer);vaultPending.delete(data.id);data.error?job.reject(new Error('Cloud credentials could not be unlocked')):job.resolve(data.value)};return }
   if (data.type === 'chatgpt-delta') { directPending.get(data.id)?.onDelta?.(data.text);return }
   if (data.type === 'chatgpt-result') { const job=directPending.get(data.id); if(job){clearTimeout(job.timer);directPending.delete(data.id); data.error ? job.reject(new Error(data.error)) : job.resolve(data.answer)}; return }
   if (data.type === 'stop') {
@@ -64,6 +67,8 @@ try {
   globalThis.pdfjsWorker = await import('pdfjs-dist/legacy/build/pdf.worker.mjs')
   const { startRuntime } = await import('./dist/server/runtime.js')
   config = loadConfig()
+  const vaultRequest=(action,value)=>new Promise((resolve,reject)=>{const id=randomUUID();const timer=setTimeout(()=>{vaultPending.delete(id);reject(new Error('Cloud credential storage timed out'))},15000);vaultPending.set(id,{resolve,reject,timer});process.parentPort.postMessage({type:'cloud-vault',id,action,value})})
+  bindCloudVault(config,{read:()=>vaultRequest('read'),write:value=>vaultRequest('write',value)})
   bindDirectProvider(config,{invoke:(prompt,model,options)=>new Promise((resolve,reject)=>{const id=randomUUID();const timer=setTimeout(()=>{directPending.delete(id);process.parentPort.postMessage({type:'chatgpt-cancel'});reject(new Error('ChatGPT timed out. Your question can be retried explicitly.'))},310000);directPending.set(id,{resolve,reject,timer,onDelta:options?.onDelta});process.parentPort.postMessage({type:'chatgpt-generate',id,prompt,model})})})
   const smoke = process.env.PDFPAL_M0_SMOKE === '1'
   if (smoke && process.env.PDFPAL_M2_FAILURE_FIXTURE === '1') throw Object.assign(new Error('Fixture occupied port'), { code: 'EADDRINUSE' })

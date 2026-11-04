@@ -1,3 +1,4 @@
+import { beginOperation } from './telemetry'
 // Centralized API client for pdfpal v2
 
 const BASE = '/api'
@@ -6,11 +7,15 @@ async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
   // Only set a JSON content-type when there's actually a body — Fastify's
   // JSON body parser rejects bodyless requests (e.g. DELETE) that declare
   // one, which used to 500 on every source/project/note removal.
-  const res = await fetch(BASE + path, {
+  const finish=path.includes('/search')?beginOperation('search'):path.split('?')[0]!.endsWith('/sources/upload')?beginOperation('pdf_import'):undefined
+  let res:Response
+  try{res = await fetch(BASE + path, {
     credentials: 'include',
     ...opts,
     headers: { ...(opts?.body && !(opts.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}), ...opts?.headers },
   })
+  }catch(error){finish?.('failed');throw error}
+  finish?.(res.ok?'completed':'failed')
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw new Error(err.detail || `API error ${res.status}`)

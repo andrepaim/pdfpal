@@ -26,6 +26,23 @@ const config = loadConfig()
 const db = () => database ??= openDatabase(config)
 const json = (command: Command) => Boolean(command.optsWithGlobals().json)
 
+const cloud = program.command('cloud').description('manage optional Firebase library synchronization through the local server')
+async function cloudRequest(route:string,body?:unknown){
+  const {existingServer}=await import('../server/runtime.js')
+  const origin=await existingServer(config.dbPath)
+  if(!origin)throw new Error('Start pdfpal serve or the desktop app for this library first.')
+  const response=await fetch(`${origin}/api/cloud/${route}`,{method:body===undefined?'GET':'POST',headers:body===undefined?{}:{'content-type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)})
+  const result=await response.json() as any
+  if(!response.ok)throw new Error(result.detail??'Cloud action failed')
+  return result
+}
+cloud.command('status').action(async(_options,command)=>print(await cloudRequest('status'),json(command)))
+cloud.command('sync').action(async(_options,command)=>print(await cloudRequest('sync',{}),json(command)))
+cloud.command('login').action(async(_options,command)=>{const result=await cloudRequest('login',{});print(result,json(command));if(!json(command))await (await import('open')).default(result.url)})
+cloud.command('logout').action(async(_options,command)=>print(await cloudRequest('logout',{}),json(command)))
+cloud.command('pause').action(async(_options,command)=>print(await cloudRequest('pause',{paused:true}),json(command)))
+cloud.command('resume').action(async(_options,command)=>print(await cloudRequest('pause',{paused:false}),json(command)))
+
 const extension = program.command('extension').description('pair and manage the Kindle browser companion')
 extension.command('pair').description('create a single-use pairing code valid for five minutes')
   .action((_options, command) => print(new ExtensionAuth(db()).pairCode(), json(command)))

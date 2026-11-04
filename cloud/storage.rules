@@ -1,0 +1,11 @@
+rules_version = '2';
+service firebase.storage { match /b/{bucket}/o {
+ match /users/{uid}/libraries/{library}/sources/{source}/{filename} {
+  function owner() { return request.auth != null && request.auth.uid == uid; }
+  function metadata() { return firestore.get(/databases/(default)/documents/users/$(uid)/libraries/$(library)/entities/$("sources_" + source)).data.payload; }
+  allow read: if owner() && metadata() != null && filename == metadata().content_hash + '.pdf';
+  allow create: if resource == null && owner() && metadata() != null && filename == metadata().content_hash + '.pdf'
+    && request.resource.contentType == 'application/pdf' && request.resource.size == metadata().byte_size
+    && request.resource.size <= 25 * 1024 * 1024;
+ }
+}}

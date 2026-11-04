@@ -7,7 +7,7 @@ The desktop preview supports Windows 11 on an Intel/AMD 64-bit computer. It incl
 1. Quit any running pdfpal window **from its tray menu**. Closing the window keeps it running.
 2. Download the matching **pdfpal-Setup-…-x64.exe** desktop installer from the [official release page](https://github.com/andrepaim/pdfpal/releases). Engineering previews are marked **Pre-release** and may be unsigned; stable downloads require publisher signing.
 3. Run the installer. It installs for your Windows user and creates a **pdfpal** Start menu entry. At the end, leave **Run pdfpal** selected.
-4. In AI settings, choose **Continue with ChatGPT** to authorize eligible plan usage in your browser. Return to pdfpal, choose an available model, then **Use ChatGPT**. This mode needs no coding-agent installation. Alternatively, choose Claude Code or Codex. If needed, use its **Install** or **Sign in** action, finish in the provider's window, close that window, and choose **Check again** in pdfpal. You need an eligible provider account; account usage limits apply. API credentials can charge separately, which pdfpal labels before use.
+4. In AI settings, choose **Continue with ChatGPT** to authorize eligible plan usage in your browser. Return to pdfpal, choose an available model, then **Start reading** (or **Use assistant** when changing settings later). This mode needs no coding-agent installation. Alternatively, choose Claude Code or Codex. If needed, use its **Install** or **Sign in** action, finish in the provider's window, close that window, and choose **Check again** in pdfpal. You need an eligible provider account; account usage limits apply. API credentials can charge separately, which pdfpal labels before use.
 5. Optionally choose **Test connection** inside your selected assistant's card. It uses a short test prompt and your provider allowance. You can also choose **Continue without AI**.
 6. Create a project, import a PDF, select a passage, and ask a question. PDF files, notes, highlights, and history are stored in your local library; relevant reading context is sent to your assistant's provider when you request an AI answer.
 
@@ -26,6 +26,14 @@ The regular Windows application uses `%USERPROFILE%\.pdfpal`, matching the nativ
 Earlier engineering launchers used a separate `%LOCALAPPDATA%\pdfpal-m0-test` library. That folder is retained; the regular Start menu entry uses the normal library. If you want to test against the earlier library, use the separately supplied **Open alpha test library.cmd** after installation. It selects that library for the launch and leaves the normal CLI configuration alone.
 
 Windows and WSL use different home folders and default libraries. Sharing a live SQLite library between Windows and WSL is not a supported preview workflow.
+
+## Optional Google sign-in and cloud sync
+
+Open **Cloud library**, choose **Sign in with Google**, and complete sign-in in your browser. For your existing local library, choose **Create a new cloud library**, give it a name, then **Enable sync**. Google sign-in is separate from your AI-provider account, and signing in alone uploads no library content.
+
+The bundled Firebase project synchronizes projects, source metadata, collections, notes, highlights and reading progress. **PDF files and AI questions/answers stay local.** Keep local backups. To connect an existing cloud library on another device, begin with an empty local library. Details and configuration are in [Firebase setup](firebase-setup.md).
+
+The separate Cloud Preview test installation uses its own library and profile. Updating regular pdfpal retains the regular library; it does not merge the preview's test library.
 
 ## Upgrade or uninstall
 

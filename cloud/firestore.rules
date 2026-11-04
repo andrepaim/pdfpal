@@ -1,0 +1,58 @@
+rules_version = '2';
+service cloud.firestore { match /databases/{database}/documents {
+ function owner(uid) { return request.auth != null && request.auth.uid == uid; }
+ function id(v) { return v is string && v.matches('[A-Za-z0-9_-]{1,128}'); }
+ function validPayload(type,p) { return p is map && ((type == 'projects' && p.keys().hasAll(["id","created_at","title","description","accessed_at"]) && p.keys().hasOnly(["id","created_at","title","description","accessed_at"]) && (id(p.id)) && (p.created_at is string && p.created_at.size() <= 200000) && (p.title is string && p.title.size() <= 200000) && (p.description is string && p.description.size() <= 200000) && (p.accessed_at is string && p.accessed_at.size() <= 200000)) ||
+(type == 'collections' && p.keys().hasAll(["id","created_at","project_id","parent_id","name","position"]) && p.keys().hasOnly(["id","created_at","project_id","parent_id","name","position"]) && (id(p.id)) && (p.created_at is string && p.created_at.size() <= 200000) && (id(p.project_id)) && (p.parent_id == null || (id(p.parent_id))) && (p.name is string && p.name.size() <= 200000) && (p.position is int)) ||
+(type == 'sources' && p.keys().hasAll(["id","created_at","project_id","type","url","title","pages","last_page_read","accessed_at","media_type","byte_size","content_hash","author","kindle_book_key","collection_id"]) && p.keys().hasOnly(["id","created_at","project_id","type","url","title","pages","last_page_read","accessed_at","media_type","byte_size","content_hash","author","kindle_book_key","collection_id"]) && (id(p.id)) && (p.created_at is string && p.created_at.size() <= 200000) && (id(p.project_id)) && (p.type is string && p.type.size() <= 200000) && (p.url == null || (p.url is string && p.url.size() <= 200000)) && (p.title == null || (p.title is string && p.title.size() <= 200000)) && (p.pages is int) && (p.last_page_read is int) && (p.accessed_at is string && p.accessed_at.size() <= 200000) && (p.media_type == null || (p.media_type is string && p.media_type.size() <= 200000)) && (p.byte_size == null || (p.byte_size is int)) && (p.content_hash == null || (p.content_hash is string && p.content_hash.size() <= 200000)) && (p.author == null || (p.author is string && p.author.size() <= 200000)) && (p.kindle_book_key == null || (p.kindle_book_key is string && p.kindle_book_key.size() <= 200000)) && (p.collection_id == null || (id(p.collection_id)))) ||
+(type == 'notes' && p.keys().hasAll(["id","created_at","project_id","source_id","title","content","updated_at"]) && p.keys().hasOnly(["id","created_at","project_id","source_id","title","content","updated_at"]) && (id(p.id)) && (p.created_at is string && p.created_at.size() <= 200000) && (id(p.project_id)) && (p.source_id == null || (id(p.source_id))) && (p.title is string && p.title.size() <= 200000) && (p.content is string && p.content.size() <= 200000) && (p.updated_at is string && p.updated_at.size() <= 200000)) ||
+(type == 'annotations' && p.keys().hasAll(["id","created_at","source_id","project_id","page_number","x1","y1","x2","y2","text","color","rects"]) && p.keys().hasOnly(["id","created_at","source_id","project_id","page_number","x1","y1","x2","y2","text","color","rects"]) && (id(p.id)) && (p.created_at is string && p.created_at.size() <= 200000) && (id(p.source_id)) && (id(p.project_id)) && (p.page_number is int) && (p.x1 is number) && (p.y1 is number) && (p.x2 is number) && (p.y2 is number) && (p.text is string && p.text.size() <= 200000) && (p.color is string && p.color.size() <= 200000) && (p.rects == null || (p.rects is string && p.rects.size() <= 200000)))); }
+ match /users/{uid}/libraries/{library} {
+  function head() { return get(/databases/$(database)/documents/users/$(uid)/libraries/$(library)).data; }
+  function nextHead() { return getAfter(/databases/$(database)/documents/users/$(uid)/libraries/$(library)).data; }
+  function entity(key) { return getAfter(/databases/$(database)/documents/users/$(uid)/libraries/$(library)/entities/$(key)).data; }
+  function change(seq) { return getAfter(/databases/$(database)/documents/users/$(uid)/libraries/$(library)/changes/$(string(seq))).data; }
+  function receipt(op) { return getAfter(/databases/$(database)/documents/users/$(uid)/libraries/$(library)/receipts/$(op)).data; }
+  function key(d) { return d.entityType + '_' + d.entityId; }
+  function valid(d) {
+   return d.keys().hasOnly(['sequence','operationId','entityType','entityId','revision','payload','generation'])
+    && id(d.entityId) && id(d.operationId) && d.revision is int && d.revision > 0
+    && d.sequence is int && d.sequence == head().sequence + 1 && d.sequence == nextHead().sequence
+    && head().active == true && d.generation == head().generation
+    && d.entityType in ['projects','collections','sources','notes','annotations']
+    && (d.payload == null || (validPayload(d.entityType,d.payload) && d.payload.id == d.entityId));
+  }
+  allow read: if owner(uid);
+  allow create: if owner(uid) && id(library) && request.resource.data.keys().hasOnly(['title','generation','sequence','active','protocol'])
+    && request.resource.data.title is string && request.resource.data.title.size() <= 200
+    && id(request.resource.data.generation) && request.resource.data.sequence == 0 && request.resource.data.active == true && request.resource.data.protocol == 1;
+  allow update: if owner(uid) && resource.data.active == true
+    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sequence'])
+    && request.resource.data.sequence == resource.data.sequence + 1
+    && change(request.resource.data.sequence).sequence == request.resource.data.sequence;
+  match /entities/{entityKey} {
+   allow read: if owner(uid);
+   function companions() { let d=request.resource.data;let r=receipt(d.operationId);
+    return entityKey == key(d) && change(d.sequence) == d && r.key == entityKey && r.revision == d.revision && r.sequence == d.sequence && r.generation == d.generation;
+   }
+   allow create: if owner(uid) && valid(request.resource.data) && request.resource.data.revision == 1 && companions();
+   allow update: if owner(uid) && valid(request.resource.data) && request.resource.data.revision == resource.data.revision + 1 && companions();
+  }
+  match /changes/{seq} {
+   allow read: if owner(uid);
+   allow create: if owner(uid) && valid(request.resource.data) && seq == string(request.resource.data.sequence)
+    && request.resource.data == entity(key(request.resource.data));
+  }
+  match /receipts/{op} {
+   allow read: if owner(uid);
+   allow create: if owner(uid) && id(op) && head().active == true
+    && request.resource.data.keys().hasOnly(['signature','key','revision','sequence','generation'])
+    && request.resource.data.signature is string && request.resource.data.signature.matches('[a-f0-9]{64}')
+    && request.resource.data.key is string && request.resource.data.key.size() <= 260
+    && entity(request.resource.data.key).operationId == op
+    && request.resource.data.revision == entity(request.resource.data.key).revision
+    && request.resource.data.sequence == head().sequence + 1 && request.resource.data.sequence == nextHead().sequence
+    && request.resource.data.generation == head().generation;
+  }
+ }
+}}

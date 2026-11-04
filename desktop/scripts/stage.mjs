@@ -9,6 +9,7 @@ const version = process.env.PDFPAL_DESKTOP_VERSION ?? JSON.parse(await fs.readFi
 const { versionParts } = await import('../src/updates.mjs')
 versionParts(version)
 await fs.mkdir(stage, { recursive: true })
+await fs.rm(path.join(stage, 'frontend/dist'), { recursive: true, force: true })
 const pkg = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'))
 await fs.writeFile(path.join(stage, 'package.json'), JSON.stringify({ name: 'pdfpal-desktop', version,
   private: true, type: 'module', main: 'main.mjs', description: 'Read PDFs and Kindle with your AI assistant', author: 'pdfpal contributors', license: 'MIT', homepage: 'https://github.com/andrepaim/pdfpal',
