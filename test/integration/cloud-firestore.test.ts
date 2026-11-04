@@ -6,7 +6,7 @@ import {
   assertFails,
 } from "@firebase/rules-unit-testing";
 import { createMockUserToken } from "@firebase/util";
-import { doc, setDoc, getDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, writeBatch, updateDoc } from "firebase/firestore";
 import { CloudAuth } from "../../src/sync/auth.js";
 import { FirebaseTransport } from "../../src/sync/firebase.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -14,6 +14,7 @@ import { SyncWorker } from "../../src/sync/worker.js";
 import { ProjectService } from "../../src/core/projects.js";
 import { SourceService } from "../../src/core/sources.js";
 import { NoteService } from "../../src/core/notes.js";
+import { ChatService } from "../../src/core/chat.js";
 import { testConfig, testDb, cleanup } from "../helpers/test-utils.js";
 import type { Operation } from "../../src/shared/sync/schema.js";
 const endpoint = process.env.FIRESTORE_EMULATOR_HOST;
@@ -182,6 +183,76 @@ test(
           );
         },
       );
+      await t.test('conversation consent, ownership, parent links and portable fields are enforced by production rules', async () => {
+        const library = await alice.create('Conversation rules'), projectOp = project();
+        await alice.apply(library.id, library.generation, projectOp);
+        const session: Operation = { operationId: randomUUID(), entityType: 'chat_sessions', entityId: 'thread', baseRevision: 0, action: 'put', payload: {
+          id: 'thread', project_id: projectOp.entityId, source_id: null, title: 'Project Chat', created_at: 'now',
+        } };
+        const database = env.authenticatedContext('alice').firestore();
+        const raw = async (op: Operation) => {
+          const sequence = (await alice.head(library.id)).sequence + 1;
+          const value = { sequence, operationId: op.operationId, entityType: op.entityType, entityId: op.entityId, revision: 1, payload: op.payload, generation: library.generation };
+          const key = op.entityType + '_' + op.entityId, root = `users/alice/libraries/${library.id}`;
+          const batch = writeBatch(database);
+          batch.update(doc(database, root), { sequence });
+          batch.set(doc(database, root + '/entities/' + key), value);
+          batch.set(doc(database, root + '/changes/' + sequence), value);
+          batch.set(doc(database, root + '/receipts/' + op.operationId), { signature: 'a'.repeat(64), key, revision: 1, sequence, generation: library.generation });
+          return batch.commit();
+        };
+        await assert.rejects(alice.apply(library.id, library.generation, session), /Enable conversation/);
+        await assertFails(raw(session));
+        await alice.enableConversations(library.id);
+        assert.equal((await alice.head(library.id)).protocol, 2);
+        await alice.apply(library.id, library.generation, session);
+        const message: Operation = { operationId: randomUUID(), entityType: 'chat_messages', entityId: 'message', baseRevision: 0, action: 'put', payload: {
+          id: 'message', session_id: 'thread', role: 'user', content: 'Synthetic question', sources_used: '[]', created_at: 'now', position: 1, turn_id: 'turn',
+        } };
+        await assertFails(raw({ ...message, payload: { ...message.payload, client_id: 'do-not-sync-pairing' } }));
+        await assertFails(raw({ ...message, payload: { ...message.payload, session_id: 'missing-thread' } }));
+        await alice.apply(library.id, library.generation, message);
+        await assertFails(getDoc(doc(env.authenticatedContext('bob').firestore(), `users/alice/libraries/${library.id}/entities/chat_messages_message`)));
+        await assertFails(updateDoc(doc(database, `users/alice/libraries/${library.id}`), { protocol: 1 }));
+      });
+
+      await t.test('saved conversations restore into an empty SQLite library through Firebase without PDF storage', async () => {
+        const oldBucket = process.env.PDFPAL_STORAGE_BUCKET; delete process.env.PDFPAL_STORAGE_BUCKET;
+        const a = testConfig(), b = testConfig(), adb = testDb(a), bdb = testDb(b);
+        const worker = (config: typeof a, db: typeof adb) => {
+          const auth = new CloudAuth(config);
+          auth.credentials = { uid: 'alice', email: '', idToken: '', refreshToken: '', expiresAt: Infinity };
+          auth.token = async () => createMockUserToken({ sub: 'alice', user_id: 'alice' }, 'demo-pdfpal-sync');
+          return new SyncWorker(db, config, auth);
+        };
+        try {
+          const library = await alice.create('Restored conversations'), wa = worker(a, adb), wb = worker(b, bdb);
+          await wa.connect('Research', library.id);
+          const p = new ProjectService(adb).create('Synthetic reading');
+          const source = await new SourceService(adb, a).add(p.id, { filename: 'sample.pdf', bytes: await fs.readFile('test/fixtures/sample.pdf') });
+          const chat = new ChatService(adb, a);
+          for (let i = 0; i < 55; i++) chat.persist(p.id, source.id, `Question ${i}`, `Answer ${i} — $x^2$`, [source.id]);
+          await wa.run(); assert.equal(wa.error, '');
+          assert.equal((await alice.changes(library.id, 0)).changes.some(c => c.entityType.startsWith('chat_')), false);
+          await wa.enableConversations();
+          for (let i = 0; wa.status().pending && i < 5; i++) { await wa.run(); assert.equal(wa.error, ''); }
+          assert.equal(wa.status().pending, 0);
+          await wb.connect('Research', library.id);
+          bdb.prepare("INSERT INTO sqlite_sequence(name,seq) VALUES('chat_messages',1000)").run();
+          await wb.run(); assert.equal(wb.error, '');
+          const expected = chat.history(p.id, source.id), restored = new ChatService(bdb, b).history(p.id, source.id);
+          assert.equal(restored.length, 110);
+          assert.ok(restored[0]!.id > 1000);
+          assert.deepEqual(restored.map(m => [m.role,m.content,m.sources_used,m.created_at]), expected.map(m => [m.role,m.content,m.sources_used,m.created_at]));
+          assert.equal(wb.status().pdfStorage, false);
+          assert.equal(wb.status().pending, 0);
+          assert.equal(new SourceService(bdb, b).resolve(p.id, source.id).local_path, null);
+        } finally {
+          cleanup(a, adb); cleanup(b, bdb);
+          if (oldBucket === undefined) delete process.env.PDFPAL_STORAGE_BUCKET; else process.env.PDFPAL_STORAGE_BUCKET = oldBucket;
+        }
+      });
+
       await t.test(
         "private immutable PDF upload and download",
         { skip: !process.env.FIREBASE_STORAGE_EMULATOR_HOST },

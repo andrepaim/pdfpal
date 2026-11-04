@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { SyncWorker } from "../../src/sync/worker.js";
 import { CloudAuth } from "../../src/sync/auth.js";
-import { applyChange, pending, setting } from "../../src/sync/database.js";
+import { applyChange, pending, setting, seedConversations } from "../../src/sync/database.js";
 import {
   operationSchema,
   type Change,
@@ -12,13 +12,15 @@ import {
   type Receipt,
 } from "../../src/shared/sync/schema.js";
 import { ProjectService } from "../../src/core/projects.js";
+import { ChatService } from "../../src/core/chat.js";
+import { createSource } from "../helpers/test-utils.js";
 import { NoteService } from "../../src/core/notes.js";
 import { testConfig, testDb, cleanup } from "../helpers/test-utils.js";
 
 class MemoryStore {
   roots = new Map<
     string,
-    { title: string; changes: Change[]; receipts: Map<string, Receipt> }
+    { title: string; protocol: number; changes: Change[]; receipts: Map<string, Receipt> }
   >();
   key(uid: string, id: string) {
     return `${uid}/${id}`;
@@ -31,6 +33,7 @@ class MemoryStore {
   async create(uid: string, id: string, title: string) {
     this.roots.set(this.key(uid, id), {
       title,
+      protocol: 1,
       changes: [],
       receipts: new Map(),
     });
@@ -133,41 +136,11 @@ test("two clients converge, retries are idempotent, and conflicting notes retain
     b = testConfig(),
     adb = testDb(a),
     bdb = testDb(b);
-  function client(config: typeof a, db: typeof adb) {
-    const auth = new CloudAuth(config);
-    auth.credentials = {
-      uid: "alice",
-      email: "a@example.com",
-      idToken: "alice",
-      refreshToken: "test",
-      expiresAt: Date.now() + 100000,
-    };
-    const worker = new SyncWorker(db, config, auth);
-    worker.transport.head = async () => ({ generation: "g1" });
-    worker.request = async (route: string, body?: unknown): Promise<any> => {
-      if (route === "/libraries") return store.libraries("alice");
-      const parts = route.split("/");
-      const id = parts[2]!;
-      if (route.includes("/operations"))
-        return store.apply("alice", id, body as Operation);
-      if (route.includes("/changes"))
-        return {
-          changes: await store.changes(
-            "alice",
-            id,
-            Number(new URL(route, "http://x").searchParams.get("cursor")),
-          ),
-          cursor: store.root("alice", id).changes.length,
-        };
-      throw Error(route);
-    };
-    return worker;
-  }
   try {
     const id = randomUUID();
     await store.create("alice", id, "Shared");
-    const wa = client(a, adb),
-      wb = client(b, bdb);
+    const wa = memoryClient(store, a, adb),
+      wb = memoryClient(store, b, bdb);
     await wa.connect("Shared", id);
     await wb.connect("Shared", id);
     const project = new ProjectService(adb).create("Synced");
@@ -222,3 +195,133 @@ test("two clients converge, retries are idempotent, and conflicting notes retain
     }
   }
 });
+
+test('saved chats require explicit opt-in, backfill once, and restore in order across pages and local message IDs', async () => {
+  const store = new MemoryStore(), a = testConfig(), b = testConfig(), adb = testDb(a), bdb = testDb(b);
+  try {
+    const library = randomUUID(); await store.create('alice', library, 'Chats');
+    const wa = memoryClient(store, a, adb), wb = memoryClient(store, b, bdb);
+    await wa.connect('Chats', library);
+    const project = new ProjectService(adb).create('Restored research');
+    const source = createSource(adb, project.id);
+    const chat = new ChatService(adb, a);
+    for (let i = 0; i < 65; i++) chat.persist(project.id, source, `Question ${i} — π`, `Answer ${i}\n\n**Markdown** and $x^2$.`, [source]);
+    assert.equal(pending(adb).filter(op => op.entityType.startsWith('chat_')).length, 0);
+    await wa.run(); assert.equal(wa.error, '');
+    await wa.enableConversations();
+    assert.equal(wa.status().conversations, true);
+    const count = wa.status().pending;
+    seedConversations(adb); assert.equal(wa.status().pending, count);
+    for (const op of pending(adb)) { operationSchema.parse(op); assert.ok(!Object.hasOwn(op.payload ?? {}, 'visual_id')); }
+    for (let i = 0; wa.status().pending && i < 5; i++) { await wa.run(); assert.equal(wa.error, ''); }
+    assert.equal(wa.status().pending, 0);
+    await wb.connect('Chats', library);
+    // A restored message must never reuse the source machine's numeric row ID.
+    bdb.prepare("INSERT INTO sqlite_sequence(name,seq) VALUES('chat_messages',1000)").run();
+    await wb.run(); assert.equal(wb.error, '');
+    const restored = new ChatService(bdb, b).history(project.id, source);
+    assert.equal(restored.length, 130);
+    assert.ok(restored[0]!.id > 1000);
+    assert.deepEqual(restored.map(({ role, content, sources_used, created_at }) => ({ role, content, sources_used, created_at })), chat.history(project.id, source).map(({ role, content, sources_used, created_at }) => ({ role, content, sources_used, created_at })));
+    assert.equal(wb.status().pending, 0);
+    // Activity and local visual changes do not generate redundant text uploads.
+    const session = (adb.prepare('SELECT id FROM chat_sessions').get() as { id: string }).id;
+    adb.prepare("UPDATE chat_sessions SET accessed_at='later' WHERE id=?").run(session);
+    assert.equal(wa.status().pending, 0);
+    adb.prepare('DELETE FROM chat_messages WHERE session_id=?').run(session);
+    for (let i = 0; wa.status().pending && i < 5; i++) { await wa.run(); assert.equal(wa.error, ''); }
+    await wb.run(); assert.equal(wb.error, '');
+    assert.equal(new ChatService(bdb, b).history(project.id, source).length, 0);
+  } finally { cleanup(a, adb); cleanup(b, bdb); }
+});
+
+test('two offline devices append to the same new thread without collisions or split question/answer pairs', async () => {
+  const store = new MemoryStore(), a = testConfig(), b = testConfig(), adb = testDb(a), bdb = testDb(b);
+  try {
+    const library = randomUUID(); await store.create('alice', library, 'Concurrent chats');
+    const wa = memoryClient(store, a, adb), wb = memoryClient(store, b, bdb);
+    await wa.connect('Chats', library);
+    const project = new ProjectService(adb).create('Concurrent');
+    await wa.run(); await wa.enableConversations();
+    await wb.connect('Chats', library); await wb.run();
+    const ca = new ChatService(adb, a), cb = new ChatService(bdb, b);
+    assert.equal(ca.persist(project.id, null, 'Question A', 'Answer A', []), cb.persist(project.id, null, 'Question B', 'Answer B', []));
+    await wa.run(); assert.equal(wa.error, '');
+    await wb.run(); assert.equal(wb.error, '');
+    await wa.run(); assert.equal(wa.error, '');
+    const history = ca.history(project.id).map(m => m.content);
+    assert.equal(history.length, 4);
+    assert.ok(history.join('|') === 'Question A|Answer A|Question B|Answer B' || history.join('|') === 'Question B|Answer B|Question A|Answer A');
+    assert.deepEqual(cb.history(project.id).map(m => m.content), history);
+    assert.equal(wa.status().conflicts + wb.status().conflicts, 0);
+    assert.equal(wa.status().pending + wb.status().pending, 0);
+  } finally { cleanup(a, adb); cleanup(b, bdb); }
+});
+
+test('oversized saved chats fail opt-in before changing the cloud protocol and leave metadata sync usable', async () => {
+  const store = new MemoryStore(), config = testConfig(), db = testDb(config);
+  try {
+    const library = randomUUID(); await store.create('alice', library, 'Large local chat');
+    const worker = memoryClient(store, config, db); await worker.connect('Chats', library);
+    const project = new ProjectService(db).create('Local');
+    new ChatService(db, config).persist(project.id, null, 'Question', 'x'.repeat(200001), []);
+    await assert.rejects(worker.enableConversations(), /size limit/);
+    assert.equal(store.root('alice', library).protocol, 1);
+    assert.equal(worker.status().conversations, false);
+    await worker.run(); assert.equal(worker.error, '');
+    assert.equal(new ChatService(db, config).history(project.id)[1]!.content.length, 200001);
+  } finally { cleanup(config, db); }
+});
+
+test('independent legacy session UUIDs remain visible together when existing device histories meet', async () => {
+  const store = new MemoryStore(), a = testConfig(), b = testConfig(), adb = testDb(a), bdb = testDb(b);
+  try {
+    const library = randomUUID(); await store.create('alice', library, 'Existing histories');
+    const wa = memoryClient(store, a, adb), wb = memoryClient(store, b, bdb);
+    await wa.connect('Chats', library);
+    const project = new ProjectService(adb).create('Shared project'); await wa.run();
+    await wb.connect('Chats', library); await wb.run();
+    for (const [db, id, time] of [[adb, 'legacy-a', '2020-01-01'], [bdb, 'legacy-b', '2020-01-02']] as const)
+      db.prepare('INSERT INTO chat_sessions(id,project_id,source_id,title,created_at,accessed_at) VALUES(?,?,NULL,?,?,?)').run(id, project.id, 'Project Chat', time, time);
+    const ca = new ChatService(adb, a), cb = new ChatService(bdb, b);
+    ca.persist(project.id, null, 'Older A', 'Answer A', []);
+    cb.persist(project.id, null, 'Older B', 'Answer B', []);
+    await wa.enableConversations(); await wa.run(); assert.equal(wa.error, '');
+    await wb.run(); assert.equal(wb.error, '');
+    await wa.run(); assert.equal(wa.error, '');
+    assert.deepEqual(ca.history(project.id).map(m => m.content), ['Older A','Answer A','Older B','Answer B']);
+    assert.deepEqual(cb.history(project.id).map(m => m.content), ['Older A','Answer A','Older B','Answer B']);
+  } finally { cleanup(a, adb); cleanup(b, bdb); }
+});
+
+function memoryClient(store: MemoryStore, config: ReturnType<typeof testConfig>, db: ReturnType<typeof testDb>) {
+    const auth = new CloudAuth(config);
+    auth.credentials = {
+      uid: "alice",
+      email: "a@example.com",
+      idToken: "alice",
+      refreshToken: "test",
+      expiresAt: Date.now() + 100000,
+    };
+    const worker = new SyncWorker(db, config, auth);
+    worker.transport.head = async id => ({ generation: "g1", protocol: store.root("alice", id).protocol });
+    worker.transport.enableConversations = async id => { store.root("alice", id).protocol = 2; };
+    worker.request = async (route: string, body?: unknown): Promise<any> => {
+      if (route === "/libraries") return store.libraries("alice");
+      const parts = route.split("/");
+      const id = parts[2]!;
+      if (route.includes("/operations"))
+        return store.apply("alice", id, body as Operation);
+      if (route.includes("/changes"))
+        return {
+          changes: await store.changes(
+            "alice",
+            id,
+            Number(new URL(route, "http://x").searchParams.get("cursor")),
+          ),
+          cursor: (await store.changes("alice", id, Number(new URL(route, "http://x").searchParams.get("cursor")))).at(-1)?.sequence ?? Number(new URL(route, "http://x").searchParams.get("cursor")),
+        };
+      throw Error(route);
+    };
+    return worker;
+  }

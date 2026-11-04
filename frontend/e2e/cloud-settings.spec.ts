@@ -68,7 +68,7 @@ test("metadata-only cloud configuration is clearly labelled", async ({
 });
 
 const signedIn = { uid: 'fixture-user', email: 'reader@example.test' }
-const baseStatus = { configured: true, pdfStorage: false, account: null as typeof signedIn | null, enabled: false, running: false, pending: 0, conflicts: 0, error: '', lastSync: null as string | null, libraryId: undefined as string | undefined }
+const baseStatus = { configured: true, pdfStorage: false, conversations: false, account: null as typeof signedIn | null, enabled: false, running: false, pending: 0, conflicts: 0, error: '', lastSync: null as string | null, libraryId: undefined as string | undefined }
 async function cloudFixture(page: import('@playwright/test').Page, initial: Partial<typeof baseStatus> = {}) {
   let status = { ...baseStatus, ...initial }
   const calls: Array<{ action: string; body: any }> = []
@@ -81,11 +81,27 @@ async function cloudFixture(page: import('@playwright/test').Page, initial: Part
     if (action === 'sync') status = { ...status, error: '', pending: 0, lastSync: '2026-11-04T12:00:00Z' }
     if (action === 'pause') status = { ...status, enabled: !body.paused }
     if (action === 'connect') status = { ...status, libraryId: body.libraryId || 'new-library', enabled: true }
+    if (action === 'conversations') status = { ...status, conversations: true }
     if (action === 'logout') status = { ...status, account: null }
     return route.fulfill({ json: status })
   })
   return { calls }
 }
+
+test('existing cloud libraries upload conversations only after explicit inclusion', async ({ page }) => {
+  const fixture = await cloudFixture(page, { account: signedIn, libraryId: 'library', enabled: true })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Cloud library', exact: true }).click()
+  const modal = page.getByRole('dialog', { name: 'Your cloud library' })
+  await expect(modal.getByText(/Saved questions and answers stay local until/)).toBeVisible()
+  expect(fixture.calls.filter(call => call.action === 'conversations')).toHaveLength(0)
+  await expect(modal.getByText(/This uploads existing and future PDF and project questions/)).toBeVisible()
+  await modal.getByRole('button', { name: 'Include saved conversations' }).click()
+  await expect(modal.getByText('Saved PDF and project conversations', { exact: true })).toBeVisible()
+  await expect(modal.getByText(/Kindle extension history and interactive visuals stay local/)).toBeVisible()
+  await expect(modal.getByRole('button', { name: 'Include saved conversations' })).toHaveCount(0)
+  expect(fixture.calls.filter(call => call.action === 'conversations')).toEqual([{ action: 'conversations', body: { enabled: true } }])
+})
 
 test('signed-in account is distinct from enabling library sync', async ({ page }) => {
   const fixture = await cloudFixture(page, { account: signedIn })

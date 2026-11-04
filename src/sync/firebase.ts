@@ -127,6 +127,24 @@ export class FirebaseTransport {
     if (!doc) throw Error("Library not found");
     return decode({ mapValue: { fields: doc.fields } });
   }
+  async enableConversations(id: string) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const document = await this.http('/' + this.root(id));
+      if (!document) throw Error('Library not found');
+      const head = decode({ mapValue: { fields: document.fields } });
+      if (head.protocol === 2) return;
+      if (head.protocol !== 1 || !head.active) throw Error('Update pdfpal before connecting this cloud library');
+      try {
+        await this.http(':commit', { writes: [{
+          update: { name: `${this.prefix}/${this.root(id)}`, fields: encode({ ...head, protocol: 2 }).mapValue.fields },
+          currentDocument: { updateTime: document.updateTime },
+        }] });
+        return;
+      } catch (error) {
+        if (attempt === 4 || ![400, 403, 409, 503].includes((error as any).status)) throw error;
+      }
+    }
+  }
   async libraries() {
     const result = await this.http(`/users/${this.uid}/libraries?pageSize=100`);
     return (result?.documents ?? []).map((d: any) => ({
@@ -209,9 +227,11 @@ export class FirebaseTransport {
         if (
           !head?.active ||
           head.generation !== generation ||
-          head.protocol !== 1
+          ![1, 2].includes(head.protocol)
         )
           throw Error("Cloud library generation changed; reconnect required");
+        if (op.entityType.startsWith('chat_') && head.protocol !== 2)
+          throw Error('Enable conversation sync before uploading saved chats');
         observed = head.sequence;
         if (receipt) {
           if (receipt.signature !== signature)

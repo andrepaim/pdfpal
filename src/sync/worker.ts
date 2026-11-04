@@ -6,7 +6,7 @@ import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import type { PdfpalConfig } from "../core/config.js";
 import { acquireLease } from "../core/locking.js";
-import { applyChange, pending, setting, tables } from "./database.js";
+import { applyChange, pending, setting, tables, seedConversations, validateConversations } from "./database.js";
 import { CloudAuth, cloudOptions } from "./auth.js";
 import type { Change, Receipt } from "../shared/sync/schema.js";
 import { extractPdf } from "../core/pdf.js";
@@ -57,6 +57,7 @@ export class SyncWorker {
     return {
       configured: !!cloudOptions(),
       pdfStorage: !!cloudOptions()?.storageBucket,
+      conversations: setting(this.db, "conversations") === "1",
       account: this.auth.credentials
         ? { uid: this.auth.credentials.uid, email: this.auth.credentials.email }
         : null,
@@ -77,6 +78,20 @@ export class SyncWorker {
           .get() as any
       ).n,
     };
+  }
+  async enableConversations() {
+    if (this.running) throw Error('Wait for synchronization to finish');
+    if (this.auth.credentials?.uid !== setting(this.db, 'owner') || setting(this.db, 'backend') !== cloudOptions().projectId)
+      throw Error('Sign in with the library owner');
+    const library = setting(this.db, 'library');
+    if (!library || setting(this.db, 'enabled') !== '1') throw Error('Connect this library before enabling conversation sync');
+    validateConversations(this.db);
+    if (setting(this.db, 'conversations') !== '1')
+      await this.db.backup(path.join(this.config.backupsDir, `before-conversations-${Date.now()}.db`));
+    await this.transport.enableConversations(library);
+    if (this.auth.credentials?.uid !== setting(this.db, 'owner')) throw Error('Account action was cancelled');
+    seedConversations(this.db);
+    return this.status();
   }
   async connect(title: string, libraryId?: string) {
     if (setting(this.db, "owner"))
@@ -102,6 +117,7 @@ export class SyncWorker {
     if (!id)
       id = (await this.request<{ id: string }>("/libraries", { title })).id;
     const head = await this.transport.head(id!);
+    if ((head.protocol ?? 1) > 2) throw Error('Update pdfpal before connecting this cloud library');
     await this.db.backup(
       path.join(this.config.backupsDir, `before-cloud-${Date.now()}.db`),
     );
@@ -112,6 +128,7 @@ export class SyncWorker {
       setting(this.db, "library", id!);
       setting(this.db, "cursor", "0");
       setting(this.db, "enabled", "1");
+      if (head.protocol === 2) setting(this.db, "conversations", "1");
       // Triggers seed existing content into the same durable outbox as ordinary writes.
       for (const table of tables) {
         const rows =
@@ -156,11 +173,16 @@ export class SyncWorker {
         );
       const library = setting(this.db, "library")!;
       const head = await this.transport.head(library);
+      if ((head.protocol ?? 1) > 2) throw Error('Update pdfpal before connecting this cloud library');
       if (
         head.generation !== setting(this.db, "generation") ||
         head.active === false
       )
         throw Error("Cloud library generation changed; synchronization paused");
+      if (head.protocol === 2 && setting(this.db, 'conversations') !== '1') {
+        await this.db.backup(path.join(this.config.backupsDir, `before-conversations-${Date.now()}.db`));
+        seedConversations(this.db);
+      }
       if (
         this.db
           .prepare(
@@ -176,10 +198,25 @@ export class SyncWorker {
           "Pending work belongs to a different account or library generation",
         );
       for (const op of pending(this.db)) {
-        const receipt = await this.request<Receipt>(
+        let receipt = await this.request<Receipt>(
           `/libraries/${library}/operations`,
           op,
         );
+        // Independent devices can create the same deterministic thread before
+        // seeing one another. Its messages have distinct IDs and can all append.
+        const remoteHead = receipt.status === 'conflict' ? receipt.current : null;
+        if (remoteHead?.payload && op.entityType === 'chat_sessions' && op.action === 'put' && op.baseRevision === 0 &&
+          ['id', 'project_id', 'source_id', 'title'].every(key => op.payload?.[key] === remoteHead.payload![key]) &&
+          (this.db.prepare('SELECT COUNT(*) n FROM sync_outbox WHERE entity_type=? AND entity_id=?').get(op.entityType, op.entityId) as { n: number }).n === 1) {
+          const remote = remoteHead;
+          this.db.transaction(() => {
+            setting(this.db, 'applying', '1');
+            applyChange(this.db, remote);
+            setting(this.db, 'applying', '0');
+          })();
+          op.payload = remote.payload;
+          receipt = { status: 'applied', revision: remote.revision };
+        }
         if (receipt.status === "conflict") {
           this.db
             .prepare(

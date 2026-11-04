@@ -9,7 +9,7 @@ import { PdfpalError } from './types.js'
 import { ensureDataDirectories } from './config.js'
 import { installSync } from '../sync/database.js'
 
-const CURRENT_SCHEMA = 12
+const CURRENT_SCHEMA = 13
 
 function columnExists(db: DatabaseType, table: string, column: string): boolean {
   return (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some(row => row.name === column)
@@ -252,6 +252,7 @@ function migrate(db: DatabaseType): void {
 
   installSync(db)
   db.exec("INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES (12,datetime('now'))")
+  db.exec("INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES (13,datetime('now'))")
 }
 
 /** Migrate the original sessions/messages model without requiring network access. */

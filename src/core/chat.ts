@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { randomUUID, createHash } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
 import type { PdfpalConfig } from './config.js'
 import { AIService, type ProviderName as AgentName } from './ai.js'
@@ -10,6 +10,7 @@ import type { AskResult, Passage } from './types.js'
 import { PdfpalError } from './types.js'
 
 const now = () => new Date().toISOString()
+export const messageOrder = "sync_order,sync_turn,CASE role WHEN 'user' THEN 0 ELSE 1 END,sync_id"
 const RESPONSE_FORMAT_INSTRUCTIONS = 'Format the answer as GitHub-flavored Markdown. Use headings, lists, tables, and code fences when they improve readability. For math, use $...$ for inline expressions and $$...$$ for display equations; do not use \\(...\\) or \\[...\\] delimiters.'
 
 export interface AskOptions {
@@ -78,11 +79,12 @@ export class ChatService {
   }
 
   history(projectId: string, sourceId?: string): Array<{ id: number; visual_id: string | null; role: string; content: string; sources_used: string; created_at: string }> {
-    const session = sourceId
-      ? this.db.prepare('SELECT id FROM chat_sessions WHERE project_id=? AND source_id=? ORDER BY accessed_at DESC LIMIT 1').get(projectId, sourceId)
-      : this.db.prepare('SELECT id FROM chat_sessions WHERE project_id=? AND source_id IS NULL ORDER BY accessed_at DESC LIMIT 1').get(projectId)
-    if (!session) return []
-    return this.db.prepare('SELECT id,visual_id,role,content,sources_used,created_at FROM chat_messages WHERE session_id=? ORDER BY id').all((session as { id: string }).id) as ReturnType<ChatService['history']>
+    // Older devices may have independent session UUIDs for the same paper.
+    // Keep every saved turn visible after those histories meet in the cloud.
+    return this.db.prepare(`SELECT m.id,m.visual_id,m.role,m.content,m.sources_used,m.created_at
+      FROM chat_messages m JOIN chat_sessions s ON s.id=m.session_id
+      WHERE s.project_id=? AND s.source_id IS ? ORDER BY s.created_at,s.id,${messageOrder}`)
+      .all(projectId, sourceId ?? null) as ReturnType<ChatService['history']>
   }
 
   persist(projectId: string, sourceId: string | null, question: string, answer: string, sourceIds: string[], visualId?: string): string {
@@ -90,14 +92,16 @@ export class ChatService {
       const existing = sourceId
         ? this.db.prepare('SELECT id FROM chat_sessions WHERE project_id=? AND source_id=? ORDER BY accessed_at DESC LIMIT 1').get(projectId, sourceId)
         : this.db.prepare('SELECT id FROM chat_sessions WHERE project_id=? AND source_id IS NULL ORDER BY accessed_at DESC LIMIT 1').get(projectId)
-      const id = (existing as { id: string } | undefined)?.id ?? randomUUID()
+      const id = (existing as { id: string } | undefined)?.id ?? createHash('sha256').update(`${projectId}\0${sourceId ?? ''}`).digest('hex').slice(0, 32)
       const timestamp = now()
       if (!existing) this.db.prepare('INSERT INTO chat_sessions(id,project_id,source_id,title,created_at,accessed_at) VALUES (?,?,?,?,?,?)')
         .run(id, projectId, sourceId, sourceId ? 'Chat' : 'Project Chat', timestamp, timestamp)
       else this.db.prepare('UPDATE chat_sessions SET accessed_at=? WHERE id=?').run(timestamp, id)
-      const insert = this.db.prepare('INSERT INTO chat_messages(session_id,role,content,sources_used,created_at,visual_id) VALUES (?,?,?,?,?,?)')
-      insert.run(id, 'user', question, JSON.stringify(sourceIds), timestamp, null)
-      insert.run(id, 'assistant', answer, JSON.stringify(sourceIds), now(), visualId || null)
+      const position = (this.db.prepare('SELECT COALESCE(MAX(sync_order),0)+1 n FROM chat_messages WHERE session_id=?').get(id) as { n: number }).n
+      const turn = randomUUID()
+      const insert = this.db.prepare('INSERT INTO chat_messages(session_id,role,content,sources_used,created_at,visual_id,sync_id,sync_order,sync_turn) VALUES (?,?,?,?,?,?,?,?,?)')
+      insert.run(id, 'user', question, JSON.stringify(sourceIds), timestamp, null, randomUUID(), position, turn)
+      insert.run(id, 'assistant', answer, JSON.stringify(sourceIds), now(), visualId || null, randomUUID(), position, turn)
       return id
     })()
   }

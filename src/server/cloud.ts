@@ -162,6 +162,11 @@ export async function registerCloudRoutes(
     await worker.run();
     return worker.status();
   });
+  app.post("/api/cloud/conversations", async (req) => {
+    requireIdle();
+    z.object({ enabled: z.literal(true) }).strict().parse(req.body);
+    return worker.enableConversations();
+  });
   app.get("/api/cloud/conflicts", async () =>
     db
       .prepare(

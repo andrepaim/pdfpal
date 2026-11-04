@@ -2,6 +2,16 @@ rules_version = '2';
 service cloud.firestore { match /databases/{database}/documents {
  function owner(uid) { return request.auth != null && request.auth.uid == uid; }
  function id(v) { return v is string && v.matches('[A-Za-z0-9_-]{1,128}'); }
+ function validChat(type,p) {
+  return p is map && id(p.id) && p.created_at is string && p.created_at.size() <= 40 && (
+   (type == 'chat_sessions' && p.keys().hasAll(['id','created_at','project_id','source_id','title'])
+    && p.keys().hasOnly(['id','created_at','project_id','source_id','title']) && id(p.project_id)
+    && (p.source_id == null || id(p.source_id)) && (p.title == null || (p.title is string && p.title.size() <= 200000))) ||
+   (type == 'chat_messages' && p.keys().hasAll(['id','created_at','session_id','role','content','sources_used','position','turn_id'])
+    && p.keys().hasOnly(['id','created_at','session_id','role','content','sources_used','position','turn_id'])
+    && id(p.session_id) && p.role in ['user','assistant'] && p.content is string && p.content.size() <= 200000
+    && p.sources_used is string && p.sources_used.size() <= 200000 && p.position is int && p.position >= 0 && id(p.turn_id)));
+ }
  function validPayload(type,p) { return p is map && ((type == 'projects' && p.keys().hasAll(["id","created_at","title","description","accessed_at"]) && p.keys().hasOnly(["id","created_at","title","description","accessed_at"]) && (id(p.id)) && (p.created_at is string && p.created_at.size() <= 200000) && (p.title is string && p.title.size() <= 200000) && (p.description is string && p.description.size() <= 200000) && (p.accessed_at is string && p.accessed_at.size() <= 200000)) ||
 (type == 'collections' && p.keys().hasAll(["id","created_at","project_id","parent_id","name","position"]) && p.keys().hasOnly(["id","created_at","project_id","parent_id","name","position"]) && (id(p.id)) && (p.created_at is string && p.created_at.size() <= 200000) && (id(p.project_id)) && (p.parent_id == null || (id(p.parent_id))) && (p.name is string && p.name.size() <= 200000) && (p.position is int)) ||
 (type == 'sources' && p.keys().hasAll(["id","created_at","project_id","type","url","title","pages","last_page_read","accessed_at","media_type","byte_size","content_hash","author","kindle_book_key","collection_id"]) && p.keys().hasOnly(["id","created_at","project_id","type","url","title","pages","last_page_read","accessed_at","media_type","byte_size","content_hash","author","kindle_book_key","collection_id"]) && (id(p.id)) && (p.created_at is string && p.created_at.size() <= 200000) && (id(p.project_id)) && (p.type is string && p.type.size() <= 200000) && (p.url == null || (p.url is string && p.url.size() <= 200000)) && (p.title == null || (p.title is string && p.title.size() <= 200000)) && (p.pages is int) && (p.last_page_read is int) && (p.accessed_at is string && p.accessed_at.size() <= 200000) && (p.media_type == null || (p.media_type is string && p.media_type.size() <= 200000)) && (p.byte_size == null || (p.byte_size is int)) && (p.content_hash == null || (p.content_hash is string && p.content_hash.size() <= 200000)) && (p.author == null || (p.author is string && p.author.size() <= 200000)) && (p.kindle_book_key == null || (p.kindle_book_key is string && p.kindle_book_key.size() <= 200000)) && (p.collection_id == null || (id(p.collection_id)))) ||
@@ -14,22 +24,32 @@ service cloud.firestore { match /databases/{database}/documents {
   function change(seq) { return getAfter(/databases/$(database)/documents/users/$(uid)/libraries/$(library)/changes/$(string(seq))).data; }
   function receipt(op) { return getAfter(/databases/$(database)/documents/users/$(uid)/libraries/$(library)/receipts/$(op)).data; }
   function key(d) { return d.entityType + '_' + d.entityId; }
+  function chatLinks(d) {
+   return d.payload == null || (
+    d.entityType == 'chat_sessions'
+     ? (entity('projects_' + d.payload.project_id).payload != null &&
+        (d.payload.source_id == null || (entity('sources_' + d.payload.source_id).payload != null && entity('sources_' + d.payload.source_id).payload.project_id == d.payload.project_id)))
+     : entity('chat_sessions_' + d.payload.session_id).payload != null);
+  }
   function valid(d) {
    return d.keys().hasOnly(['sequence','operationId','entityType','entityId','revision','payload','generation'])
     && id(d.entityId) && id(d.operationId) && d.revision is int && d.revision > 0
     && d.sequence is int && d.sequence == head().sequence + 1 && d.sequence == nextHead().sequence
     && head().active == true && d.generation == head().generation
-    && d.entityType in ['projects','collections','sources','notes','annotations']
-    && (d.payload == null || (validPayload(d.entityType,d.payload) && d.payload.id == d.entityId));
+    && d.entityType in ['projects','collections','sources','notes','annotations','chat_sessions','chat_messages']
+    && (!(d.entityType in ['chat_sessions','chat_messages']) || (head().protocol == 2 && chatLinks(d)))
+    && (d.payload == null || ((validPayload(d.entityType,d.payload) || validChat(d.entityType,d.payload)) && d.payload.id == d.entityId));
   }
   allow read: if owner(uid);
   allow create: if owner(uid) && id(library) && request.resource.data.keys().hasOnly(['title','generation','sequence','active','protocol'])
     && request.resource.data.title is string && request.resource.data.title.size() <= 200
     && id(request.resource.data.generation) && request.resource.data.sequence == 0 && request.resource.data.active == true && request.resource.data.protocol == 1;
   allow update: if owner(uid) && resource.data.active == true
-    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sequence'])
+    && ((request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sequence'])
     && request.resource.data.sequence == resource.data.sequence + 1
-    && change(request.resource.data.sequence).sequence == request.resource.data.sequence;
+    && change(request.resource.data.sequence).sequence == request.resource.data.sequence)
+    || (resource.data.protocol == 1 && request.resource.data.protocol == 2
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['protocol'])));
   match /entities/{entityKey} {
    allow read: if owner(uid);
    function companions() { let d=request.resource.data;let r=receipt(d.operationId);

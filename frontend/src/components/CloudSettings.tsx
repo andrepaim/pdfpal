@@ -5,6 +5,7 @@ import './cloud-settings.css'
 interface Status {
   configured: boolean
   pdfStorage: boolean
+  conversations: boolean
   account: { uid: string; email: string } | null
   libraryId?: string
   owner?: string
@@ -130,7 +131,9 @@ export default function CloudSettings() {
           const saved = version(conflict)
           return <section className="cloud-conflict" key={conflict.id}><h3>{saved?.type === 'notes' ? 'Choose a note version' : 'A saved change needs review'}</h3><p>Both versions have been preserved. Choose the one you want to keep.</p>{saved?.type === 'notes' && saved.remote ? <><div className="cloud-versions"><NoteVersion label="On this device" value={saved.local} /><NoteVersion label="In the cloud" value={saved.remote} /></div><div className="cloud-conflict-actions"><button type="button" className="cloud-secondary" disabled={blocked} onClick={() => void action(`conflicts/${conflict.id}/resolve`, { choice: 'local' })}>Keep device version</button><button type="button" className="cloud-secondary" disabled={blocked} onClick={() => void action(`conflicts/${conflict.id}/resolve`, { choice: 'remote' })}>Keep cloud version</button></div></> : <p>These saved versions need manual recovery before synchronization can continue.</p>}</section>
         })}
-        <section className="cloud-scope" aria-labelledby="cloud-scope-title"><div className="cloud-section-heading"><h3 id="cloud-scope-title">What syncs</h3>{!status?.pdfStorage && <span className="cloud-scope-tag">Metadata sync only</span>}</div><ul><li>Projects and collections</li><li>Notes and highlights</li><li>Paper details and reading progress</li>{status?.pdfStorage && <li>PDF files</li>}</ul><p>{!status?.pdfStorage && 'PDF files stay on this device. '}AI questions and answers are not synced yet.</p></section>
+        <section className="cloud-scope" aria-labelledby="cloud-scope-title"><div className="cloud-section-heading"><h3 id="cloud-scope-title">What syncs</h3>{!status?.pdfStorage && <span className="cloud-scope-tag">{status?.conversations ? 'PDF files stay local' : 'Metadata sync only'}</span>}</div><ul><li>Projects and collections</li><li>Notes and highlights</li><li>Paper details and reading progress</li>{status?.conversations && <li>Saved PDF and project conversations</li>}{status?.pdfStorage && <li>PDF files</li>}</ul><p>{!status?.pdfStorage && 'PDF files stay on this device. '}{status?.conversations ? 'Kindle extension history and interactive visuals stay local.' : 'Saved questions and answers stay local until you include conversations.'}</p>
+          {bound && !status?.conversations && <div className="cloud-callout"><strong>Bring your saved conversations</strong><p>This uploads existing and future PDF and project questions and answers to your private cloud library. Devices using this library will need pdfpal 2.4 or later. You can pause all synchronization at any time.</p><button type="button" className="cloud-secondary" disabled={blocked || !account || wrongAccount || !status?.enabled} onClick={() => void action('conversations', { enabled: true })}>Include saved conversations</button></div>}
+        </section>
       </div>
       <footer className="ai-settings-footer cloud-footer"><button type="button" className="cloud-secondary" onClick={close}>Done</button><button type="button" className="cloud-primary" disabled={blocked || wrongAccount || (!!status && !status.configured) || (!!account && !bound && !selected && !title.trim())} onClick={primary}>{status?.running ? 'Syncing…' : primaryLabel}</button></footer>
     </dialog>

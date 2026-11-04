@@ -31,7 +31,7 @@ Windows and WSL use different home folders and default libraries. Sharing a live
 
 Open **Cloud library**, choose **Sign in with Google**, and complete sign-in in your browser. For your existing local library, choose **Create a new cloud library**, give it a name, then **Enable sync**. Google sign-in is separate from your AI-provider account, and signing in alone uploads no library content.
 
-The bundled Firebase project synchronizes projects, source metadata, collections, notes, highlights and reading progress. **PDF files and AI questions/answers stay local.** Keep local backups. To connect an existing cloud library on another device, begin with an empty local library. Details and configuration are in [Firebase setup](firebase-setup.md).
+The bundled Firebase project synchronizes projects, source metadata, collections, notes, highlights and reading progress. To include existing and future saved PDF/project questions and answers, choose **Include saved conversations** in Cloud library. This upgrades the cloud library; all devices using it need pdfpal 2.4 or later. **PDF files, Kindle extension history and interactive visual assets stay local.** Keep local backups. To connect an existing cloud library on another device, begin with an empty local library. Details and configuration are in [Firebase setup](firebase-setup.md).
 
 The separate Cloud Preview test installation uses its own library and profile. Updating regular pdfpal retains the regular library; it does not merge the preview's test library.
 

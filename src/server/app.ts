@@ -15,7 +15,7 @@ import { CollectionService } from '../core/collections.js'
 import { NoteService } from '../core/notes.js'
 import { RetrievalService } from '../core/retrieval.js'
 import { listHighlights } from '../core/highlights.js'
-import { ChatService } from '../core/chat.js'
+import { ChatService, messageOrder } from '../core/chat.js'
 import type { ProviderName as AgentName } from '../core/ai.js'
 import { AgentService } from '../core/agents.js'
 import { resolvePdf, excerptFromText } from '../core/pdf.js'
@@ -152,9 +152,11 @@ export async function buildServer(config: PdfpalConfig) {
   app.delete<{ Params: Pick<Params, 'projectId' | 'sourceId'> }>('/api/projects/:projectId/sources/:sourceId/chat', async request => clearChat(db, request.params.projectId, request.params.sourceId))
   app.delete<{ Params: Pick<Params, 'projectId'> }>('/api/projects/:projectId/chat', async request => clearChat(db, request.params.projectId, null))
   app.get<{ Params: Pick<Params, 'projectId'> }>('/api/projects/:projectId/chats', async request => db.prepare(`SELECT cs.id,cs.source_id,cs.title,cs.created_at,cs.accessed_at,s.title source_title,
-    (SELECT COUNT(*) FROM chat_messages WHERE session_id=cs.id) message_count,
-    (SELECT content FROM chat_messages WHERE session_id=cs.id AND role='user' ORDER BY id LIMIT 1) first_message
-    FROM chat_sessions cs LEFT JOIN sources s ON s.id=cs.source_id WHERE cs.project_id=? ORDER BY cs.accessed_at DESC`).all(request.params.projectId))
+    (SELECT COUNT(*) FROM chat_messages m JOIN chat_sessions h ON h.id=m.session_id WHERE h.project_id=cs.project_id AND h.source_id IS cs.source_id) message_count,
+    (SELECT content FROM chat_messages m JOIN chat_sessions h ON h.id=m.session_id WHERE h.project_id=cs.project_id AND h.source_id IS cs.source_id AND role='user' ORDER BY h.created_at,h.id,${messageOrder} LIMIT 1) first_message
+    FROM chat_sessions cs LEFT JOIN sources s ON s.id=cs.source_id WHERE cs.project_id=?
+    AND cs.id=(SELECT id FROM chat_sessions h WHERE h.project_id=cs.project_id AND h.source_id IS cs.source_id ORDER BY h.accessed_at DESC,h.id LIMIT 1)
+    ORDER BY cs.accessed_at DESC`).all(request.params.projectId))
 
   const retrieval = new RetrievalService(db)
   app.get<{ Params: Pick<Params, 'projectId'>; Querystring: { q?: string; limit?: string } }>('/api/projects/:projectId/search', async request => {
@@ -194,10 +196,7 @@ function parseSources(row: { sources_used: string } & Record<string, unknown>) {
 }
 
 function clearChat(db: import('better-sqlite3').Database, projectId: string, sourceId: string | null) {
-  const row = sourceId === null
-    ? db.prepare('SELECT id FROM chat_sessions WHERE project_id=? AND source_id IS NULL').get(projectId)
-    : db.prepare('SELECT id FROM chat_sessions WHERE project_id=? AND source_id=?').get(projectId, sourceId)
-  if (row) db.prepare('DELETE FROM chat_sessions WHERE id=?').run((row as { id: string }).id)
+  db.prepare('DELETE FROM chat_sessions WHERE project_id=? AND source_id IS ?').run(projectId, sourceId)
   return { ok: true }
 }
 

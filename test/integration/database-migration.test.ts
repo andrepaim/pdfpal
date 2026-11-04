@@ -4,6 +4,30 @@ import Database from 'better-sqlite3'
 import fs from 'node:fs'
 import { cleanup, testConfig } from '../helpers/test-utils.js'
 import { openDatabase } from '../../src/core/database.js'
+import { ChatService } from '../../src/core/chat.js'
+import { ProjectService } from '../../src/core/projects.js'
+
+test('version 12 chat migration preserves local message IDs, text and ordering and assigns stable sync identities once', () => {
+  const config = testConfig(); let db = openDatabase(config)
+  try {
+    const project = new ProjectService(db).create('Migration fixture')
+    const chat = new ChatService(db, config)
+    chat.persist(project.id, null, 'First question', 'First answer', [])
+    chat.persist(project.id, null, 'Second question', 'Second answer', [])
+    const before = chat.history(project.id)
+    for (const event of ['INSERT','UPDATE','DELETE']) db.exec(`DROP TRIGGER sync_chat_messages_${event}; DROP TRIGGER sync_chat_sessions_${event}`)
+    db.exec(`DROP TRIGGER chat_message_sync_identity; DROP INDEX chat_message_sync_id; DROP INDEX chat_message_sync_order;
+      ALTER TABLE chat_messages DROP COLUMN sync_id; ALTER TABLE chat_messages DROP COLUMN sync_order;
+      ALTER TABLE chat_messages DROP COLUMN sync_turn; DELETE FROM schema_migrations WHERE version=13;`)
+    db.close(); db = openDatabase(config)
+    assert.deepEqual(new ChatService(db, config).history(project.id), before)
+    const identities = db.prepare('SELECT id,sync_id,sync_order,sync_turn FROM chat_messages ORDER BY id').all()
+    assert.equal(new Set((identities as Array<{sync_id:string}>).map(row => row.sync_id)).size, 4)
+    assert.equal((db.prepare("SELECT COUNT(*) n FROM sync_outbox WHERE entity_type LIKE 'chat_%'").get() as {n:number}).n, 0)
+    db.close(); db = openDatabase(config)
+    assert.deepEqual(db.prepare('SELECT id,sync_id,sync_order,sync_turn FROM chat_messages ORDER BY id').all(), identities)
+  } finally { cleanup(config, db) }
+})
 
 test('opens and migrates a legacy sessions database', () => {
   const config = testConfig()
@@ -18,15 +42,15 @@ test('opens and migrates a legacy sessions database', () => {
     assert.equal((db.prepare('SELECT COUNT(*) count FROM projects').get() as { count: number }).count, 1)
     assert.equal((db.prepare('SELECT COUNT(*) count FROM sources').get() as { count: number }).count, 1)
     assert.equal((db.prepare('SELECT COUNT(*) count FROM chat_messages').get() as { count: number }).count, 1)
-    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 12)
+    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 13)
   } finally { cleanup(config, db) }
 })
 
-test('a fresh database provisions reading progress and the Kindle companion at schema version 12', () => {
+test('a fresh database provisions reading progress and the Kindle companion at schema version 13', () => {
   const config = testConfig()
   const db = openDatabase(config)
   try {
-    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 12)
+    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 13)
     assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name='kindle_conversations'").get())
     assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='collections'").get())
     assert.ok((db.prepare('PRAGMA table_info(sources)').all() as Array<{ name: string }>).some(c => c.name === 'collection_id'))
@@ -52,7 +76,7 @@ test('adds the rects column when migrating a pre-existing annotations table', ()
   legacy.close()
   const db = openDatabase(config)
   try {
-    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 12)
+    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 13)
     const row = db.prepare('SELECT rects FROM annotations WHERE id=?').get('a1') as { rects: string | null }
     assert.equal(row.rects, null)
   } finally { cleanup(config, db) }
@@ -72,7 +96,7 @@ test('drops a pre-existing artifacts table when migrating an older database', ()
   legacy.close()
   const db = openDatabase(config)
   try {
-    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 12)
+    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 13)
     assert.equal(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='artifacts'").get(), undefined)
   } finally { cleanup(config, db) }
 })
@@ -93,7 +117,7 @@ test('adds page progress to a version 5 database without changing existing sourc
 
   const db = openDatabase(config)
   try {
-    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 12)
+    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 13)
     const source = db.prepare('SELECT title,pages,last_page_read FROM sources WHERE id=?').get('s1') as { title: string; pages: number; last_page_read: number }
     assert.deepEqual(source, { title: 'Existing Book', pages: 370, last_page_read: 1 })
   } finally { cleanup(config, db) }
@@ -146,7 +170,7 @@ test('version 7 upgrade preserves paired connections, Kindle turns and existing 
     assert.equal((db.prepare("SELECT token_hash FROM extension_clients WHERE id='client'").get() as { token_hash: string }).token_hash, 'existing-token-hash')
     assert.deepEqual(db.prepare("SELECT answer,response_mode,visual_id FROM kindle_turns WHERE id='turn'").get(), { answer: 'Existing answer', response_mode: 'text', visual_id: null })
     assert.equal((db.prepare("SELECT content FROM notes WHERE id='n'").get() as { content: string }).content, 'Keep this')
-    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 12)
+    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 13)
     assert.equal(fs.readdirSync(config.backupsDir).filter(file => !backups.has(file)).length, 1)
   } finally { cleanup(config, db) }
 })

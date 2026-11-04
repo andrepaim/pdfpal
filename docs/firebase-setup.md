@@ -8,9 +8,17 @@ Projects, nested collections, PDF source metadata, reading position, Markdown no
 
 PDF transfers use private, immutable source/hash paths. Downloads are size/hash checked and indexed locally. PDF storage is optional; the interface explicitly labels metadata-only configuration. Only actual uploaded/downloaded files count as file synchronization. Existing local data is backed up before binding. Downloading an existing cloud library currently requires an empty local library. One local database is bound permanently to one cloud library; use a separate PDFPAL_DATA_DIR for another library/account.
 
+## Saved PDF and project conversations
+
+In pdfpal 2.4 and later, open **Cloud library → Include saved conversations** to upload existing and future saved PDF and project questions/answers. Existing metadata-only libraries do not upload chat text until this action. Consent applies to the cloud library and its compatible devices. Use **Pause sync** or sign out to stop synchronization. Conversation inclusion upgrades the library's protocol permanently; older app versions pause and must be updated before using that library.
+
+Messages have stable portable IDs independent of SQLite's local numeric row IDs. A turn's question and answer retain a shared ordering key, and independently created older threads for the same paper/project stay visible together. Local activity timestamps do not produce conversation writes. Only saved messages sync; running AI jobs and partial streamed answers do not. New devices can read the saved text even when a PDF has not been downloaded. Local numeric IDs, visual asset references, browser pairing credentials and AI job internals are excluded.
+
+Each saved message currently supports at most 200,000 characters and the existing 600,000-byte portable-record limit. Opt-in checks saved history before upgrading the cloud protocol. Unsupported content stays local with an error; it is never silently truncated. As with notes, an oversized future record can pause the queue and requires local recovery. Clearing a conversation propagates deletion; offline deletion-versus-append conflicts require manual recovery, with pending work retained.
+
 Conflicting edits pause synchronization and preserve both versions. The interface resolves note edits against the latest remote revision; other conflicts, including remote deletion of a locally edited note, currently require manual recovery/export. Acknowledged receipts and tombstones are retained; there is no history pruning.
 
-Conversations, visual explanations, Android transport, profile-switch UI, durable account erasure, orphan cleanup and independent cloud backup are outstanding. This is a desktop sync alpha, not completion of the broader roadmap. Do not describe it as a complete backup of all pdfpal content.
+Kindle extension conversations, interactive visual assets, Android transport, profile-switch UI, durable account erasure, orphan cleanup and independent cloud backup are outstanding. This is a desktop sync alpha, not completion of the broader roadmap. Do not describe it as a complete backup of all pdfpal content.
 
 ## Active Firebase setup
 
@@ -20,7 +28,7 @@ The application bundles public Firebase project identifiers and loads client con
 
 The hosted page keeps Firebase credentials in memory. A random, expiring state and the local port travel in the URL fragment, which is removed after reading. Credentials return in a top-level form POST to the local app, never in the URL. The local callback verifies the hosted Origin, single-use state, Google provider identity and matching Firebase refresh credential before saving a native protected session. The page sends only its origin as referrer so browsers preserve the verified Origin on the loopback form navigation.
 
-PDF file storage is not enabled in this project and billing remains unattached. The app labels the current scope as **metadata sync only**. Configure Storage and its rules only after explicitly authorizing a billing-enabled bucket. This limitation is independent of Google sign-in: projects, collections, notes, highlights and reading progress can synchronize now.
+PDF file storage is not enabled in this project and billing remains unattached. The app labels the scope as **metadata sync only** until conversations are included, and continues to state that PDF files stay local afterward. Configure Storage and its rules only after explicitly authorizing a billing-enabled bucket. This limitation is independent of Google sign-in: projects, collections, notes, highlights and reading progress can synchronize now.
 
 Use a Firebase-only API restriction allowlist for client keys, excluding unrelated services such as Gemini. Update the Firebase web app's API-key association when rotating a key; Hosting deployment refreshes the runtime initialization endpoint.
 

@@ -63,6 +63,15 @@ export const records = {
       rects: text.nullable(),
     })
     .strict(),
+  chat_sessions: z.object({
+    ...base, project_id: identifier, source_id: nullableId,
+    title: text.nullable(),
+  }).strict(),
+  chat_messages: z.object({
+    ...base, session_id: identifier, role: z.enum(["user", "assistant"]),
+    content: text, sources_used: text,
+    position: z.number().int().nonnegative(), turn_id: identifier,
+  }).strict(),
 };
 export const entityType = z.enum([
   "projects",
@@ -70,6 +79,8 @@ export const entityType = z.enum([
   "sources",
   "notes",
   "annotations",
+  "chat_sessions",
+  "chat_messages",
 ]);
 export type EntityType = z.infer<typeof entityType>;
 export const operationSchema = z
