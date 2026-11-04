@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import ChatGPTSettings from './ChatGPTSettings'
 import type { DesktopAssistant, DesktopSetupState } from '../desktop'
 
 const supported = (id: string) => id === 'claude' || id === 'codex'
@@ -65,6 +66,7 @@ export default function AISettings() {
     void refresh()
   }, [refresh])
 
+  useEffect(() => { const selected=()=>{ dialog.current?.close() };window.addEventListener('pdfpal-chatgpt-selected',selected);return()=>window.removeEventListener('pdfpal-chatgpt-selected',selected) }, [])
   useEffect(() => bridge?.onOpenAISettings?.(() => open()), [bridge, open])
   useEffect(() => {
     let active = true
@@ -157,6 +159,7 @@ export default function AISettings() {
         <button type="button" className="ai-settings-close" onClick={close} disabled={saving} aria-label="Close AI settings">×</button>
       </header>
       <div className="ai-settings-content">
+        <ChatGPTSettings />
         {error && <p role="alert" className="ai-settings-error">{error}</p>}
         {notice && <p role="status" className="ai-settings-notice">{notice}</p>}
         {loading ? <p role="status" className="ai-settings-loading">Checking installed assistants…</p> : <>

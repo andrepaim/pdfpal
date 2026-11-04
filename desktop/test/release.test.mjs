@@ -127,3 +127,13 @@ test('partial drafts can resume; foreign tags and mismatched published assets ca
     assert.equal(mismatched.calls.some(args => ['create','upload','edit'].includes(args[1])), false)
   } finally { await f.cleanup() }
 })
+
+test('ChatGPT preview release notes explain direct plan access', async () => {
+  const f = await fixture('2.2.0-preview.1')
+  try {
+    await prepareRelease(f.directory, f.options)
+    const notes = await fs.readFile(path.join(f.directory, 'release-notes.md'), 'utf8')
+    assert.match(notes, /Continue with ChatGPT/)
+    assert.match(notes, /without installing a coding agent/)
+  } finally { await f.cleanup() }
+})

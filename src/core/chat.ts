@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
 import type { PdfpalConfig } from './config.js'
-import { AgentService, type AgentName } from './agents.js'
+import { AIService, type ProviderName as AgentName } from './ai.js'
 import { CollectionService } from './collections.js'
 import { ProjectService } from './projects.js'
 import { RetrievalService } from './retrieval.js'
@@ -13,6 +13,7 @@ const now = () => new Date().toISOString()
 const RESPONSE_FORMAT_INSTRUCTIONS = 'Format the answer as GitHub-flavored Markdown. Use headings, lists, tables, and code fences when they improve readability. For math, use $...$ for inline expressions and $$...$$ for display equations; do not use \\(...\\) or \\[...\\] delimiters.'
 
 export interface AskOptions {
+  onDelta?: (text: string) => void
   sourceSelectors?: string[]
   collectionSelector?: string
   agent?: AgentName
@@ -24,14 +25,14 @@ export class ChatService {
   private readonly sources: SourceService
   private readonly collections: CollectionService
   private readonly retrieval: RetrievalService
-  private readonly agents: AgentService
+  private readonly agents: AIService
 
   constructor(private readonly db: Database, private readonly config: PdfpalConfig) {
     this.projects = new ProjectService(db)
     this.sources = new SourceService(db, config)
     this.collections = new CollectionService(db)
     this.retrieval = new RetrievalService(db)
-    this.agents = new AgentService(config)
+    this.agents = new AIService(config, db)
   }
 
   async ask(projectSelector: string, question: string, options: AskOptions = {}): Promise<AskResult> {
@@ -62,7 +63,7 @@ export class ChatService {
       return out.length + block.length <= 80_000 ? out + block : out
     }, '')
     const prompt = `You are a research assistant. Answer from the supplied passages. Cite source titles and page numbers when possible. If the context is insufficient, say so. ${RESPONSE_FORMAT_INSTRUCTIONS}\n\nPassages:${context}${history.length ? `\n\nRecent conversation:\n${history.map(message => `${message.role}: ${message.content}`).join('\n')}` : ''}\n\nUser: ${question}\nAssistant:`
-    const answer = await this.agents.invoke(prompt, options.agent, options.model)
+    const answer = await this.agents.invoke(prompt, options.agent, options.model, { onDelta: options.onDelta, projectId: project.id, sourceId: selected.length === 1 ? selected[0]!.id : undefined, question })
     const sourceIds = [...new Set(passages.map(passage => passage.source_id))]
     const sessionId = this.persist(project.id, selected.length === 1 ? selected[0]!.id : null, question, answer, sourceIds)
     return {

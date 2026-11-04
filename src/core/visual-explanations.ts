@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
 import { z } from 'zod'
-import { AgentService, type AgentName } from './agents.js'
+import { AIService, type ProviderName as AgentName } from './ai.js'
 import type { PdfpalConfig } from './config.js'
 import { ProjectService } from './projects.js'
 import { SourceService } from './sources.js'
@@ -16,7 +16,7 @@ export const webVisualInput = z.object({
   request_id: z.string().uuid(), question: z.string().trim().min(1).max(8000),
   source_id: z.string().min(1).max(200).optional(), active_source_ids: z.array(z.string().min(1).max(200)).max(200).optional(),
   selection: z.string().max(60_000).optional(), answer: z.string().max(24_000).optional(),
-  agent: z.enum(['claude', 'codex', 'opencode']).optional(), model: z.string().max(200).optional(),
+  agent: z.enum(['claude', 'codex', 'opencode', 'chatgpt']).optional(), model: z.string().max(200).optional(),
 }).strict().refine(input => !input.selection || !!input.source_id, 'A selected passage needs its source.')
 type Row = { id: string; project_id: string; client_id: string | null; request_hash: string; question: string; status: VisualRecord['status']; definition_json: string | null; references_json: string; error: string | null; note_id: string | null; created_at: string }
 type Generation = { projectId: string; clientId?: string; sourceId?: string; requestId: string; input: unknown; question: string; context: string; references: VisualReference[]; agent?: AgentName; model?: string }
@@ -25,8 +25,8 @@ const stamp = () => new Date().toISOString()
 export class VisualExplanationService {
   private readonly jobs = new Map<string, Promise<void>>()
   private closing = false
-  private readonly agents: AgentService
-  constructor(private readonly db: Database, private readonly config: PdfpalConfig) { this.agents = new AgentService(config) }
+  private readonly agents: AIService
+  constructor(private readonly db: Database, private readonly config: PdfpalConfig) { this.agents = new AIService(config, db) }
 
   get(projectId: string, id: string, clientId?: string): VisualRecord {
     const row = this.db.prepare('SELECT * FROM visual_explanations WHERE id=? AND project_id=?').get(id, projectId) as Row | undefined

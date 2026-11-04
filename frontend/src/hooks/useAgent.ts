@@ -22,6 +22,7 @@ export function useAgent() {
     const unsubscribe = window.pdfpalDesktop?.onAgentChanged(id => {
       localStorage.setItem(STORAGE_KEY, id)
       setAgent(id)
+      void fetch('/api/agents').then(r=>r.json()).then(data=>setAgents(data.agents||[])).catch(()=>{})
     })
     fetch('/api/agents')
       .then(r => (r.ok ? r.json() : null))

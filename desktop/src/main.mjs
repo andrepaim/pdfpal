@@ -1,4 +1,5 @@
-import { app, BrowserWindow, utilityProcess, Tray, Menu, nativeImage, nativeTheme, Notification, dialog, shell, screen, ipcMain } from 'electron'
+import { safeStorage, app, BrowserWindow, utilityProcess, Tray, Menu, nativeImage, nativeTheme, Notification, dialog, shell, screen, ipcMain } from 'electron'
+import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -7,6 +8,8 @@ import { spawn } from 'node:child_process'
 import { provider, setupScript, trustedSender, recoveryMessage, diagnostics } from './setup.mjs'
 import { checkDesktopUpdates, releasePage } from './updates.mjs'
 import { preferences, restoreBounds, restoreLibraryRoute, safeRoute, startupArguments } from './preferences.mjs'
+import { Session } from './chatgpt/session.mjs'
+import { protectedVault } from './chatgpt/vault.mjs'
 import { betaOptions, betaAcceptance } from './beta-acceptance.mjs'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
@@ -38,6 +41,7 @@ fs.mkdirSync(profile, { recursive: true })
 app.setPath('userData', profile)
 if (process.platform === 'win32') app.setAppUserModelId(applicationId)
 const prefs = preferences(path.join(app.getPath('userData'), 'desktop.json'))
+let chatgpt
 let backend, window, tray, ready, pendingReceipt, stopping = false, exited = true, booting = false, crashRetries = 0, secondLaunches = 0
 const recoveryURL = pathToFileURL(path.join(root, 'recovery.html')).href
 const journal = diagnostics(path.join(profile, 'diagnostics.json'))
@@ -91,7 +95,8 @@ function showWindow() {
   window.show(); window.focus()
 }
 async function setAgent(agent) {
-  if (!['claude', 'codex', 'opencode'].includes(agent)) throw new Error('Unknown assistant')
+  if (!['claude', 'codex', 'opencode', 'chatgpt'].includes(agent)) throw new Error('Unknown assistant')
+  if (agent === 'chatgpt' && !chatgpt?.summary().connected) throw new Error('Connect ChatGPT first.')
   const effective = await rpc('set-agent', { agent })
   ready.agent = effective
   window?.webContents.send('pdfpal:agent-changed', effective)
@@ -234,8 +239,8 @@ async function inspectSetup() {
   if (smoke) console.error(`Setup inspection completed in ${Date.now() - started}ms`)
   lastAgents = snapshot.agents
   return { ...snapshot, complete: prefs.value.setupComplete === true,
-    agents: snapshot.agents.map(({ fingerprint, ...agent }) => ({ ...agent,
-      testedAt: fingerprint && prefs.value.connectionTests?.[agent.id]?.fingerprint === fingerprint ? prefs.value.connectionTests[agent.id].at : undefined })) }
+    agents: [{ id: 'chatgpt', label: 'ChatGPT', available: chatgpt.summary().connected, auth: chatgpt.summary().connected ? 'account' : 'signed_out' }, ...snapshot.agents.map(({ fingerprint, ...agent }) => ({ ...agent,
+      testedAt: fingerprint && prefs.value.connectionTests?.[agent.id]?.fingerprint === fingerprint ? prefs.value.connectionTests[agent.id].at : undefined }))] }
 }
 async function launchSetup(agent, action) {
   provider(agent)
@@ -272,6 +277,12 @@ async function boot() {
     const initial = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('Local service startup timed out. Retry from the tray.')), process.env.PDFPAL_M0_LIVE === '1' ? 270000 : 45000)
       child.on('message', message => {
+        if (message.type === 'chatgpt-generate') {
+          const id = message.id
+          if (typeof id !== 'string' || typeof message.prompt !== 'string' || message.prompt.length > 150000) return
+          void chatgpt.invoke(message.prompt, message.model, {onDelta: text => child.postMessage({type:'chatgpt-delta',id,text})}).then(answer => child.postMessage({ type: 'chatgpt-result', id, answer }), error => child.postMessage({ type: 'chatgpt-result', id, error: error.message }))
+        }
+        if (message.type === 'chatgpt-cancel') chatgpt?.cancelAll()
         if (message.type === 'shutdown-progress') shutdownPhases.push(message.phase)
         if (message.type === 'rpc-result') {
           const request = pending.get(message.id)
@@ -282,6 +293,7 @@ async function boot() {
       })
       child.once('exit', code => {
         clearTimeout(timer)
+        chatgpt?.cancelAll()
         if (backend === child) { exited = true; rejectPending() }
         reject(new Error(`Local service stopped (${code}).`))
         if (!stopping && ready && backend === child && !booting) {
@@ -484,6 +496,14 @@ else {
     if (error) throw new Error('The license file could not be opened. Find THIRD_PARTY_NOTICES.txt in the application resources folder.')
     return true
   }, true)
+  handle('chatgpt-stop', () => { chatgpt.cancelAll(); return chatgpt.summary() })
+  handle('chatgpt-state', () => chatgpt.summary())
+  handle('chatgpt-connect', id => chatgpt.connect(id))
+  handle('chatgpt-cancel', () => { chatgpt.cancelConnect(); return chatgpt.summary() })
+  handle('chatgpt-models', () => chatgpt.models())
+  handle('chatgpt-select', (id, model) => chatgpt.select(id, model))
+  handle('chatgpt-disconnect', () => chatgpt.disconnect())
+  handle('chatgpt-usage', () => { openBrowser('https://chatgpt.com/settings/usage'); return true })
   handle('set-agent', setAgent)
   handle('setup-state', inspectSetup)
   handle('setup-status', () => ({ complete: prefs.value.setupComplete === true }))
@@ -525,6 +545,8 @@ else {
   }, true)
   handle('quit', () => { void requestQuit(); return true }, true)
   app.whenReady().then(async () => {
+  chatgpt = new Session({ ...protectedVault(path.join(profile, 'chatgpt'), safeStorage), open: url => shell.openExternal(url) })
+  try { await chatgpt.init() } catch { chatgpt.data={host:'urn:uuid:'+randomUUID(),accounts:[],active:null};chatgpt.message='Windows could not unlock the saved connection. Reconnect in AI settings.' }
     try {
       const icon = nativeImage.createFromPath(path.join(root, 'frontend/dist/favicon-32.png'))
       if (icon.isEmpty()) throw new Error('Tray icon is missing')

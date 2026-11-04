@@ -15,7 +15,8 @@ import { NoteService } from '../core/notes.js'
 import { RetrievalService } from '../core/retrieval.js'
 import { listHighlights } from '../core/highlights.js'
 import { ChatService } from '../core/chat.js'
-import { AgentService, type AgentName } from '../core/agents.js'
+import type { ProviderName as AgentName } from '../core/ai.js'
+import { AgentService } from '../core/agents.js'
 import { resolvePdf, excerptFromText } from '../core/pdf.js'
 import { relatedPapers } from '../core/research.js'
 import { PdfpalError } from '../core/types.js'
@@ -33,6 +34,7 @@ const now = () => new Date().toISOString()
 export async function buildServer(config: PdfpalConfig) {
   const app = Fastify({ logger: true, bodyLimit: 30 * 1024 * 1024 })
   const db = openDatabase(config)
+  db.prepare("UPDATE ai_jobs SET status='interrupted',error='The app stopped before this answer completed.' WHERE status='running'").run()
   const projects = new ProjectService(db)
   const sources = new SourceService(db, config)
   const collections = new CollectionService(db)
@@ -67,10 +69,11 @@ export async function buildServer(config: PdfpalConfig) {
     reply.status(status).send({ detail: known.message, code: known.code, details: known.details })
   })
 
+  app.get<{ Querystring: { project_id?: string; source_id?: string } }>('/api/ai-jobs', async request => db.prepare('SELECT id,question,status,answer,error,created_at FROM ai_jobs WHERE project_id=? AND source_id IS ? ORDER BY created_at DESC LIMIT 20').all(request.query.project_id || null,request.query.source_id || null))
   app.get('/api/health', async () => ({ status: 'ok' }))
   app.get('/api/auth/me', async () => ({ email: 'local@localhost', name: 'Local User', picture: '' }))
   app.post('/api/auth/logout', async () => ({ ok: true }))
-  app.get('/api/agents', async () => ({ default: config.agent, agents: await new AgentService(config).inspect() }))
+  app.get('/api/agents', async () => ({ default: config.aiMode === 'chatgpt' ? 'chatgpt' : config.agent, agents: [...(config.aiMode === 'chatgpt' ? [{ id: 'chatgpt', label: 'ChatGPT', available: true }] : []), ...await new AgentService(config).inspect()] }))
 
   app.get('/api/projects', async () => projects.list())
   app.post<{ Body: { title: string; description?: string } }>('/api/projects', async request => projects.create(request.body.title, request.body.description))
@@ -128,6 +131,15 @@ export async function buildServer(config: PdfpalConfig) {
 
   app.post<{ Body: { message: string; project_id: string; source_id?: string; active_source_ids?: string[]; collection_id?: string; agent?: AgentName; model?: string } }>('/api/chat', async (request, reply) => {
     const selectors = request.body.source_id ? [request.body.source_id] : request.body.active_source_ids
+    if (request.body.agent === 'chatgpt') {
+      reply.hijack(); reply.raw.writeHead(200, { 'content-type':'text/event-stream', 'cache-control':'no-cache' })
+      try {
+        const result = await chat.ask(request.body.project_id, request.body.message, { sourceSelectors: selectors, collectionSelector: request.body.collection_id, agent: 'chatgpt', model: request.body.model,
+          onDelta: text => { if (!reply.raw.destroyed) reply.raw.write(`data: ${JSON.stringify({text})}\n\n`) } })
+        if (!reply.raw.destroyed) reply.raw.write(`data: ${JSON.stringify({text: result.answer, sources: result.sources})}\n\n`)
+      } catch (e) { if (!reply.raw.destroyed) reply.raw.write(`data: ${JSON.stringify({error: (e as Error).message})}\n\n`) }
+      reply.raw.end('data: [DONE]\n\n');return
+    }
     const result = await chat.ask(request.body.project_id, request.body.message, { sourceSelectors: selectors, collectionSelector: request.body.collection_id, agent: request.body.agent, model: request.body.model })
     reply.raw.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' })
     reply.raw.write(`data: ${JSON.stringify({ text: result.answer, sources: result.sources })}\n\n`)

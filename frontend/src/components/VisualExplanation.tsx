@@ -1,9 +1,24 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { VisualElement, VisualRecord } from '../../../src/shared/visual'
 import { arrowHead, downloadVisual, visualColors, wrapLabel } from '../lib/visual-html'
 import './visual.css'
 
 export type VisualTransport = { get: (id: string) => Promise<VisualRecord>; save: (id: string) => Promise<{ id: string }>; retry?: (id: string, requestId: string) => Promise<VisualRecord>; noteUrl: (id: string) => string }
+
+function SceneLabel({ element: e }: { element: Extract<VisualElement, { type: 'text' }> }) {
+  const text = useRef<SVGTextElement>(null)
+  const [width, setWidth] = useState(0)
+  useLayoutEffect(() => {
+    // Measure the real font instead of trusting a model's text anchor to account
+    // for glyph width. Keep the original wording while fitting the 360px scene.
+    const node = text.current
+    if (node) { node.removeAttribute('textLength'); setWidth(node.getComputedTextLength()) }
+  }, [e.text, e.size])
+  const fitted = Math.min(336, width)
+  const x = Math.max(12 + fitted / 2, Math.min(348 - fitted / 2, e.x))
+  return <text ref={text} x={x} y={e.y} fill={visualColors[e.color]} stroke="#10121c" strokeWidth={4} paintOrder="stroke" strokeLinejoin="round"
+    fontSize={e.size} textAnchor="middle" textLength={width > 336 ? 336 : undefined} lengthAdjust="spacingAndGlyphs">{e.text}</text>
+}
 
 function Shape({ element: e, reveal }: { element: VisualElement; reveal: (text: string) => void }) {
   const color = visualColors[e.color]
@@ -19,7 +34,7 @@ function Shape({ element: e, reveal }: { element: VisualElement; reveal: (text: 
         <tspan key={i} x={e.x + e.width / 2} y={e.y + e.height / 2 + (i - (lines.length - 1) / 2) * 22 + 6}>{line}</tspan>)}</text>
     </g>
   }
-  if (e.type === 'text') return <text x={e.x} y={e.y} fill={color} stroke="#10121c" strokeWidth={4} paintOrder="stroke" strokeLinejoin="round" fontSize={e.size} textAnchor="middle">{e.text}</text>
+  if (e.type === 'text') return <SceneLabel element={e} />
   if (e.type === 'path') return <path d={e.points.map((p, i) => `${i ? 'L' : 'M'}${p.x} ${p.y}`).join(' ') + (e.closed ? ' Z' : '')} fill={e.closed ? color : 'none'} fillOpacity={.15} stroke={color} strokeWidth={2.5} />
   return <g stroke={color} fill={color}><line x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2} strokeWidth={2} /><polygon points={arrowHead(e)} />
     {e.label && <text x={(e.x1 + e.x2) / 2} y={(e.y1 + e.y2) / 2 - 10} stroke="none" fontSize={16} textAnchor="middle">{e.label}</text>}</g>

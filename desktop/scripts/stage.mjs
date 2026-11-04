@@ -19,12 +19,15 @@ await fs.copyFile(path.join(desktop, 'runtime-lock.json'), path.join(stage, 'pac
 for (const [source, destination] of [
   ['dist', 'dist'], ['frontend/dist', 'frontend/dist'], ['extension/package', 'extension/package'],
   ['test/fixtures/sample.pdf', 'sample.pdf'], ['desktop/src/main.mjs', 'main.mjs'], ['desktop/src/backend.mjs', 'backend.mjs'],
+  ['desktop/src/chatgpt', 'chatgpt'],
   ['desktop/src/preload.cjs', 'preload.cjs'],
   ...['setup.mjs', 'updates.mjs', 'installer-acceptance.mjs', 'beta-acceptance.mjs', 'recovery.html', 'recovery.js', 'recovery.css'].map(name => [`desktop/src/${name}`, name]), ['desktop/src/preferences.mjs', 'preferences.mjs'],
   ['desktop/test/runtime.test.mjs', 'test/runtime.test.mjs'],
   ['desktop/test/setup-native.mjs', 'test/setup-native.mjs'],
   ['desktop/test/setup.test.mjs', 'test/setup.test.mjs'],
 ]) await fs.cp(path.join(root, source), path.join(stage, destination), { recursive: true })
+const sessionFile = path.join(stage, 'chatgpt/session.mjs')
+await fs.writeFile(sessionFile, (await fs.readFile(sessionFile, 'utf8')).replace('../../../dist/', '../dist/'))
 const runtimeTest = path.join(stage, 'test/runtime.test.mjs')
 await fs.writeFile(runtimeTest, (await fs.readFile(runtimeTest, 'utf8')).replaceAll('../stage/dist/', '../dist/'))
 const setupTest = path.join(stage, 'test/setup.test.mjs')

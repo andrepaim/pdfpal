@@ -1,18 +1,25 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { loadConfig, saveAgentPreference, saveAgentBinary } from './dist/core/config.js'
+import { loadConfig, saveAIModePreference, saveAgentBinary } from './dist/core/config.js'
 import { discoverAgent, refreshWindowsPath } from './dist/core/agent-discovery.js'
+import { bindDirectProvider } from './dist/core/ai.js'
+import { randomUUID } from 'node:crypto'
 import { AgentService } from './dist/core/agents.js'
 
+const directPending = new Map()
 let runtime, config, stopping = false, connectionTest
 async function inspect() {
   const agents = await new AgentService(config).inspect()
   const file = await fs.readFile(path.join(config.dataDir, 'config.json'), 'utf8').then(JSON.parse).catch(() => ({}))
-  return { default: config.agent, explicit: !!process.env.PDFPAL_AGENT || Object.hasOwn(file, 'agent'), agents }
+  return { default: config.aiMode==='chatgpt'?'chatgpt':config.agent, explicit: !!process.env.PDFPAL_AGENT || Object.hasOwn(file, 'agent'), agents }
 }
 process.parentPort.on('message', async ({ data }) => {
+  if (data.type === 'chatgpt-delta') { directPending.get(data.id)?.onDelta?.(data.text);return }
+  if (data.type === 'chatgpt-result') { const job=directPending.get(data.id); if(job){clearTimeout(job.timer);directPending.delete(data.id); data.error ? job.reject(new Error(data.error)) : job.resolve(data.answer)}; return }
   if (data.type === 'stop') {
+    process.parentPort.postMessage({type:'chatgpt-cancel'})
+    for(const job of directPending.values()){clearTimeout(job.timer);job.reject(new Error('pdfpal is closing.'))};directPending.clear()
     stopping = true
     await runtime?.close(phase => process.parentPort.postMessage({ type: 'shutdown-progress', phase }))
     process.exit(0)
@@ -21,11 +28,10 @@ process.parentPort.on('message', async ({ data }) => {
   try {
     if (!runtime || stopping) throw new Error('Service is not ready')
     let result
-    if (data.command === 'status') result = { active: AgentService.activeCount }
+    if (data.command === 'status') result = { active: AgentService.activeCount + directPending.size }
     else if (data.command === 'set-agent') {
-      if (!['claude', 'codex', 'opencode'].includes(data.agent)) throw new Error('Unknown assistant')
-      saveAgentPreference(config, data.agent)
-      result = config.agent
+      if (!['claude', 'codex', 'opencode', 'chatgpt'].includes(data.agent)) throw new Error('Unknown assistant')
+      result = saveAIModePreference(config, data.agent)
     } else if (data.command === 'inspect') result = await inspect()
     else if (data.command === 'login-command' || data.command === 'choose-binary') {
       if (!['claude', 'codex'].includes(data.agent)) throw new Error('Unknown assistant')
@@ -58,6 +64,7 @@ try {
   globalThis.pdfjsWorker = await import('pdfjs-dist/legacy/build/pdf.worker.mjs')
   const { startRuntime } = await import('./dist/server/runtime.js')
   config = loadConfig()
+  bindDirectProvider(config,{invoke:(prompt,model,options)=>new Promise((resolve,reject)=>{const id=randomUUID();const timer=setTimeout(()=>{directPending.delete(id);process.parentPort.postMessage({type:'chatgpt-cancel'});reject(new Error('ChatGPT timed out. Your question can be retried explicitly.'))},310000);directPending.set(id,{resolve,reject,timer,onDelta:options?.onDelta});process.parentPort.postMessage({type:'chatgpt-generate',id,prompt,model})})})
   const smoke = process.env.PDFPAL_M0_SMOKE === '1'
   if (smoke && process.env.PDFPAL_M2_FAILURE_FIXTURE === '1') throw Object.assign(new Error('Fixture occupied port'), { code: 'EADDRINUSE' })
   runtime = await startRuntime(config, smoke ? 0 : config.port)

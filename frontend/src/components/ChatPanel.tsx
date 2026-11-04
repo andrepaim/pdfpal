@@ -39,6 +39,8 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
   const [messages, setMessages] = useState<Message[]>(initialMessages?.map(m => ({ role: m.role as 'user'|'assistant', content: m.content })) ?? [])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [partial, setPartial] = useState('')
+  const [recovered, setRecovered] = useState<{id:string;question:string;answer:string;status:string}[]>([])
   const [error, setError] = useState('')
   const [historyLoading, setHistoryLoading] = useState(true)
   const handledVisualRequest = useRef('')
@@ -48,6 +50,12 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { agent, setAgent, agents: agentOptions } = useAgent()
 
+  useEffect(() => {
+    if (agent !== 'chatgpt' || !projectId) { setRecovered([]); return }
+    let active=true
+    void fetch(`/api/ai-jobs?project_id=${encodeURIComponent(projectId)}${sourceId ? `&source_id=${encodeURIComponent(sourceId)}` : ''}`).then(r=>r.ok?r.json():[]).then(jobs=>{if(active)setRecovered(jobs.filter((j:{status:string})=>j.status!=='complete'))}).catch(()=>{})
+    return()=>{active=false}
+  }, [agent,projectId,sourceId])
   // Load chat history when source changes
   useEffect(() => {
     let active = true
@@ -100,7 +108,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
 
     const newHistory: Message[] = [...messages, { role: 'user', content: userMsg }]
     setMessages(newHistory)
-    setLoading(true)
+    setPartial(''); setLoading(true)
 
     try {
       if (asVisual && projectId) {
@@ -129,6 +137,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
       const decoder = new TextDecoder()
       let buffer = ''
       let assistantText = ''
+      let streamCompleted = false, streamError = ''
 
       while (true) {
         const { done, value } = await reader.read()
@@ -140,11 +149,11 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const payload = line.slice(6)
-            if (payload === '[DONE]') break
+            if (payload === '[DONE]') { streamCompleted = true; break }
             try {
               const parsed = JSON.parse(payload)
-              if (parsed.error) throw new Error(parsed.error)
-              if (parsed.text) assistantText = parsed.text
+              if (parsed.error) { streamError = parsed.error; if(scope === scopeRef.current) setError(parsed.error); continue }
+              if (parsed.text) { assistantText = parsed.text; if(scope === scopeRef.current) setPartial(parsed.text) }
             } catch (e: any) {
               // ignore JSON parse errors for [DONE] and other non-JSON payloads
             }
@@ -152,6 +161,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
         }
       }
 
+      if (!streamCompleted || streamError) throw new Error(streamError || 'The answer was interrupted. Partial text is saved on this device.')
       if (scope === scopeRef.current) { setMessages([...newHistory, { role: 'assistant', content: assistantText }]); onSelectedTextUsed?.() }
     } catch (e: any) {
       if (scope === scopeRef.current) { setError(e.message || 'Something went wrong'); setMessages(newHistory); setInput(asVisual ? `/visual ${command.question}` : command.question) }
@@ -273,6 +283,9 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
           </div>
         ))}
 
+        {recovered.map(job => <details key={job.id}><summary>Saved {job.status} answer · {job.question.slice(0,100)}</summary><p style={{whiteSpace:'pre-wrap'}}>{job.answer}</p><button onClick={()=>setInput(job.question)}>Use this question again</button></details>)}
+        {loading && partial && <div style={{whiteSpace:'pre-wrap',padding:16}}>{partial}</div>}
+        {loading && agent === 'chatgpt' && window.pdfpalDesktop?.chatgpt && <button onClick={()=>void window.pdfpalDesktop!.chatgpt!('stop')}>Stop ChatGPT answers</button>}
         {loading && (
           <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
             <div style={{

@@ -11,6 +11,7 @@ const ConfigSchema = z.object({
   backupsDir: z.string(),
   port: z.number().int().positive().max(65535),
   host: z.string(),
+  aiMode: z.enum(['agent', 'chatgpt']).default('agent'),
   agent: z.enum(['claude', 'codex', 'opencode']),
   model: z.string(),
   claudeBin: z.string(),
@@ -22,6 +23,7 @@ const ConfigSchema = z.object({
 export type PdfpalConfig = z.infer<typeof ConfigSchema>
 
 type ConfigFile = Partial<{
+  ai_mode: 'agent' | 'chatgpt'
   port: number
   agent: PdfpalConfig['agent']
   model: string
@@ -73,6 +75,7 @@ export function loadConfig(overrides: Partial<PdfpalConfig> = {}): PdfpalConfig 
     backupsDir: overrides.backupsDir ?? path.join(dataDir, 'backups'),
     port: overrides.port ?? envPort ?? file.port ?? 8200,
     host: overrides.host ?? '127.0.0.1',
+    aiMode: overrides.aiMode ?? (process.env.PDFPAL_AGENT ? 'agent' : file.ai_mode) ?? 'agent',
     agent: overrides.agent ?? process.env.PDFPAL_AGENT ?? file.agent ?? 'claude',
     model: overrides.model ?? process.env.PDFPAL_MODEL ?? file.model ?? '',
     claudeBin: overrides.claudeBin ?? process.env.CLAUDE_BIN ?? file.claude_bin ?? 'claude',
@@ -113,5 +116,21 @@ export function saveAgentBinary(config: PdfpalConfig, agent: 'claude' | 'codex',
     fs.renameSync(temporary, filename)
     if (agent === 'claude') config.claudeBin = executable
     else config.codexBin = executable
+  } finally { release() }
+}
+
+/** One atomic preference write, shared with CLI settings through the same lock. */
+export function saveAIModePreference(config: PdfpalConfig, selected: 'chatgpt' | PdfpalConfig['agent']): string {
+  if (!['chatgpt','claude','codex','opencode'].includes(selected)) throw new Error('Unknown AI provider')
+  if (process.env.PDFPAL_AGENT && selected !== process.env.PDFPAL_AGENT) throw new Error('Your startup configuration fixes the AI provider. Update PDFPAL_AGENT to change it.')
+  const filename = path.join(config.dataDir, 'config.json'), release = acquireLease(`${filename}.write-lock`, 5000)
+  try {
+    const existing = fs.existsSync(filename) ? JSON.parse(fs.readFileSync(filename, 'utf8')) : {}
+    const aiMode = selected === 'chatgpt' ? 'chatgpt' : 'agent'
+    const temporary = `${filename}.${process.pid}.tmp`
+    fs.writeFileSync(temporary, JSON.stringify({ ...existing, ai_mode: aiMode, ...(selected !== 'chatgpt' ? {agent:selected} : {}) }), {mode:0o600})
+    fs.renameSync(temporary, filename);config.aiMode=aiMode
+    if (selected !== 'chatgpt') config.agent=selected
+    return selected
   } finally { release() }
 }

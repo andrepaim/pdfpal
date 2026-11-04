@@ -82,7 +82,7 @@ Download the Chrome companion, connect it to your local library, and manage pair
 
 1. [Open the official GitHub Releases page](https://github.com/andrepaim/pdfpal/releases) and download the **pdfpal-Setup-…-x64.exe** installer from the newest Windows desktop release, marked **Pre-release**.
 2. Run the installer, then open **pdfpal** from the Windows Start menu. If upgrading, quit the running app from its tray menu first.
-3. In setup, choose **Claude Code** or **Codex**. Follow the install/sign-in actions if needed, then check the connection. You can also choose **Continue without AI**.
+3. In AI settings, choose **Continue with ChatGPT** to use eligible plan allowance directly, or choose an installed coding agent.
 4. Create a project, import a PDF, and start reading. See the [PDF quickstart](#read-a-pdf) below.
 
 Closing the window keeps pdfpal running in the system tray near the clock. Click the tray icon to reopen it; use **Quit** in its menu to stop the app.

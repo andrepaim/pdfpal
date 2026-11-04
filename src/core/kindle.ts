@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
 import { z } from 'zod'
 import type { PdfpalConfig } from './config.js'
-import { AgentService } from './agents.js'
+import { AIService } from './ai.js'
 import { ProjectService } from './projects.js'
 import { NoteService } from './notes.js'
 import { RetrievalService } from './retrieval.js'
@@ -44,12 +44,12 @@ const parseTurn = (turn: TurnRow) => ({ id: turn.id, conversation_id: turn.conve
 export class KindleService {
   private readonly projects: ProjectService
   private readonly notes: NoteService
-  private readonly agents: AgentService
+  private readonly agents: AIService
   private readonly jobs = new Map<string, Promise<void>>()
   private closing = false
 
   constructor(private readonly db: Database, config: PdfpalConfig, private readonly visuals: VisualExplanationService) {
-    this.projects = new ProjectService(db); this.notes = new NoteService(db, config); this.agents = new AgentService(config)
+    this.projects = new ProjectService(db); this.notes = new NoteService(db, config); this.agents = new AIService(config, db)
   }
 
   private conversation(clientId: string, projectId: string, metadata: z.infer<typeof kindleMetadata>, create = false): Conversation | undefined {
