@@ -16,3 +16,11 @@ The browser interface and the native frames on other platforms retain their layo
 ![Windows shell with native caption controls](assets/windows-shell.png)
 
 The normal window close button still hides to the tray. Use **pdfpal menu → Quit pdfpal**, **Ctrl+Q**, or tray **Quit** to save and stop the backend. This change adds no new cloud services and does not change telemetry consent or PDF Storage configuration.
+
+## Regular installation acceptance
+
+The [Windows release workflow](https://github.com/andrepaim/pdfpal/actions/runs/42016228527) passed planning, regression, packaged/native installer acceptance and publication. The `desktop-v2.6.0-preview.1` tag resolves to application commit `a4968b82ac178d404a7ad3ee16b2066dacbf9e81`. The published installer and manifest passed SHA-256 verification; the copied Windows installer matched again before execution.
+
+After the user quit regular pdfpal, the existing library and native profile were backed up to a new private local directory. The regular installation was upgraded in place and its packaged version/app ID verified. All baseline content-table fingerprints matched before and after first startup. Google credentials remained usable: live synchronization completed without an error, pending changes or conflicts. The first scheduled full backup completed with zero missing PDFs. Error sharing and PDF transfers remained off. A Windows accessibility-tree check found the new app-menu, history, project-finder, Cloud and Help controls in the actual regular installation after the accessibility tree initialized.
+
+No research contents, account identity, credentials or personal backup path are included in this receipt.
