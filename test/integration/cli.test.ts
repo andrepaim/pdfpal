@@ -3,7 +3,9 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFileSync, spawnSync, spawn } from 'node:child_process'
+import net from 'node:net'
+import {once} from 'node:events'
 
 function runCli(dataDir: string, args: string[], extraEnv: NodeJS.ProcessEnv = {}): string {
   return execFileSync(process.execPath, ['dist/cli/index.js', ...args], {
@@ -67,4 +69,19 @@ test('compiled CLI rejects the removed web-search option', () => {
     assert.equal(result.status, 1)
     assert.match(result.stderr, /unknown option '--no-web'/)
   } finally { fs.rmSync(dataDir, { recursive: true, force: true }) }
+})
+
+test('serve --data-dir opens the selected recovery library even when startup env points at the original DB',{timeout:15000},async()=>{
+ const original=fs.mkdtempSync(path.join(os.tmpdir(),'pdfpal-cli-original-')),recovered=fs.mkdtempSync(path.join(os.tmpdir(),'pdfpal-cli-recovered-'))
+ let child:ReturnType<typeof spawn>|undefined
+ try{
+  runCli(original,['project','create','Original library','--json'])
+  runCli(recovered,['project','create','Recovery library','--json'])
+  const probe=net.createServer();probe.listen(0,'127.0.0.1');await once(probe,'listening');const port=(probe.address() as net.AddressInfo).port;await new Promise<void>(resolve=>probe.close(()=>resolve()))
+  child=spawn(process.execPath,['dist/cli/index.js','serve','--data-dir',recovered,'--port',String(port),'--no-open'],{env:{...process.env,PDFPAL_DATA_DIR:original,PDFPAL_DB:path.join(original,'pdfpal.db')},stdio:'ignore'})
+  let response:Response|undefined
+  for(let i=0;i<200;i++){try{response=await fetch(`http://127.0.0.1:${port}/api/projects`);if(response.ok)break}catch{};await new Promise(resolve=>setTimeout(resolve,25))}
+  assert.ok(response?.ok);assert.deepEqual((await response!.json() as {title:string}[]).map(p=>p.title),['Recovery library'])
+  assert.deepEqual((JSON.parse(runCli(original,['project','list','--json'])) as {title:string}[]).map(p=>p.title),['Original library'])
+ }finally{if(child&&child.exitCode===null){const exited=once(child,'exit');child.kill();await exited}fs.rmSync(original,{recursive:true,force:true});fs.rmSync(recovered,{recursive:true,force:true})}
 })

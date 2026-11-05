@@ -1,4 +1,5 @@
 import type { Database } from "better-sqlite3";
+import { recordRemoteDeletion } from '../core/trash.js';
 import {
   records,
   type EntityType,
@@ -81,7 +82,7 @@ export function installSync(db: Database) {
           ${event === 'UPDATE' ? `AND (${json('NEW')} IS NOT ${json('OLD')} OR (SELECT value FROM sync_settings WHERE key='seeding_conversations')='1')` : ''}` : ''}
         BEGIN
           INSERT INTO sync_outbox(operation_id,entity_type,entity_id,base_revision,action,payload,owner,generation,library)
-          VALUES(lower(hex(randomblob(16))),'${table}',${prefix}.${localColumn(table, 'id')},COALESCE((SELECT revision FROM sync_versions WHERE entity_type='${table}' AND entity_id=${prefix}.${localColumn(table, 'id')}),0),'${event === "DELETE" ? "delete" : "put"}',${event === "DELETE" ? "NULL" : json(prefix!)},COALESCE((SELECT value FROM sync_settings WHERE key='owner'),''),COALESCE((SELECT value FROM sync_settings WHERE key='generation'),''),COALESCE((SELECT value FROM sync_settings WHERE key='library'),''));
+          VALUES(CASE WHEN COALESCE((SELECT value FROM sync_settings WHERE key='deleting_prefix'),'')!='' THEN (SELECT value FROM sync_settings WHERE key='deleting_prefix')||lower(hex(randomblob(8))) ELSE lower(hex(randomblob(16))) END,'${table}',${prefix}.${localColumn(table, 'id')},COALESCE((SELECT revision FROM sync_versions WHERE entity_type='${table}' AND entity_id=${prefix}.${localColumn(table, 'id')}),0),'${event === "DELETE" ? "delete" : "put"}',${event === "DELETE" ? "NULL" : json(prefix!)},COALESCE((SELECT value FROM sync_settings WHERE key='owner'),''),COALESCE((SELECT value FROM sync_settings WHERE key='generation'),''),COALESCE((SELECT value FROM sync_settings WHERE key='library'),''));
           INSERT INTO sync_versions VALUES('${table}',${prefix}.${localColumn(table, 'id')},1) ON CONFLICT(entity_type,entity_id) DO UPDATE SET revision=revision+1;
         END;`);
     }
@@ -142,6 +143,7 @@ export function pending(db: Database): Operation[] {
   }));
 }
 export function applyChange(db: Database, change: Change) {
+  recordRemoteDeletion(db,change);
   db.prepare(
     "INSERT INTO sync_remote VALUES(?,?,?,?) ON CONFLICT(entity_type,entity_id) DO UPDATE SET revision=excluded.revision,payload=excluded.payload",
   ).run(

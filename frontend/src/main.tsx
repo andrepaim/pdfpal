@@ -18,11 +18,13 @@ import DesktopStatus from './components/DesktopStatus'
 import AISettings from './components/AISettings'
 import CloudSettings from './components/CloudSettings'
 import TelemetrySettings from './components/TelemetrySettings'
+import RecoverySettings from './components/RecoverySettings'
 
 // ── Error boundary ────────────────────────────────────────────────────────────
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
   constructor(props: any) { super(props); this.state = { error: null } }
   static getDerivedStateFromError(e: Error) { return { error: e.message } }
+  componentDidCatch(){void fetch('/api/telemetry/reports/renderer',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:'RENDERER_CRASH'})}).catch(()=>{})}
   render() {
     if (this.state.error) {
       return (
@@ -107,6 +109,7 @@ createRoot(document.getElementById('root')!).render(
       <AISettings />
       <CloudSettings />
       <TelemetrySettings />
+      <RecoverySettings />
       <DesktopStatus />
       <DesktopUpdates />
     </ErrorBoundary>

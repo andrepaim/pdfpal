@@ -1,6 +1,20 @@
 rules_version = '2';
 service cloud.firestore { match /databases/{database}/documents {
  function owner(uid) { return request.auth != null && request.auth.uid == uid; }
+ match /users/{uid}/diagnostics/{report} {
+  function validReport(d) {
+   return d.keys().hasAll(['format','code','appVersion','platform','at','durationMs'])
+    && d.keys().hasOnly(['format','code','appVersion','platform','at','durationMs']) && d.format == 1
+    && d.code in ['SYNC_FAILED','SYNC_QUOTA','SYNC_COMPLETED','PDF_SYNC_FAILED','BACKUP_FAILED','RESTORE_FAILED','AI_FAILED','SERVER_ERROR','RENDERER_CRASH','BACKEND_STOPPED','START_FAILED','PREFERENCES_FAILED']
+    && d.appVersion is string && d.appVersion.size() <= 64 && d.appVersion.matches('[0-9]+[.][0-9]+[.][0-9]+([-+][A-Za-z0-9.]+)?')
+    && d.platform in ['win32','linux','darwin','unknown']
+    && d.at is int && d.at > request.time.toMillis() - 2592000000 && d.at <= request.time.toMillis() + 300000
+    && d.durationMs is int && d.durationMs >= 0 && d.durationMs <= 3600000;
+  }
+  allow read, delete: if owner(uid);
+  allow create: if owner(uid) && report.matches('[a-f0-9-]{36}') && validReport(request.resource.data);
+  allow update: if owner(uid) && request.resource.data == resource.data;
+ }
  function id(v) { return v is string && v.matches('[A-Za-z0-9_-]{1,128}'); }
  function validChat(type,p) {
   return p is map && id(p.id) && p.created_at is string && p.created_at.size() <= 40 && (

@@ -1,5 +1,6 @@
 import type { Database } from "better-sqlite3";
 import { setting } from "../sync/database.js";
+import {errorReportsFor} from './error-reports.js'
 export type Consent = { diagnostics: boolean; usage: boolean };
 export type TelemetryEvent = {
   name:
@@ -39,6 +40,7 @@ export class Telemetry {
     })();
   }
   async record(event: TelemetryEvent) {
+    if(event.name==='ai_request'&&event.outcome==='failed')errorReportsFor(this.db).record('AI_FAILED',event.durationMs)
     if (
       ![
         "pdf_import",

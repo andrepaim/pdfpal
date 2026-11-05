@@ -1,11 +1,12 @@
 import { Telemetry } from "../core/telemetry.js";
+import {errorReportsFor} from '../core/error-reports.js'
 import { FirebaseTransport } from "./firebase.js";
 import type { Database } from "better-sqlite3";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import type { PdfpalConfig } from "../core/config.js";
-import { acquireLease } from "../core/locking.js";
+import { acquireLease, acquireFilesLease } from "../core/locking.js";
 import { applyChange, pending, setting, tables, seedConversations, validateConversations } from "./database.js";
 import { CloudAuth, cloudOptions } from "./auth.js";
 import type { Change, Receipt } from "../shared/sync/schema.js";
@@ -57,6 +58,7 @@ export class SyncWorker {
     return {
       configured: !!cloudOptions(),
       pdfStorage: !!cloudOptions()?.storageBucket,
+      pdfFiles: {configured:!!cloudOptions()?.storageBucket,enabled:setting(this.db,'pdf_files')==='1',error:setting(this.db,'pdf_error')??''},
       conversations: setting(this.db, "conversations") === "1",
       account: this.auth.credentials
         ? { uid: this.auth.credentials.uid, email: this.auth.credentials.email }
@@ -92,6 +94,18 @@ export class SyncWorker {
     if (this.auth.credentials?.uid !== setting(this.db, 'owner')) throw Error('Account action was cancelled');
     seedConversations(this.db);
     return this.status();
+  }
+  setPdfFiles(enabled:boolean){
+    if(this.running)throw Error('Wait for synchronization to finish')
+    if(enabled&&(!cloudOptions().storageBucket||!setting(this.db,'library')||this.auth.credentials?.uid!==setting(this.db,'owner')))throw Error('Connect the library owner and configure Firebase Storage before enabling PDF sync.')
+    setting(this.db,'pdf_files',enabled?'1':'0');setting(this.db,'pdf_error','');return this.status()
+  }
+  async fileStatus(){
+    const rows=this.db.prepare(`SELECT s.id,s.title,s.local_path,s.content_hash,s.byte_size,f.content_hash AS verified_hash FROM sources s LEFT JOIN sync_files f ON f.source_id=s.id WHERE s.type!='kindle' ORDER BY s.created_at DESC LIMIT 1000`).all() as {id:string;title:string|null;local_path:string|null;content_hash:string|null;byte_size:number|null;verified_hash:string|null}[]
+    return Promise.all(rows.map(async row=>{
+      const local=!!row.local_path&&await fs.stat(path.join(this.config.filesDir,path.basename(row.local_path))).then(s=>s.isFile()).catch(()=>false)
+      return {id:row.id,title:row.title,bytes:row.byte_size,local,verified:!!row.content_hash&&row.content_hash===row.verified_hash,state:!row.content_hash?'metadata-only':(row.byte_size??0)>25*1024*1024?'too-large':row.content_hash===row.verified_hash?(local?'verified':'local-file-missing'):local?'local-only':'needs-download'}
+    }))
   }
   async connect(title: string, libraryId?: string) {
     if (setting(this.db, "owner"))
@@ -285,13 +299,15 @@ export class SyncWorker {
         })();
         more = batch.changes.length === 100;
       }
-      if (cloudOptions()?.storageBucket) await this.files(library);
+      if (cloudOptions()?.storageBucket&&setting(this.db,'pdf_files')==='1') await this.files(library);
       this.error = "";
       this.lastSync = new Date().toISOString();
       setting(this.db,"last_sync",this.lastSync);
     } catch (e) {
       this.error = (e as Error).message;
+      if(!this.controller.signal.aborted)errorReportsFor(this.db).record((e as {status?:number}).status===429?'SYNC_QUOTA':'SYNC_FAILED',performance.now()-started)
     } finally {
+      if(!this.error&&!this.controller.signal.aborted)errorReportsFor(this.db).record('SYNC_COMPLETED',performance.now()-started)
       await new Telemetry(this.db).record({
         name: "sync_batch",
         outcome: this.error ? "failed" : "completed",
@@ -353,6 +369,7 @@ export class SyncWorker {
     return this.status();
   }
   private async files(library: string) {
+    setting(this.db,'pdf_error','')
     const rows = this.db
       .prepare(
         "SELECT id,local_path,content_hash,byte_size FROM sources WHERE type!='kindle' AND content_hash IS NOT NULL AND byte_size>0",
@@ -364,7 +381,14 @@ export class SyncWorker {
       byte_size: number;
     }>;
     for (const row of rows) {
+      if(this.controller.signal.aborted)break
+      try{
+      const acknowledged=this.db.prepare("SELECT payload FROM sync_remote WHERE entity_type='sources' AND entity_id=?").get(row.id) as {payload:string}|undefined
+      if(!acknowledged||JSON.parse(acknowledged.payload||'null')?.content_hash!==row.content_hash)continue
+      const candidate=row.local_path?path.join(this.config.filesDir,path.basename(row.local_path)):null
+      const local=candidate&&await fs.stat(candidate).then(s=>s.isFile()).catch(()=>false)?candidate:null
       if (
+        local&&
         this.db
           .prepare(
             "SELECT 1 FROM sync_files WHERE source_id=? AND content_hash=?",
@@ -374,13 +398,10 @@ export class SyncWorker {
         continue;
       if (row.byte_size > 25 * 1024 * 1024)
         throw Error("A PDF exceeds the 25 MB cloud limit");
-      const route = `/libraries/${library}/files/${row.id}`,
-        body = { hash: row.content_hash, size: row.byte_size };
-      const local = row.local_path
-        ? path.join(this.config.filesDir, path.basename(row.local_path))
-        : null;
       if (local) {
-        const bytes = await fs.readFile(local);
+        const release=await acquireFilesLease(this.config.dbPath);
+        let bytes:Buffer;
+        try{bytes=await fs.readFile(local)}finally{release()}
         if (
           createHash("sha256").update(bytes).digest("hex") !== row.content_hash
         )
@@ -424,6 +445,10 @@ export class SyncWorker {
         const extracted = await extractPdf(bytes),
           filename = `${row.id}.pdf`,
           temp = path.join(this.config.filesDir, `${randomUUID()}.tmp`);
+        const release=await acquireFilesLease(this.config.dbPath);
+        try{
+        const current=this.db.prepare('SELECT content_hash FROM sources WHERE id=?').get(row.id) as {content_hash:string}|undefined;
+        if(!current||current.content_hash!==row.content_hash)continue;
         await fs.writeFile(temp, bytes, { mode: 0o600 });
         await fs.rename(temp, path.join(this.config.filesDir, filename));
         this.db.transaction(() => {
@@ -434,12 +459,18 @@ export class SyncWorker {
           new RetrievalService(this.db).index(row.id, extracted.text);
           setting(this.db, "applying", "0");
         })();
+        }finally{release()}
       }
       this.db
         .prepare(
           "INSERT INTO sync_files VALUES(?,?) ON CONFLICT(source_id) DO UPDATE SET content_hash=excluded.content_hash",
         )
         .run(row.id, row.content_hash);
+      }catch{
+        if(this.controller.signal.aborted)break
+        setting(this.db,'pdf_error','Some PDF files could not transfer. Metadata and saved conversations can still sync. Check file availability, the 25 MB limit and Storage permissions, then retry.')
+        errorReportsFor(this.db).record('PDF_SYNC_FAILED')
+      }
     }
   }
 }

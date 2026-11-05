@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
+import { trashDelete } from './trash.js'
+import { acquireFilesLease } from './locking.js'
 import path from 'node:path'
 import type { Database } from 'better-sqlite3'
 import type { PdfpalConfig } from './config.js'
@@ -91,12 +93,14 @@ export class SourceService {
       if (bytes.subarray(0, 4).toString() !== '%PDF') throw new PdfpalError('NOT_A_PDF', `File is not a PDF: ${location}`, 2)
     }
     const extracted = await extractPdf(bytes)
-    const stored = storePdf(bytes, this.config.filesDir, id)
     const timestamp = now()
     // Prefer a clean catalogue title for arXiv/DOI links; the PDF's own
     // first-line heuristic often bleeds authors and affiliations into the title.
     const catalogueTitle = isUrl && !title?.trim() ? await titleFromUrl(filename, this.config.semanticScholarApiKey) : null
     const sourceTitle = title?.trim() || catalogueTitle || extracted.title || (isUrl ? new URL(filename).pathname.split('/').filter(Boolean).at(-1) : path.basename(filename)) || 'Untitled Source'
+    const release=await acquireFilesLease(this.config.dbPath)
+    try {
+    const stored = storePdf(bytes, this.config.filesDir, id)
     const source: Source = {
       id, project_id: project.id, type: 'pdf', url, title: sourceTitle, pdf_text: extracted.text,
       pages: extracted.pages, last_page_read: 1, created_at: timestamp, accessed_at: timestamp, original_location: originalLocation,
@@ -117,6 +121,7 @@ export class SourceService {
       throw error
     }
     return source
+    } finally {release()}
   }
 
   rename(projectSelector: string, sourceSelector: string, title: string): Source {
@@ -163,8 +168,7 @@ export class SourceService {
 
   remove(projectSelector: string, sourceSelector: string): Source {
     const source = this.resolve(projectSelector, sourceSelector)
-    this.db.prepare('DELETE FROM sources WHERE id=?').run(source.id)
-    if (source.local_path) fs.rmSync(path.join(this.config.filesDir, path.basename(source.local_path)), { force: true })
+    trashDelete(this.db,'source',source.id,source.title??'Paper',()=>this.db.prepare('DELETE FROM sources WHERE id=?').run(source.id))
     return source
   }
 
@@ -179,12 +183,20 @@ export class SourceService {
         if (!location) throw new PdfpalError('SOURCE_UNAVAILABLE', `No retrievable location for ${source.title ?? source.id}`)
         const bytes = /^https?:\/\//.test(location) ? (await resolvePdf(location)).bytes : fs.readFileSync(location)
         const extracted = await extractPdf(bytes)
+        const release=await acquireFilesLease(this.config.dbPath)
+        try {
+        if(!this.db.prepare('SELECT 1 FROM sources WHERE id=?').get(source.id))throw new PdfpalError('SOURCE_NOT_FOUND','This paper was removed before its file update finished.',3)
         const stored = storePdf(bytes, this.config.filesDir, source.id)
         text = extracted.text
+        this.db.transaction(()=>{
         this.db.prepare(`UPDATE sources SET pdf_text=?, pages=?, local_path=?, byte_size=?, content_hash=?,
           last_page_read=MIN(last_page_read, ?), accessed_at=? WHERE id=?`)
           .run(text, extracted.pages, path.basename(stored.localPath), bytes.length, stored.hash,
             Math.max(1, extracted.pages), now(), source.id)
+        total+=this.retrieval.index(source.id,text)
+        })()
+        } finally {release()}
+        continue
       }
       total += this.retrieval.index(source.id, text)
     }

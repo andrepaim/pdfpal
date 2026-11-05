@@ -7,6 +7,7 @@ import {
   type Change,
 } from "../shared/sync/schema.js";
 import { CloudAuth, cloudOptions } from "./auth.js";
+import {diagnosticReport,type DiagnosticReport} from '../shared/diagnostics.js'
 export function encode(value: any): any {
   if (value === null) return { nullValue: null };
   if (typeof value === "string") return { stringValue: value };
@@ -49,6 +50,22 @@ function canonical(value: any): string {
   );
 }
 export class FirebaseTransport {
+  async writeDiagnostic(id:string,event:DiagnosticReport){
+    const body=diagnosticReport.parse(event)
+    // Retrying a receipt uses the same ID and exactly the same safe payload.
+    return this.http(`/users/${this.uid}/diagnostics/${identifier.parse(id)}`,{fields:encode(body).mapValue.fields},'PATCH')
+  }
+  async diagnostics(){
+    const reports:{id:string;event:DiagnosticReport}[]=[]
+    let pageToken=''
+    for(let page=0;page<10;page++){
+      const result=await this.http(`/users/${this.uid}/diagnostics?pageSize=200${pageToken?'&pageToken='+encodeURIComponent(pageToken):''}`)
+      for(const doc of result?.documents??[])reports.push({id:identifier.parse(doc.name.split('/').at(-1)),event:diagnosticReport.parse(decode({mapValue:{fields:doc.fields}}))})
+      pageToken=result?.nextPageToken??'';if(!pageToken)break
+    }
+    return reports
+  }
+  async deleteDiagnostic(id:string){return this.http(`/users/${this.uid}/diagnostics/${identifier.parse(id)}`,undefined,'DELETE')}
   constructor(
     private auth: CloudAuth,
     private signal?: AbortSignal,

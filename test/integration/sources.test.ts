@@ -18,7 +18,7 @@ test('adds a local PDF, stores a managed copy, and indexes it', async () => {
   } finally { cleanup(config, db) }
 })
 
-test('removes a source, its managed PDF, and indexed passages', async () => {
+test('removes a source and indexed passages while retaining its managed PDF for Undo', async () => {
   const config = testConfig(), db = testDb(config)
   try {
     const project = new ProjectService(db).create('PDF Project')
@@ -32,7 +32,7 @@ test('removes a source, its managed PDF, and indexed passages', async () => {
     sources.remove(project.id, source.id)
 
     assert.equal(sources.list(project.id).length, 0)
-    assert.equal(sources.pdfPath(source), null)
+    assert.ok(sources.pdfPath(source))
     assert.equal((db.prepare('SELECT COUNT(*) count FROM source_chunks WHERE source_id=?').get(source.id) as { count: number }).count, 0)
     assert.equal((db.prepare('SELECT COUNT(*) count FROM source_chunks_fts').get() as { count: number }).count, 0)
     assert.deepEqual(retrieval.search(project.id, 'research'), [])

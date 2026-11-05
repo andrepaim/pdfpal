@@ -1,0 +1,61 @@
+import {test,expect} from '@playwright/test'
+import {createProjectViaApi,createNoteViaApi} from './helpers'
+
+test('deleted notes can be restored through Recently deleted, and full recovery preserves newer work',async({page})=>{
+ const project=await createProjectViaApi(page,`Recovery ${Date.now()}`),note=await createNoteViaApi(page,project.id,{title:'Recover my note',content:'Snapshot text'})
+ await page.request.delete(`/api/projects/${project.id}/notes/${note}`)
+ await page.goto('/')
+ await page.getByRole('button',{name:'Backups',exact:true}).click()
+ const dialog=page.getByRole('dialog',{name:'Backups & recovery'})
+ const item=dialog.locator('article').filter({has:page.getByText('Recover my note',{exact:true})})
+ await item.getByRole('button',{name:'Restore',exact:true}).click()
+ await expect(dialog.getByRole('status')).toContainText('Restored')
+ expect((await (await page.request.get(`/api/projects/${project.id}/notes/${note}`)).json()).content).toBe('Snapshot text')
+ await dialog.getByRole('button',{name:'Back up now',exact:true}).click()
+ await expect(dialog.getByRole('status')).toHaveText('Backup saved and verified.')
+ const backups=await (await page.request.get('/api/recovery/backups')).json()
+ const snapshot=backups[0]
+ expect(snapshot.complete).toBe(true)
+ await page.request.put(`/api/projects/${project.id}/notes/${note}`,{data:{content:'Newer work'}})
+ const restored=await (await page.request.post(`/api/recovery/backups/${snapshot.id}/restore`,{data:{}})).json()
+ expect(restored.id).toBeTruthy()
+ expect((await (await page.request.get(`/api/projects/${project.id}/notes/${note}`)).json()).content).toBe('Newer work')
+ await dialog.getByRole('button',{name:'Verify',exact:true}).first().click()
+ await expect(dialog.getByRole('status')).toContainText('passed verification')
+})
+
+test('backup and privacy dialogs fit a narrow window and sharing defaults off',async({page},info)=>{
+ await page.setViewportSize({width:390,height:600})
+ await page.goto('/')
+ const launchers=['Cloud library','Privacy','Backups']
+ const boxes=[]
+ for(const name of launchers)boxes.push((await page.getByRole('button',{name,exact:true}).boundingBox())!)
+ expect(boxes[0].x+boxes[0].width).toBeLessThan(boxes[1].x)
+ expect(boxes[1].x+boxes[1].width).toBeLessThan(boxes[2].x)
+ expect(boxes[2].x+boxes[2].width).toBeLessThanOrEqual(390)
+ await page.getByRole('button',{name:'Backups',exact:true}).click()
+ const recovery=page.getByRole('dialog',{name:'Backups & recovery'})
+ await expect(recovery.getByRole('button',{name:'Close',exact:true})).toBeInViewport()
+ const box=(await recovery.boundingBox())!;expect(box.x).toBeGreaterThanOrEqual(0);expect(box.y+box.height).toBeLessThanOrEqual(600)
+ await page.screenshot({path:info.outputPath('recovery-narrow.png')})
+ await page.keyboard.press('Escape')
+ await page.getByRole('button',{name:'Privacy',exact:true}).click()
+ const privacy=page.getByRole('dialog',{name:'Privacy & error reports'})
+ await expect(privacy.getByLabel('Share error reports with Firebase')).not.toBeChecked()
+ await expect(privacy.getByRole('button',{name:'Close',exact:true})).toBeInViewport()
+ await page.screenshot({path:info.outputPath('privacy-narrow.png')})
+})
+
+test('cloud error sharing is a separate persistent opt-in and rejects content-bearing reports',async({page})=>{
+ await page.request.post('/api/telemetry/reports/consent',{data:{enabled:false}})
+ await page.goto('/')
+ await page.getByRole('button',{name:'Privacy',exact:true}).click()
+ const sharing=page.getByLabel('Share error reports with Firebase')
+ await expect(sharing).not.toBeChecked();await sharing.check()
+ await expect.poll(async()=>(await(await page.request.get('/api/telemetry/reports')).json()).sharing).toBe(true)
+ await page.reload();await page.getByRole('button',{name:'Privacy',exact:true}).click()
+ await expect(sharing).toBeChecked();await sharing.uncheck()
+ await expect.poll(async()=>(await(await page.request.get('/api/telemetry/reports')).json()).sharing).toBe(false)
+ const rejected=await page.request.post('/api/telemetry/reports/renderer',{data:{code:'RENDERER_CRASH',message:'Private contents'}})
+ expect(rejected.status()).toBe(400)
+})

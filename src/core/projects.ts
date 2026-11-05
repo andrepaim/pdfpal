@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
 import type { Project } from './types.js'
 import { PdfpalError } from './types.js'
+import { trashDelete } from './trash.js'
 
 const now = () => new Date().toISOString()
 
@@ -41,7 +42,7 @@ export class ProjectService {
 
   delete(selector: string): Project {
     const project = this.resolve(selector)
-    this.db.prepare('DELETE FROM projects WHERE id=?').run(project.id)
+    trashDelete(this.db,'project',project.id,project.title,()=>this.db.prepare('DELETE FROM projects WHERE id=?').run(project.id))
     return project
   }
 }

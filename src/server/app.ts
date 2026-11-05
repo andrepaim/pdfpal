@@ -1,4 +1,6 @@
 import { registerCloudRoutes } from './cloud.js'
+import { registerRecoveryRoutes } from './recovery.js'
+import { trashDelete } from '../core/trash.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import Fastify from 'fastify'
@@ -27,6 +29,7 @@ import { ExtensionError } from '../core/extension-auth.js'
 import { fileURLToPath } from 'node:url'
 import { ZodError } from 'zod'
 import { VisualExplanationService, VisualError } from '../core/visual-explanations.js'
+import {errorReportsFor} from '../core/error-reports.js'
 import { registerVisualRoutes } from './visual-explanations.js'
 
 type Params = { projectId: string; sourceId: string; id: string }
@@ -67,6 +70,7 @@ export async function buildServer(config: PdfpalConfig) {
     const message = error instanceof Error ? error.message : String(error)
     const known = error instanceof PdfpalError ? error : new PdfpalError('INTERNAL_ERROR', message)
     const status = known.code === 'PDF_FETCH_TIMEOUT' ? 504 : known.exitCode === 3 ? 404 : known.exitCode === 2 || known.exitCode === 4 ? 400 : 500
+    if(status>=500)errorReportsFor(db).record('SERVER_ERROR')
     reply.status(status).send({ detail: known.message, code: known.code, details: known.details })
   })
 
@@ -75,6 +79,7 @@ export async function buildServer(config: PdfpalConfig) {
   app.get('/api/auth/me', async () => ({ email: 'local@localhost', name: 'Local User', picture: '' }))
   app.post('/api/auth/logout', async () => ({ ok: true }))
   const closeCloud = await registerCloudRoutes(app, db, config)
+  await registerRecoveryRoutes(app,db,config)
   app.get('/api/agents', async () => ({ default: config.aiMode === 'chatgpt' ? 'chatgpt' : config.agent, agents: [...(config.aiMode === 'chatgpt' ? [{ id: 'chatgpt', label: 'ChatGPT', available: true }] : []), ...await new AgentService(config).inspect()] }))
 
   app.get('/api/projects', async () => projects.list())
@@ -196,7 +201,8 @@ function parseSources(row: { sources_used: string } & Record<string, unknown>) {
 }
 
 function clearChat(db: import('better-sqlite3').Database, projectId: string, sourceId: string | null) {
-  db.prepare('DELETE FROM chat_sessions WHERE project_id=? AND source_id IS ?').run(projectId, sourceId)
+  const ids=(db.prepare('SELECT id FROM chat_sessions WHERE project_id=? AND source_id IS ?').all(projectId,sourceId) as {id:string}[]).map(r=>r.id)
+  if(ids.length)trashDelete(db,'chat',ids[0]!,'Saved conversation',()=>db.prepare('DELETE FROM chat_sessions WHERE project_id=? AND source_id IS ?').run(projectId,sourceId),ids.slice(1))
   return { ok: true }
 }
 
@@ -243,7 +249,7 @@ function registerAnnotationRoutes(app: any, db: import('better-sqlite3').Databas
     return parseAnnotation(db.prepare('SELECT * FROM annotations WHERE id=?').get(id))
   })
   app.patch('/api/projects/:projectId/sources/:sourceId/annotations/:id', async (request: any) => { db.prepare('UPDATE annotations SET color=? WHERE id=? AND source_id=? AND project_id=?').run(request.body.color, request.params.id, request.params.sourceId, request.params.projectId); return parseAnnotation(db.prepare('SELECT * FROM annotations WHERE id=? AND source_id=? AND project_id=?').get(request.params.id, request.params.sourceId, request.params.projectId)) })
-  app.delete('/api/projects/:projectId/sources/:sourceId/annotations/:id', async (request: any, reply: any) => { db.prepare('DELETE FROM annotations WHERE id=? AND source_id=? AND project_id=?').run(request.params.id, request.params.sourceId, request.params.projectId); reply.status(204).send() })
+  app.delete('/api/projects/:projectId/sources/:sourceId/annotations/:id', async (request: any, reply: any) => { const row=db.prepare('SELECT id FROM annotations WHERE id=? AND source_id=? AND project_id=?').get(request.params.id, request.params.sourceId, request.params.projectId) as {id:string}|undefined;if(row)trashDelete(db,'highlight',row.id,'Highlight',()=>db.prepare('DELETE FROM annotations WHERE id=?').run(row.id)); reply.status(204).send() })
 }
 
 function registerResearchRoutes(app: any, db: import('better-sqlite3').Database, config: PdfpalConfig) {

@@ -1,0 +1,15 @@
+# Error reporting
+
+Open **Privacy** for local diagnostics and the separate **Share error reports with Firebase** option. Cloud sharing defaults off, including when an older installation already opted into local diagnostics. Google sign-in alone does not enable it. Optional usage analytics remains a separate setting and only runs with an Analytics configuration; the bundled Firebase project has no Analytics property configured by this change.
+
+Cloud reports use the existing authenticated Firestore connection on the Spark free tier. They do not require Cloud Functions, Cloud Run, a billing account, Crashlytics, or a new Google API key in the app. The source contains only public project identifiers; Firebase client configuration is loaded at runtime from the fixed Firebase Hosting initialization endpoint.
+
+The entire report payload is validated against `src/shared/diagnostics.ts`: format version, an allowlisted event code, app version, operating system, timestamp and bounded duration in milliseconds. There are no free-form messages, stacks, filenames, file paths, URLs, titles, document contents, prompts, answers, email addresses or tokens. Reports are stored below `users/<authenticated UID>/diagnostics/<random event UUID>`; Firestore rules reject extra fields, unknown codes, cross-account access, and changes to existing reports. The authenticated account is necessarily known to Firebase through the document path and request credentials.
+
+Reports cover sync failures/quota, PDF-transfer failures, backup/recovery failures, AI failures, unexpected API errors, renderer failures and native backend interruptions. Native crash codes are picked up after a successful backend restart. This is bounded health reporting, not a full crash-dump service; failures preventing the app from reopening may require manual local diagnostics.
+
+Each installation creates at most 20 new reports per day and deduplicates repeated codes for five minutes. A successful-sync timing sample is recorded at most daily. The local queue keeps up to 200 reports for 30 days, retries the same UUID offline, and never uploads local history collected before sharing was enabled or under another account. Turning sharing off cancels pending requests and unbinds unsent reports. A request already accepted by Firebase may have completed before cancellation.
+
+The app removes shared reports older than 30 days or beyond the newest 200 when it uploads or the user opens the shared-report view. Retention is enforced by connected clients, not a paid background TTL job; reports can persist while every client is offline. **View shared reports** previews the exact safe fields; **Remove shared reports** deletes reports for the signed-in account without touching library documents. **Download safe report** exports local report payloads without account identifiers. Local diagnostic journals and cloud error reports have separate clear controls.
+
+Project administrators can inspect reports in Firebase Console → Firestore → users → user UID → diagnostics. The end user can view their own shared reports inside pdfpal. No public administrative dashboard is exposed.

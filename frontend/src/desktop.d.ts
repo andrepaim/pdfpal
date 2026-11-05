@@ -9,6 +9,11 @@ declare global {
   interface Window {
     pdfpalFlushPending?: () => Promise<void>
     pdfpalDesktop?: {
+      libraryState?(): Promise<{active:string;libraries:{id:string;label:string}[]}>
+      switchLibrary?(id:string): Promise<boolean>
+      openRecoveredLibrary?(id:string): Promise<boolean>
+      chooseBackupFolder?(): Promise<boolean>
+      openBackupFolder?(): Promise<boolean>
       chatgpt?(action: string, ...args: unknown[]): Promise<import('./components/ChatGPTSettings').ChatGPTState>
       updatesState?(): Promise<DesktopUpdateState>
       checkUpdates?(): Promise<DesktopUpdateState>

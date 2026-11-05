@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command, Option } from 'commander'
+import path from 'node:path'
 import type { Database } from 'better-sqlite3'
 import { loadConfig } from '../core/config.js'
 import { openDatabase } from '../core/database.js'
@@ -55,7 +56,12 @@ program.command('serve')
   .description('start the local web application')
   .option('-p, --port <number>', 'port to bind', value => Number(value))
   .option('--no-open', 'do not open a browser')
-  .action(async options => startServer({ ...config, port: options.port ?? config.port }, { openBrowser: options.open }))
+  .option('--data-dir <directory>', 'open a separate library directory')
+  .action(async options => {
+    const directory=options.dataDir?path.resolve(options.dataDir):undefined
+    const selected=directory?loadConfig({dataDir:directory,dbPath:path.join(directory,'pdfpal.db')}):config
+    return startServer({ ...selected, port: options.port ?? selected.port }, { openBrowser: options.open })
+  })
 
 const project = program.command('project').description('manage projects')
 project.command('list').action((_options, command) => print(new ProjectService(db()).list(), json(command)))

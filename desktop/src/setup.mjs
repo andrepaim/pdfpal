@@ -31,7 +31,7 @@ export function recoveryMessage(code) {
   if (code === 'STARTING') return { title: 'Starting pdfpal…', detail: 'Opening your library. This can take a little longer after an update.' }
   return { title: 'The local service needs attention', detail: 'Retry to reopen your library. Saved notes and answers remain in your library. Interrupted questions are not sent again automatically.' }
 }
-const eventCodes = new Set(['STARTING', 'READY', 'BACKEND_STOPPED', 'START_FAILED', 'TEST_PASSED', 'TEST_FAILED', 'TEST_CANCELLED', 'SETUP_LAUNCHED', 'SETUP_FAILED', 'PREFERENCES_FAILED'])
+const eventCodes = new Set(['STARTING', 'READY', 'BACKEND_STOPPED', 'START_FAILED', 'TEST_PASSED', 'TEST_FAILED', 'TEST_CANCELLED', 'SETUP_LAUNCHED', 'SETUP_FAILED', 'PREFERENCES_FAILED', 'RENDERER_CRASH'])
 /** A small allowlisted event log. Never accepts messages, URLs, paths or provider output. */
 export function diagnostics(filename) {
   let events = []

@@ -76,6 +76,7 @@ async function cloudFixture(page: import('@playwright/test').Page, initial: Part
     const action = new URL(route.request().url()).pathname.replace('/api/cloud/', '')
     const body = route.request().method() === 'POST' ? route.request().postDataJSON() : undefined
     calls.push({ action, body })
+    if (action === 'files') return route.fulfill({ json: {configured:false,enabled:false,error:'',files:[]} })
     if (action === 'libraries') return route.fulfill({ json: [{ id: 'existing-library', title: 'Research library' }] })
     if (action === 'conflicts') return route.fulfill({ json: [] })
     if (action === 'sync') status = { ...status, error: '', pending: 0, lastSync: '2026-11-04T12:00:00Z' }

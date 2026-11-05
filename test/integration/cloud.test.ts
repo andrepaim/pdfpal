@@ -325,3 +325,30 @@ function memoryClient(store: MemoryStore, config: ReturnType<typeof testConfig>,
     };
     return worker;
   }
+
+test('cloud deletion recovery stays incomplete across upload batches and restores the entire project',async()=>{
+ const {TrashService}=await import('../../src/core/trash.js')
+ const old={...process.env};process.env.PDFPAL_FIREBASE_PROJECT_ID='demo-pdfpal-sync'
+ const store=new MemoryStore(),a=testConfig(),b=testConfig(),adb=testDb(a),bdb=testDb(b)
+ try{
+  const id=randomUUID();await store.create('alice',id,'Recoverable')
+  const wa=memoryClient(store,a,adb),wb=memoryClient(store,b,bdb)
+  await wa.connect('Recoverable',id);await wb.connect('Recoverable',id)
+  const p=new ProjectService(adb).create('Deleted across pages'),notes=new NoteService(adb,a)
+  for(let i=0;i<120;i++)notes.create(p.id,{content:`Note ${i}`})
+  for(let i=0;i<3;i++)await wa.run()
+  await wb.run();assert.equal(new NoteService(bdb,b).list(p.id).length,120)
+  new ProjectService(adb).delete(p.id)
+  await wa.run();await wb.run()
+  const trash=new TrashService(bdb),partial=(trash.list() as {id:string;ready:number}[])[0]!
+  assert.equal(partial.ready,0);assert.throws(()=>trash.restore(partial.id),/finish syncing/)
+  await wa.run();await wb.run()
+  const complete=trash.list() as {id:string;ready:number}[]
+  assert.equal(complete.length,1);assert.equal(complete[0]!.ready,1)
+  trash.restore(complete[0]!.id)
+  assert.equal(new ProjectService(bdb).resolve(p.id).title,p.title)
+  assert.equal(new NoteService(bdb,b).list(p.id).length,120)
+  for(let i=0;i<3;i++)await wb.run()
+  await wa.run();assert.equal(wa.error,'');assert.equal(new NoteService(adb,a).list(p.id).length,120)
+ }finally{cleanup(a,adb);cleanup(b,bdb);if(old.PDFPAL_FIREBASE_PROJECT_ID===undefined)delete process.env.PDFPAL_FIREBASE_PROJECT_ID;else process.env.PDFPAL_FIREBASE_PROJECT_ID=old.PDFPAL_FIREBASE_PROJECT_ID}
+})

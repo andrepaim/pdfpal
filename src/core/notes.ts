@@ -5,6 +5,7 @@ import { ProjectService } from './projects.js'
 import { SourceService } from './sources.js'
 import type { Note } from './types.js'
 import { PdfpalError } from './types.js'
+import { trashDelete } from './trash.js'
 
 const now = () => new Date().toISOString()
 
@@ -65,7 +66,7 @@ export class NoteService {
 
   delete(projectSelector: string, selector: string): Note {
     const note = this.resolve(projectSelector, selector)
-    this.db.prepare('DELETE FROM notes WHERE id=?').run(note.id)
+    trashDelete(this.db,'note',note.id,note.title,()=>this.db.prepare('DELETE FROM notes WHERE id=?').run(note.id))
     return note
   }
 }

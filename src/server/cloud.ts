@@ -6,6 +6,8 @@ import { SyncWorker } from "../sync/worker.js";
 import { setting } from "../sync/database.js";
 import { z } from "zod";
 import { Telemetry } from "../core/telemetry.js";
+import {errorReportsFor} from '../core/error-reports.js'
+import {FirebaseTransport} from '../sync/firebase.js'
 export async function registerCloudRoutes(
   app: FastifyInstance,
   db: Database,
@@ -36,15 +38,27 @@ export async function registerCloudRoutes(
     vaultError = "Cloud credentials could not be unlocked; sign in again";
   }
   const worker = new SyncWorker(db, config, auth);
+  const reports=errorReportsFor(db)
+  reports.bind(()=>auth.credentials?.uid??'',()=>{const transport=new FirebaseTransport(auth,reports.signal);return {write:(id,event)=>transport.writeDiagnostic(id,event),list:()=>transport.diagnostics(),delete:id=>transport.deleteDiagnostic(id)}})
+  app.get('/api/telemetry/reports',async()=>reports.overview())
+  app.post('/api/telemetry/reports/consent',async req=>{reports.setSharing(z.object({enabled:z.boolean()}).strict().parse(req.body).enabled);return reports.overview()})
+  app.post('/api/telemetry/reports/retry',async()=>{await reports.flush(true);return reports.overview()})
+  app.get('/api/telemetry/reports/shared',async()=>reports.shared())
+  app.delete('/api/telemetry/reports/shared',async()=>reports.clearShared())
+  app.delete('/api/telemetry/reports/local',async()=>{reports.clearLocal();return {ok:true}})
+  app.post('/api/telemetry/reports/renderer',async req=>{z.object({code:z.literal('RENDERER_CRASH')}).strict().parse(req.body);reports.record('RENDERER_CRASH');return {ok:true}})
+  app.decorate('errorReports',reports)
   worker.error = vaultError;
   const requireIdle = () => {
     if (worker.running) throw Error("Wait for synchronization to finish");
   };
-  const timer = setInterval(() => void worker.run(), 30_000);
+  const timer = setInterval(() => {void worker.run();void reports.flush()}, 30_000);
   timer.unref();
+  app.addHook('preClose',async()=>{worker.stop();reports.stop()});
   const close = async () => {
     clearInterval(timer);
     worker.stop();
+    await reports.close();
     while (worker.running)
       await new Promise((resolve) => setTimeout(resolve, 50));
   };
@@ -131,6 +145,7 @@ export async function registerCloudRoutes(
   );
   app.post("/api/cloud/logout", async () => {
     requireIdle();
+    reports.cancel();
     await auth.logout();
     return { ok: true };
   });
@@ -167,6 +182,14 @@ export async function registerCloudRoutes(
     z.object({ enabled: z.literal(true) }).strict().parse(req.body);
     return worker.enableConversations();
   });
+  app.get('/api/cloud/files',async()=>({files:await worker.fileStatus(),...worker.status().pdfFiles}))
+  app.post('/api/cloud/files',async req=>{requireIdle();return worker.setPdfFiles(z.object({enabled:z.boolean()}).strict().parse(req.body).enabled)})
+  app.post<{Params:{id:string}}>('/api/cloud/files/:id/retry',async req=>{
+    requireIdle();worker.setPdfFiles(true)
+    const id=z.string().uuid().parse(req.params.id)
+    db.prepare('DELETE FROM sync_files WHERE source_id=?').run(id)
+    await worker.run();return worker.status()
+  })
   app.get("/api/cloud/conflicts", async () =>
     db
       .prepare(

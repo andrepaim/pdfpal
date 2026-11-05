@@ -1,5 +1,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
+export function registeredLibrary(libraries,id){
+  if(typeof id!=='string'||!(id==='original'||/^[a-f0-9-]{36}$/.test(id))||!libraries||!Object.hasOwn(libraries,id))return
+  const item=libraries[id]
+  if(!item||typeof item.dataDir!=='string'||typeof item.dbPath!=='string'||!path.isAbsolute(item.dataDir)||!path.isAbsolute(item.dbPath)||typeof item.label!=='string')return
+  return item
+}
 
 export function safeRoute(route) {
   return typeof route === 'string' && route.startsWith('/') && !route.startsWith('//') && !/[\\\u0000-\u001f]/.test(route) ? route : '/'

@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawn } from 'node:child_process'
 import { provider, setupScript, trustedSender, recoveryMessage, diagnostics } from './setup.mjs'
 import { checkDesktopUpdates, releasePage } from './updates.mjs'
-import { preferences, restoreBounds, restoreLibraryRoute, safeRoute, startupArguments } from './preferences.mjs'
+import { preferences, registeredLibrary, restoreBounds, restoreLibraryRoute, safeRoute, startupArguments } from './preferences.mjs'
 import { Session } from './chatgpt/session.mjs'
 import { protectedVault } from './chatgpt/vault.mjs'
 import { betaOptions, betaAcceptance } from './beta-acceptance.mjs'
@@ -48,6 +48,15 @@ fs.mkdirSync(profile, { recursive: true })
 app.setPath('userData', profile)
 if (process.platform === 'win32') app.setAppUserModelId(applicationId)
 const prefs = preferences(path.join(app.getPath('userData'), 'desktop.json'))
+const explicitLibrary = !!process.env.PDFPAL_DATA_DIR || !!process.env.PDFPAL_DB
+const requestedLibrary = process.argv.find(value => value.startsWith('--selected-library='))?.slice('--selected-library='.length)
+const knownLibraries = prefs.value.libraries ?? {}
+const selectedLibrary = requestedLibrary ?? (!explicitLibrary && !smoke && !beta ? prefs.value.activeLibrary : undefined)
+if (registeredLibrary(knownLibraries,selectedLibrary)) {
+  process.env.PDFPAL_DATA_DIR = knownLibraries[selectedLibrary].dataDir
+  process.env.PDFPAL_DB = knownLibraries[selectedLibrary].dbPath
+}
+let libraryId = registeredLibrary(knownLibraries,selectedLibrary) ? selectedLibrary : 'original'
 let chatgpt
 let backend, window, tray, ready, pendingReceipt, stopping = false, exited = true, booting = false, crashRetries = 0, secondLaunches = 0
 const recoveryURL = pathToFileURL(path.join(root, 'recovery.html')).href
@@ -132,7 +141,7 @@ async function checkUpdates() {
 }
 function startupArgs() {
   if (!ready) return []
-  return startupArguments(ready.startup, app.getPath('userData'))
+  return [...startupArguments(ready.startup, app.getPath('userData')),`--selected-library=${libraryId}`]
 }
 function loginEnabled() {
   return process.platform === 'win32' && app.getLoginItemSettings({ path: process.execPath }).launchItems.some(item => item.name === applicationId && item.enabled)
@@ -195,7 +204,7 @@ async function shutdown(code = 0) {
   const closed = backend && !exited ? new Promise(resolve => backend.once('exit', resolve)) : Promise.resolve()
   if (backend && !exited) backend.postMessage({ type: 'stop' })
   let forced = false
-  const timer = setTimeout(() => { forced = true; backend?.kill() }, 7000)
+  const timer = setTimeout(() => { forced = true; backend?.kill() }, 30000)
   const backendCode = await closed; clearTimeout(timer)
   rejectPending()
   if (temporary) {
@@ -221,6 +230,8 @@ function ensureWindow() {
         window.webContents.on('page-title-updated', event => { event.preventDefault(); window.setTitle('pdfpal Cloud Preview') })
       }
       restoreWindowState = true
+      if(libraryId!=='original')window.webContents.on('page-title-updated',event=>{event.preventDefault();window.setTitle('pdfpal · Recovery library')})
+      window.webContents.on('render-process-gone',()=>{if(!stopping){journal.record('RENDERER_CRASH');void rpc('report-native-error',{code:'RENDERER_CRASH'}).catch(()=>{})}})
       window.webContents.setWindowOpenHandler(({ url }) => { openBrowser(url); return { action: 'deny' } })
       window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
       window.webContents.on('will-attach-webview', event => event.preventDefault())
@@ -280,7 +291,7 @@ async function boot() {
     setServiceState({ state: 'starting' })
     if (!loadedOrigin) { await window.loadURL(recoveryURL); if (!smoke && (!process.argv.includes('--hidden') || !tray || !prefs.value.setupComplete)) showWindow() }
     const child = utilityProcess.fork(path.join(root, 'backend.mjs'), [], {
-      env: { ...process.env, PDFPAL_M0_SMOKE: smoke ? '1' : '0' }, stdio: 'pipe', serviceName: 'pdfpal backend',
+      env: { ...process.env, PDFPAL_APP_VERSION:app.getVersion(), PDFPAL_M0_SMOKE: smoke ? '1' : '0' }, stdio: 'pipe', serviceName: 'pdfpal backend',
     })
     backend = child; exited = false
     child.stdout?.resume()
@@ -327,6 +338,8 @@ async function boot() {
     }
     loadedOrigin = ready.origin
     journal.record('READY'); setServiceState({ state: 'ready', interrupted: crashRetries > 0 })
+    for(const event of journal.preview(app.getVersion()).events.filter(event=>event.at>(prefs.value.lastNativeReportAt??'')&&['BACKEND_STOPPED','START_FAILED','PREFERENCES_FAILED','RENDERER_CRASH'].includes(event.code)))await rpc('report-native-error',{code:event.code}).catch(()=>{})
+    savePrefs({lastNativeReportAt:new Date().toISOString()})
     if (exited) throw new Error('The local service stopped during startup. Retry.')
     if (!smoke && (!process.argv.includes('--hidden') || !tray || !prefs.value.setupComplete)) showWindow()
     booting = false; updateTray()
@@ -504,6 +517,30 @@ else {
     })
   }
   handle('updates-state', () => updateState, true)
+  handle('library-state', () => ({active:libraryId,libraries:Object.entries(prefs.value.libraries??{}).map(([id,item])=>({id,label:item.label}))}))
+  handle('choose-backup-folder', async () => {
+    const choice=await dialog.showOpenDialog(window,{title:'Choose a backup folder',properties:['openDirectory','createDirectory']})
+    if(choice.canceled||!choice.filePaths[0])return false
+    await rpc('set-backup-folder',{directory:choice.filePaths[0]});return true
+  })
+  handle('open-backup-folder',async()=>{const error=await shell.openPath(await rpc('backup-folder'));if(error)throw new Error('Create a backup first, then open its folder.');return true})
+  const switchLibrary=async id=>{
+    if(!registeredLibrary(prefs.value.libraries,id))throw new Error('Unknown library')
+    if((await rpc('status')).active)throw new Error('Wait for the current answer to finish before switching libraries.')
+    if(window&&!window.isDestroyed())await window.webContents.executeJavaScript('window.pdfpalFlushPending?.()')
+    prefs.update({activeLibrary:id,route:'/'})
+    if(prefs.value.startAtLogin&&process.platform==='win32')app.setLoginItemSettings({name:applicationId,openAtLogin:true,path:process.execPath,args:[...startupArguments({...ready.startup,...prefs.value.libraries[id]},app.getPath('userData')),`--selected-library=${id}`]})
+    const args=process.argv.slice(1).filter(value=>!['--selected-library=','--data-dir=','--db='].some(flag=>value.startsWith(flag)))
+    app.relaunch({args:[...args,`--selected-library=${id}`]});void shutdown();return true
+  }
+  handle('switch-library',switchLibrary)
+  handle('open-recovered-library',async id=>{
+    const recovered=await rpc('recovered-library',{library:id})
+    const libraries={...prefs.value.libraries}
+    if(!libraries[libraryId])libraries[libraryId]={label:libraryId==='original'?'Original library':'Current library',dataDir:ready.startup.dataDir,dbPath:ready.startup.dbPath}
+    libraries[id]={label:recovered.label,dataDir:recovered.dataDir,dbPath:path.join(recovered.dataDir,'pdfpal.db')}
+    prefs.update({libraries});return switchLibrary(id)
+  })
   handle('check-updates', checkUpdates, true)
   handle('download-update', () => { if (updateState.state !== 'available') throw new Error('Check for an available update first'); openBrowser(updateState.downloadURL); return true }, true)
   handle('release-notes', () => { openBrowser(updateState.releaseURL ?? releasePage); return true }, true)

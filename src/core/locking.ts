@@ -21,6 +21,20 @@ export function acquireLease(filename: string, timeout = 0): () => void {
   return () => { if (!released) { released = true; db.exec('ROLLBACK'); db.close() } }
 }
 
+/** Wait without blocking the event loop while a snapshot is copying PDFs. */
+export async function acquireFilesLease(dbPath: string, timeout = 120000, signal?:AbortSignal): Promise<() => void> {
+  const until=Date.now()+timeout
+  while(true) {
+    if(signal?.aborted)throw new PdfpalError('LIBRARY_CANCELLED','The library operation was cancelled while waiting for a file update.',4)
+    try{return acquireLease(`${databasePath(dbPath)}.files-lock`)}
+    catch(error){
+      if(!String((error as {code?:string}).code??'').startsWith('SQLITE_BUSY'))throw error
+      if(Date.now()>=until)throw new PdfpalError('LIBRARY_BUSY','A library backup or file update is still running. Try again shortly.',4)
+      await new Promise(resolve=>setTimeout(resolve,50))
+    }
+  }
+}
+
 export function acquireServerLease(dbPath: string): () => void {
   const key = databasePath(dbPath)
   if (servers.has(key)) throw new PdfpalError('SERVER_ALREADY_RUNNING', 'pdfpal is already serving this library.')

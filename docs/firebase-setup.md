@@ -6,7 +6,7 @@ The optional cloud integration uses Firebase Authentication, Firestore Standard,
 
 Projects, nested collections, PDF source metadata, reading position, Markdown notes and highlights enter a transactional SQLite outbox, including changes made by the CLI. Operations are bound to an account, library and generation. Firestore transactions commit the entity revision, ordered change, immutable receipt and library sequence together. Security Rules enforce ownership and companion writes. The worker keeps remote acknowledgements separate from optimistic local revisions. Incoming changes and cursors commit locally together.
 
-PDF transfers use private, immutable source/hash paths. Downloads are size/hash checked and indexed locally. PDF storage is optional; the interface explicitly labels metadata-only configuration. Only actual uploaded/downloaded files count as file synchronization. Existing local data is backed up before binding. Downloading an existing cloud library currently requires an empty local library. One local database is bound permanently to one cloud library; use a separate PDFPAL_DATA_DIR for another library/account.
+PDF transfers default off on every device, even when Storage is configured. Choose **Cloud library → PDF file sync → Enable PDF transfers** explicitly. Transfers use private, immutable source/hash paths. Downloads are size/hash checked and indexed locally. PDF storage is optional; the interface explicitly labels metadata-only configuration. Only actual uploaded/downloaded files count as file synchronization. Existing local data is backed up before binding. Downloading an existing cloud library currently requires an empty local library. One local database is bound permanently to one cloud library; use a separate PDFPAL_DATA_DIR for another library/account.
 
 ## Saved PDF and project conversations
 
@@ -18,7 +18,9 @@ Each saved message currently supports at most 200,000 characters and the existin
 
 Conflicting edits pause synchronization and preserve both versions. The interface resolves note edits against the latest remote revision; other conflicts, including remote deletion of a locally edited note, currently require manual recovery/export. Acknowledged receipts and tombstones are retained; there is no history pruning.
 
-Kindle extension conversations, interactive visual assets, Android transport, profile-switch UI, durable account erasure, orphan cleanup and independent cloud backup are outstanding. This is a desktop sync alpha, not completion of the broader roadmap. Do not describe it as a complete backup of all pdfpal content.
+Kindle extension conversations, interactive visual assets, Android transport, general account-profile switching, durable account erasure, orphan cleanup and independent cloud backup are outstanding. This is a desktop sync alpha, not completion of the broader roadmap. Do not describe it as a complete backup of all pdfpal content.
+
+Full local backups, Recently deleted and recovery into separate libraries are described in [Backup and recovery](backup-recovery.md). These protect local content independently of cloud sync; recovery copies start disconnected from cloud.
 
 ## Active Firebase setup
 
@@ -66,7 +68,9 @@ Privacy controls store diagnostic and usage consent separately, defaulting off. 
 
 Configured renderer adapters use Firebase Analytics allowlisted events and Performance custom traces for search/import/sync actions. Automatic page-view reporting and advertising personalization/signals are disabled; the page location is reduced to its origin. The Performance adapter disables automatic instrumentation and exposes only explicit operation traces. Revocation disables collection. Packaged Electron behavior and actual dashboard delivery still require staging acceptance; a local unit test is not evidence of ingestion.
 
-Native Windows/backend crashes are not integrated into Crashlytics. Android Crashlytics, native symbol upload and optional desktop ingestion through a Firebase Function remain separate work. Do not upload PDF contents, titles, notes, queries, prompts, answers, email, URLs, paths or tokens to telemetry. SDK automatic behavior must pass a network/redaction acceptance check before enabling collection for real users.
+Desktop error reports now use a separate, default-off **Privacy → Share error reports with Firebase** control. They send only allowlisted codes, version, platform, timestamp and bounded timing through the existing authenticated Firestore transport. No Cloud Function, Cloud Run or billing is required. Reports can be previewed, exported and removed in the app. See [Error reporting](error-reports.md) for exact fields, retention, rate limits and restart-based native crash capture.
+
+Native Windows/backend crashes are not integrated into Crashlytics. Android Crashlytics and native symbol upload remain separate work. Do not upload PDF contents, titles, notes, queries, prompts, answers, email, URLs, paths or tokens to telemetry. SDK automatic behavior must pass a network/redaction acceptance check before enabling collection for real users.
 
 ## Verification
 
@@ -80,7 +84,7 @@ npm exec --workspace frontend -- playwright test e2e/cloud-settings.spec.ts
 
 The Firebase command needs Node 22, Java 21 and Firebase CLI. It runs only against `demo-pdfpal-sync` on loopback ports 8081/9199, with no real credentials. Tests cover production REST transactions, duplicate retries, competing clients, ownership, forbidden partial writes, immutable history, stale revisions, private PDF transfer and two local database clients restoring PDF/notes. Tests reject non-loopback or non-demo emulator configuration.
 
-Storage test fixtures are synthetic. Local test suites verify outbox transaction rollback, pause behavior, no upload echo, preserved conflicts and consent/redaction/error containment. Existing migration/server/CLI tests remain required. Live Google authorization, Windows protected credential persistence, cloud telemetry, region/cost measurements and signed two-installation acceptance are additional release gates.
+Storage test fixtures are synthetic. Local test suites verify outbox transaction rollback, pause behavior, no upload echo, preserved conflicts and consent/redaction/error containment. Existing migration/server/CLI tests remain required. Live Google authorization, Windows protected credential persistence, optional live cloud error-report ingestion, region/cost measurements and signed two-installation acceptance are additional release gates.
 
 ## Cost and operations
 
@@ -91,3 +95,9 @@ Allowances are shared by the project, not multiplied by user count. A logical sy
 Verification receipt: [Firebase desktop alpha](evidence/firebase-desktop-alpha.md).
 
 Source architecture reference: `../distillpod/docs/android/firebase-sync-telemetry-plan.md` in the sibling checkout. This integration adopts its direct Firebase/outbox/consent pattern; its Android code and production setup are independent.
+
+## Optional PDF Storage setup
+
+The bundled production project stays on Spark with no billing account. Firebase now requires Blaze for Storage, including usage covered by a free allowance. Read [Firebase’s Storage requirements](https://firebase.google.com/docs/storage/faqs-storage-changes-announced-sept-2024) before explicitly authorizing a billing-enabled bucket. The app never upgrades your plan or creates a bucket automatically.
+
+For a separate deployment where billing has already been authorized, provision the project’s default bucket, deploy `cloud/storage.rules`, and set `PDFPAL_STORAGE_BUCKET` to `<projectId>.firebasestorage.app` (or the project’s older `<projectId>.appspot.com`). The backend rejects buckets outside the configured project. Restart, sign in as the library owner, and enable PDF transfers explicitly on each device. Check **Cloud library → PDF file sync** for local availability, verified transfers, oversized files and retry controls. Disabling transfers keeps previously uploaded files. File-transfer failures do not stop metadata or saved-conversation sync.

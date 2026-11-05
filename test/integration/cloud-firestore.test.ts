@@ -6,7 +6,7 @@ import {
   assertFails,
 } from "@firebase/rules-unit-testing";
 import { createMockUserToken } from "@firebase/util";
-import { doc, setDoc, getDoc, writeBatch, updateDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, writeBatch, updateDoc, deleteDoc } from "firebase/firestore";
 import { CloudAuth } from "../../src/sync/auth.js";
 import { FirebaseTransport } from "../../src/sync/firebase.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -57,6 +57,25 @@ test(
         createMockUserToken({ sub: uid, user_id: uid }, "demo-pdfpal-sync");
       return new FirebaseTransport(auth);
     };
+    await t.test('error reports enforce the safe schema, owner isolation and immutable receipts',async()=>{
+      const aliceDb=env.authenticatedContext('report-alice').firestore(),bobDb=env.authenticatedContext('report-bob').firestore()
+      const id=randomUUID(),route=`users/report-alice/diagnostics/${id}`
+      const safe={format:1,code:'SYNC_FAILED',appVersion:'2.5.0-preview.1',platform:'win32',at:Date.now(),durationMs:120}
+      await setDoc(doc(aliceDb,route),safe)
+      await setDoc(doc(aliceDb,route),safe)
+      await assertFails(setDoc(doc(aliceDb,route),{...safe,code:'SERVER_ERROR'}))
+      await assertFails(setDoc(doc(aliceDb,`users/report-alice/diagnostics/${randomUUID()}`),{...safe,message:'private contents'}))
+      await assertFails(setDoc(doc(aliceDb,`users/report-alice/diagnostics/${randomUUID()}`),{...safe,code:'Private question'}))
+      await assertFails(getDoc(doc(bobDb,route)))
+      await assertFails(deleteDoc(doc(bobDb,route)))
+      await deleteDoc(doc(aliceDb,route))
+      const auth=new CloudAuth({} as any);auth.credentials={uid:'report-alice',email:'',idToken:'',refreshToken:'',expiresAt:Infinity};auth.token=async()=>createMockUserToken({sub:'report-alice',user_id:'report-alice'},'demo-pdfpal-sync')
+      const transport=new FirebaseTransport(auth)
+      await transport.writeDiagnostic(id,safe as any)
+      assert.equal((await transport.diagnostics()).length,1)
+      await transport.deleteDiagnostic(id)
+      assert.equal((await transport.diagnostics()).length,0)
+    })
     const alice = client("alice"),
       bob = client("bob");
     const project = (id = randomUUID()): Operation => ({
@@ -339,6 +358,11 @@ test(
               title: "Fixture note",
               content: "Portable note",
             });
+            assert.equal(wa.status().pdfFiles.enabled,false)
+            await wa.run();await wb.run();
+            assert.equal(new SourceService(bdb,b).resolve(project.id,source.id).local_path,null)
+            assert.equal((adb.prepare('SELECT COUNT(*) n FROM sync_files').get() as {n:number}).n,0)
+            wa.setPdfFiles(true);wb.setPdfFiles(true);
             await wa.run();
             assert.equal(wa.error, "");
             await wb.run();

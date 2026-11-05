@@ -32,6 +32,10 @@ process.parentPort.on('message', async ({ data }) => {
     if (!runtime || stopping) throw new Error('Service is not ready')
     let result
     if (data.command === 'status') result = { active: AgentService.activeCount + directPending.size }
+    else if (data.command === 'recovered-library') result = await runtime.server.libraryBackups.recovered(data.library)
+    else if (data.command === 'backup-folder') result = runtime.server.libraryBackups.root
+    else if (data.command === 'report-native-error') {runtime.server.errorReports.record(data.code);result=true}
+    else if (data.command === 'set-backup-folder') result = await runtime.server.libraryBackups.setDirectory(data.directory)
     else if (data.command === 'set-agent') {
       if (!['claude', 'codex', 'opencode', 'chatgpt'].includes(data.agent)) throw new Error('Unknown assistant')
       result = saveAIModePreference(config, data.agent)
@@ -58,7 +62,7 @@ process.parentPort.on('message', async ({ data }) => {
     process.parentPort.postMessage({ type: 'rpc-result', id: data.id, result })
   } catch (error) {
     const safe = ['AGENT_SIGN_IN', 'AGENT_LIMIT', 'AGENT_OFFLINE', 'AGENT_SETUP', 'AGENT_TIMEOUT', 'AGENT_CANCELLED', 'AGENT_NOT_FOUND'].includes(error.code)
-    process.parentPort.postMessage({ type: 'rpc-result', id: data.id, error: safe ? error.message : 'Could not complete this action. Check the official assistant setup instructions and retry.', code: error.code })
+    process.parentPort.postMessage({ type: 'rpc-result', id: data.id, error: safe ? error.message : ['recovered-library','backup-folder','set-backup-folder'].includes(data.command)?'Could not access the library or backup folder. Check that it is available and writable.':'Could not complete this action. Check the official assistant setup instructions and retry.', code: error.code })
   }
 })
 try {

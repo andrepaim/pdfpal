@@ -36,3 +36,13 @@ test('a saved alpha project missing from the current library reopens home withou
   assert.equal(await restoreLibraryRoute(route, 'http://localhost:8200', async () => { throw new Error('offline') }), route)
   assert.equal(await restoreLibraryRoute('/extensions/connect', 'http://localhost:8200', async () => { throw new Error('should not query') }), '/extensions/connect')
 })
+
+test('library switching resolves only registered absolute paths and rejects inherited or malformed entries',async()=>{
+ const {registeredLibrary}=await import('../src/preferences.mjs')
+ const id='00000000-0000-0000-0000-000000000001',entry={label:'Recovery',dataDir:path.resolve('recovery'),dbPath:path.resolve('recovery/pdfpal.db')}
+ assert.equal(registeredLibrary({[id]:entry},id),entry)
+ assert.equal(registeredLibrary({original:entry},'original'),entry)
+ for(const bad of ['__proto__','constructor','../../library','00000000-0000-0000-0000-000000000002'])assert.equal(registeredLibrary({[id]:entry},bad),undefined)
+ assert.equal(registeredLibrary({[id]:{...entry,dbPath:'relative.db'}},id),undefined)
+ assert.equal(registeredLibrary(Object.create({[id]:entry}),id),undefined)
+})

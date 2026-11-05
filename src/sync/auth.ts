@@ -23,6 +23,8 @@ export function cloudOptions() {
     clientId = process.env.PDFPAL_GOOGLE_CLIENT_ID ?? "";
   if (!/^[a-z][a-z0-9-]{4,62}$/.test(projectId))
     throw Error("Invalid Firebase project");
+  const storageBucket=process.env.PDFPAL_STORAGE_BUCKET??''
+  if(storageBucket&&![`${projectId}.appspot.com`,`${projectId}.firebasestorage.app`].includes(storageBucket))throw Error('The PDF Storage bucket must belong to the configured Firebase project.')
   return {
     projectId,
     apiKey,
@@ -30,7 +32,7 @@ export function cloudOptions() {
     loginUrl:
       process.env.PDFPAL_FIREBASE_LOGIN_URL ??
       `https://${projectId}.web.app/login.html`,
-    storageBucket: process.env.PDFPAL_STORAGE_BUCKET ?? "",
+    storageBucket,
     clientSecret: process.env.PDFPAL_GOOGLE_CLIENT_SECRET ?? "",
   };
 }

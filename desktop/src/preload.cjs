@@ -9,6 +9,11 @@ ipcRenderer.on('pdfpal:open-ai-settings', () => {
 })
 
 contextBridge.exposeInMainWorld('pdfpalDesktop', {
+  libraryState: () => ipcRenderer.invoke('pdfpal:library-state'),
+  switchLibrary: id => ipcRenderer.invoke('pdfpal:switch-library', id),
+  openRecoveredLibrary: id => ipcRenderer.invoke('pdfpal:open-recovered-library', id),
+  chooseBackupFolder: () => ipcRenderer.invoke('pdfpal:choose-backup-folder'),
+  openBackupFolder: () => ipcRenderer.invoke('pdfpal:open-backup-folder'),
   chatgpt: (action, ...args) => { if (!['state','connect','cancel','stop','models','select','disconnect','usage'].includes(action)) return Promise.reject(new Error('Unsupported account action')); return ipcRenderer.invoke('pdfpal:chatgpt-' + action, ...args) },
   updatesState: () => ipcRenderer.invoke('pdfpal:updates-state'),
   checkUpdates: () => ipcRenderer.invoke('pdfpal:check-updates'),

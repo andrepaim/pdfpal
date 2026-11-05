@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Database } from 'better-sqlite3'
 import { ProjectService } from './projects.js'
 import { PdfpalError } from './types.js'
+import { trashDelete } from './trash.js'
 
 const now = () => new Date().toISOString()
 
@@ -77,7 +78,7 @@ export class CollectionService {
     const collection = this.resolve(projectSelector, selector)
     // Child collections cascade; member sources fall back to unfiled via the
     // sources.collection_id ON DELETE SET NULL foreign key.
-    this.db.prepare('DELETE FROM collections WHERE id=?').run(collection.id)
+    trashDelete(this.db,'collection',collection.id,collection.name,()=>this.db.prepare('DELETE FROM collections WHERE id=?').run(collection.id))
     return collection
   }
 
