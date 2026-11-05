@@ -134,7 +134,7 @@ try {
   const rootCollection=(await command([...scope,'collection','list',project.id])).items.find(collection=>collection.name==='Native collection 🧪')
   assert.ok(rootCollection)
   assert.equal(rootCollection.parent_id,null)
-  await evaluate('document.querySelector("button[title=\"New sub-collection\"]").click();true')
+  await evaluate(`document.querySelector('button[title="New sub-collection"]').click();true`)
   await waitForRenderer('!!document.querySelector(".collection-dialog[open]")','New sub-collection did not open a dialog')
   await submitCollection('Native nested collection')
   const nestedCollection=(await command([...scope,'collection','list',project.id])).items.find(collection=>collection.name==='Native nested collection')

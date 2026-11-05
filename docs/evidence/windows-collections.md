@@ -1,0 +1,7 @@
+Windows collection creation — 2.7.0-preview.2
+
+The project view's New Collection and New sub-collection buttons called `window.prompt()`. A direct probe in the pinned native Electron 45.1.0 runtime threw `prompt() is not supported.` The original installed application also failed the new native dialog check, using an isolated library and profile.
+
+Both actions now open a named in-app dialog with a collection-name field, keyboard submission, Cancel and Escape handling, and focus restoration. Sub-collection creation displays its parent and expands that parent after saving. Failed saves retain the entered name and show an error for retry; blank names and duplicate submissions while saving are blocked. Successful saves update the collection tree directly. The existing API, library schema, and Firebase sync flow are unchanged.
+
+All 82 browser tests and 36 desktop tests passed. The browser regression explicitly disables native prompts and verifies root/nested persistence after reload, whitespace trimming, Unicode names, failed-save retry, cancellation, and focus restoration. The native Windows installer built successfully, and the packaged application passed [21 native checks](windows-collections-native.json), including collection and sub-collection creation through the actual Electron renderer and cancellation without another database row. Native mutations used temporary libraries, not the regular user library. The acceptance renderer uses focus emulation so visibility-aware refresh remains active when Windows occludes its fixture window.

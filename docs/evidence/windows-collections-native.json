@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "status": "passed",
+  "version": "2.7.0-preview.2",
+  "cliProtocol": 1,
+  "schema": 15,
+  "checks": [
+    "packaged-command-without-system-node",
+    "active-library-handshake",
+    "private-windows-pipe",
+    "forty-independent-cli-connections",
+    "unicode-and-literal-argument-forwarding",
+    "idempotent-project-create",
+    "live-ui-refresh",
+    "native-new-collection-dialog",
+    "native-nested-collection",
+    "native-collection-cancel",
+    "native-pdf-import-and-deduplication",
+    "bounded-text-and-search",
+    "utf8-note-file",
+    "undo-removal",
+    "verified-full-backup",
+    "powershell-json-argv",
+    "powershell-output",
+    "cmd-output",
+    "skill-copy-from-asar",
+    "managed-skill-uninstall",
+    "native-setup-ipc-and-dialog"
+  ],
+  "at": "2026-11-05T20:28:25.573Z"
+}
