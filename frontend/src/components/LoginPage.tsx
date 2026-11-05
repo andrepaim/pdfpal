@@ -1,7 +1,7 @@
 export default function LoginPage() {
   return (
     <div style={{
-      height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      height: 'var(--app-height, 100vh)', display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: 'var(--bg)', flexDirection: 'column', gap: 24,
     }}>
       <img src="/logo.png" alt="pdfpal" style={{ width: 120, height: 120 }} />

@@ -1,3 +1,4 @@
+import {useSettingsPanel} from '../lib/settings-panels'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { beginOperation } from '../lib/telemetry'
 import './cloud-settings.css'
@@ -80,6 +81,7 @@ export default function CloudSettings() {
     void request<Conflict[]>('conflicts').then(items => { if (active) setConflicts(items) }).catch(() => { if (active) setActionError('Could not load the saved versions. Please try again.') })
     return () => { active = false }
   }, [open, status?.conflicts])
+  useSettingsPanel('cloud',show)
   function show() { setOpen(true); setActionError(''); setNotice(''); dialog.current?.showModal() }
   function close() { setOpen(false); dialog.current?.close() }
   async function action(route: string, body: unknown = {}) {

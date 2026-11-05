@@ -65,7 +65,7 @@ export default function NoteEditor() {
   const updateContent = (v: string) => { setContent(v); scheduleSave(title, v) }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'var(--app-height, 100vh)', background: 'var(--bg)' }}>
       {/* Topbar */}
       <div style={{ height: 44, background: 'var(--panel)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px', flexShrink: 0 }}>
         <button onClick={() => navigate(`/projects/${projectId}`)} style={{ background: 'none', border: '1px solid var(--border)', color: '#9ca3af', borderRadius: 8, padding: '4px 10px', fontSize: 11, cursor: 'pointer' }}>← Project</button>

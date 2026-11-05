@@ -1,3 +1,4 @@
+import {useSettingsPanel} from '../lib/settings-panels'
 import { useEffect, useRef, useState } from 'react'
 import type { DesktopUpdateState } from '../desktop'
 
@@ -22,6 +23,7 @@ export default function DesktopUpdates() {
     dialog.current?.showModal()
     void check()
   }), [bridge])
+  useSettingsPanel('updates',()=>{if(!bridge?.checkUpdates||dialog.current?.open)return;dialog.current?.showModal();void check()})
   if (!bridge?.checkUpdates) return null
   const action = async (callback?: () => Promise<boolean>) => {
     try { await callback?.() } catch { setError('Could not open this item. Please try again.') }

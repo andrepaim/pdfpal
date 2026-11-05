@@ -9,6 +9,11 @@ ipcRenderer.on('pdfpal:open-ai-settings', () => {
 })
 
 contextBridge.exposeInMainWorld('pdfpalDesktop', {
+  chrome: process.platform === 'win32',
+  chromeState: () => ipcRenderer.invoke('pdfpal:chrome-state'),
+  chromeCommand: command => ipcRenderer.invoke('pdfpal:chrome-command', command),
+  onChromeState: callback => {const listener=(_event,state)=>callback(state);ipcRenderer.on('pdfpal:chrome-state',listener);return()=>ipcRenderer.removeListener('pdfpal:chrome-state',listener)},
+  onChromeCommand: callback => {const listener=(_event,command)=>callback(command);ipcRenderer.on('pdfpal:chrome-command',listener);return()=>ipcRenderer.removeListener('pdfpal:chrome-command',listener)},
   libraryState: () => ipcRenderer.invoke('pdfpal:library-state'),
   switchLibrary: id => ipcRenderer.invoke('pdfpal:switch-library', id),
   openRecoveredLibrary: id => ipcRenderer.invoke('pdfpal:open-recovered-library', id),

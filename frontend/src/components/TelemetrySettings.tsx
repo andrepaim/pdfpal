@@ -1,3 +1,4 @@
+import {useSettingsPanel} from '../lib/settings-panels'
 import {useEffect,useRef,useState} from 'react'
 import {configureTelemetry} from '../lib/telemetry'
 import './cloud-settings.css'
@@ -14,6 +15,7 @@ export default function TelemetrySettings(){
  async function action(work:()=>Promise<unknown>){setSaving(true);setError('');try{await work();await refresh()}catch(e){setError(e instanceof Error?e.message:'Please retry.')}finally{setSaving(false)}}
  async function update(next:typeof consent){const previous=consent;setConsent(next);try{const result=await api<typeof consent>('consent','POST',next);setConsent(result);await configureTelemetry(result).catch(()=>{})}catch(error){setConsent(previous);throw error}}
  async function share(enabled:boolean){const previous=reports;setReports(previous?{...previous,sharing:enabled}:previous);try{await api('reports/consent','POST',{enabled})}catch(error){setReports(previous);throw error}}
+ useSettingsPanel('privacy',()=>{setOpen(true);if(!dialog.current?.open)dialog.current?.showModal()})
  function close(){dialog.current?.close();setOpen(false)}
  function download(){const blob=new Blob([JSON.stringify({format:1,reports:reports?.records.map(r=>r.event)??[]},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='pdfpal-error-report.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
  return <>

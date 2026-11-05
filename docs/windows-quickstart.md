@@ -13,6 +13,12 @@ The desktop preview supports Windows 11 on an Intel/AMD 64-bit computer. It incl
 
 The current engineering installer is unsigned, so Windows may show an unknown-publisher/reputation prompt. Use it only as the test build supplied by the maintainer. A signed publisher identity is a gate for a public beta, not something this preview claims.
 
+## Window and app menu
+
+Version 2.6 adds an integrated dark title bar on Windows. Native minimize/maximize/close, title-bar dragging, resizing, Snap and Alt+F4 remain Windows controls. Click the top-left menu (or press **F10**) for AI settings, Cloud library, Backups & recovery, Privacy & diagnostics, the Kindle extension, software updates and Quit. Cloud also has a direct button at the top right. These replace the floating desktop settings buttons.
+
+Press **Ctrl+K** to find and open a project; use arrows and Enter to choose one, or Escape to close. **Alt+Left/Right** navigates reading history within the local reader. **Ctrl+,** opens AI settings; **F11** toggles full screen. **Ctrl+Q** quits through the same save/cancellation safeguards as the tray. The standard browser interface keeps its own layout.
+
 ## Windows tray
 
 Closing the reader keeps pdfpal running. Click its tray icon to reopen it. If the icon is hidden, open Windows' hidden-icons menu near the clock or enable pdfpal in taskbar tray settings. Use the tray's **Quit** action to save pending edits and stop the service. **Start with Windows** is optional and off by default.

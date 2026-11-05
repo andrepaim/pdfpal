@@ -19,6 +19,9 @@ import AISettings from './components/AISettings'
 import CloudSettings from './components/CloudSettings'
 import TelemetrySettings from './components/TelemetrySettings'
 import RecoverySettings from './components/RecoverySettings'
+import DesktopChrome from './components/DesktopChrome'
+
+if(window.pdfpalDesktop?.chrome)document.documentElement.classList.add('desktop-shell')
 
 // ── Error boundary ────────────────────────────────────────────────────────────
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
@@ -28,7 +31,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: string |
   render() {
     if (this.state.error) {
       return (
-        <div style={{ padding: 24, color: '#f87171', background: '#111', minHeight: '100vh', fontFamily: 'monospace' }}>
+        <div style={{ padding: 24, color: '#f87171', background: '#111', minHeight: 'var(--app-height, 100vh)', fontFamily: 'monospace' }}>
           <div style={{ fontSize: 24, marginBottom: 16 }}>⚠️ App Error</div>
           <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 16 }}>{this.state.error}</div>
           <button onClick={() => { localStorage.clear(); location.reload() }}
@@ -67,7 +70,7 @@ function Root() {
   }, [])
 
   if (user === undefined) {
-    return <div style={{ height: '100vh', background: '#0f0f0f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    return <div style={{ height: 'var(--app-height, 100vh)', background: '#0f0f0f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <span className="spinner" />
     </div>
   }
@@ -75,7 +78,6 @@ function Root() {
   if (!user) return <LoginPage />
 
   return (
-    <BrowserRouter>
       <Routes>
         <Route path="/extensions" element={<ExtensionsPage />} />
         <Route path="/extensions/connect" element={<ExtensionsPage />} />
@@ -98,12 +100,14 @@ function Root() {
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
   )
 }
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    <BrowserRouter>
+    <DesktopChrome />
+    <div className="application-surface">
     <ErrorBoundary>
       <Root />
       <AISettings />
@@ -113,5 +117,7 @@ createRoot(document.getElementById('root')!).render(
       <DesktopStatus />
       <DesktopUpdates />
     </ErrorBoundary>
+    </div>
+    </BrowserRouter>
   </StrictMode>,
 )

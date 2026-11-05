@@ -1,4 +1,5 @@
 const bridge = window.pdfpalDesktop
+if(bridge?.chrome)document.documentElement.classList.add('desktop-shell')
 async function refresh() {
   try {
     const state = await bridge.recovery()

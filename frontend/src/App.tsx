@@ -307,7 +307,7 @@ export default function App({ user }: { user: User }) {
 
   if (loading) {
     return (
-      <div style={{ height: '100vh', background: '#0f0f0f', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12, color: '#6b7280' }}>
+      <div style={{ height: 'var(--app-height, 100vh)', background: '#0f0f0f', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12, color: '#6b7280' }}>
         <span className="spinner" />
         Loading source…
       </div>
@@ -316,7 +316,7 @@ export default function App({ user }: { user: User }) {
 
   if (error) {
     return (
-      <div style={{ height: '100vh', background: '#0f0f0f', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12, color: '#f87171' }}>
+      <div style={{ height: 'var(--app-height, 100vh)', background: '#0f0f0f', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12, color: '#f87171' }}>
         ⚠️ {error}
         <button onClick={() => navigate(`/projects/${projectId}`)} style={{ marginTop: 8, background: '#1a1a1a', border: '1px solid #2a2a2a', color: '#9ca3af', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13 }}>
           ← Back to project
@@ -326,7 +326,7 @@ export default function App({ user }: { user: User }) {
   }
 
   if (source?.type === 'kindle' && source.url && projectId) {
-    return <main style={{ padding: 32, color: '#e5e7eb', background: 'var(--bg)', minHeight: '100vh' }}>
+    return <main style={{ padding: 32, color: '#e5e7eb', background: 'var(--bg)', minHeight: 'var(--app-height, 100vh)' }}>
       <button onClick={() => navigate(`/projects/${projectId}`)}>← Back to project</button>
       <h1>{source.title}</h1>
       {source.author && <p>{source.author}</p>}
@@ -348,7 +348,7 @@ export default function App({ user }: { user: User }) {
   )
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'var(--app-height, 100vh)', background: 'var(--bg)' }}>
       {/* Header */}
       <div style={{
         padding: '0 16px', height: 44, borderBottom: '1px solid var(--border)',

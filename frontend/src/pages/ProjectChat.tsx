@@ -186,7 +186,7 @@ export default function ProjectChat() {
   }
 
   return (
-    <div style={{ display: 'flex', height: '100vh', background: 'var(--bg)' }}>
+    <div style={{ display: 'flex', height: 'var(--app-height, 100vh)', background: 'var(--bg)' }}>
       {/* Sources panel */}
       <div style={{ width: 240, flexShrink: 0, background: '#111', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>

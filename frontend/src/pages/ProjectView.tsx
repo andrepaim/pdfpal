@@ -501,7 +501,7 @@ export default function ProjectView() {
   )
 
   return (
-    <div style={{ display: 'flex', height: '100vh', background: 'var(--bg)' }}>
+    <div style={{ display: 'flex', height: 'var(--app-height, 100vh)', background: 'var(--bg)' }}>
       {/* Sidebar */}
       <div style={{ width: 220, flexShrink: 0, background: '#111', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '12px 12px 8px', borderBottom: '1px solid var(--border)' }}>

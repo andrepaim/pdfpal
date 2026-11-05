@@ -4,11 +4,17 @@ export interface DesktopAssistant {
 }
 export interface DesktopSetupState { default: string; explicit?: boolean; complete: boolean; agents: DesktopAssistant[] }
 export interface DesktopServiceState { state: 'starting' | 'ready' | 'failed'; interrupted?: boolean }
+export interface DesktopChromeState {version:string;focused:boolean;maximized:boolean;fullscreen:boolean;canGoBack:boolean;canGoForward:boolean;zoom:number}
 
 declare global {
   interface Window {
     pdfpalFlushPending?: () => Promise<void>
     pdfpalDesktop?: {
+      chrome?:boolean
+      chromeState?(): Promise<DesktopChromeState>
+      chromeCommand?(command:string): Promise<boolean>
+      onChromeState?(callback:(state:DesktopChromeState)=>void):()=>void
+      onChromeCommand?(callback:(command:string)=>void):()=>void
       libraryState?(): Promise<{active:string;libraries:{id:string;label:string}[]}>
       switchLibrary?(id:string): Promise<boolean>
       openRecoveredLibrary?(id:string): Promise<boolean>

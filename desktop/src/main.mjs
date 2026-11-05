@@ -11,6 +11,7 @@ import { preferences, registeredLibrary, restoreBounds, restoreLibraryRoute, saf
 import { Session } from './chatgpt/session.mjs'
 import { protectedVault } from './chatgpt/vault.mjs'
 import { betaOptions, betaAcceptance } from './beta-acceptance.mjs'
+import {chromeOptions,chromeShortcut,readerHistoryTarget} from './chrome.mjs'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
 const metadata = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).pdfpalDesktop ?? {}
@@ -73,6 +74,27 @@ const pending = new Map()
 let rpcId = 0
 let warnedPreferences = false
 const ownedOrigin = url => { try { return ready && new URL(url).origin === ready.origin } catch { return false } }
+function readerHistory(offset) {
+  if(!window||window.isDestroyed())return
+  const history=window.webContents.navigationHistory
+  return readerHistoryTarget(history.getAllEntries(),history.getActiveIndex(),offset,ready?.origin)
+}
+function chromeState(){
+  return {version:app.getVersion(),focused:!!window?.isFocused(),maximized:!!window?.isMaximized(),fullscreen:!!window?.isFullScreen(),canGoBack:readerHistory(-1)!==undefined,canGoForward:readerHistory(1)!==undefined,zoom:window?.webContents.getZoomFactor()??1}
+}
+function sendChromeState(){if(window&&!window.isDestroyed())window.webContents.send('pdfpal:chrome-state',chromeState())}
+async function chromeCommand(command){
+  if(!['back','forward','zoom-in','zoom-out','zoom-reset','fullscreen','open-browser','quit','menu','find','home','ai-settings'].includes(command))throw new Error('Unsupported window action')
+  if(command==='quit'){void requestQuit();return true}
+  if(command==='fullscreen')window.setFullScreen(!window.isFullScreen())
+  else if(command.startsWith('zoom-'))window.webContents.setZoomFactor(command==='zoom-reset'?1:Math.min(1.75,Math.max(.75,Math.round((window.webContents.getZoomFactor()+(command==='zoom-in' ? .1 : -.1))*100)/100)))
+  else if(command==='back'||command==='forward'){
+    const index=readerHistory(command==='back'?-1:1)
+    if(index!==undefined){await window.webContents.executeJavaScript('window.pdfpalFlushPending?.()');window.webContents.navigationHistory.goToIndex(index)}
+  }else if(command==='open-browser'){if(ready)openBrowser(ready.origin+safeRoute(new URL(window.webContents.getURL()).pathname))}
+  else window.webContents.send('pdfpal:chrome-command',command)
+  sendChromeState();return true
+}
 
 function rpc(command, extra = {}) {
   if (!backend || exited) return Promise.reject(new Error('pdfpal is not running'))
@@ -224,12 +246,20 @@ async function shutdown(code = 0) {
 function ensureWindow() {
   if (!window || window.isDestroyed()) {
       window = new BrowserWindow({ ...restoreBounds(prefs.value.bounds, screen.getAllDisplays()), show: false, minWidth: 600, minHeight: 400,
+        ...chromeOptions(process.platform),
         backgroundColor: '#0f0f0f', icon: path.join(root, 'frontend/dist/icon-512.png'), webPreferences: { preload: path.join(root, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true } })
       if (metadata.cloudPreview) {
         window.setTitle('pdfpal Cloud Preview')
         window.webContents.on('page-title-updated', event => { event.preventDefault(); window.setTitle('pdfpal Cloud Preview') })
       }
       restoreWindowState = true
+      if(process.platform==='win32'){
+        window.setMenu(null)
+        window.webContents.on('before-input-event',(event,input)=>{const command=chromeShortcut(input);if(command&&!['menu','find','home','ai-settings'].includes(command)){event.preventDefault();void chromeCommand(command).catch(()=>notify('pdfpal','This action could not finish. Save your changes and try again.'))}})
+      }
+      for(const event of ['focus','blur','maximize','unmaximize','enter-full-screen','leave-full-screen'])window.on(event,sendChromeState)
+      window.webContents.on('did-navigate-in-page',sendChromeState)
+      window.webContents.on('did-finish-load',sendChromeState)
       if(libraryId!=='original')window.webContents.on('page-title-updated',event=>{event.preventDefault();window.setTitle('pdfpal · Recovery library')})
       window.webContents.on('render-process-gone',()=>{if(!stopping){journal.record('RENDERER_CRASH');void rpc('report-native-error',{code:'RENDERER_CRASH'}).catch(()=>{})}})
       window.webContents.setWindowOpenHandler(({ url }) => { openBrowser(url); return { action: 'deny' } })
@@ -517,6 +547,8 @@ else {
     })
   }
   handle('updates-state', () => updateState, true)
+  handle('chrome-state',chromeState,true)
+  handle('chrome-command',chromeCommand,true)
   handle('library-state', () => ({active:libraryId,libraries:Object.entries(prefs.value.libraries??{}).map(([id,item])=>({id,label:item.label}))}))
   handle('choose-backup-folder', async () => {
     const choice=await dialog.showOpenDialog(window,{title:'Choose a backup folder',properties:['openDirectory','createDirectory']})
@@ -598,6 +630,7 @@ else {
   }, true)
   handle('quit', () => { void requestQuit(); return true }, true)
   app.whenReady().then(async () => {
+  if(process.platform==='win32')Menu.setApplicationMenu(null)
   chatgpt = new Session({ ...protectedVault(path.join(profile, 'chatgpt'), safeStorage), open: url => shell.openExternal(url) })
   try { await chatgpt.init() } catch { chatgpt.data={host:'urn:uuid:'+randomUUID(),accounts:[],active:null};chatgpt.message='Windows could not unlock the saved connection. Reconnect in AI settings.' }
     try {

@@ -1,3 +1,4 @@
+import {useSettingsPanel} from '../lib/settings-panels'
 import {useCallback,useEffect,useRef,useState} from 'react'
 import './cloud-settings.css'
 import './recovery-settings.css'
@@ -24,6 +25,7 @@ export default function RecoverySettings(){
   setBusy(true);setError('');setNotice('');try{await window.pdfpalFlushPending?.();await work();if(message)setNotice(message);setConfirmation(undefined);await refresh()}catch(e){setError(e instanceof Error?e.message:'Please retry.')}finally{setBusy(false)}
  }
  async function configure(next:Settings){const previous=settings;setSettings(next);await action(async()=>{try{await request('settings','POST',{enabled:next.enabled,intervalHours:next.intervalHours,keep:next.keep})}catch(error){setSettings(previous);throw error}})}
+ useSettingsPanel('backups',()=>{setOpen(true);if(!dialog.current?.open)dialog.current?.showModal()})
  function close(){dialog.current?.close();setOpen(false)}
  async function restore(id:string){const recovered=await request<Library>(`backups/${id}/restore`,'POST',{});if(window.pdfpalDesktop?.openRecoveredLibrary)await window.pdfpalDesktop.openRecoveredLibrary(recovered.id);else setNotice(`Recovery copy is ready at ${recovered.dataDir}. Open it with pdfpal serve --data-dir "${recovered.dataDir}" --port 8203. Your current library is still open.`)}
  const blocked=busy||!!settings?.busy
