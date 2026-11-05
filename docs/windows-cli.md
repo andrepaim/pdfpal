@@ -10,6 +10,19 @@ Standalone skills and execution permissions depend on your ChatGPT/Codex host. A
 
 The first installation is user-scoped under `%USERPROFILE%\.agents\skills\pdfpal-cli`. Updates refresh unchanged managed copies; customized or legacy copies need explicit handling. `pdfpal skill install --replace` backs up an edited canonical copy before replacement. Backups live outside discoverable skill directories. The installer never changes the host's permission policy. The setup panel checks the connection; a successful request in ChatGPT verifies the complete workflow.
 
+If ChatGPT's **Settings → General → Agent environment** selects WSL, install the skill in that WSL distribution's `~/.agents/skills` as well. Windows, Ubuntu, and Ubuntu-24.04 have separate user skill directories. Checking discovery with the Windows agent or a different distribution does not verify the app's selected environment.
+
+Open a terminal in the distribution ChatGPT uses. After installing the Windows skill, replace `<Windows-user>` with your Windows user folder name and run:
+
+```bash
+pdfpal_windows_skill="/mnt/c/Users/<Windows-user>/.agents/skills/pdfpal-cli"
+test -f "$pdfpal_windows_skill/SKILL.md" &&
+  mkdir -p "$HOME/.agents/skills" &&
+  ln -sT "$pdfpal_windows_skill" "$HOME/.agents/skills/pdfpal-cli"
+```
+
+The command refuses to replace an existing destination. If one exists, inspect it and preserve any custom installation before changing it. A link follows future Windows skill updates and uses the bundled WSL adapter to reach the Windows library. Reopen the app's Skills page and verify that **Pdfpal CLI** appears under Installed; a successful CLI setup check alone does not establish that. The observed WSL installation appeared without restarting the app. A fresh conversation's successful library request verifies the complete workflow.
+
 Useful PowerShell commands:
 
 ```powershell

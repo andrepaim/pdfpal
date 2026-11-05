@@ -87,7 +87,9 @@ Download the Chrome companion, connect it to your local library, and manage pair
 
 Closing the window keeps pdfpal running in the system tray near the clock. Click the tray icon to reopen it; use **Quit** in its menu to stop the app.
 
-To browse and manage your library from ChatGPT, open **pdfpal menu → Command line & ChatGPT**. Windows version 2.7 includes a matching CLI and an installable skill for local agent sessions. See the [Windows CLI guide](docs/windows-cli.md).
+To browse and manage your library from the Windows ChatGPT app, open **pdfpal menu → Command line & ChatGPT**, choose **Install skill**, then **Check setup**. Windows version 2.7 includes the matching CLI. Keep pdfpal running in its tray, open ChatGPT's **Skills → Installed**, and look for **Pdfpal CLI**. Try: “Show my pdfpal projects.” The setup check verifies the CLI connection; verify skill discovery in ChatGPT separately.
+
+If ChatGPT's **Settings → General → Agent environment** selects WSL, the skill must also be available in that WSL distribution's `~/.agents/skills`. Windows, Ubuntu, and Ubuntu-24.04 use separate skill locations. Link the managed Windows skill into the distribution ChatGPT actually uses; see the [Windows CLI guide](docs/windows-cli.md) for commands and troubleshooting. The skill's WSL adapter operates your Windows library through the running app.
 
 The Windows installer is currently an **unsigned engineering preview**, so Windows may show an unknown-publisher prompt. To upgrade between previews, download the target installer from GitHub Releases and install it under the same Windows account. The tray’s **Check for updates** only looks for signed stable releases when you request a check. See the [Windows upgrade instructions](docs/windows-quickstart.md#upgrade-or-uninstall) for checksum and installation steps.
 
@@ -190,11 +192,11 @@ Select text in the PDF reader and choose **Explain visually** from its popup, or
 ### CLI & Agent Automation
 
 - **Full CLI**: every action above is also a `pdfpal` command, with `--json` for scripting.
-- **Claude Code / Codex skill**: let an agent drive projects, sources, collections, and notes directly (see below).
+- **ChatGPT / Claude Code / Codex skill**: let an agent drive projects, sources, collections, and notes directly (see below).
 
 ## Research with an agent, then read
 
-Finding papers is legwork, and by now agents are better at it than we are: they sweep the literature, follow citation trails, and triage abstracts faster than anyone with twelve tabs open. Reading is the part that's still yours. So pdfpal splits the job: give an agent a topic and it searches on its own, drives the pdfpal CLI through the [Agent skill](#agent-skill-claude-code--codex), and hands you back a project with the papers already fetched, filed into collections, and ready to read.
+Finding papers is legwork, and by now agents are better at it than we are: they sweep the literature, follow citation trails, and triage abstracts faster than anyone with twelve tabs open. Reading is the part that's still yours. So pdfpal splits the job: give an agent a topic and it searches on its own, drives the pdfpal CLI through the [Agent skill](#agent-skill), and hands you back a project with the papers already fetched, filed into collections, and ready to read.
 
 1. **Ask an agent** (Claude Code, Codex, or anything that can load the skill):
 
@@ -229,11 +231,13 @@ pdfpal ask "My Research" "Compare the main methods"
 
 Commands accept a UUID or an exact case-insensitive title. Ambiguous titles are rejected. Add `--json` for machine-readable output. `pdfpal ask <project>` reads the question from stdin when the question argument is omitted.
 
-## Agent skill (Claude Code / Codex)
+## Agent skill
 
 `skills/pdfpal-cli/` documents the full CLI (flags, exit codes, selector rules) so an agent can drive it directly; see [Research with an agent, then read](#research-with-an-agent-then-read) above for what that looks like in practice. It does not search for papers itself; that's the agent's job, using its own tools.
 
-From the source checkout, install it for both Claude Code and Codex (symlinks into `~/.claude/skills/` and `~/.codex/skills/`):
+For the Windows ChatGPT app, use [Command line & ChatGPT setup](#windows-desktop-preview) and verify **Pdfpal CLI** appears under **Skills → Installed**. A local skill requires a session with local execution access; installing it does not connect a browser-only chat to your PC. If the app uses WSL, follow the [distribution-specific setup](docs/windows-cli.md).
+
+For the Linux/WSL source setup, install it for Claude Code and Codex using the existing source installer (symlinks into `~/.claude/skills/` and `~/.codex/skills/`):
 
 ```bash
 npm run skill:install
