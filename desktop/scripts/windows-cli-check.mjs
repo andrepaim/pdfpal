@@ -57,6 +57,13 @@ async function evaluate(expression, awaitPromise = true) {
   })
 }
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
+async function waitForRenderer(expression, message) {
+  for (let i=0;i<60;i++) {
+    if (await evaluate(expression)) return
+    await pause(100)
+  }
+  assert.fail(message)
+}
 async function connectRenderer(){
   let page
   for(let i=0;i<100;i++){
@@ -72,6 +79,14 @@ async function connectRenderer(){
   socket=new WebSocket(page.webSocketDebuggerUrl)
   await new Promise((resolve,reject)=>{socket.addEventListener('open',resolve,{once:true});socket.addEventListener('error',reject,{once:true})})
   socket.addEventListener('message',event=>{const message=JSON.parse(event.data);if(pending.has(message.id)){pending.get(message.id).resolve(message.result??{});pending.delete(message.id)}})
+  // Keep visibility-aware refresh active in this isolated fixture when Windows
+  // occludes its window, without taking focus from the user's application.
+  const id=++nextId
+  await new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>{pending.delete(id);reject(new Error('Renderer focus emulation timed out'))},10000)
+    pending.set(id,{resolve:result=>{clearTimeout(timer);resolve(result)},reject})
+    socket.send(JSON.stringify({id,method:'Emulation.setFocusEmulationEnabled',params:{enabled:true}}))
+  })
 }
 try {
   await connectRenderer()
@@ -105,6 +120,32 @@ try {
   for(let i=0;i<60;i++){if(await evaluate('document.body.textContent.includes('+JSON.stringify(title)+')'))break;await pause(100)}
   assert.equal(await evaluate('document.body.textContent.includes('+JSON.stringify(title)+')'),true)
   checks.push('live-ui-refresh')
+  await evaluate('history.pushState({},"",'+JSON.stringify('/projects/'+project.id)+');window.dispatchEvent(new PopStateEvent("popstate"));true')
+  const newCollectionButton='Array.from(document.querySelectorAll("button")).find(button=>button.textContent.includes("New Collection"))'
+  await waitForRenderer('!!('+newCollectionButton+')','The project collection button did not appear')
+  await evaluate(newCollectionButton+'.click();true')
+  await waitForRenderer('!!document.querySelector(".collection-dialog[open]")','New Collection did not open an in-app dialog')
+  async function submitCollection(name) {
+    await evaluate('(()=>{const input=document.querySelector(".collection-dialog input");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(input,'+JSON.stringify(name)+');input.dispatchEvent(new Event("input",{bubbles:true}));return true})()')
+    await evaluate('document.querySelector(".collection-dialog form").requestSubmit();true')
+    await waitForRenderer('!document.querySelector(".collection-dialog[open]")','The collection was not created')
+  }
+  await submitCollection('Native collection 🧪')
+  const rootCollection=(await command([...scope,'collection','list',project.id])).items.find(collection=>collection.name==='Native collection 🧪')
+  assert.ok(rootCollection)
+  assert.equal(rootCollection.parent_id,null)
+  await evaluate('document.querySelector("button[title=\"New sub-collection\"]").click();true')
+  await waitForRenderer('!!document.querySelector(".collection-dialog[open]")','New sub-collection did not open a dialog')
+  await submitCollection('Native nested collection')
+  const nestedCollection=(await command([...scope,'collection','list',project.id])).items.find(collection=>collection.name==='Native nested collection')
+  assert.equal(nestedCollection?.parent_id,rootCollection.id)
+  assert.equal(await evaluate('document.body.textContent.includes("Native nested collection")'),true)
+  await evaluate(newCollectionButton+'.click();true')
+  await waitForRenderer('!!document.querySelector(".collection-dialog[open]")','The collection dialog did not reopen')
+  await evaluate('Array.from(document.querySelectorAll(".collection-dialog button")).find(button=>button.textContent==="Cancel").click();true')
+  await waitForRenderer('!document.querySelector(".collection-dialog[open]")','Cancel did not close the collection dialog')
+  assert.equal((await command([...scope,'collection','list',project.id])).total,2)
+  checks.push('native-new-collection-dialog','native-nested-collection','native-collection-cancel')
   const pdf=path.join(root,'paper with spaces.pdf')
   const extract=path.join(root,'copy-fixture.mjs')
   fs.writeFileSync(extract,"import fs from 'node:fs';fs.copyFileSync("+JSON.stringify(path.join(path.dirname(application),'resources/app.asar/sample.pdf'))+","+JSON.stringify(pdf)+");")
@@ -177,6 +218,12 @@ try {
   const receipt={format:1,status:'passed',version:status.build,cliProtocol:status.cliProtocol,schema:status.schema,checks,at:new Date().toISOString()}
   if(receiptFile)fs.writeFileSync(receiptFile,JSON.stringify(receipt,null,2)+'\n')
   console.log(JSON.stringify(receipt))
+} catch (error) {
+  if (socket?.readyState===WebSocket.OPEN) {
+    const renderer=await evaluate('({route:location.pathname,visibility:document.visibilityState,readyState:document.readyState,chrome:!!document.querySelector(".desktop-chrome"),dialogs:Array.from(document.querySelectorAll("dialog[open]")).map(dialog=>dialog.getAttribute("aria-label")||document.getElementById(dialog.getAttribute("aria-labelledby"))?.textContent)})').catch(()=>null)
+    console.error('Isolated acceptance renderer:',JSON.stringify(renderer))
+  }
+  throw error
 } finally {
   if(socket?.readyState===WebSocket.OPEN){await evaluate('window.pdfpalDesktop.quit()',false).catch(()=>{});socket.close()}
   for(let i=0;i<100&&app.exitCode===null;i++)await pause(100)

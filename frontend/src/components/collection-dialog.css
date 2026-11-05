@@ -1,0 +1,5 @@
+.collection-dialog { width: min(440px, calc(100vw - 32px)); }
+.collection-dialog-content { display: grid; gap: 10px; }
+.collection-dialog-content label { font-size: 13px; font-weight: 600; }
+.collection-dialog-content input { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; font-size: 14px; }
+.collection-dialog-content .ai-settings-error { margin: 2px 0 0; }

@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { projectsApi, sourcesApi, collectionsApi, notesApi, chatApi, searchApi, highlightsApi, type Project, type Source, type Collection, type Note, type ChatSession, type SearchPassage, type Highlight } from '../lib/api'
 import SearchPaperModal from '../components/SearchPaperModal'
+import CollectionDialog from '../components/CollectionDialog'
 import { timeAgo } from '../lib/time'
 import { kindleLaunchUrl } from '../../../src/shared/kindle-book'
 
@@ -90,6 +91,7 @@ function SourcesTab({ projectId }: { projectId: string }) {
   const [dropTarget, setDropTarget] = useState<string | null>(null) // collection id or 'root'
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
+  const [collectionParent, setCollectionParent] = useState<Collection | null | undefined>(undefined)
 
   const reload = () => Promise.all([sourcesApi.list(projectId), collectionsApi.list(projectId)])
     .then(([s, c]) => {
@@ -141,13 +143,10 @@ function SourcesTab({ projectId }: { projectId: string }) {
     } catch (e: any) { alert(e.message || 'Could not move item') }
   }
 
-  const addCollection = async (parentId: string | null) => {
-    const name = prompt('New collection name', 'New Collection')
-    if (!name?.trim()) return
-    const created = await collectionsApi.create(projectId, name.trim(), parentId)
-    if (parentId) setExpanded(prev => new Set(prev).add(parentId))
-    await reload()
-    setEditingId(created.id); setEditingName(created.name)
+  const collectionCreated = (created: Collection) => {
+    setCollections(prev => [...prev.filter(collection => collection.id !== created.id), created])
+    if (created.parent_id) setExpanded(prev => new Set(prev).add(created.parent_id!))
+    setCollectionParent(undefined)
   }
 
   const commitRename = async (id: string) => {
@@ -197,7 +196,7 @@ function SourcesTab({ projectId }: { projectId: string }) {
           <span style={{ background: 'var(--border)', borderRadius: 10, padding: '1px 7px', fontSize: 10, color: '#9ca3af', flexShrink: 0 }}>{total}</span>
           <button title="Ask this collection" onClick={e => { e.stopPropagation(); navigate(`/projects/${projectId}/chat?collection=${c.id}`) }}
             style={collBtn}>💬</button>
-          <button title="New sub-collection" onClick={e => { e.stopPropagation(); addCollection(c.id) }} style={collBtn}>＋</button>
+          <button title="New sub-collection" onClick={e => { e.stopPropagation(); setCollectionParent(c) }} style={collBtn}>＋</button>
           <button title="Rename" onClick={e => { e.stopPropagation(); setEditingId(c.id); setEditingName(c.name) }} style={collBtn}>✏️</button>
           <button title="Delete collection" onClick={e => { e.stopPropagation(); deleteCollection(c) }} style={collBtn}>🗑</button>
         </div>
@@ -225,7 +224,7 @@ function SourcesTab({ projectId }: { projectId: string }) {
               {allExpanded ? '▾ Collapse All' : '▸ Expand All'}
             </button>
           )}
-          <button onClick={() => addCollection(null)} style={{ background: 'none', color: '#a5b4fc', border: '1px solid #312e81', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>📁 New Collection</button>
+          <button onClick={() => setCollectionParent(null)} style={{ background: 'none', color: '#a5b4fc', border: '1px solid #312e81', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>📁 New Collection</button>
           <button onClick={() => setShowAdd(true)} style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>＋ Add Source</button>
         </div>
       </div>
@@ -264,6 +263,8 @@ function SourcesTab({ projectId }: { projectId: string }) {
         </div>
       </div>
       {showAdd && <SearchPaperModal projectId={projectId} onClose={() => { setShowAdd(false); reload() }} onAdded={s => { setShowAdd(false); setSources(prev => [s, ...prev.filter(source => source.id !== s.id)]) }} />}
+      {collectionParent !== undefined && <CollectionDialog projectId={projectId} parent={collectionParent}
+        onCreated={collectionCreated} onClose={() => setCollectionParent(undefined)} />}
     </div>
   )
 }
@@ -557,7 +558,7 @@ export default function ProjectView() {
 
       {/* Main content */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {tab === 'sources' && <SourcesTab projectId={projectId} />}
+        {tab === 'sources' && <SourcesTab key={projectId} projectId={projectId} />}
         {tab === 'search' && <SearchTab projectId={projectId} />}
         {tab === 'highlights' && <HighlightsTab projectId={projectId} />}
         {tab === 'notes' && <NotesTab projectId={projectId} />}
