@@ -10,4 +10,8 @@ Backend tests cover receipt rollback/replay/expiry, interrupted operations, wron
 
 The native workflow uses the same adapter and commands available to a ChatGPT/Codex skill. A fresh ChatGPT conversation's automatic skill discovery and UI selection still require verification in that host; CLI/adapter success is not reported as proof of that UI step. The Windows skill installer and this workspace's existing WSL skill link both point to the updated instructions.
 
+The [GitHub release workflow](https://github.com/andrepaim/pdfpal/actions/runs/42035846949) passed its regression, emulator, Windows installer and publication gates for source `ea47a07759554a4794bae851d4114e403d90a020`. [The official 2.7.0-preview.1 installer](https://github.com/andrepaim/pdfpal/releases/tag/desktop-v2.7.0-preview.1) was downloaded, checked against its SHA-256 manifest and installed over the regular Windows application.
+
+Post-installation verification confirmed schema 14 → 15, unchanged raw fingerprints for every original library table and all 44 managed files, the same Google account/cloud library, and successful sync with no pending changes or conflicts. Windows command discovery resolves to the bundled launcher, its managed skill is installed, and commands use the private pipe. This agent session then followed the updated WSL skill to read the regular library: five projects and 38 sources. The local suite passed 168 tests with one emulator-dependent skip, all 80 browser tests passed, and all 36 desktop tests passed; GitHub separately passed the emulator gate.
+
 ![Packaged Windows command-line and ChatGPT setup dialog using a synthetic library](assets/windows-cli.png)
