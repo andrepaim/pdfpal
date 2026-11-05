@@ -54,13 +54,16 @@ export class NoteService {
   }
 
   /** Updates whichever of title/content is provided; the other is left unchanged. */
-  update(projectSelector: string, selector: string, changes: { title?: string; content?: string }): Note {
+  update(projectSelector: string, selector: string, changes: { title?: string; content?: string; expectedUpdatedAt?: string }): Note {
     const note = this.resolve(projectSelector, selector)
+    if (changes.expectedUpdatedAt !== undefined && changes.expectedUpdatedAt !== note.updated_at)
+      throw new PdfpalError('NOTE_CHANGED', 'This note changed elsewhere. Your draft was kept; reload the saved note or save your draft as a new note.', 4)
     if (changes.title !== undefined && !changes.title.trim()) throw new PdfpalError('INVALID_TITLE', 'Note title cannot be empty', 2)
     const title = changes.title !== undefined ? changes.title.trim() : note.title
     const content = changes.content !== undefined ? changes.content : note.content
-    const updated_at = now()
-    this.db.prepare('UPDATE notes SET title=?, content=?, updated_at=? WHERE id=?').run(title, content, updated_at, note.id)
+    const updated_at = new Date(Math.max(Date.now(), (Date.parse(note.updated_at) || 0) + 1)).toISOString()
+    const updated = this.db.prepare('UPDATE notes SET title=?, content=?, updated_at=? WHERE id=? AND updated_at=?').run(title, content, updated_at, note.id, note.updated_at)
+    if (!updated.changes) throw new PdfpalError('NOTE_CHANGED', 'This note changed elsewhere. Your draft was kept; reload the saved note or save your draft as a new note.', 4)
     return { ...note, title, content, updated_at }
   }
 

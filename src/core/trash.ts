@@ -139,7 +139,7 @@ export class TrashService {
   }
   prune() { this.db.prepare('DELETE FROM trash_items WHERE expires_at<?').run(new Date().toISOString()) }
   purge(id: string) { this.db.prepare('DELETE FROM trash_items WHERE id=?').run(id) }
-  async restoreWithFiles(config:PdfpalConfig,id:string,asCopy=false){
+  async restoreWithFiles(config:PdfpalConfig,id:string,asCopy=false,committed?:(result:{restored:number;linksSkipped:number;missingFiles:number})=>void){
     const release=await acquireFilesLease(config.dbPath)
     try{
       const item=this.db.prepare('SELECT payload FROM trash_items WHERE id=?').get(id) as {payload:string}|undefined
@@ -148,7 +148,7 @@ export class TrashService {
         if(!source.local_path)continue
         try{const file=path.join(config.filesDir,path.basename(source.local_path));const stat=await fs.lstat(file);if(!stat.isFile()||stat.isSymbolicLink())throw Error();if(source.content_hash&&createHash('sha256').update(await fs.readFile(file)).digest('hex')!==source.content_hash)throw Error()}catch{unavailable.add(source.local_path)}
       }
-      return {...this.restore(id,asCopy,unavailable),missingFiles:unavailable.size}
+      return this.db.transaction(()=>{const result={...this.restore(id,asCopy,unavailable),missingFiles:unavailable.size};committed?.(result);return result})()
     }finally{release()}
   }
   restore(id: string, asCopy = false, unavailable=new Set<string>()) {

@@ -100,11 +100,11 @@ export class BackupService {
     void task.finally(()=>{if(this.active===task)this.active=undefined}).catch(()=>{})
     return task
   }
-  create(purpose:Manifest['purpose']='manual'){return this.task('backup',()=>this.snapshot(purpose))}
-  private async snapshot(purpose:Manifest['purpose']){
+  create(purpose:Manifest['purpose']='manual',id:string=randomUUID()){uuid.parse(id);return this.task('backup',()=>this.snapshot(purpose,id))}
+  private async snapshot(purpose:Manifest['purpose'],id:string=randomUUID()){
     this.assertOpen()
     await fs.mkdir(this.root,{recursive:true,mode:0o700})
-    const id=randomUUID(),temporary=path.join(this.root,`.building-${id}`),final=path.join(this.root,`backup-${id}`)
+    const temporary=path.join(this.root,`.building-${id}`),final=path.join(this.root,`backup-${id}`)
     await fs.mkdir(path.join(temporary,'files'),{recursive:true,mode:0o700})
     let copy:DB|undefined
     try{
@@ -172,6 +172,7 @@ export class BackupService {
       copy.transaction(()=>{
         copy!.prepare("INSERT INTO sync_settings VALUES('enabled','0') ON CONFLICT(key) DO UPDATE SET value='0'").run()
         for(const table of ['sync_outbox','sync_remote','sync_versions','sync_files','sync_conflicts','sync_settings','telemetry_journal','error_reports'])copy!.exec(`DELETE FROM ${table}`)
+        if(copy!.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cli_operations'").get())copy!.exec('DELETE FROM cli_operations')
         copy!.prepare("INSERT INTO sync_settings VALUES('applying','0')").run()
         copy!.prepare("UPDATE ai_jobs SET status='interrupted',error='This answer was interrupted before recovery.' WHERE status='running'").run()
         copy!.prepare("UPDATE kindle_turns SET status='failed',error='This request was interrupted before recovery.' WHERE status IN ('pending','running')").run()

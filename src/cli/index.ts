@@ -1,172 +1,34 @@
 #!/usr/bin/env node
-import { Command, Option } from 'commander'
-import path from 'node:path'
-import type { Database } from 'better-sqlite3'
-import { loadConfig } from '../core/config.js'
-import { openDatabase } from '../core/database.js'
-import { ProjectService } from '../core/projects.js'
-import { SourceService } from '../core/sources.js'
-import { CollectionService } from '../core/collections.js'
-import { NoteService } from '../core/notes.js'
-import { RetrievalService } from '../core/retrieval.js'
-import { listHighlights } from '../core/highlights.js'
-import { ChatService } from '../core/chat.js'
-import type { AgentName } from '../core/agents.js'
-import { confirm, print, readStdin, reportError } from './output.js'
-import { startServer } from '../server/app.js'
-import { ExtensionAuth } from '../core/extension-auth.js'
-
-const program = new Command()
-  .name('pdfpal')
-  .description('Local reading assistant for PDFs and Kindle')
-  .version('2.1.0')
-  .option('--json', 'emit machine-readable JSON')
-
-let database: Database | undefined
-const config = loadConfig()
-const db = () => database ??= openDatabase(config)
-const json = (command: Command) => Boolean(command.optsWithGlobals().json)
-
-const cloud = program.command('cloud').description('manage optional Firebase library synchronization through the local server')
-async function cloudRequest(route:string,body?:unknown){
-  const {existingServer}=await import('../server/runtime.js')
-  const origin=await existingServer(config.dbPath)
-  if(!origin)throw new Error('Start pdfpal serve or the desktop app for this library first.')
-  const response=await fetch(`${origin}/api/cloud/${route}`,{method:body===undefined?'GET':'POST',headers:body===undefined?{}:{'content-type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)})
-  const result=await response.json() as any
-  if(!response.ok)throw new Error(result.detail??'Cloud action failed')
-  return result
+import fs from 'node:fs'
+let args = process.argv.slice(2)
+const requestIndex = args[0] === '--request-file' ? 0 : args[0] === '--json' && args[1] === '--request-file' ? 1 : -1
+if (requestIndex >= 0) {
+  try {
+    const filename = args[requestIndex + 1]
+    if (!filename || args.length !== requestIndex + 2 || fs.statSync(filename).size > 8 * 1024 * 1024) throw Error()
+    const payload = JSON.parse(fs.readFileSync(filename, 'utf8').replace(/^\uFEFF/, ''))
+    if (!payload || !Array.isArray(payload.args) || payload.args.length > 1000 || !payload.args.every((arg: unknown) => typeof arg === 'string' && !arg.includes('\0'))) throw Error()
+    args = [...(requestIndex === 1 ? ['--json'] : []), ...payload.args]
+    process.argv = [...process.argv.slice(0, 2), ...args]
+  } catch {
+    const { reportError } = await import('./output.js')
+    const { PdfpalError } = await import('../core/types.js')
+    reportError(new PdfpalError('INVALID_REQUEST_FILE', 'Supply a UTF-8 JSON file containing an args array of strings (at most 8 MB).', 2), args.includes('--json'))
+  }
 }
-cloud.command('status').action(async(_options,command)=>print(await cloudRequest('status'),json(command)))
-cloud.command('sync').action(async(_options,command)=>print(await cloudRequest('sync',{}),json(command)))
-cloud.command('login').action(async(_options,command)=>{const result=await cloudRequest('login',{});print(result,json(command));if(!json(command))await (await import('open')).default(result.url)})
-cloud.command('logout').action(async(_options,command)=>print(await cloudRequest('logout',{}),json(command)))
-cloud.command('pause').action(async(_options,command)=>print(await cloudRequest('pause',{paused:true}),json(command)))
-cloud.command('resume').action(async(_options,command)=>print(await cloudRequest('pause',{paused:false}),json(command)))
-
-const extension = program.command('extension').description('pair and manage the Kindle browser companion')
-extension.command('pair').description('create a single-use pairing code valid for five minutes')
-  .action((_options, command) => print(new ExtensionAuth(db()).pairCode(), json(command)))
-extension.command('list').description('list paired browser connections')
-  .action((_options, command) => print(new ExtensionAuth(db()).list(), json(command)))
-extension.command('revoke').argument('<connection-id>').description('revoke a paired browser connection')
-  .action((id, _options, command) => { new ExtensionAuth(db()).revoke(id); print({ revoked: id }, json(command)) })
-
-program.command('serve')
-  .description('start the local web application')
-  .option('-p, --port <number>', 'port to bind', value => Number(value))
-  .option('--no-open', 'do not open a browser')
-  .option('--data-dir <directory>', 'open a separate library directory')
-  .action(async options => {
-    const directory=options.dataDir?path.resolve(options.dataDir):undefined
-    const selected=directory?loadConfig({dataDir:directory,dbPath:path.join(directory,'pdfpal.db')}):config
-    return startServer({ ...selected, port: options.port ?? selected.port }, { openBrowser: options.open })
-  })
-
-const project = program.command('project').description('manage projects')
-project.command('list').action((_options, command) => print(new ProjectService(db()).list(), json(command)))
-project.command('show').argument('<project>').action((selector, _options, command) => print(new ProjectService(db()).resolve(selector), json(command)))
-project.command('create').argument('<title>').option('-d, --description <text>', 'project description', '')
-  .action((title, options, command) => print(new ProjectService(db()).create(title, options.description), json(command)))
-project.command('rename').argument('<project>').argument('<title>')
-  .action((selector, title, _options, command) => print(new ProjectService(db()).rename(selector, title), json(command)))
-project.command('delete').argument('<project>').option('-y, --yes', 'skip confirmation')
-  .action(async (selector, options, command) => {
-    const service = new ProjectService(db()); const found = service.resolve(selector); const isJson = json(command)
-    await confirm(`Delete project "${found.title}" and all of its data`, options.yes, isJson)
-    print(service.delete(found.id), isJson)
-  })
-
-const source = program.command('source').description('manage project sources')
-source.command('list').argument('<project>').action((p, _options, command) => print(new SourceService(db(), config).list(p).map(({ pdf_text: _, ...item }) => item), json(command)))
-source.command('show').argument('<project>').argument('<source>').action((p, s, _options, command) => print(new SourceService(db(), config).resolve(p, s), json(command)))
-source.command('add').argument('<project>').argument('<url-or-file>').option('-t, --title <text>').option('-c, --collection <collection>', 'file into a collection')
-  .action(async (p, location, options, command) => print(await new SourceService(db(), config).add(p, location, options.title, options.collection), json(command)))
-source.command('file').argument('<project>').argument('<source>').argument('[collection]')
-  .description('file a source into a collection, or omit the collection to unfile it')
-  .action((p, s, collection, _options, command) => print(new SourceService(db(), config).setCollection(p, s, collection ?? null), json(command)))
-source.command('rename').argument('<project>').argument('<source>').argument('<title>')
-  .action((p, s, title, _options, command) => print(new SourceService(db(), config).rename(p, s, title), json(command)))
-source.command('move').argument('<project>').argument('<source>').argument('<target-project>')
-  .action((p, s, target, _options, command) => print(new SourceService(db(), config).move(p, s, target), json(command)))
-source.command('remove').argument('<project>').argument('<source>').option('-y, --yes', 'skip confirmation')
-  .action(async (p, s, options, command) => {
-    const service = new SourceService(db(), config); const found = service.resolve(p, s); const isJson = json(command)
-    await confirm(`Remove source "${found.title ?? found.id}"`, options.yes, isJson)
-    print(service.remove(p, found.id), isJson)
-  })
-source.command('reindex').argument('<project>').argument('[source]').option('--refetch', 'download or read the PDF again')
-  .action(async (p, s, options, command) => print({ chunks_indexed: await new SourceService(db(), config).reindex(p, s, options.refetch) }, json(command)))
-
-const collection = program.command('collection').description('organize sources into nested collections')
-collection.command('list').argument('<project>').action((p, _options, command) => print(new CollectionService(db()).list(p), json(command)))
-collection.command('create').argument('<project>').argument('<name>').option('-p, --parent <collection>', 'nest under a parent collection')
-  .action((p, name, options, command) => print(new CollectionService(db()).create(p, name, options.parent), json(command)))
-collection.command('rename').argument('<project>').argument('<collection>').argument('<name>')
-  .action((p, c, name, _options, command) => print(new CollectionService(db()).rename(p, c, name), json(command)))
-collection.command('move').argument('<project>').argument('<collection>').argument('[parent]')
-  .description('reparent a collection, or omit the parent to move it to the top level')
-  .action((p, c, parent, _options, command) => print(new CollectionService(db()).move(p, c, parent ?? null), json(command)))
-collection.command('reorder').argument('<project>').argument('<collection>').argument('<position>')
-  .description('set a collection\'s 0-based sort position among its siblings')
-  .action((p, c, position, _options, command) => print(new CollectionService(db()).reorder(p, c, Number(position)), json(command)))
-collection.command('delete').argument('<project>').argument('<collection>').option('-y, --yes', 'skip confirmation')
-  .action(async (p, c, options, command) => {
-    const service = new CollectionService(db()); const found = service.resolve(p, c); const isJson = json(command)
-    await confirm(`Delete collection "${found.name}" (its sources become unfiled)`, options.yes, isJson)
-    print(service.delete(p, found.id), isJson)
-  })
-
-const note = program.command('note').description('manage project notes')
-note.command('list').argument('<project>').action((p, _options, command) => print(new NoteService(db(), config).list(p).map(({ content: _, ...item }) => item), json(command)))
-note.command('show').argument('<project>').argument('<note>').action((p, n, _options, command) => print(new NoteService(db(), config).resolve(p, n), json(command)))
-note.command('create').argument('<project>').option('-t, --title <text>').option('-c, --content <text>').option('-s, --source <source>', 'attach to a source')
-  .description('reads content from stdin when --content is omitted')
-  .action(async (p, options, command) => {
-    const content = options.content ?? await readStdin()
-    print(new NoteService(db(), config).create(p, { title: options.title, content, sourceSelector: options.source }), json(command))
-  })
-note.command('rename').argument('<project>').argument('<note>').argument('<title>')
-  .action((p, n, title, _options, command) => print(new NoteService(db(), config).update(p, n, { title }), json(command)))
-note.command('edit').argument('<project>').argument('<note>').option('-c, --content <text>')
-  .description('replaces a note\'s content; reads from stdin when --content is omitted')
-  .action(async (p, n, options, command) => {
-    const content = options.content ?? await readStdin()
-    print(new NoteService(db(), config).update(p, n, { content }), json(command))
-  })
-note.command('delete').argument('<project>').argument('<note>').option('-y, --yes', 'skip confirmation')
-  .action(async (p, n, options, command) => {
-    const service = new NoteService(db(), config); const found = service.resolve(p, n); const isJson = json(command)
-    await confirm(`Delete note "${found.title}"`, options.yes, isJson)
-    print(service.delete(p, found.id), isJson)
-  })
-
-program.command('search').argument('<project>').argument('<query>').option('-l, --limit <number>', 'max passages', value => Number(value))
-  .description('full-text search across a project\'s indexed source text')
-  .action((p, query, options, command) => {
-    const project = new ProjectService(db()).resolve(p)
-    print(new RetrievalService(db()).search(project.id, query, [], options.limit ?? 20), json(command))
-  })
-
-program.command('highlights').argument('<project>')
-  .description('list every annotation in a project, grouped by source')
-  .action((p, _options, command) => print(listHighlights(db(), new ProjectService(db()).resolve(p).id), json(command)))
-
-program.command('ask')
-  .argument('<project>')
-  .argument('[question]')
-  .option('-s, --source <source...>', 'restrict context to one or more sources')
-  .option('-c, --collection <collection>', 'restrict context to a collection subtree')
-  .addOption(new Option('-a, --agent <agent>').choices(['claude', 'codex', 'opencode']))
-  .option('-m, --model <model>')
-  .action(async (p, question, options, command) => {
-    const prompt = question ?? await readStdin()
-    const result = await new ChatService(db(), config).ask(p, prompt, {
-      sourceSelectors: options.source, collectionSelector: options.collection, agent: options.agent as AgentName | undefined,
-      model: options.model,
-    })
-    print(json(command) ? result : result.answer, json(command))
-  })
-
-if (process.argv.length === 2) process.argv.push('serve')
-program.parseAsync().catch(error => reportError(error, Boolean(program.opts().json))).finally(() => database?.close())
+const valued = new Set(['--profile','--library','--expect-library','--operation','--wait-ms','--data-dir','--content','--content-file','--title','--description','--source','--collection','--parent','--model','--agent','--port','--limit','--offset','--page','--expect-updated-at','-c','-t','-d','-s','-p','-a','-m','-l'])
+const flags = new Map<string, number>()
+for (let i = 0; i < args.length; i++) {
+  const arg = args[i]!
+  if (arg === '--') break
+  if (arg.startsWith('-')) flags.set(arg.split('=')[0]!, i)
+  if (valued.has(arg)) i++
+}
+const standalone = flags.has('--standalone')
+if (standalone) process.argv.splice(flags.get('--standalone')! + 2, 1)
+const first = args.filter(arg => arg !== '--json')[0]
+const desktop = !standalone && (process.env.PDFPAL_CLI_DESKTOP === '1' || flags.has('--desktop') || flags.has('--profile') || ['status', 'doctor', 'library', 'skill', 'operation'].includes(first ?? ''))
+if (desktop) {
+  const { runDesktopCli } = await import('./desktop.js')
+  await runDesktopCli(process.argv)
+} else await import('./standalone.js')

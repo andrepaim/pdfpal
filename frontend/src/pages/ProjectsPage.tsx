@@ -1,3 +1,4 @@
+import { useLibraryChanges } from '../lib/library-changes'
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { projectsApi, type Project } from '../lib/api'
@@ -155,6 +156,8 @@ export default function ProjectsPage({ user }: { user: User }) {
   useEffect(() => {
     projectsApi.list().then(setProjects).finally(() => setLoading(false))
   }, [])
+
+  useLibraryChanges(() => projectsApi.list().then(setProjects))
 
   const filtered = projects.filter(p =>
     p.title.toLowerCase().includes(search.toLowerCase()) ||

@@ -1,3 +1,4 @@
+import { useLibraryChanges } from '../lib/library-changes'
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { projectsApi, sourcesApi, collectionsApi, notesApi, chatApi, searchApi, highlightsApi, type Project, type Source, type Collection, type Note, type ChatSession, type SearchPassage, type Highlight } from '../lib/api'
@@ -277,6 +278,8 @@ function NotesTab({ projectId }: { projectId: string }) {
 
   useEffect(() => { notesApi.list(projectId).then(setNotes).finally(() => setLoading(false)) }, [projectId])
 
+  useLibraryChanges(() => notesApi.list(projectId).then(setNotes))
+
   const handleCreate = async () => {
     const { id } = await notesApi.create(projectId, { title: 'Untitled Note', content: '' })
     navigate(`/projects/${projectId}/notes/${id}`)
@@ -312,6 +315,7 @@ function ChatsTab({ projectId }: { projectId: string }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { chatApi.listSessions(projectId).then(setSessions).finally(() => setLoading(false)) }, [projectId])
+  useLibraryChanges(() => chatApi.listSessions(projectId).then(setSessions))
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
@@ -467,6 +471,11 @@ export default function ProjectView() {
   useEffect(() => {
     if (projectId) projectsApi.get(projectId).then(setProject)
   }, [projectId])
+  useLibraryChanges(async () => {
+    if (!projectId) return
+    try { setProject(await projectsApi.get(projectId)) }
+    catch (error) { if ((error as {code?:string}).code === 'PROJECT_NOT_FOUND') navigate('/') }
+  })
 
   const startTitleEdit = () => {
     setTitleDraft(project?.title || '')

@@ -1,5 +1,6 @@
 import { registerCloudRoutes } from './cloud.js'
 import { registerRecoveryRoutes } from './recovery.js'
+import { registerCliRoutes, type CliRuntime } from './cli.js'
 import { trashDelete } from '../core/trash.js'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -35,7 +36,7 @@ import { registerVisualRoutes } from './visual-explanations.js'
 type Params = { projectId: string; sourceId: string; id: string }
 const now = () => new Date().toISOString()
 
-export async function buildServer(config: PdfpalConfig) {
+export async function buildServer(config: PdfpalConfig, cli?: CliRuntime) {
   const app = Fastify({ logger: { serializers: { req: request => ({ method: request.method, url: request.url?.split('?')[0] }) } }, bodyLimit: 30 * 1024 * 1024 })
   const db = openDatabase(config)
   db.prepare("UPDATE ai_jobs SET status='interrupted',error='The app stopped before this answer completed.' WHERE status='running'").run()
@@ -71,7 +72,7 @@ export async function buildServer(config: PdfpalConfig) {
     const known = error instanceof PdfpalError ? error : new PdfpalError('INTERNAL_ERROR', message)
     const status = known.code === 'PDF_FETCH_TIMEOUT' ? 504 : known.exitCode === 3 ? 404 : known.exitCode === 2 || known.exitCode === 4 ? 400 : 500
     if(status>=500)errorReportsFor(db).record('SERVER_ERROR')
-    reply.status(status).send({ detail: known.message, code: known.code, details: known.details })
+    reply.status(status).send({ detail: known.message, code: known.code, details: known.details, ...(_request.url.startsWith('/api/cli/') ? { exitCode: known.exitCode } : {}) })
   })
 
   app.get<{ Querystring: { project_id?: string; source_id?: string } }>('/api/ai-jobs', async request => db.prepare('SELECT id,question,status,answer,error,created_at FROM ai_jobs WHERE project_id=? AND source_id IS ? ORDER BY created_at DESC LIMIT 20').all(request.query.project_id || null,request.query.source_id || null))
@@ -79,7 +80,11 @@ export async function buildServer(config: PdfpalConfig) {
   app.get('/api/auth/me', async () => ({ email: 'local@localhost', name: 'Local User', picture: '' }))
   app.post('/api/auth/logout', async () => ({ ok: true }))
   const closeCloud = await registerCloudRoutes(app, db, config)
-  await registerRecoveryRoutes(app,db,config)
+  const backups = await registerRecoveryRoutes(app,db,config)
+  let revision = 0
+  const revisionInstance = cli?.identity.instance ?? randomUUID()
+  app.get('/api/library/revision', async () => ({ instance: revisionInstance, revision }))
+  if (cli) registerCliRoutes(app, db, config, cli, backups, () => { revision++ })
   app.get('/api/agents', async () => ({ default: config.aiMode === 'chatgpt' ? 'chatgpt' : config.agent, agents: [...(config.aiMode === 'chatgpt' ? [{ id: 'chatgpt', label: 'ChatGPT', available: true }] : []), ...await new AgentService(config).inspect()] }))
 
   app.get('/api/projects', async () => projects.list())
@@ -228,8 +233,8 @@ function registerDocumentRoutes(app: Awaited<ReturnType<typeof import('fastify')
   })
   app.get('/api/projects/:projectId/notes/:id', async (request: any) => notes.resolve(request.params.projectId, request.params.id))
   app.put('/api/projects/:projectId/notes/:id', async (request: any) => {
-    notes.update(request.params.projectId, request.params.id, { title: request.body.title, content: request.body.content })
-    return { ok: true }
+    const updated = notes.update(request.params.projectId, request.params.id, { title: request.body.title, content: request.body.content, expectedUpdatedAt: request.body.expected_updated_at })
+    return { ok: true, updated_at: updated.updated_at }
   })
   app.delete('/api/projects/:projectId/notes/:id', async (request: any) => { notes.delete(request.params.projectId, request.params.id); return { ok: true } })
   app.get('/api/projects/:projectId/sources/:sourceId/notes', async (request: any) => notes.listBySource(request.params.projectId, request.params.sourceId).map(preview))

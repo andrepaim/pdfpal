@@ -20,10 +20,11 @@ export async function confirm(action: string, yes: boolean, json: boolean): Prom
   if (!/^y(es)?$/i.test(answer.trim())) throw new PdfpalError('CANCELLED', 'Cancelled', 2)
 }
 
-export async function readStdin(): Promise<string> {
+export async function readStdin(trim = true): Promise<string> {
   const chunks: Buffer[] = []
   for await (const chunk of stdin) chunks.push(Buffer.from(chunk))
-  return Buffer.concat(chunks).toString('utf8').trim()
+  const content = Buffer.concat(chunks).toString('utf8')
+  return trim ? content.trim() : content
 }
 
 export function reportError(error: unknown, json: boolean): never {

@@ -20,6 +20,8 @@ import CloudSettings from './components/CloudSettings'
 import TelemetrySettings from './components/TelemetrySettings'
 import RecoverySettings from './components/RecoverySettings'
 import DesktopChrome from './components/DesktopChrome'
+import CommandLineSettings from './components/CommandLineSettings'
+import LibraryChanges from './components/LibraryChanges'
 
 if(window.pdfpalDesktop?.chrome)document.documentElement.classList.add('desktop-shell')
 
@@ -110,6 +112,8 @@ createRoot(document.getElementById('root')!).render(
     <div className="application-surface">
     <ErrorBoundary>
       <Root />
+      <LibraryChanges />
+      <CommandLineSettings />
       <AISettings />
       <CloudSettings />
       <TelemetrySettings />

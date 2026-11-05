@@ -87,6 +87,8 @@ Download the Chrome companion, connect it to your local library, and manage pair
 
 Closing the window keeps pdfpal running in the system tray near the clock. Click the tray icon to reopen it; use **Quit** in its menu to stop the app.
 
+To browse and manage your library from ChatGPT, open **pdfpal menu → Command line & ChatGPT**. Windows version 2.7 includes a matching CLI and an installable skill for local agent sessions. See the [Windows CLI guide](docs/windows-cli.md).
+
 The Windows installer is currently an **unsigned engineering preview**, so Windows may show an unknown-publisher prompt. To upgrade between previews, download the target installer from GitHub Releases and install it under the same Windows account. The tray’s **Check for updates** only looks for signed stable releases when you request a check. See the [Windows upgrade instructions](docs/windows-quickstart.md#upgrade-or-uninstall) for checksum and installation steps.
 
 ### Linux and WSL

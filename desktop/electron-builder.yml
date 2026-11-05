@@ -4,6 +4,7 @@ executableName: pdfpal
 electronVersion: 45.1.0
 copyright: Copyright © 2026 pdfpal contributors
 asar: true
+beforePack: build/prepare-cli.cjs
 asarUnpack:
   - '**/*.node'
 directories:
@@ -14,6 +15,10 @@ files:
   - '**/*'
   - '!test/**'
   - '!discovery.test.mjs'
+  - '!cli-bin/**'
+extraFiles:
+  - from: stage/cli-bin
+    to: bin
 extraResources:
   - from: stage/THIRD_PARTY_NOTICES.txt
     to: THIRD_PARTY_NOTICES.txt

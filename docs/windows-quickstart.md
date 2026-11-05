@@ -1,6 +1,6 @@
 # Install pdfpal on Windows
 
-The desktop preview supports Windows 11 on an Intel/AMD 64-bit computer. It includes its own runtime; you do not need to install Node.js. The CLI remains a separate option.
+The desktop preview supports Windows 11 on an Intel/AMD 64-bit computer. It includes its own runtime and, from version 2.7, a matching command-line tool; you do not need to install Node.js.
 
 ## Install and start reading
 
@@ -32,6 +32,10 @@ The regular Windows application uses `%USERPROFILE%\.pdfpal`, matching the nativ
 Earlier engineering launchers used a separate `%LOCALAPPDATA%\pdfpal-m0-test` library. That folder is retained; the regular Start menu entry uses the normal library. If you want to test against the earlier library, use the separately supplied **Open alpha test library.cmd** after installation. It selects that library for the launch and leaves the normal CLI configuration alone.
 
 Windows and WSL use different home folders and default libraries. Sharing a live SQLite library between Windows and WSL is not a supported preview workflow.
+
+## Command line and ChatGPT
+
+To manage this library from a local ChatGPT conversation, open **pdfpal menu → Command line & ChatGPT**, install the skill, and check setup. See the [Windows CLI and skill guide](windows-cli.md) for supported commands, WSL access and recovery.
 
 ## Optional Google sign-in and cloud sync
 

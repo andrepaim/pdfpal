@@ -17,6 +17,12 @@
 
 !macro customInstall
   InitPluginsDir
+  File /oname=$PLUGINSDIR\pdfpal-cli-integration.ps1 "${BUILD_RESOURCES_DIR}\cli-integration.ps1"
+  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\pdfpal-cli-integration.ps1" -InstallDirectory "$INSTDIR" -Action install -AppId "${APP_ID}"'
+  Pop $R0
+  Pop $R1
+  StrCmp $R0 "0" +2
+    DetailPrint "CLI setup needs attention. Open Command line & ChatGPT in pdfpal."
   File /oname=$PLUGINSDIR\pdfpal-repair-shortcuts.ps1 "${BUILD_RESOURCES_DIR}\repair-shortcuts.ps1"
   nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\pdfpal-repair-shortcuts.ps1" -AppId "${APP_ID}"'
   Pop $R0
@@ -27,6 +33,10 @@
   ; An upgrade keeps the existing Windows-startup preference at the same path.
   ${ifNot} ${isUpdated}
     InitPluginsDir
+    File /oname=$PLUGINSDIR\pdfpal-cli-integration.ps1 "${BUILD_RESOURCES_DIR}\cli-integration.ps1"
+    nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\pdfpal-cli-integration.ps1" -InstallDirectory "$INSTDIR" -Action uninstall -AppId "${APP_ID}"'
+    Pop $R0
+    Pop $R1
     File /oname=$PLUGINSDIR\pdfpal-installer-guard.ps1 "${BUILD_RESOURCES_DIR}\installer-guard.ps1"
     nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\pdfpal-installer-guard.ps1" -InstallDirectory "$INSTDIR" -Executable "${APP_EXECUTABLE_FILENAME}" -AppId "${APP_ID}" -RemoveStartup'
     Pop $R0

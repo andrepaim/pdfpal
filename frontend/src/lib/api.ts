@@ -18,7 +18,7 @@ async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
   finish?.(res.ok?'completed':'failed')
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new Error(err.detail || `API error ${res.status}`)
+    throw Object.assign(new Error(err.detail || `API error ${res.status}`), { code: err.code })
   }
   return res.json()
 }
@@ -141,8 +141,8 @@ export const notesApi = {
     apiFetch<{ id: string }>(`/projects/${projectId}/notes`, { method: 'POST', body: JSON.stringify(data) }),
   get: (projectId: string, noteId: string) =>
     apiFetch<Note>(`/projects/${projectId}/notes/${noteId}`),
-  update: (projectId: string, noteId: string, data: { title?: string; content?: string }) =>
-    apiFetch(`/projects/${projectId}/notes/${noteId}`, { method: 'PUT', body: JSON.stringify(data) }),
+  update: (projectId: string, noteId: string, data: { title?: string; content?: string; expected_updated_at?: string }) =>
+    apiFetch<{ok:boolean;updated_at:string}>(`/projects/${projectId}/notes/${noteId}`, { method: 'PUT', body: JSON.stringify(data) }),
   delete: (projectId: string, noteId: string) =>
     apiFetch(`/projects/${projectId}/notes/${noteId}`, { method: 'DELETE' }),
 }

@@ -19,6 +19,7 @@ await fs.writeFile(path.join(stage, 'package.json'), JSON.stringify({ name: 'pdf
 await fs.copyFile(path.join(desktop, 'runtime-lock.json'), path.join(stage, 'package-lock.json'))
 for (const [source, destination] of [
   ['dist', 'dist'], ['frontend/dist', 'frontend/dist'], ['extension/package', 'extension/package'],
+  ['skills/pdfpal-cli', 'skills/pdfpal-cli'], ['desktop/src/cli.mjs', 'cli.mjs'],
   ['test/fixtures/sample.pdf', 'sample.pdf'], ['desktop/src/main.mjs', 'main.mjs'], ['desktop/src/backend.mjs', 'backend.mjs'],
   ['desktop/src/chatgpt', 'chatgpt'],
   ['desktop/src/chrome.mjs','chrome.mjs'],

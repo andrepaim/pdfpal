@@ -1,0 +1,3 @@
+.cli-header-icon{display:grid;place-items:center;width:42px;height:42px;border-radius:12px;background:#252838;color:#c4b5fd;font-family:monospace;font-weight:700;font-size:20px;flex-shrink:0}
+.cli-details{display:flex;gap:36px;margin:16px 0 12px}.cli-details div{display:grid;gap:5px}.cli-details dt{font-size:11px;color:#969ca8}.cli-details dd{margin:0;font-size:13px;color:#ececf2}
+.cli-path{display:block;padding:12px;background:#14161d;border:1px solid #30333e;border-radius:8px;font-size:11px;overflow-wrap:anywhere;color:#bfc4d1}.cli-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}.cli-example{margin:14px 0;padding:14px 16px;background:#232334;border-left:3px solid #9b87f5;border-radius:0 8px 8px 0;font-size:14px;color:#eeeafc}

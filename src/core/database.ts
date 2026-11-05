@@ -10,8 +10,9 @@ import { ensureDataDirectories } from './config.js'
 import { installSync } from '../sync/database.js'
 import { installTrash } from './trash.js'
 import {installErrorReports} from './error-reports.js'
+import { installCliOperations } from './cli-operations.js'
 
-export const CURRENT_SCHEMA = 14
+export const CURRENT_SCHEMA = 15
 
 function columnExists(db: DatabaseType, table: string, column: string): boolean {
   return (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some(row => row.name === column)
@@ -258,6 +259,8 @@ function migrate(db: DatabaseType): void {
   db.exec("INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES (12,datetime('now'))")
   db.exec("INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES (13,datetime('now'))")
   db.exec("INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES (14,datetime('now'))")
+  installCliOperations(db)
+  db.exec("INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES (15,datetime('now'))")
 }
 
 /** Migrate the original sessions/messages model without requiring network access. */

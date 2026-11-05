@@ -16,6 +16,7 @@
     "frontend/dist/",
     "skills/",
     "scripts/install-skill.sh",
+    "scripts/install-skill.ps1",
     "extension/dist/",
     "extension/package/"
   ],

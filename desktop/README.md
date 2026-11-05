@@ -70,7 +70,7 @@ After the M3 installer build, run `node desktop/scripts/create-beta-kit.mjs <art
 
 ## Architecture and compatibility
 
-Electron 45.1.0 and electron-builder 26.18.0 are isolated from root npm workspaces. Installing the CLI does not install Electron. `desktop/package-lock.json` locks build tooling and `runtime-lock.json` locks the staged runtime; no native rebuild runs against the CLI's development tree.
+Electron 45.1.0 and electron-builder 26.18.0 are isolated from root npm workspaces. The standalone source CLI does not install Electron. Windows installers include a matching console launcher in `bin`, compiled by `build/prepare-cli.cjs` before packaging, and a bundled skill. `desktop/package-lock.json` locks build tooling and `runtime-lock.json` locks the staged runtime; no native rebuild runs against the CLI's development tree.
 
 The desktop stage uses `better-sqlite3` 13.0.3's N-API binaries and `@napi-rs/canvas` 0.1.100. The CLI retains its dependency range. PDF.js treats Electron utility processes as browsers, so the backend supplies DOM primitives and its in-process worker before loading the server. See [M0 results](../docs/windows-m0-results.md) for the original compatibility failures and their resolution.
 

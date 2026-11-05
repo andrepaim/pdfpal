@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import { trashDelete } from './trash.js'
 import { acquireFilesLease } from './locking.js'
@@ -69,10 +69,11 @@ export class SourceService {
     return this.db.prepare("SELECT project_id, id AS source_id FROM sources WHERE type='kindle' AND kindle_book_key=?").all(key) as Array<{ project_id: string; source_id: string }>
   }
 
-  async add(projectSelector: string, location: string | { filename: string; bytes: Buffer }, title?: string, collectionSelector?: string): Promise<Source> {
+  async add(projectSelector: string, location: string | { filename: string; bytes: Buffer }, title?: string, collectionSelector?: string,
+    operation?: { sourceId: string; deduplicate?: boolean; committed: (source: Source) => void }): Promise<Source> {
     const project = this.projects.resolve(projectSelector)
     const collectionId = collectionSelector ? this.collections.resolve(project.id, collectionSelector).id : null
-    const id = randomUUID()
+    const id = operation?.sourceId ?? randomUUID()
     const isUrl = typeof location === 'string' && /^https?:\/\//i.test(location)
     let bytes: Buffer
     let url: string | null = null
@@ -100,6 +101,11 @@ export class SourceService {
     const sourceTitle = title?.trim() || catalogueTitle || extracted.title || (isUrl ? new URL(filename).pathname.split('/').filter(Boolean).at(-1) : path.basename(filename)) || 'Untitled Source'
     const release=await acquireFilesLease(this.config.dbPath)
     try {
+    if (operation?.deduplicate) {
+      const existing = this.db.prepare('SELECT * FROM sources WHERE project_id=? AND content_hash=? LIMIT 1')
+        .get(project.id, createHash('sha256').update(bytes).digest('hex')) as Source | undefined
+      if (existing) { this.db.transaction(() => operation.committed(existing))(); return existing }
+    }
     const stored = storePdf(bytes, this.config.filesDir, id)
     const source: Source = {
       id, project_id: project.id, type: 'pdf', url, title: sourceTitle, pdf_text: extracted.text,
@@ -115,6 +121,7 @@ export class SourceService {
           @original_location,@local_path,@media_type,@byte_size,@content_hash,@collection_id)`).run(source)
         this.retrieval.index(id, extracted.text)
         this.db.prepare('UPDATE projects SET accessed_at=? WHERE id=?').run(timestamp, project.id)
+        operation?.committed(source)
       })()
     } catch (error) {
       fs.rmSync(stored.localPath, { force: true })

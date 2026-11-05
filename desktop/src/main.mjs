@@ -4,7 +4,8 @@ import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { spawn } from 'node:child_process'
+import { spawn, execFile } from 'node:child_process'
+import { installSkill, skillStatus } from './dist/cli/skill-install.js'
 import { provider, setupScript, trustedSender, recoveryMessage, diagnostics } from './setup.mjs'
 import { checkDesktopUpdates, releasePage } from './updates.mjs'
 import { preferences, registeredLibrary, restoreBounds, restoreLibraryRoute, safeRoute, startupArguments } from './preferences.mjs'
@@ -361,6 +362,7 @@ async function boot() {
       })
     })
     ready = initial
+    savePrefs({activeLibrary:libraryId,libraries:{...prefs.value.libraries,[libraryId]:{label:prefs.value.libraries?.[libraryId]?.label??(libraryId==='original'?'Original library':'Recovery library'),dataDir:ready.startup.dataDir,dbPath:ready.startup.dbPath}}})
     if (loadedOrigin !== ready.origin || window.webContents.getURL() === recoveryURL) {
       const route = await restoreLibraryRoute(prefs.value.route, ready.origin)
       if (route !== prefs.value.route) savePrefs({ route })
@@ -549,6 +551,20 @@ else {
   handle('updates-state', () => updateState, true)
   handle('chrome-state',chromeState,true)
   handle('chrome-command',chromeCommand,true)
+  handle('cli-setup', async action => {
+    if (!['status','install','check'].includes(action)) throw new Error('Unsupported CLI setup action')
+    const launcher = path.join(path.dirname(process.execPath), 'bin', 'pdfpal.exe')
+    const skill = action === 'install' ? installSkill() : skillStatus()
+    let check
+    if (action === 'check') {
+      const env = {...process.env,PDFPAL_DESKTOP_PROFILE:profile}
+      delete env.PDFPAL_DATA_DIR;delete env.PDFPAL_DB;delete env.PDFPAL_PORT
+      check = await new Promise((resolve,reject)=>execFile(launcher,['--desktop','--json','--profile',profile,'doctor'],{env,windowsHide:true,encoding:'utf8',timeout:15000,maxBuffer:256*1024},(_error,stdout)=>{
+        try {resolve(JSON.parse(stdout))}catch {reject(new Error('The bundled CLI could not be checked. Repair the Windows installation.'))}
+      }))
+    }
+    return {available:process.platform==='win32'&&fs.existsSync(launcher),launcher,version:app.getVersion(),library:prefs.value.libraries?.[libraryId]?.label??'Current library',skill,setupCommand:"& '"+launcher.replaceAll("'","''")+"' --desktop skill install",...(check?{check}:{})}
+  })
   handle('library-state', () => ({active:libraryId,libraries:Object.entries(prefs.value.libraries??{}).map(([id,item])=>({id,label:item.label}))}))
   handle('choose-backup-folder', async () => {
     const choice=await dialog.showOpenDialog(window,{title:'Choose a backup folder',properties:['openDirectory','createDirectory']})

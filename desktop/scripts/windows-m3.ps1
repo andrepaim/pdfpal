@@ -25,6 +25,7 @@ $version = (Get-Content (Join-Path $stage 'package.json') -Raw | ConvertFrom-Jso
 $build = Join-Path $SourceRoot 'desktop/scripts/build-installer.mjs'
 if ($Signed) { Run-Checked { node $build "--project=$WorkRoot" "--tools=$tools" --signed } }
 else { Run-Checked { node $build "--project=$WorkRoot" "--tools=$tools" } }
+Run-Checked { node (Join-Path $SourceRoot 'desktop/scripts/windows-cli-check.mjs') (Join-Path $WorkRoot 'artifacts/win-unpacked/pdfpal.exe') (Join-Path $WorkRoot 'cli-native-receipt.json') }
 $baseline = Join-Path $WorkRoot 'installer-baseline'
 $candidate = Join-Path $WorkRoot 'installer-candidate'
 Run-Checked { node $build "--project=$WorkRoot" "--tools=$tools" --acceptance --version=2.1.0-preview.0 "--output=$baseline" }
