@@ -4,11 +4,11 @@
 
 > **AI to read deeper, not to avoid reading.**
 
-**Use the AI subscription you already pay for to help you read PDFs and Kindle books.** pdfpal puts chat and visual explanations beside the page through Claude Code, Codex, or OpenCode, with no additional pdfpal subscription.
+**Use the AI subscription you already pay for to help you read PDFs and Kindle books.** pdfpal puts chat and visual explanations beside the page through **Continue with ChatGPT** in the Windows app, or Claude Code, Codex, or OpenCode, with no additional pdfpal subscription.
 
 There's a lot of vibe researching going on: skim an AI summary, watch an explainer, walk away feeling like you read the paper. Understanding lives in the details those shortcuts flatten: the assumptions, the derivation, the limitations. But going back to reading alone, getting stuck on page 4, and grinding through missing background isn't the answer either. That suffering was never the point. With pdfpal, you read the actual text while AI sits beside the page, unpacking the passage you're stuck on and keeping you moving.
 
-Your library, notes, highlights, and chat history stay on your machine. Relevant context goes to your configured AI provider when you ask for help; its terms, charges, and usage limits still apply.
+Your library, notes, highlights, and chat history are stored locally. Optional cloud sync can share library metadata and, with separate consent, saved PDF and project conversations between devices. Relevant context goes to your configured AI provider when you ask for help; its terms, charges, and usage limits still apply.
 
 Available as a **Windows desktop app** or a **CLI and browser reader on Linux/WSL**, with an optional Chrome companion for Kindle for Web.
 
@@ -16,19 +16,21 @@ Available as a **Windows desktop app** or a **CLI and browser reader on Linux/WS
 
 [Install and run](#install-and-run) · [Quickstart](#quickstart)
 
+Screenshots show the current Windows desktop preview. The reading examples reuse the original, unedited Codex responses in the updated reader; see [capture details](screenshots/CAPTURE.md).
+
 ### Read with AI beside the page
 
 Select the passage you're stuck on and work through it beside the paper. In §3.1 of [*Attention Is All You Need*](https://arxiv.org/pdf/1706.03762v7), the decoder uses both masking and shifted inputs. Why are both needed? A reader asks for a concrete token sequence showing how the answer would leak without the shift.
 
-![Page 3 of Attention Is All You Need with the decoder masking and input-shift passage highlighted beside an explanation of answer leakage using a short target sequence](screenshots/reader-decoder-masking.png)
+![Dark PDF pages with the decoder masking and input-shift passage highlighted beside an explanation of answer leakage using a short target sequence](screenshots/reader-decoder-masking.png)
 
 ### Turn difficult concepts into visual explanations
 
 Further into the paper, §3.2.1 raises a different question: why divide attention scores by √dₖ? Use `/visual` to see the missing intuition. The graph compares a large score gap in softmax's nearly flat region with a scaled gap in a steeper region. The highlighted paragraph and footnote 4 stay in view while you explore the explanation.
 
-![Actual PDF reader showing the selected scaling passage beside an interactive softmax graph comparing the flat and steep regions](screenshots/visual-softmax-scaling.png)
+![Dark PDF reader showing the highlighted scaling passage beside an interactive softmax graph comparing the flat and steep regions](screenshots/visual-softmax-scaling.png)
 
-Both examples were generated through pdfpal using Codex and their selected PDF passages. The graph's numbers are a worked example, rather than measurements from the paper. Step through the explanation, click shapes for details, or [download the interactive HTML](screenshots/9-visual-explanation.html) to explore all three steps offline. Visual explanations also work in project chat and the Kindle companion.
+Both answers were generated through pdfpal using Codex and their selected PDF passages. The graph's numbers are a worked example, rather than measurements from the paper. Step through the explanation, click shapes for details, or [download the interactive HTML](screenshots/9-visual-explanation.html) to explore all three steps offline. Visual explanations also work in project chat and the Kindle companion.
 
 ### Build a research library
 
@@ -43,7 +45,7 @@ Write what you learned in your own words and save questions to revisit as Markdo
 ![Rendered research note explaining why attention replaced recurrence, with an open question to revisit](screenshots/5-notes.png)
 
 <details>
-<summary>Discovery, projects, and Kindle setup</summary>
+<summary>Discovery, Windows navigation, and Kindle setup</summary>
 
 **Find your next paper**
 
@@ -61,7 +63,13 @@ Explore a paper's references and citing papers, and add useful sources as you re
 
 Keep sources, notes, and conversations together in a local project.
 
-![Projects home page with a Transformer Architecture research project](screenshots/4-projects.png)
+![Current Windows projects page with the integrated title bar and three research workspaces](screenshots/4-projects.png)
+
+**Move around the Windows app**
+
+Use the integrated toolbar for reading history, project search, cloud sync and help. Press **Ctrl+K** to find a project or **F10** to open the app menu for AI settings, backups, privacy, Kindle setup and the CLI skill.
+
+![Windows app menu with library navigation, Command line & ChatGPT, AI settings, recovery, privacy and update controls](screenshots/desktop-menu.png)
 
 **Bring pdfpal to Kindle for Web**
 
@@ -84,6 +92,8 @@ Download the Chrome companion, connect it to your local library, and manage pair
 2. Run the installer, then open **pdfpal** from the Windows Start menu. If upgrading, quit the running app from its tray menu first.
 3. In AI settings, choose **Continue with ChatGPT** to use eligible plan allowance directly, or choose an installed coding agent.
 4. Create a project, import a PDF, and start reading. See the [PDF quickstart](#read-a-pdf) below.
+
+The Windows app has an integrated dark title bar with native window controls. Use **pdfpal menu** at the top left (or **F10**) for settings, backups, privacy and the Kindle extension. **Ctrl+K** finds a project, and the back/forward buttons retrace your reading history.
 
 Closing the window keeps pdfpal running in the system tray near the clock. Click the tray icon to reopen it; use **Quit** in its menu to stop the app.
 
@@ -142,7 +152,7 @@ After following a reference link within a PDF, click **Back to citation** in the
 
 ### Read a Kindle book
 
-1. Start pdfpal and choose **Extension** on the projects home page (or **Kindle extension** in a project).
+1. Start pdfpal. On Windows, choose **pdfpal menu → Kindle extension**. In the browser reader, choose **Extension** on the projects home page (or **Kindle extension** in a project).
 2. **Download Chrome extension**, extract it to a folder you will keep, and open `chrome://extensions`. Enable **Developer mode**, choose **Load unpacked**, and select the extracted folder containing `manifest.json`.
 3. Pin pdfpal to Chrome's toolbar. Open your book in [Kindle for Web](https://read.amazon.com/), refresh the tab, and click the pdfpal toolbar icon.
 4. Click **Connect to pdfpal**. In the local tab that opens, click **Allow connection**, then return to Kindle. Choose or create a project.
@@ -181,6 +191,14 @@ Select text in the PDF reader and choose **Explain visually** from its popup, or
 - **Notes**: markdown notes at the project or source level, rendered by default, edit in place.
 - **Highlights**: every annotation across a project, grouped by source, one click back to context.
 
+### Backups, recovery & privacy
+
+Open **pdfpal menu → Backups & recovery** on Windows, or **Backups** at the lower left in the browser reader. Save a complete local library copy, including managed PDFs, notes, highlights, saved conversations and visual explanations. Automatic backups run daily by default while the app is open; choose every six hours, daily or weekly. Verify a backup or open a separate recovery copy while keeping your current library. **Recently deleted** retains up to 100 deletion entries for 30 days. See [backup and recovery](docs/backup-recovery.md).
+
+![Backups and recovery settings in the current Windows app, including local backup controls and recently deleted items](screenshots/backups-recovery.png)
+
+**Privacy & diagnostics** in the Windows app menu (or **Privacy** in the browser) separates local diagnostics, optional usage analytics and default-off error sharing. Shared error reports exclude documents, conversations, titles, filenames and raw error messages. See [error reporting](docs/error-reports.md).
+
 ### Sources & Discovery
 
 - **Paper search**: search OpenAlex by title, one click to add.
@@ -191,7 +209,7 @@ Select text in the PDF reader and choose **Explain visually** from its popup, or
 
 ### CLI & Agent Automation
 
-- **Full CLI**: every action above is also a `pdfpal` command, with `--json` for scripting.
+- **CLI**: manage projects, sources, collections and notes, list highlights, search indexed text, and ask questions with `pdfpal`; use `--json` for scripting.
 - **ChatGPT / Claude Code / Codex skill**: let an agent drive projects, sources, collections, and notes directly (see below).
 
 ## Research with an agent, then read
@@ -202,7 +220,7 @@ Finding papers is legwork, and by now agents are better at it than we are: they 
 
    > Research recent approaches to efficient attention mechanisms, create a pdfpal project called "Efficient Attention", and add the best papers you find.
 
-2. **The agent finds the papers with its own tools**, then drives the real CLI to build the project. This is genuinely what it runs, not a mockup:
+2. **The agent finds the papers with its own tools**, then drives the real CLI to build the project. For example:
 
    ```bash
    pdfpal --json project create "Efficient Attention"
@@ -245,6 +263,12 @@ npm run skill:install
 
 Run `npm run skill:uninstall` to remove the symlinks.
 
+## Optional cloud library
+
+Open **Cloud library** from the Windows toolbar or the browser reader and sign in with Google. Sign-in alone uploads no library content. Explicitly enable sync to share projects, source metadata, nested collections, notes, highlights and reading progress. Choose **Include saved conversations** separately to synchronize existing and future saved PDF and project questions and answers. AI-provider sign-in is separate from Google sign-in.
+
+SQLite remains the working library, with changes queued while offline. To connect an existing cloud library on another device, start with an empty local library. **PDF files, Kindle extension history and interactive visual assets stay local in the bundled configuration.** PDF file transfers require a separately configured, billing-enabled Cloud Storage bucket and explicit opt-in on each device. Keep full local backups. See [cloud setup and supported data](docs/firebase-setup.md).
+
 ## Local data
 
 Linux/WSL uses `~/.pdfpal` by default; the Windows app uses `%USERPROFILE%\.pdfpal`. Both store the same kinds of local data:
@@ -254,7 +278,8 @@ Linux/WSL uses `~/.pdfpal` by default; the Windows app uses `%USERPROFILE%\.pdfp
 ├── config.json
 ├── pdfpal.db
 ├── files/       # managed PDF copies
-└── backups/     # automatic pre-migration database backups
+└── backups/     # pre-migration snapshots and full library backups
+    └── libraries/  # default location for complete library copies
 ```
 
 New PDFs are copied into `files/`, while extracted text and FTS chunks live in SQLite. If a managed PDF is removed and the source has a URL, the reader downloads and renders the remote PDF without recreating the copy.
@@ -275,6 +300,7 @@ OPENCODE_BIN=opencode
 PDFPAL_MODEL=
 PDFPAL_PORT=8200
 PDFPAL_DB=
+PDFPAL_DATA_DIR=
 SEMANTIC_SCHOLAR_API_KEY=
 ```
 
@@ -316,7 +342,7 @@ $loopy run the saved Local test-quality pass loop
 
 ## Architecture
 
-The Windows desktop app, web reader, Kindle companion, and CLI share TypeScript services, local storage, and agent configuration. The desktop app hosts the reader and its local backend, with an Electron shell for the tray and Windows lifecycle. The web reader uses the same-origin Fastify API; the extension uses a loopback bridge with revocable credentials; the CLI calls services directly. Kindle conversations are scoped to connection, project, and book, separately from PDF chat sessions. Saved notes are available in the project UI.
+The Windows desktop app, web reader, Kindle companion, and CLI share TypeScript services, local storage, and AI configuration. The desktop app hosts the reader and its local backend, with an Electron shell for the tray and Windows lifecycle. The web reader uses the same-origin Fastify API; the extension uses a loopback bridge with revocable credentials. The standalone CLI calls services directly; the bundled Windows CLI connects to the running app through a private pipe. Kindle conversations are scoped to connection, project, and book, separately from PDF chat sessions. Saved notes are available in the project UI.
 
 ```text
 Web reader ── HTTP ──▶ Fastify API ──┐
@@ -325,14 +351,14 @@ Kindle companion ────▶ Local bridge ─┤
 pdfpal CLI ─────────────────────────┘       │
                                             ├── SQLite, retrieval, notes, history
                                             ├── Managed PDF copies and extracted text
-                                            ├── Claude / Codex / OpenCode agents
+                                            ├── ChatGPT (desktop) / Claude / Codex / OpenCode
                                             └── OpenAlex / Semantic Scholar
 ```
 
 ### Main data paths
 
 - **Ingest**: `SourceService` resolves a local file or URL, extracts its text, stores a managed PDF copy, and chunks/indexes the text in SQLite FTS5.
-- **Ask**: `ChatService` scopes retrieval by project, source, or collection, builds a grounded prompt from matching passages, invokes the selected agent CLI, and persists the answer and source references.
+- **Ask**: `ChatService` scopes retrieval by project, source, or collection, builds a grounded prompt from matching passages, invokes the configured AI provider, and persists the answer and source references.
 - **Use**: React pages call the Fastify API; CLI commands and [`skills/pdfpal-cli`](skills/pdfpal-cli/) automate the same core operations. An agent subprocess may use its own web-search tools when supported by that agent.
 
 The implementation follows that split:
@@ -344,10 +370,6 @@ The implementation follows that split:
 - [`src/cli`](src/cli/) defines the scriptable `pdfpal` commands.
 - [`src/core`](src/core/) owns projects, sources, collections, notes, retrieval, chat, PDF handling, configuration, and agent invocation.
 
-The 2.1.0 package build contains the compiled TypeScript server/CLI, built React frontend, unpacked Chrome extension, and matching ZIP with bundled OCR assets. Runtime state stays local in the [library folder](#local-data), while external network edges are limited to source URLs, OpenAlex, Semantic Scholar, and capabilities provided by the selected agent. It is intended for local, single-user operation.
+The source package build contains the compiled TypeScript server/CLI, built React frontend, unpacked Chrome extension, and matching ZIP with bundled OCR assets. The [library folder](#local-data) holds the working data. Network access supports source downloads, paper discovery, the configured AI provider and, when enabled, Firebase cloud sync and telemetry. The Windows shell also handles account sign-in and explicit update checks. The local server is intended for single-user operation.
 
 *AI to read deeper, not to avoid reading.*
-
-### Optional Firebase cloud library
-
-The desktop sync alpha adds Google sign-in, direct Firestore synchronization of library metadata, and opt-in telemetry. The bundled Firebase project synchronizes projects, source metadata, collections, notes, highlights and reading progress. Saved PDF and project conversations can also be included explicitly from Cloud library. PDF files, Kindle extension history and interactive visual assets remain local. Optional PDF storage requires a separately configured, billing-enabled Cloud Storage bucket. See [Firebase setup, supported data and verification](docs/firebase-setup.md).
