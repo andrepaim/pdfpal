@@ -9,7 +9,8 @@ ipcRenderer.on('pdfpal:open-ai-settings', () => {
 })
 
 contextBridge.exposeInMainWorld('pdfpalDesktop', {
-  chrome: process.platform === 'win32',
+  chrome: process.platform === 'win32' || process.platform === 'darwin',
+  platform: process.platform,
   cliSetup: action => { if(!['status','install','check'].includes(action))return Promise.reject(new Error('Unsupported CLI setup action'));return ipcRenderer.invoke('pdfpal:cli-setup',action) },
   chromeState: () => ipcRenderer.invoke('pdfpal:chrome-state'),
   chromeCommand: command => ipcRenderer.invoke('pdfpal:chrome-command', command),

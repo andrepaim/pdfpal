@@ -150,3 +150,183 @@ test('ChatGPT preview release notes explain direct plan access', async () => {
     assert.match(notes, /without installing a coding agent/)
   } finally { await f.cleanup() }
 })
+
+const macManifestName = 'pdfpal-desktop-release-darwin-arm64.json'
+/** Adds the Mac build driver's output (disk image and manifest) to a Windows fixture. */
+async function withMac(f, { signed = false } = {}) {
+  const { version } = f.options
+  const bytes = Buffer.from('Synthetic Mac disk image fixture; never open')
+  const installer = `pdfpal-${version}-arm64.dmg`
+  const manifest = { format: 1, appId: 'io.pdfpal.desktop', version, platform: 'darwin', arch: 'arm64', signed, publisher: signed ? 'Test Publisher' : null, installer, sha256: createHash('sha256').update(bytes).digest('hex'), size: bytes.length }
+  await fs.writeFile(path.join(f.directory, installer), bytes)
+  const metadata = path.join(f.directory, macManifestName)
+  await fs.writeFile(metadata, JSON.stringify(manifest))
+  return { ...f, mac: { manifest, metadata, installer: path.join(f.directory, installer) } }
+}
+const sha256 = async file => createHash('sha256').update(await fs.readFile(file)).digest('hex')
+const noGitHub = () => { throw new Error('Must not contact GitHub') }
+
+test('two-platform preparation checksums every file and keeps the Windows files and names', async () => {
+  const f = await withMac(await fixture('2.9.0-beta.1'))
+  try {
+    const plan = await prepareRelease(f.directory, { ...f.options, requireMac: true })
+    const names = ['pdfpal-Setup-2.9.0-beta.1-x64.exe', 'pdfpal-desktop-release.json', 'pdfpal-2.9.0-beta.1-arm64.dmg', macManifestName, 'SHA256SUMS.txt']
+    assert.deepEqual(plan.assets.map(asset => asset.name), names)
+    assert.deepEqual(plan.platforms, ['win32-x64', 'darwin-arm64'])
+    assert.equal(plan.requireMac, true)
+    for (const asset of plan.assets) assert.equal(asset.sha256, await sha256(path.join(f.directory, asset.name)))
+    const sums = await fs.readFile(path.join(f.directory, 'SHA256SUMS.txt'), 'utf8')
+    assert.equal(sums, `${f.manifest.sha256}  ${names[0]}\n${await sha256(f.metadata)}  ${names[1]}\n${f.mac.manifest.sha256}  ${names[2]}\n${await sha256(f.mac.metadata)}  ${names[3]}\n`)
+    assert.deepEqual(JSON.parse(await fs.readFile(path.join(f.directory, 'release-plan.json'), 'utf8')), plan)
+  } finally { await f.cleanup() }
+})
+
+test('a Windows-only directory prepares as before unless Mac files are required', async () => {
+  const f = await fixture('2.9.0-beta.1')
+  try {
+    const plan = await prepareRelease(f.directory, f.options)
+    assert.deepEqual(plan.assets.map(asset => asset.name), ['pdfpal-Setup-2.9.0-beta.1-x64.exe', 'pdfpal-desktop-release.json', 'SHA256SUMS.txt'])
+    assert.deepEqual(plan.platforms, ['win32-x64'])
+    assert.equal(plan.requireMac, false)
+    assert.equal((await fs.readFile(path.join(f.directory, 'SHA256SUMS.txt'), 'utf8')).split('\n').filter(Boolean).length, 2)
+    assert.doesNotMatch(await fs.readFile(path.join(f.directory, 'release-notes.md'), 'utf8'), /Mac|dmg|Apple/)
+    await assert.rejects(prepareRelease(f.directory, { ...f.options, requireMac: true }), /Mac release files are required/)
+    // The publish-time switch applies to a plan prepared on the Windows runner, before any GitHub call.
+    await prepareRelease(f.directory, f.options)
+    await assert.rejects(publishRelease(f.directory, noGitHub, undefined, { requireMac: true }), /Mac release files are required/)
+  } finally { await f.cleanup() }
+  // A plan prepared with requireMac keeps requiring the Mac files at publication.
+  const g = await withMac(await fixture('2.9.0-beta.1'))
+  try {
+    await prepareRelease(g.directory, { ...g.options, requireMac: true })
+    await fs.rm(g.mac.installer); await fs.rm(g.mac.metadata)
+    await assert.rejects(publishRelease(g.directory, noGitHub), /Mac release files are required/)
+  } finally { await g.cleanup() }
+})
+
+test('tampered, mismatched or half-present Mac files are rejected before publication', async () => {
+  const f = await withMac(await fixture('2.9.0-beta.1'))
+  try {
+    for (const patch of [{ appId: 'io.pdfpal.desktop.installer-acceptance' }, { version: '2.9.0-beta.2' }, { platform: 'win32' }, { arch: 'x64' }, { installer: 'pdfpal-Setup-2.9.0-beta.1-x64.exe' },
+      { size: 1 }, { sha256: 'b'.repeat(64) }, { sha256: 'B'.repeat(64) }, { signed: 'no' }, { format: 2 }]) {
+      await fs.writeFile(f.mac.metadata, JSON.stringify({ ...f.mac.manifest, ...patch }))
+      await assert.rejects(prepareRelease(f.directory, { ...f.options, requireMac: true }), /Mac (installer manifest|disk image size or SHA-256 mismatch)/, JSON.stringify(patch))
+    }
+    await fs.writeFile(f.mac.metadata, JSON.stringify(f.mac.manifest))
+    await prepareRelease(f.directory, { ...f.options, requireMac: true })
+    await fs.appendFile(f.mac.installer, 'changed')
+    await assert.rejects(prepareRelease(f.directory, f.options), /Mac disk image size or SHA-256 mismatch/)
+    // One Mac file without the other is an error even when Mac files are optional.
+    await fs.rm(f.mac.installer)
+    await assert.rejects(prepareRelease(f.directory, f.options), /ENOENT/)
+    await fs.rm(f.mac.metadata)
+    await fs.writeFile(path.join(f.directory, 'pdfpal-2.9.0-beta.1-arm64.dmg'), 'orphan')
+    await assert.rejects(prepareRelease(f.directory, f.options), /ENOENT/)
+  } finally { await f.cleanup() }
+})
+
+test('a stable version refuses an unsigned Mac build', async () => {
+  const f = await withMac(await fixture('2.9.0'))
+  try {
+    // Sign the Windows side so the only remaining reason to refuse is the Mac build.
+    await fs.writeFile(f.metadata, JSON.stringify({ ...f.manifest, signed: true, publisher: 'Test Publisher' }))
+    await assert.rejects(prepareRelease(f.directory, { ...f.options, requireMac: true }), /signed Mac build/)
+    await assert.rejects(prepareRelease(f.directory, f.options), /signed Mac build/)
+    await fs.writeFile(f.mac.metadata, JSON.stringify({ ...f.mac.manifest, signed: true, publisher: '' }))
+    await assert.rejects(prepareRelease(f.directory, f.options), /signed Mac build/)
+    await fs.writeFile(f.mac.metadata, JSON.stringify({ ...f.mac.manifest, signed: true, publisher: 'Test Publisher' }))
+    const plan = await prepareRelease(f.directory, { ...f.options, requireMac: true })
+    assert.equal(plan.channel, 'stable')
+    assert.match(await fs.readFile(path.join(f.directory, 'release-notes.md'), 'utf8'), /Mac publisher: Test Publisher\./)
+  } finally { await f.cleanup() }
+})
+
+test('two-platform publication drafts, uploads and verifies every file, resumes, and never replaces', async () => {
+  const f = await withMac(await fixture('2.9.0-beta.1'))
+  const uploaded = asset => ({ name: asset.name, state: 'uploaded', size: asset.size, digest: 'sha256:' + asset.sha256 })
+  try {
+    const plan = await prepareRelease(f.directory, { ...f.options, requireMac: true })
+    const remote = github(plan)
+    assert.equal((await publishRelease(f.directory, remote.run, undefined, { requireMac: true })).state, 'published')
+    const create = remote.calls.find(args => args[1] === 'create')
+    assert.equal(create[create.indexOf('--title') + 1], 'pdfpal for Windows and Mac 2.9.0-beta.1')
+    const upload = remote.calls.find(args => args[1] === 'upload')
+    assert.deepEqual(upload.filter(arg => arg.startsWith(f.directory)).map(arg => path.basename(arg)), plan.assets.map(asset => asset.name))
+    const mutations = remote.calls.filter(args => args[0] === 'release').length
+    assert.equal((await publishRelease(f.directory, remote.run, undefined, { requireMac: true })).state, 'already-published')
+    assert.equal(remote.calls.filter(args => args[0] === 'release').length, mutations)
+
+    // A draft holding only the Windows files from an interrupted attempt resumes.
+    const partial = { draft: true, target_commitish: plan.commit, prerelease: true, assets: plan.assets.slice(0, 2).map(uploaded) }
+    const resumed = github(plan, { release: partial })
+    assert.equal((await publishRelease(f.directory, resumed.run)).state, 'published')
+    assert.equal(resumed.calls.some(args => args[1] === 'create'), false)
+
+    // An upload whose disk image digest does not verify leaves the release a draft.
+    const draft = { draft: true, target_commitish: plan.commit, prerelease: true, assets: [] }
+    const corrupt = github(plan, { release: draft })
+    const run = (binary, args) => {
+      const value = corrupt.run(binary, args)
+      if (args[1] === 'upload') draft.assets = draft.assets.map(item => item.name.endsWith('.dmg') ? { ...item, digest: 'sha256:' + 'e'.repeat(64) } : item)
+      return value
+    }
+    await assert.rejects(publishRelease(f.directory, run), /refusing to replace/)
+    assert.equal(corrupt.calls.some(args => args[1] === 'edit'), false)
+    assert.equal(draft.draft, true)
+
+    // A published release that lacks the Mac files, or has a different disk image, is never changed.
+    const windowsOnly = plan.assets.filter(asset => !/arm64|darwin/.test(asset.name)).map(uploaded)
+    const published = github(plan, { release: { draft: false, prerelease: true, assets: windowsOnly }, ref: { type: 'commit', sha: plan.commit } })
+    await assert.rejects(publishRelease(f.directory, published.run), /refusing to replace/)
+    assert.equal(published.calls.some(args => ['create', 'upload', 'edit'].includes(args[1])), false)
+    const otherImage = plan.assets.map(asset => ({ ...uploaded(asset), ...(asset.name.endsWith('.dmg') ? { digest: 'sha256:' + 'e'.repeat(64) } : {}) }))
+    const different = github(plan, { release: { draft: false, prerelease: true, assets: otherImage }, ref: { type: 'commit', sha: plan.commit } })
+    await assert.rejects(publishRelease(f.directory, different.run), /refusing to replace/)
+    assert.equal(different.calls.some(args => ['create', 'upload', 'edit'].includes(args[1])), false)
+
+    // A tag from another commit is refused with the larger file set too.
+    const foreign = github(plan, { ref: { type: 'commit', sha: 'b'.repeat(40) } })
+    await assert.rejects(publishRelease(f.directory, foreign.run), /another source/)
+    assert.equal(foreign.calls.some(args => ['create', 'upload', 'edit'].includes(args[1])), false)
+  } finally { await f.cleanup() }
+})
+
+test('the Mac release-note paragraph appears only with Mac files', async () => {
+  const f = await withMac(await fixture('2.9.0-beta.1')), windowsOnly = await fixture('2.9.0-beta.1')
+  try {
+    await prepareRelease(f.directory, f.options)
+    const notes = await fs.readFile(path.join(f.directory, 'release-notes.md'), 'utf8')
+    for (const expected of [/\*\*pdfpal-2\.9\.0-beta\.1-arm64\.dmg\*\*/, /Apple Silicon/, /not on Intel Macs/, /Not notarized/, /System Settings → Privacy & Security/, /Open Anyway/, /~\/\.pdfpal/, /docs\/mac-quickstart\.md/, /experimental/]) assert.match(notes, expected)
+    // The Windows text is unchanged and the Mac paragraph sits before the source commit line.
+    await prepareRelease(windowsOnly.directory, windowsOnly.options)
+    const plain = await fs.readFile(path.join(windowsOnly.directory, 'release-notes.md'), 'utf8')
+    const [windowsPart] = plain.split('\n\nSource commit:')
+    assert.ok(notes.startsWith(windowsPart + '\n\n**Mac (experimental):**'))
+    assert.ok(notes.endsWith(`\n\nSource commit: ${f.options.commit}\n`))
+    assert.doesNotMatch(plain, /Mac|Apple|dmg/)
+  } finally { await f.cleanup(); await windowsOnly.cleanup() }
+})
+
+test('the command line accepts --require-mac only for prepare and publish', async () => {
+  const script = fileURLToPath(new URL('../scripts/desktop-release.mjs', import.meta.url))
+  const f = await fixture('2.9.0-beta.1')
+  try {
+    const env = { ...process.env, RELEASE_VERSION: '2.9.0-beta.1', RELEASE_COMMIT: f.options.commit, GITHUB_REPOSITORY: f.options.repository }
+    const run = (...args) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', env })
+    let result = run('prepare', f.directory)
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(JSON.parse(result.stdout).requireMac, false)
+    result = run('prepare', f.directory, '--require-mac')
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /Mac release files are required/)
+    await withMac(f)
+    result = run('prepare', f.directory, '--require-mac')
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(JSON.parse(result.stdout).requireMac, true)
+    for (const args of [['prepare', f.directory, '--require-macs'], ['plan', '--require-mac']]) {
+      result = run(...args)
+      assert.notEqual(result.status, 0)
+      assert.match(result.stderr, /Usage/)
+    }
+  } finally { await f.cleanup() }
+})

@@ -5,6 +5,7 @@ import type {DesktopChromeState} from '../desktop'
 import {projectsApi,type Project} from '../lib/api'
 import {flushPendingSaves} from '../lib/persistence'
 import {openSettingsPanel,type SettingsPanel} from '../lib/settings-panels'
+import {isMacDesktop,shortcutHints} from '../lib/desktop-platform'
 import './desktop-chrome.css'
 
 function Icon({name}:{name:'menu'|'back'|'forward'|'search'|'help'|'cloud'|'folder'|'chevron'}){
@@ -13,7 +14,7 @@ function Icon({name}:{name:'menu'|'back'|'forward'|'search'|'help'|'cloud'|'fold
 }
 const initial:DesktopChromeState={version:'',focused:true,maximized:false,fullscreen:false,canGoBack:false,canGoForward:false,zoom:1}
 export default function DesktopChrome(){
- const bridge=window.pdfpalDesktop,enabled=!!bridge?.chrome
+ const bridge=window.pdfpalDesktop,enabled=!!bridge?.chrome,mac=isMacDesktop(),keys=shortcutHints(mac)
  const navigate=useNavigate(),location=useLocation()
  const [state,setState]=useState(initial),[menu,setMenu]=useState(false),[finding,setFinding]=useState(false),[projects,setProjects]=useState<Project[]>([]),[query,setQuery]=useState(''),[loading,setLoading]=useState(false),[failed,setFailed]=useState(false),[error,setError]=useState(''),[selected,setSelected]=useState(0)
  const menuRef=useRef<HTMLDivElement>(null),menuButton=useRef<HTMLButtonElement>(null),finder=useRef<HTMLDialogElement>(null),searchButton=useRef<HTMLButtonElement>(null),searchInput=useRef<HTMLInputElement>(null),request=useRef(0)
@@ -31,7 +32,8 @@ export default function DesktopChrome(){
  function ai(){if(menu)closeMenu();window.dispatchEvent(new Event('pdfpal-open-ai-settings'))}
  useEffect(()=>bridge?.onChromeCommand?.(command=>{if(document.querySelector('dialog[open]')&&!finder.current?.open)return;if(command==='menu')setMenu(v=>!v);if(command==='find')showFinder();if(command==='home')void go('/');if(command==='ai-settings')ai()}))
  useEffect(()=>{
-  if(!enabled)return
+  // On a Mac the application menu's accelerators handle these keys, so the page does not handle them twice.
+  if(!enabled||mac)return
   const keydown=(event:globalThis.KeyboardEvent)=>{
    if(event.altKey||event.metaKey)return
    const key=event.key.toLowerCase()
@@ -56,14 +58,14 @@ export default function DesktopChrome(){
  if(!enabled)return null
  const item=(label:string,click:()=>void,key?:string)=><button type="button" role="menuitem" onClick={click}><span>{label}</span>{key&&<kbd>{key}</kbd>}</button>
  return <>
-  <header className={`desktop-chrome${state.focused?'':' is-inactive'}`} aria-label="pdfpal window toolbar"><div className="desktop-chrome-inner">
-   <button type="button" ref={menuButton} className="desktop-chrome-button" aria-label="pdfpal menu" title="pdfpal menu (F10)" aria-haspopup="menu" aria-expanded={menu} aria-controls="desktop-app-menu" onClick={()=>setMenu(v=>!v)}><Icon name="menu"/></button>
+  <header className={`desktop-chrome${state.focused?'':' is-inactive'}${state.fullscreen?' is-fullscreen':''}`} aria-label="pdfpal window toolbar"><div className="desktop-chrome-inner">
+   <button type="button" ref={menuButton} className="desktop-chrome-button" aria-label="pdfpal menu" title={mac?"pdfpal menu":`pdfpal menu (${keys.menu})`} aria-haspopup="menu" aria-expanded={menu} aria-controls="desktop-app-menu" onClick={()=>setMenu(v=>!v)}><Icon name="menu"/></button>
    <button type="button" className="desktop-brand" aria-label="All projects" title="All projects" onClick={()=>void go('/')}><img src="/favicon-32.png" alt=""/><span>pdfpal</span></button>
-   <nav className="desktop-history" aria-label="Reading history"><button type="button" className="desktop-chrome-button" aria-label="Go back" title="Back (Alt+Left)" disabled={!state.canGoBack} onClick={()=>void native('back')}><Icon name="back"/></button><button type="button" className="desktop-chrome-button" aria-label="Go forward" title="Forward (Alt+Right)" disabled={!state.canGoForward} onClick={()=>void native('forward')}><Icon name="forward"/></button></nav>
-   <button type="button" ref={searchButton} className="desktop-project-switcher" aria-haspopup="dialog" aria-label="Find a project" title="Find a project (Ctrl+K)" onClick={showFinder}><Icon name="search"/><span>{activeProject?.title||'Find a project'}</span><kbd>Ctrl K</kbd></button>
+   <nav className="desktop-history" aria-label="Reading history"><button type="button" className="desktop-chrome-button" aria-label="Go back" title={`Back (${keys.back})`} disabled={!state.canGoBack} onClick={()=>void native('back')}><Icon name="back"/></button><button type="button" className="desktop-chrome-button" aria-label="Go forward" title={`Forward (${keys.forward})`} disabled={!state.canGoForward} onClick={()=>void native('forward')}><Icon name="forward"/></button></nav>
+   <button type="button" ref={searchButton} className="desktop-project-switcher" aria-haspopup="dialog" aria-label="Find a project" title={`Find a project (${keys.find})`} onClick={showFinder}><Icon name="search"/><span>{activeProject?.title||'Find a project'}</span><kbd>{keys.findKey}</kbd></button>
    <div className="desktop-chrome-tools"><button type="button" className="desktop-chrome-button" aria-label="Cloud library" title="Cloud library" onClick={()=>panel('cloud')}><Icon name="cloud"/></button><button type="button" className="desktop-chrome-button" aria-label="Help and updates" title="Help and updates" onClick={()=>panel('updates')}><Icon name="help"/></button></div>
   </div></header>
-  {menu&&<div ref={menuRef} className="desktop-app-menu" id="desktop-app-menu" role="menu" aria-label="pdfpal menu" onKeyDown={menuKeys}><div className="desktop-menu-heading">LIBRARY</div>{item('All projects',()=>void go('/'),'Ctrl Shift H')}{item('Find a project…',showFinder,'Ctrl K')}<div role="separator"/>{item('Command line & ChatGPT',()=>panel('cli'))}{item('AI settings',ai,'Ctrl ,')}{item('Cloud library',()=>panel('cloud'))}{item('Backups & recovery',()=>panel('backups'))}{item('Privacy & diagnostics',()=>panel('privacy'))}{item('Kindle extension',()=>void go('/extensions'))}<div role="separator"/>{item('Zoom in',()=>void native('zoom-in'),'Ctrl +')}{item('Zoom out',()=>void native('zoom-out'),'Ctrl −')}{item('Actual size',()=>void native('zoom-reset'),'Ctrl 0')}{item(state.fullscreen?'Exit full screen':'Full screen',()=>void native('fullscreen'),'F11')}<div role="separator"/>{item('Software updates',()=>panel('updates'))}{item('Send feedback',()=>void native('feedback'))}{item('Open in browser',()=>void native('open-browser'))}{item('Quit pdfpal',()=>void native('quit'),'Ctrl Q')}<div className="desktop-menu-version">pdfpal {state.version}<span>Made for focused reading</span></div></div>}
+  {menu&&<div ref={menuRef} className="desktop-app-menu" id="desktop-app-menu" role="menu" aria-label="pdfpal menu" onKeyDown={menuKeys}><div className="desktop-menu-heading">LIBRARY</div>{item('All projects',()=>void go('/'),keys.home)}{item('Find a project…',showFinder,keys.findKey)}<div role="separator"/>{item('Command line & ChatGPT',()=>panel('cli'))}{item('AI settings',ai,keys.ai)}{item('Cloud library',()=>panel('cloud'))}{item('Backups & recovery',()=>panel('backups'))}{item('Privacy & diagnostics',()=>panel('privacy'))}{item('Kindle extension',()=>void go('/extensions'))}<div role="separator"/>{item('Zoom in',()=>void native('zoom-in'),keys.zoomIn)}{item('Zoom out',()=>void native('zoom-out'),keys.zoomOut)}{item('Actual size',()=>void native('zoom-reset'),keys.zoomReset)}{item(state.fullscreen?'Exit full screen':'Full screen',()=>void native('fullscreen'),keys.fullscreen)}<div role="separator"/>{item('Software updates',()=>panel('updates'))}{item('Send feedback',()=>void native('feedback'))}{item('Open in browser',()=>void native('open-browser'))}{item('Quit pdfpal',()=>void native('quit'),keys.quit)}<div className="desktop-menu-version">pdfpal {state.version}<span>Made for focused reading</span></div></div>}
   {error&&<div className="desktop-chrome-error" role="alert">{error}<button type="button" aria-label="Dismiss window message" onClick={()=>setError('')}>×</button></div>}
   <dialog ref={finder} className="desktop-finder" aria-labelledby="desktop-finder-title" onCancel={event=>{event.preventDefault();closeFinder()}} onClose={()=>setFinding(false)} onClick={event=>{if(event.target===event.currentTarget){const box=event.currentTarget.getBoundingClientRect();if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)closeFinder()}}}>
    <div className="desktop-finder-input"><Icon name="search"/><input ref={searchInput} aria-label="Search projects" role="combobox" aria-autocomplete="list" aria-expanded="true" aria-controls="desktop-project-options" aria-activedescendant={filtered[selected]?`desktop-project-${selected}`:undefined} value={query} onChange={event=>setQuery(event.target.value)} onKeyDown={finderKeys} placeholder="Find a project…" autoComplete="off"/><button type="button" onClick={closeFinder} aria-label="Close project finder"><kbd>Esc</kbd></button></div>

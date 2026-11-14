@@ -1,10 +1,12 @@
-# pdfpal Windows desktop preview
+# pdfpal desktop preview (Windows and Mac)
+
+This folder holds the Electron desktop app. Windows is the tested platform and most of this guide is about it. An experimental Apple Silicon Mac build is described in [Mac build](#mac-build-experimental) below; it has passed automated packaging and start-up checks on a GitHub macOS runner, but nobody has used it on a Mac yet.
 
 M3 adds a branded per-user Windows installer, versioned desktop releases, guarded upgrades/uninstall, manual update checking, license notices, and signing configuration to the accepted M2 desktop application. See the [Windows quickstart](../docs/windows-quickstart.md), [M3 results](../docs/windows-m3-results.md), and [implementation plan](../docs/windows-desktop-plan.md).
 
 M4 adds repeatable engineering measurements and an offline beta field-test kit. See [M4 results](../docs/windows-m4-results.md) and the [observer guide](../docs/windows-beta-guide.md). Actual participant results, clean-account provider login, reference-machine validation and publisher signing remain release gates.
 
-Windows downloads are published through the [GitHub Actions release pipeline](../docs/windows-release-pipeline.md): a desktop version bump merged into `master` creates a tested installer on GitHub Releases. Suffixed versions are engineering prereleases; stable releases require publisher signing. The npm CLI version remains independent.
+Desktop downloads are published through the [GitHub Actions release pipeline](../docs/windows-release-pipeline.md): a desktop version bump merged into `master` builds the Windows installer and the Mac disk image, and publishes both in one GitHub release only when both builds pass. Suffixed versions are engineering prereleases; stable releases require publisher signing, which does not exist for the Mac yet, so stable versions cannot currently be published. The npm CLI version remains independent.
 
 ## Install the preview
 
@@ -56,11 +58,27 @@ The native matrix covers fresh per-user install, application resources, Start me
 
 The **Signed Windows release candidate** workflow is manual, limited to `master`, and targets the `windows-release` environment. Configure that environment’s credential-access protections, publisher variable and `WINDOWS_CSC_LINK` / `WINDOWS_CSC_KEY_PASSWORD` secrets there; do not commit certificates or paste credentials into an issue. It uploads a reviewable candidate and test receipt. It does not publish releases. Windows-store signing is also available for a local build with an existing signing provider/certificate.
 
-Desktop versions live in `desktop/version.json`, independently of the npm CLI version. An explicit `PDFPAL_DESKTOP_VERSION` build override must be a valid version. The initial update flow checks only when requested, reads stable `desktop-v…` releases from the official repository, and requires the matching application ID, signed-manifest flag, platform/architecture, filename, size, SHA-256, and official download URL. Downloads open in the browser; installation is user-initiated. Unsigned previews and npm releases are not offered as updates.
+Desktop versions live in `desktop/version.json`, independently of the npm CLI version. An explicit `PDFPAL_DESKTOP_VERSION` build override must be a valid version. The initial update flow checks only when requested, reads stable `desktop-v…` releases from the official repository, and requires the matching application ID, signed-manifest flag, platform/architecture, filename, size, SHA-256, and official download URL. Each platform reads only its own manifest (`pdfpal-desktop-release.json` on Windows x64, `pdfpal-desktop-release-darwin-arm64.json` on an Apple Silicon Mac), so Windows is never offered the `.dmg` and a Mac is never offered the `.exe`; a release without the running platform's manifest is skipped, and other platforms are offered nothing. Downloads open in the browser; installation is user-initiated. Unsigned previews and npm releases are not offered as updates.
 
 Use `-SkipInstall` only after installing the same dependency locks. `-SkipPackagedChecks` exists for local installer iteration after packaged acceptance; CI runs the full driver. Acceptance fixtures use store compression for speed, while the production candidate uses normal compression. The two fixture versions use the current code and exercise installer/data-preservation mechanics; they are not proof of an upgrade from a historical signed release that does not yet exist.
 
 A deterministic, labelled reader demo can be recorded with `node desktop/scripts/record-demo.mjs` after building and installing the Playwright browser. It uses a sample PDF and simulated assistant, without a personal account or provider usage. CI saves the video as a separate artifact.
+
+## Mac build (experimental)
+
+The Mac port packages the same app for Apple Silicon (`arm64`) only. **It has not yet been run on a Mac**: the build driver and release job exist, but no packaged Mac app has been opened on real hardware and no results are recorded. The [Mac desktop plan](../docs/mac-desktop-plan.md) lists the milestones and the hands-on checklist; the [Mac quickstart](../docs/mac-quickstart.md) is the reader-facing guide.
+
+Build on a Mac, from the source checkout, with Node.js 22 or newer (Xcode is not needed):
+
+```bash
+npm ci
+node desktop/scripts/stage.mjs
+node desktop/scripts/mac-build.mjs --work=/tmp/pdfpal-mac-build
+```
+
+The driver installs the locked tooling, runs the native checks, packages the app and runs a packaged smoke test. It writes `pdfpal-<version>-arm64.dmg` and `pdfpal-desktop-release-darwin-arm64.json` to `<work>/artifacts/`, and `packaged-receipt.json` to the work folder. Mac builds are ad-hoc signed and not notarized (`signed: false` in the manifest), so a downloaded build needs **Open Anyway** in System Settings; a build made on the same Mac does not. The Mac app uses the same library as the CLI, `~/.pdfpal`, and keeps its preferences in `~/Library/Application Support/pdfpal-desktop`.
+
+The release workflow runs the same driver on a `macos-15` runner in its `build-mac` job and publishes the two Mac files beside the Windows files. Developer ID signing and notarization are not set up, so stable versions are refused while the Mac build is required; see [the release pipeline](../docs/windows-release-pipeline.md#turning-the-mac-requirement-off) for how to publish Windows only.
 
 ## Beta engineering and field-test kit
 

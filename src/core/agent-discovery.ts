@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 
 export type DesktopAgent = 'claude' | 'codex'
 export type ProbeResult = { code: number | null; stdout: string; stderr: string; failure?: 'timeout' | 'output_limit' | 'spawn' | 'cancelled' }
@@ -58,6 +59,9 @@ export function agentCandidates(agent: DesktopAgent, options: { binary?: string;
   const dirs = (env.PATH ?? env.Path ?? '').split(platform === 'win32' ? ';' : ':').filter(dir => p.isAbsolute(dir))
   const home = options.home ?? os.homedir()
   if (platform === 'win32' && env.APPDATA) dirs.push(p.join(env.APPDATA, 'npm'))
+  // Homebrew prefixes on Apple silicon and Intel (Claude Code and Codex casks). The official native
+  // installers of both use ~/.local/bin, added below for every platform.
+  if (platform === 'darwin') dirs.push('/opt/homebrew/bin', '/usr/local/bin')
   const candidates = dirs.map(dir => p.join(dir, `${agent}${platform === 'win32' ? '.exe' : ''}`))
   if (platform === 'win32' && env.LOCALAPPDATA) candidates.push(p.join(env.LOCALAPPDATA, 'Microsoft', 'WinGet', 'Links', `${agent}.exe`))
   candidates.push(p.join(home, '.local', 'bin', `${agent}${platform === 'win32' ? '.exe' : ''}`))
@@ -117,6 +121,88 @@ export async function discoverAgent(agent: DesktopAgent, binary?: string, signal
   }
   if (unsupportedVersion) return { agent, state: 'unsupported' as const, version: unsupportedVersion, auth: 'unknown' as const }
   return { agent, state: found ? 'unusable' as const : 'missing' as const, auth: 'unknown' as const }
+}
+
+/**
+ * Whether assistants are found with `discoverAgent` (fixed install locations, version, capability and
+ * sign-in probes) instead of a plain `which` lookup. Always on Windows. On macOS only inside the desktop
+ * app's backend: desktop/src/main.mjs is the only place that sets PDFPAL_APP_VERSION, in the environment
+ * of the backend utility process it forks. An app opened from Finder or the Dock inherits a minimal PATH,
+ * so `which` cannot see assistants there. The npm CLI and server in a terminal, and Linux, keep `which`.
+ */
+export function usesNativeDiscovery(options: { platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv } = {}): boolean {
+  const platform = options.platform ?? process.platform, env = options.env ?? process.env
+  return platform === 'win32' || (platform === 'darwin' && Boolean(env.PDFPAL_APP_VERSION))
+}
+
+/** The user's login shell: $SHELL when it is an absolute path to an existing file, else the macOS default. */
+export function loginShell(env: NodeJS.ProcessEnv = process.env): string {
+  const shell = env.SHELL
+  if (shell && path.posix.isAbsolute(shell)) { try { if (fs.statSync(shell).isFile()) return shell } catch {} }
+  return '/bin/zsh'
+}
+
+const PATH_BEGIN = 'PDFPAL-LOGIN-PATH-BEGIN', PATH_END = 'PDFPAL-LOGIN-PATH-END'
+/**
+ * Prints the exported PATH between markers. `printenv` reads the exported value, which is colon-joined
+ * even in fish, where `$PATH` is a list. The markers are printed from two words, so a shell echoing its
+ * command line (for example with xtrace) never prints a complete marker.
+ */
+export function loginShellPathCommand(nonce: string): string {
+  return `printf '%s-%s\\n' ${PATH_BEGIN} ${nonce}; /usr/bin/printenv PATH; printf '%s-%s\\n' ${PATH_END} ${nonce}`
+}
+
+/** Absolute PATH entries between the last begin marker and the next end marker, or undefined. */
+export function parseLoginShellPath(stdout: string, nonce: string): string[] | undefined {
+  const begin = `${PATH_BEGIN}-${nonce}`, end = `${PATH_END}-${nonce}`
+  const start = stdout.lastIndexOf(begin)
+  if (start < 0) return undefined
+  const stop = stdout.indexOf(end, start + begin.length)
+  if (stop < 0) return undefined
+  const entries = [...new Set(stdout.slice(start + begin.length, stop).replace(/^[\r\n]+|[\r\n]+$/g, '').split(':').filter(entry => path.posix.isAbsolute(entry)))]
+  return entries.length ? entries : undefined
+}
+
+/** `first` entries, then the current ones; absolute entries only, de-duplicated, colon-joined. */
+export function mergePathEntries(first: string[], current: string | undefined): string {
+  return [...new Set([...first, ...(current ?? '').split(':')].filter(entry => path.posix.isAbsolute(entry)))].join(':')
+}
+
+/**
+ * Runs the login shell as a login, interactive shell, so the user's profile files apply, and merges its
+ * PATH into `env.PATH`. Bounded by the probe timeout and output limit, honours `signal`, never throws.
+ * On any failure `env.PATH` is left unchanged. Returns whether PATH was merged, or 'cancelled'.
+ */
+export async function applyLoginShellPath(options: { shell?: string; env?: NodeJS.ProcessEnv; signal?: AbortSignal; timeoutMs?: number } = {}): Promise<boolean | 'cancelled'> {
+  const env = options.env ?? process.env
+  try {
+    const nonce = randomBytes(12).toString('hex')
+    const result = await runProbe(options.shell ?? loginShell(env), ['-l', '-i', '-c', loginShellPathCommand(nonce)], { signal: options.signal, timeoutMs: options.timeoutMs })
+    if (result.failure === 'cancelled') return 'cancelled'
+    if (result.failure) return false
+    const entries = parseLoginShellPath(result.stdout, nonce)
+    if (!entries) return false
+    env.PATH = mergePathEntries(entries, env.PATH)
+    return true
+  } catch { return false }
+}
+
+let macPathPending: Promise<void> | undefined, macPathSettled = false
+/**
+ * macOS desktop app only: merge the login shell's PATH into this process, and so into every assistant
+ * process it starts (a Node-based launcher needs `node`). Caching: `force` (used by assistant inspection:
+ * page load, AI settings, "Check again", connection test) always launches the shell again; without it,
+ * as before every question, the shell runs only if no attempt has finished in this process yet.
+ * Concurrent callers share one shell launch.
+ */
+export function refreshMacPath(signal?: AbortSignal, options: { force?: boolean } = {}): Promise<void> {
+  if (process.platform !== 'darwin' || !usesNativeDiscovery()) return Promise.resolve()
+  if (macPathPending) return macPathPending
+  if (macPathSettled && !options.force) return Promise.resolve()
+  macPathPending = applyLoginShellPath({ signal })
+    .then(result => { if (result !== 'cancelled') macPathSettled = true })
+    .finally(() => { macPathPending = undefined })
+  return macPathPending
 }
 
 /** Refresh a running desktop process after a provider installer updates Windows PATH. */

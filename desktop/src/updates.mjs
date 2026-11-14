@@ -25,13 +25,28 @@ export function compareVersions(left, right) {
 function assetURL(tag, filename) {
   return `${releasePage}/download/${encodeURIComponent(tag)}/${encodeURIComponent(filename)}`
 }
-export function verifyRelease(release, manifest) {
+/**
+ * Release files for each shipped desktop platform. Installed Windows apps read
+ * `pdfpal-desktop-release.json`, so that name and its meaning never change.
+ * A platform or architecture that is not listed has no published build.
+ */
+export const desktopTargets = Object.freeze({
+  'win32-x64': Object.freeze({ platform: 'win32', arch: 'x64', manifest: 'pdfpal-desktop-release.json', installer: version => `pdfpal-Setup-${version}-x64.exe` }),
+  'darwin-arm64': Object.freeze({ platform: 'darwin', arch: 'arm64', manifest: 'pdfpal-desktop-release-darwin-arm64.json', installer: version => `pdfpal-${version}-arm64.dmg` }),
+})
+export function desktopTarget(platform = process.platform, arch = process.arch) {
+  const key = `${platform}-${arch}`
+  return Object.hasOwn(desktopTargets, key) ? desktopTargets[key] : undefined
+}
+export function verifyRelease(release, manifest, { platform = process.platform, arch = process.arch } = {}) {
+  const target = desktopTarget(platform, arch)
+  if (!target) throw new Error('No desktop release for this platform')
   const version = release.tag_name?.replace(/^desktop-v/, '')
   versionParts(version)
   if (release.draft || release.prerelease || release.tag_name !== `desktop-v${version}` || versionParts(version).preview) throw new Error('Not a stable desktop release')
-  const filename = `pdfpal-Setup-${version}-x64.exe`
+  const filename = target.installer(version)
   const asset = release.assets?.find(item => item.name === filename && item.state === 'uploaded')
-  if (manifest.format !== 1 || manifest.appId !== 'io.pdfpal.desktop' || manifest.version !== version || manifest.platform !== 'win32' || manifest.arch !== 'x64' || manifest.signed !== true ||
+  if (manifest.format !== 1 || manifest.appId !== 'io.pdfpal.desktop' || manifest.version !== version || manifest.platform !== target.platform || manifest.arch !== target.arch || manifest.signed !== true ||
       typeof manifest.publisher !== 'string' || !manifest.publisher.trim() || manifest.publisher.length > 256 || /[\r\n]/.test(manifest.publisher) ||
       manifest.installer !== filename || !/^[a-f0-9]{64}$/i.test(manifest.sha256 ?? '') ||
       !Number.isSafeInteger(manifest.size) || manifest.size <= 0 || !asset || asset.size !== manifest.size ||
@@ -61,22 +76,28 @@ async function readJSON(url, request, limit) {
     return JSON.parse(Buffer.concat(chunks).toString('utf8'))
   } finally { await reader.cancel().catch(() => {}); reader.releaseLock() }
 }
-/** User-initiated metadata check only. No automatic downloads, execution, or telemetry. */
-export async function checkDesktopUpdates(currentVersion, request = fetch) {
+/**
+ * User-initiated metadata check only. No automatic downloads, execution, or telemetry.
+ * Only the running platform's manifest is read, so one platform is never offered
+ * another platform's installer; a release without this platform's files is skipped.
+ */
+export async function checkDesktopUpdates(currentVersion, request = fetch, { platform = process.platform, arch = process.arch } = {}) {
   versionParts(currentVersion)
+  const target = desktopTarget(platform, arch)
+  if (!target) return { state: 'unpublished', currentVersion }
   try {
     const releases = await readJSON(api, request, 1024 * 1024)
     if (!Array.isArray(releases)) throw new Error('Unverified release information')
     const candidates = releases.filter(release => {
-      try { return !release.draft && !release.prerelease && /^desktop-v/.test(release.tag_name) && !versionParts(release.tag_name.slice(9)).preview && release.assets?.some(asset => asset.name === 'pdfpal-desktop-release.json') } catch { return false }
+      try { return !release.draft && !release.prerelease && /^desktop-v/.test(release.tag_name) && !versionParts(release.tag_name.slice(9)).preview && release.assets?.some(asset => asset.name === target.manifest) } catch { return false }
     }).sort((a, b) => compareVersions(b.tag_name.slice(9), a.tag_name.slice(9)))
     for (const release of candidates) {
-      const asset = release.assets.find(item => item.name === 'pdfpal-desktop-release.json')
+      const asset = release.assets.find(item => item.name === target.manifest)
       if (asset.browser_download_url !== assetURL(release.tag_name, asset.name) || asset.state !== 'uploaded') throw new Error('Unverified release information')
       const manifest = await readJSON(asset.browser_download_url, request, 64 * 1024)
       // An unsigned preview must never be promoted by this flow.
       if (manifest.signed !== true) continue
-      const verified = verifyRelease(release, manifest)
+      const verified = verifyRelease(release, manifest, target)
       return { currentVersion, ...verified, state: compareVersions(verified.version, currentVersion) > 0 ? 'available' : 'current' }
     }
     return { state: 'unpublished', currentVersion }

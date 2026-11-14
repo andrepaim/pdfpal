@@ -5,7 +5,7 @@ export interface DesktopAssistant {
 export interface DesktopSetupState { default: string; explicit?: boolean; complete: boolean; agents: DesktopAssistant[] }
 export interface DesktopServiceState { state: 'starting' | 'ready' | 'failed'; interrupted?: boolean }
 export interface DesktopChromeState {version:string;focused:boolean;maximized:boolean;fullscreen:boolean;canGoBack:boolean;canGoForward:boolean;zoom:number}
-export interface DesktopCliSetup {available:boolean;launcher:string;version:string;library:string;setupCommand:string;skill:{installed:boolean;managed:boolean;edited:boolean;directory:string;legacy:string[]};check?:{ok:boolean;pathReady?:boolean;pathConflict?:boolean;error?:{code:string;message:string}}}
+export interface DesktopCliSetup {available:boolean;launcher:string;version:string;library:string;setupCommand:string;skill:{installed:boolean;managed:boolean;edited:boolean;directory:string;legacy:string[]};link?:{path:string;state:'installed'|'missing'|'conflict'|'failed'};check?:{ok:boolean;pathReady?:boolean;pathConflict?:boolean;error?:{code:string;message:string}}}
 
 declare global {
   interface Window {
@@ -13,6 +13,8 @@ declare global {
     pdfpalDesktop?: {
       cliSetup?(action:'status'|'install'|'check'):Promise<DesktopCliSetup>
       chrome?:boolean
+      /** process.platform of the desktop app, e.g. 'win32' or 'darwin'. */
+      platform?:string
       chromeState?(): Promise<DesktopChromeState>
       chromeCommand?(command:string): Promise<boolean>
       onChromeState?(callback:(state:DesktopChromeState)=>void):()=>void

@@ -19,6 +19,20 @@ export function startupArguments(startup, profile) {
   ].map(quote)]
 }
 
+/**
+ * Login-item settings for Electron. Windows registers a named Run entry with the executable and the startup
+ * arguments that pin the library. On a Mac only `openAtLogin` applies (name/path/args are Windows-only); the
+ * app then starts without arguments and reads the selected library from `activeLibrary` in its preferences.
+ */
+export function loginItemSettings(platform, { openAtLogin, name, path: executable, args }) {
+  return platform === 'win32' ? { name, openAtLogin, path: executable, args } : { openAtLogin }
+}
+export function loginItemQuery(platform, executable) { return platform === 'win32' ? { path: executable } : undefined }
+export function loginItemEnabled(platform, settings, name) {
+  if (platform === 'win32') return settings.launchItems.some(item => item.name === name && item.enabled)
+  return platform === 'darwin' && settings?.openAtLogin === true
+}
+
 export function restoreBounds(saved, displays) {
   const fallback = { width: Math.min(1250, displays[0]?.workArea.width ?? 1250), height: Math.min(850, displays[0]?.workArea.height ?? 850) }
   if (!saved || !['x', 'y', 'width', 'height'].every(key => Number.isFinite(saved[key]))) return fallback

@@ -42,6 +42,8 @@ test('desktop CLI manages the live library with compact retrieval, notes, trash 
     sync.close()
     const status = await f.cli('status')
     assert.equal(status.label, 'Fixture library')
+    // Off Windows (Linux here, and the Mac app) the CLI uses loopback HTTP with the per-run secret.
+    assert.equal(status.transport, process.platform === 'win32' ? 'windows-pipe' : 'loopback-http')
     assert.ok(status.capabilities.includes('operation-receipts'))
     const project = await f.cli('project', 'create', 'Research ação 🧪')
     const target = await f.cli('project', 'create', 'Target')

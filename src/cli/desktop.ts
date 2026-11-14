@@ -11,9 +11,36 @@ import { PdfpalError } from '../core/types.js'
 import { buildVersion } from '../shared/build-info.js'
 import { CLI_PROTOCOL, type CliReceipt } from '../shared/cli-protocol.js'
 
+/** Every `name` on PATH in lookup order: where.exe on Windows, `which -a` on macOS, none elsewhere. */
+export async function findCommands(name: string, host: { platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv } = {}): Promise<string[]> {
+  const platform = host.platform ?? process.platform, env = host.env ?? process.env, child = host.env ? { env: host.env } : {}
+  try {
+    if (platform === 'win32') {
+      const result = await promisify(execFile)(path.join(env.SystemRoot ?? 'C:\\Windows', 'System32', 'where.exe'), [name], { encoding: 'utf8', windowsHide: true, timeout: 3000, ...child })
+      return result.stdout.trim().split(/\r?\n/).filter(Boolean)
+    }
+    if (platform === 'darwin') {
+      const result = await promisify(execFile)('/usr/bin/which', ['-a', name], { encoding: 'utf8', timeout: 3000, ...child })
+      return result.stdout.trim().split(/\r?\n/).filter(Boolean)
+    }
+  } catch {}
+  return []
+}
+
+/**
+ * Whether a resolved command is this launcher. Windows compares resolved paths case-insensitively.
+ * Elsewhere it compares real paths, because the Mac command is a symlink in ~/.local/bin to the
+ * launcher inside the app bundle, and the launcher reports its own real path in PDFPAL_CLI_LAUNCHER.
+ */
+export function sameCommand(found: string, launcher: string, platform: NodeJS.Platform = process.platform): boolean {
+  if (platform === 'win32') return path.resolve(found).toLowerCase() === path.resolve(launcher).toLowerCase()
+  const real = (file: string) => { try { return fs.realpathSync.native(file) } catch { return path.resolve(file) } }
+  return real(found) === real(launcher)
+}
+
 export async function runDesktopCli(argv: string[]) {
-  const program = new Command().name('pdfpal').description('Manage the running Windows pdfpal library')
-    .version(buildVersion()).option('--desktop', 'connect to the Windows desktop app')
+  const program = new Command().name('pdfpal').description('Manage the running pdfpal desktop library')
+    .version(buildVersion()).option('--desktop', 'connect to the pdfpal desktop app')
     .option('--request-file <filename>', 'read arguments from a UTF-8 JSON args array (must be the first option)')
     .option('--profile <directory>', 'explicit desktop profile (regular app by default)')
     .option('--library <id>', 'require a registered active library')
@@ -50,13 +77,9 @@ export async function runDesktopCli(argv: string[]) {
     try { connection = await connect(command) } catch (caught) { error = caught instanceof PdfpalError ? { code: caught.code, message: caught.message } : { code: 'SETUP_FAILED', message: 'Could not inspect the local setup.' } }
     const skill = skillStatus()
     const launcher = process.env.PDFPAL_CLI_LAUNCHER ?? process.argv[1]
-    let commandResolution: string[] = []
-    if (process.platform === 'win32') try {
-      const result = await promisify(execFile)(path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'where.exe'), ['pdfpal'], { encoding: 'utf8', windowsHide: true, timeout: 3000 })
-      commandResolution = result.stdout.trim().split(/\r?\n/).filter(Boolean)
-    } catch {}
-    const pathReady = Boolean(launcher && commandResolution.some(item => path.resolve(item).toLowerCase() === path.resolve(launcher).toLowerCase()))
-    const pathConflict = Boolean(commandResolution.length && launcher && path.resolve(commandResolution[0]!).toLowerCase() !== path.resolve(launcher).toLowerCase())
+    const commandResolution = await findCommands('pdfpal')
+    const pathReady = Boolean(launcher && commandResolution.some(item => sameCommand(item, launcher)))
+    const pathConflict = Boolean(commandResolution.length && launcher && !sameCommand(commandResolution[0]!, launcher))
     emit({ ok: !!connection, cliBuild: buildVersion(), cliProtocol: CLI_PROTOCOL, command: launcher, commandResolution, pathReady, pathConflict, skill,
       ...(connection ? { transport: connection.transport, library: connection.status.library, libraryId: connection.selection.selected.id, label: connection.selection.selected.label, build: connection.status.build, schema: connection.status.schema } : { error }) }, command)
     if (!connection) process.exitCode = 1

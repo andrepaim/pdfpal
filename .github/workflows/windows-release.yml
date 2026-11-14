@@ -1,3 +1,7 @@
+# Publishes one desktop-v<version> GitHub release with the Windows installer and
+# the Mac disk image. The workflow keeps its historical file name and title.
+# Publication waits for the Linux regression, the Windows build and the Mac
+# build; if either platform fails, nothing is published (docs/windows-release-pipeline.md).
 name: Publish Windows desktop release
 
 on:
@@ -10,6 +14,8 @@ on:
       - '.github/workflows/windows-release.yml'
       - 'desktop/scripts/desktop-release.mjs'
       - 'desktop/test/release.test.mjs'
+      - 'desktop/src/updates.mjs'
+      - 'desktop/test/updates.test.mjs'
 
 permissions:
   contents: read
@@ -25,7 +31,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test desktop/test/release.test.mjs
+      - run: node --test desktop/test/release.test.mjs desktop/test/updates.test.mjs
 
   plan:
     if: github.event_name != 'pull_request' && github.repository == 'andrepaim/pdfpal' && github.ref == 'refs/heads/master'
@@ -123,8 +129,44 @@ jobs:
             ${{ runner.temp }}/pdfpal-desktop-release/artifacts/release-plan.json
             ${{ runner.temp }}/pdfpal-desktop-release/artifacts/release-notes.md
 
+  # Experimental: the Mac build passes on a macOS runner but has not been used by a person on a Mac.
+  # Preview (suffixed) versions only: Mac builds are ad-hoc signed and not
+  # notarized, so a stable version stops here until Mac signing exists.
+  build-mac:
+    needs: plan
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - name: Refuse a stable Mac release until Mac signing exists
+        if: needs.plan.outputs.channel == 'stable'
+        run: |
+          echo "::error::Stable desktop releases need a signed and notarized Mac build, which is not set up yet. Publish a suffixed preview version instead."
+          exit 1
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: node desktop/scripts/stage.mjs
+      - name: Build and test the Mac disk image
+        run: node desktop/scripts/mac-build.mjs "--work=$RUNNER_TEMP/pdfpal-mac-release"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-release-files-mac
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            ${{ runner.temp }}/pdfpal-mac-release/artifacts/pdfpal-*-arm64.dmg
+            ${{ runner.temp }}/pdfpal-mac-release/artifacts/pdfpal-desktop-release-darwin-arm64.json
+
   publish:
-    needs: [plan, regression, build]
+    needs: [plan, regression, build, build-mac]
     if: needs.plan.outputs.publish == 'true' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     permissions:
@@ -143,8 +185,16 @@ jobs:
         with:
           name: desktop-release-files
           path: release-files
-      - name: Publish tested installer to GitHub Releases
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-release-files-mac
+          path: release-files
+      # --require-mac refuses to publish unless the Mac disk image and its
+      # manifest are present and verified. To publish a Windows-only release
+      # on purpose, remove it, the Mac download step above and build-mac from
+      # needs (docs/windows-release-pipeline.md, "Turning the Mac requirement off").
+      - name: Publish tested Windows and Mac files to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ needs.plan.outputs.version }}
-        run: node desktop/scripts/desktop-release.mjs publish release-files
+        run: node desktop/scripts/desktop-release.mjs publish release-files --require-mac

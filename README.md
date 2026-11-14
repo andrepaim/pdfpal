@@ -4,13 +4,13 @@
 
 > **AI to read deeper, not to avoid reading.**
 
-**Use the AI subscription you already pay for to help you read PDFs and Kindle books.** pdfpal puts chat and visual explanations beside the page through **Continue with ChatGPT** in the Windows app, or Claude Code, Codex, or OpenCode, with no additional pdfpal subscription.
+**Use the AI subscription you already pay for to help you read PDFs and Kindle books.** pdfpal puts chat and visual explanations beside the page through **Continue with ChatGPT** in the desktop app, or Claude Code, Codex, or OpenCode, with no additional pdfpal subscription.
 
 There's a lot of vibe researching going on: skim an AI summary, watch an explainer, walk away feeling like you read the paper. Understanding lives in the details those shortcuts flatten: the assumptions, the derivation, the limitations. But going back to reading alone, getting stuck on page 4, and grinding through missing background isn't the answer either. That suffering was never the point. With pdfpal, you read the actual text while AI sits beside the page, unpacking the passage you're stuck on and keeping you moving.
 
 Your library, notes, highlights, and chat history are stored locally. Optional cloud sync can share library metadata and, with separate consent, saved PDF and project conversations between devices. Relevant context goes to your configured AI provider when you ask for help; its terms, charges, and usage limits still apply.
 
-Available as a **Windows desktop app** or a **CLI and browser reader on Linux/WSL**, with an optional Chrome companion for Kindle for Web.
+Available as a **Windows desktop app**, an **experimental Mac app** for Apple Silicon, or a **CLI and browser reader on Linux/WSL**, with an optional Chrome companion for Kindle for Web.
 
 ## See pdfpal in action
 
@@ -84,6 +84,7 @@ Download the Chrome companion, connect it to your local library, and manage pair
 | Choose your setup | What you need | Get started |
 | --- | --- | --- |
 | **Windows desktop preview** | Windows 11 on an Intel/AMD 64-bit computer. No separate Node.js or Git installation for pdfpal. | [Install the Windows app](#windows-desktop-preview) |
+| **Mac desktop preview (experimental)** | A Mac with Apple Silicon (M1 or later). Not yet tested on real Mac hardware. | [Install the Mac app](#mac-desktop-preview-experimental) |
 | **Linux / WSL: CLI and browser reader** | Git and Node.js 22 or newer. | [Install from source](#linux-and-wsl) |
 
 ### Windows desktop preview
@@ -102,6 +103,17 @@ To browse and manage your library from the Windows ChatGPT app, open **pdfpal me
 If ChatGPT's **Settings → General → Agent environment** selects WSL, the skill must also be available in that WSL distribution's `~/.agents/skills`. Windows, Ubuntu, and Ubuntu-24.04 use separate skill locations. Link the managed Windows skill into the distribution ChatGPT actually uses; see the [Windows CLI guide](docs/windows-cli.md) for commands and troubleshooting. The skill's WSL adapter operates your Windows library through the running app.
 
 The Windows installer is currently an **unsigned engineering preview**, so Windows may show an unknown-publisher prompt. To upgrade between previews, download the target installer from GitHub Releases and install it under the same Windows account. The tray’s **Check for updates** only looks for signed stable releases when you request a check. See the [Windows upgrade instructions](docs/windows-quickstart.md#upgrade-or-uninstall) for checksum and installation steps.
+
+### Mac desktop preview (experimental)
+
+The Mac app is the same reader and library format as the Windows app, packaged for Apple Silicon Macs. It is **experimental**: it has passed automated packaging and start-up checks on a GitHub macOS runner, but nobody has used it on a Mac yet, and there is no Intel build.
+
+1. From a release on the [GitHub Releases page](https://github.com/andrepaim/pdfpal/releases) that includes a Mac build, download **pdfpal-…-arm64.dmg**.
+2. Open it and drag **pdfpal** into **Applications**.
+3. Preview builds are not notarized by Apple, so macOS blocks the first launch. Choose **Done**, then open **System Settings → Privacy & Security** and choose **Open Anyway** for pdfpal.
+4. Choose an assistant in AI settings, then create a project and import a PDF.
+
+Closing the window keeps pdfpal in the Dock; **Command-Q** quits. The library is `~/.pdfpal`, the same folder the CLI uses on that Mac. See the [Mac quickstart](docs/mac-quickstart.md) for requirements, known limits of unsigned previews, and building from source.
 
 ### Linux and WSL
 
@@ -271,7 +283,7 @@ SQLite remains the working library, with changes queued while offline. To connec
 
 ## Local data
 
-Linux/WSL uses `~/.pdfpal` by default; the Windows app uses `%USERPROFILE%\.pdfpal`. Both store the same kinds of local data:
+Linux/WSL and the Mac app use `~/.pdfpal` by default; the Windows app uses `%USERPROFILE%\.pdfpal`. All store the same kinds of local data:
 
 ```text
 ~/.pdfpal/
@@ -286,11 +298,11 @@ New PDFs are copied into `files/`, while extracted text and FTS chunks live in S
 
 Existing databases are migrated in place after an automatic backup. Override the data directory with `PDFPAL_DATA_DIR` or only the database path with `PDFPAL_DB`.
 
-Windows and WSL use separate default libraries. Sharing a live SQLite library between them is not a supported preview workflow. Windows upgrades and uninstall retain your library.
+Windows and WSL use separate default libraries. Sharing a live SQLite library between them is not a supported preview workflow. Windows upgrades and uninstall retain your library, and so does replacing or removing the Mac app.
 
 ## Configuration
 
-Configuration precedence is command flags, environment variables, `config.json` in your library folder, then defaults. The default file is `~/.pdfpal/config.json` on Linux/WSL and `%USERPROFILE%\.pdfpal\config.json` on Windows.
+Configuration precedence is command flags, environment variables, `config.json` in your library folder, then defaults. The default file is `~/.pdfpal/config.json` on Linux/WSL and a Mac, and `%USERPROFILE%\.pdfpal\config.json` on Windows.
 
 ```bash
 PDFPAL_AGENT=claude       # claude | codex | opencode
@@ -342,7 +354,7 @@ $loopy run the saved Local test-quality pass loop
 
 ## Architecture
 
-The Windows desktop app, web reader, Kindle companion, and CLI share TypeScript services, local storage, and AI configuration. The desktop app hosts the reader and its local backend, with an Electron shell for the tray and Windows lifecycle. The web reader uses the same-origin Fastify API; the extension uses a loopback bridge with revocable credentials. The standalone CLI calls services directly; the bundled Windows CLI connects to the running app through a private pipe. Kindle conversations are scoped to connection, project, and book, separately from PDF chat sessions. Saved notes are available in the project UI.
+The desktop app (Windows, plus an experimental Mac build), web reader, Kindle companion, and CLI share TypeScript services, local storage, and AI configuration. The desktop app hosts the reader and its local backend, with an Electron shell for the window, tray or Dock, and app lifecycle. The web reader uses the same-origin Fastify API; the extension uses a loopback bridge with revocable credentials. The standalone CLI calls services directly; the bundled Windows CLI connects to the running app through a private pipe. Kindle conversations are scoped to connection, project, and book, separately from PDF chat sessions. Saved notes are available in the project UI.
 
 ```text
 Web reader ── HTTP ──▶ Fastify API ──┐
@@ -363,13 +375,13 @@ pdfpal CLI ───────────────────────
 
 The implementation follows that split:
 
-- [`desktop/`](desktop/) contains the optional desktop shell, installer tooling, and Windows acceptance checks. See the [desktop build guide](desktop/README.md) and [automatic release pipeline](docs/windows-release-pipeline.md).
+- [`desktop/`](desktop/) contains the optional desktop shell, Windows installer and Mac disk-image tooling, and acceptance checks. See the [desktop build guide](desktop/README.md) and [automatic release pipeline](docs/windows-release-pipeline.md).
 - [`extension/`](extension/) contains the Chrome side panel, reader capture, bundled OCR, and guided connection flow.
 - [`frontend/src`](frontend/src/) contains the reader, chat, projects, notes, collections, and source-discovery UI.
 - [`src/server`](src/server/) exposes the HTTP API and serves the built frontend.
 - [`src/cli`](src/cli/) defines the scriptable `pdfpal` commands.
 - [`src/core`](src/core/) owns projects, sources, collections, notes, retrieval, chat, PDF handling, configuration, and agent invocation.
 
-The source package build contains the compiled TypeScript server/CLI, built React frontend, unpacked Chrome extension, and matching ZIP with bundled OCR assets. The [library folder](#local-data) holds the working data. Network access supports source downloads, paper discovery, the configured AI provider and, when enabled, Firebase cloud sync and telemetry. The Windows shell also handles account sign-in and explicit update checks. The local server is intended for single-user operation.
+The source package build contains the compiled TypeScript server/CLI, built React frontend, unpacked Chrome extension, and matching ZIP with bundled OCR assets. The [library folder](#local-data) holds the working data. Network access supports source downloads, paper discovery, the configured AI provider and, when enabled, Firebase cloud sync and telemetry. The desktop shell also handles account sign-in and explicit update checks. The local server is intended for single-user operation.
 
 *AI to read deeper, not to avoid reading.*

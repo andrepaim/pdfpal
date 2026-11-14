@@ -1,5 +1,5 @@
 const bridge = window.pdfpalDesktop
-if(bridge?.chrome)document.documentElement.classList.add('desktop-shell')
+if(bridge?.chrome){document.documentElement.classList.add('desktop-shell');if(bridge.platform==='darwin')document.documentElement.classList.add('desktop-mac')}
 async function refresh() {
   try {
     const state = await bridge.recovery()
@@ -7,7 +7,7 @@ async function refresh() {
     document.getElementById('detail').textContent = state.detail
     document.getElementById('retry').disabled = state.starting
     document.getElementById('existing').hidden = !state.existing
-  } catch { document.getElementById('status').textContent = 'Try reopening pdfpal from the tray.' }
+  } catch { document.getElementById('status').textContent = bridge?.platform === 'darwin' ? 'Try reopening pdfpal from the Dock.' : 'Try reopening pdfpal from the tray.' }
 }
 document.getElementById('retry').onclick = () => bridge.retryService()
 document.getElementById('existing').onclick = () => bridge.openExisting()

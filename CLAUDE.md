@@ -1,6 +1,6 @@
 # pdfpal developer guide
 
-pdfpal is a local-first reading assistant for PDFs and Kindle books. It has four surfaces that share one TypeScript core: the Windows desktop app, the browser reader, the `pdfpal` CLI, and the Chrome Kindle companion.
+pdfpal is a local-first reading assistant for PDFs and Kindle books. It has four surfaces that share one TypeScript core: the desktop app (Windows; an experimental Apple Silicon Mac build that passes automated checks on a macOS runner but has not been used by a person on a Mac), the browser reader, the `pdfpal` CLI, and the Chrome Kindle companion.
 
 ## Stack
 
@@ -8,7 +8,7 @@ pdfpal is a local-first reading assistant for PDFs and Kindle books. It has four
 - Fastify local HTTP server; React + Vite frontend
 - SQLite via `better-sqlite3`, WAL, foreign keys, FTS5
 - `pdfjs-dist` PDF extraction; Commander CLI
-- AI: Claude Code, Codex, and OpenCode subprocess adapters, plus direct ChatGPT (Windows app only)
+- AI: Claude Code, Codex, and OpenCode subprocess adapters, plus direct ChatGPT (desktop app only)
 - Electron 45 and electron-builder in `desktop/`, which has its own `package.json` and lockfiles and is not a root workspace
 - Firebase Auth, Firestore, and optional Cloud Storage, called from the local backend with the signed-in user's credentials (no service account)
 
@@ -18,15 +18,15 @@ pdfpal is a local-first reading assistant for PDFs and Kindle books. It has four
 - `src/server/`: Fastify routes and SPA serving, the extension bridge (`extension*.ts`), cloud routes (`cloud.ts`), recovery, and the private pipe used by the Windows CLI (`cli-pipe.ts`).
 - `src/sync/`: Firebase cloud sync: auth, the SQLite outbox (`database.ts`), the Firestore transport, and the worker.
 - `src/shared/`: code shared across server, frontend, extension, and desktop: sync record schema (`sync/schema.ts`), diagnostics allowlist, CLI protocol, extension pairing, public Firebase identifiers.
-- `src/cli/`: the `pdfpal` command. `standalone.ts` calls core services directly. `desktop.ts` talks to a running Windows app. It is selected by `--desktop`, `--profile`, `PDFPAL_CLI_DESKTOP=1`, or the `status`, `doctor`, `library`, `skill`, and `operation` commands.
+- `src/cli/`: the `pdfpal` command. `standalone.ts` calls core services directly. `desktop.ts` talks to a running desktop app. It is selected by `--desktop`, `--profile`, `PDFPAL_CLI_DESKTOP=1`, or the `status`, `doctor`, `library`, `skill`, and `operation` commands.
 - `frontend/`: React SPA (the desktop app hosts the same SPA) and Playwright tests in `frontend/e2e/`. `vite.auth.config.ts` builds the hosted Google sign-in page from `cloud/auth/` into `cloud/hosting/`.
 - `extension/`: Chrome MV3 side panel for Kindle for Web: page capture, bundled OCR, pairing with the local server. Its build writes `extension/dist/` and a reproducible ZIP to `extension/package/`, which the server offers for download.
-- `desktop/`: Electron shell (main process, sandboxed renderer, backend utility process, ChatGPT session and vault), installer and release scripts, Windows acceptance drivers (`desktop/scripts/windows-m*.ps1`), Node tests in `desktop/test/`.
+- `desktop/`: Electron shell (main process, sandboxed renderer, backend utility process, ChatGPT session and vault), installer and release scripts (`desktop-release.mjs` publishes both platforms), Windows acceptance drivers (`desktop/scripts/windows-m*.ps1`), the Mac build driver (`desktop/scripts/mac-build.mjs`), the platform-aware update check (`desktop/src/updates.mjs`), Node tests in `desktop/test/`.
 - `cloud/`: Firebase config: `firestore.rules`, `storage.rules`, indexes, hosted sign-in page.
 - `skills/pdfpal-cli/`: agent skill, shipped in the npm package and the Windows installer.
 - `test/`: Node unit/integration tests and fixtures. `test/helpers/test-utils.ts` creates temporary configs and databases.
 - `scripts/`: `run-tests.mjs` (fails on zero tests), `test-package.mjs`, `test-extension-archive.mjs`, `check-secrets.mjs`, skill installers.
-- `docs/`: plans, milestone results, and runbooks (`windows-desktop-plan.md`, `windows-release-pipeline.md`, `firebase-setup.md`, `backup-recovery.md`, `error-reports.md`).
+- `docs/`: plans, milestone results, and runbooks (`windows-desktop-plan.md`, `mac-desktop-plan.md`, `windows-release-pipeline.md` (covers both platforms), `mac-quickstart.md`, `firebase-setup.md`, `backup-recovery.md`, `error-reports.md`).
 
 ## Commands
 
@@ -47,11 +47,11 @@ node scripts/check-secrets.mjs
 npm run eval:retrieval    # offline retrieval scores; run `npm run eval:retrieval:fetch` once first (downloads the test papers)
 ```
 
-Install Playwright browsers with `npm exec --workspace <frontend|extension> -- playwright install --with-deps chromium`. CI runs the Firebase emulators with `npm exec --package=firebase-tools@15.5.1`. The rules tests are skipped in `npm test` when no emulator is running. Windows packaging only runs on Windows (`node desktop/scripts/stage.mjs`, then `desktop/scripts/windows-m3.ps1`); see `desktop/README.md`. Running `pdfpal` without arguments is equivalent to `pdfpal serve`. The default address is `127.0.0.1:8200`.
+Install Playwright browsers with `npm exec --workspace <frontend|extension> -- playwright install --with-deps chromium`. CI runs the Firebase emulators with `npm exec --package=firebase-tools@15.5.1`. The rules tests are skipped in `npm test` when no emulator is running. Windows packaging only runs on Windows (`node desktop/scripts/stage.mjs`, then `desktop/scripts/windows-m3.ps1`); Mac packaging only runs on an Apple Silicon Mac (`node desktop/scripts/stage.mjs`, then `node desktop/scripts/mac-build.mjs --work=<dir>`) and is experimental, not yet run on real hardware; see `desktop/README.md`. Running `pdfpal` without arguments is equivalent to `pdfpal serve`. The default address is `127.0.0.1:8200`.
 
 ## Data and migrations
 
-- The library defaults to `~/.pdfpal` (Windows app: `%USERPROFILE%\.pdfpal`). Override it with `PDFPAL_DATA_DIR`, or only the database with `PDFPAL_DB`. `pdfpal.db` holds the library, extracted text and FTS chunks, chat, notes, annotations, Kindle history, trash, AI jobs, sync outbox, and diagnostic queues. Managed PDFs live in `files/`, backups in `backups/`.
+- The library defaults to `~/.pdfpal` (Windows app: `%USERPROFILE%\.pdfpal`; the Mac app also uses `~/.pdfpal`). Override it with `PDFPAL_DATA_DIR`, or only the database with `PDFPAL_DB`. `pdfpal.db` holds the library, extracted text and FTS chunks, chat, notes, annotations, Kindle history, trash, AI jobs, sync outbox, and diagnostic queues. Managed PDFs live in `files/`, backups in `backups/`.
 - Schema version is `CURRENT_SCHEMA` in `src/core/database.ts`, checked against `MAX(version)` in `schema_migrations`. `migrate()` runs on every open in one immediate transaction. Some steps live in other modules (`installTrash`, `installErrorReports`, `installSync`, `installCliOperations`). New steps must be idempotent and insert their version row.
 - Bump `CURRENT_SCHEMA` with each new version. It gates the `VACUUM INTO` backup taken before migrating an older database, and the `NEWER_DATABASE` refusal for databases from a newer build. Startup is serialized by a lease in `locking.ts`. Migration tests are in `test/integration/database-migration.test.ts`.
 - Legacy `sessions/messages` data is migrated into projects, sources, and chat sessions.
@@ -62,7 +62,7 @@ Install Playwright browsers with `npm exec --workspace <frontend|extension> -- p
 ## Product constraints
 
 - Local-first and single user. The SQLite library is the working copy, and using the app needs no account.
-- Optional sign-ins: Google (Firebase) for cloud sync, and "Continue with ChatGPT" in the Windows app. Sign-in alone uploads nothing. Sync, saved conversations, and PDF transfers are separate opt-ins.
+- Optional sign-ins: Google (Firebase) for cloud sync, and "Continue with ChatGPT" in the desktop app. Sign-in alone uploads nothing. Sync, saved conversations, and PDF transfers are separate opt-ins.
 - No public-server mode. The server binds `127.0.0.1` and rejects non-loopback Host headers and cross-origin API calls. The extension uses `/api/extension/`, which requires a paired, revocable token.
 - Browser, desktop, extension, and CLI call the same core services.
 - Project questions use SQLite FTS5 retrieval, not embedding APIs.
@@ -74,9 +74,9 @@ Install Playwright browsers with `npm exec --workspace <frontend|extension> -- p
 ## Publishing
 
 - npm: the package publishes `dist/`, `frontend/dist/`, `extension/dist/`, `extension/package/`, `skills/`, and the skill install scripts. Publishing is manual. First run typecheck, `npm test`, build, frontend and extension Playwright, `test:archive`, `test:package`, and `npm pack --dry-run`.
-- Windows: a version change in `desktop/version.json` pushed to `master` triggers `.github/workflows/windows-release.yml`. The workflow runs Linux regression and Windows installer acceptance, then publishes a GitHub release `desktop-v<version>`. Versions must increase. Suffixed versions (`-preview.N`) ship as unsigned prereleases, and stable versions require signing secrets. Do not edit that file unless you intend to release. See `docs/windows-release-pipeline.md`.
+- Desktop (Windows and Mac): a version change in `desktop/version.json` pushed to `master` triggers `.github/workflows/windows-release.yml` (the name is historical). The workflow runs Linux regression, Windows installer acceptance and the Mac build (`build-mac` on `macos-15`), then publishes one GitHub release `desktop-v<version>` only if all pass. It holds `pdfpal-Setup-<version>-x64.exe`, `pdfpal-desktop-release.json` (read by installed Windows apps; never rename it), `pdfpal-<version>-arm64.dmg`, `pdfpal-desktop-release-darwin-arm64.json` and `SHA256SUMS.txt`. The publish step passes `--require-mac`, so it refuses to publish without the Mac files. Versions must increase. Suffixed versions (`-preview.N`, `-beta.N`) ship as unsigned prereleases. Stable versions require Windows signing secrets and a signed Mac build; Mac signing does not exist yet, so stable versions are refused until it does or the Mac requirement is removed. Published releases are never changed, so a Mac file cannot be added later. The Mac build is experimental and has not yet been run on a Mac. Do not edit `desktop/version.json` unless you intend to release. See `docs/windows-release-pipeline.md`.
 - The desktop and npm versions are independent: changing `package.json` publishes nothing.
-- `ci.yml` runs on pushes to `master` and on PRs: secret scan, typecheck, desktop tests, `npm test`, build, and frontend Playwright.
+- `ci.yml` runs on pushes to `master` and on PRs: secret scan, typecheck, desktop tests, `npm test`, build, and frontend Playwright. `mac-build.yml` builds the Mac app on PRs that touch `desktop/**` and on manual dispatch; it publishes nothing.
 
 ## Current focus
 

@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadConfig, saveAIModePreference, saveAgentBinary } from './dist/core/config.js'
-import { discoverAgent, refreshWindowsPath } from './dist/core/agent-discovery.js'
+import { discoverAgent, refreshWindowsPath, refreshMacPath } from './dist/core/agent-discovery.js'
 import { bindDirectProvider } from './dist/core/ai.js'
 import { randomUUID } from 'node:crypto'
 import { AgentService } from './dist/core/agents.js'
@@ -11,6 +11,16 @@ import { bindCloudVault } from './dist/sync/auth.js'
 const vaultPending = new Map()
 const directPending = new Map()
 let runtime, config, stopping = false, connectionTest
+// Smoke runs only: requests whose response has not finished, for the slow-close report.
+const inflight = new Map()
+function trackRequests(server) {
+  if (process.env.PDFPAL_M0_SMOKE !== '1') return
+  server.on('request', (request, response) => {
+    const key = {}
+    inflight.set(key, `${request.method} ${(request.url ?? '').split('?')[0].slice(0, 80)}`)
+    response.once('close', () => inflight.delete(key))
+  })
+}
 async function inspect() {
   const agents = await new AgentService(config).inspect()
   const file = await fs.readFile(path.join(config.dataDir, 'config.json'), 'utf8').then(JSON.parse).catch(() => ({}))
@@ -24,8 +34,31 @@ process.parentPort.on('message', async ({ data }) => {
     process.parentPort.postMessage({type:'chatgpt-cancel'})
     for(const job of directPending.values()){clearTimeout(job.timer);job.reject(new Error('pdfpal is closing.'))};directPending.clear()
     stopping = true
-    await runtime?.close(phase => process.parentPort.postMessage({ type: 'shutdown-progress', phase }))
-    process.exit(0)
+    const progress = phase => process.parentPort.postMessage({ type: 'shutdown-progress', phase })
+    const resources = () => { const counts = {}; for (const name of process.getActiveResourcesInfo()) counts[name] = (counts[name] ?? 0) + 1; return Object.entries(counts).sort().map(([name, n]) => `${name}x${n}`).join(',') }
+    // Smoke runs only: a baseline of what is open when the stop request arrives, to compare with a stalled close.
+    if (process.env.PDFPAL_M0_SMOKE === '1') progress(`stop-requested:${resources()};inflight=${[...inflight.values()].join('|') || 'none'}`)
+    // Content-free evidence for a slow or failed close: open connection count and active resource type names only.
+    const slow = setTimeout(() => {
+      // Smoke runs only (fixture data): the unfinished request paths and the names of child processes still attached.
+      let detail = ''
+      if (process.env.PDFPAL_M0_SMOKE === '1') {
+        const children = process._getActiveHandles().filter(handle => handle?.constructor?.name === 'ChildProcess')
+          .map(child => `${path.basename(child.spawnfile ?? '')}:${child.exitCode ?? child.signalCode ?? 'running'}`)
+        detail = `;inflight=${[...inflight.values()].join('|') || 'none'};children=${children.join('|') || 'none'}`
+      }
+      const report = count => progress(`slow-close:connections=${count};${resources()}${detail}`)
+      try { runtime.server.server.getConnections((error, count) => report(error ? 'unknown' : count)) } catch { report('unknown') }
+    }, 10000)
+    let code = 0
+    try { await runtime?.close(progress) }
+    catch (error) {
+      // Report the failure and exit, so the app does not wait out its 30-second limit on a close that already failed.
+      code = 1
+      progress(`close-failed:${/^[A-Z_0-9]{1,40}$/.test(error?.code ?? '') ? error.code : /^[A-Za-z]{1,40}$/.test(error?.name ?? '') ? error.name : 'Error'}`)
+      if (process.env.PDFPAL_M0_SMOKE === '1') console.error(`Local service close failed: ${error?.message}`)
+    } finally { clearTimeout(slow) }
+    process.exit(code)
   }
   if (data.type !== 'rpc') return
   try {
@@ -43,6 +76,7 @@ process.parentPort.on('message', async ({ data }) => {
     else if (data.command === 'login-command' || data.command === 'choose-binary') {
       if (!['claude', 'codex'].includes(data.agent)) throw new Error('Unknown assistant')
       await refreshWindowsPath()
+      await refreshMacPath()
       const binary = data.command === 'choose-binary' ? data.executable : data.agent === 'claude' ? config.claudeBin : config.codexBin
       const status = await discoverAgent(data.agent, binary)
       if (status.state !== 'installed') throw new Error('The selected executable could not be verified. Install or repair the assistant, then retry.')
@@ -76,7 +110,9 @@ try {
   bindDirectProvider(config,{invoke:(prompt,model,options)=>new Promise((resolve,reject)=>{const id=randomUUID();const timer=setTimeout(()=>{directPending.delete(id);process.parentPort.postMessage({type:'chatgpt-cancel'});reject(new Error('ChatGPT timed out. Your question can be retried explicitly.'))},310000);directPending.set(id,{resolve,reject,timer,onDelta:options?.onDelta});process.parentPort.postMessage({type:'chatgpt-generate',id,prompt,model})})})
   const smoke = process.env.PDFPAL_M0_SMOKE === '1'
   if (smoke && process.env.PDFPAL_M2_FAILURE_FIXTURE === '1') throw Object.assign(new Error('Fixture occupied port'), { code: 'EADDRINUSE' })
-  runtime = await startRuntime(config, smoke ? 0 : config.port)
+  runtime = await startRuntime(config, smoke ? 0 : config.port); trackRequests(runtime.server.server)
+  // A Mac app opened from Finder has a minimal PATH; resolve the login-shell PATH early (no-op elsewhere).
+  void refreshMacPath()
   const origin = runtime.origin, checks = []
   let fixture
   if (smoke) {
@@ -104,7 +140,7 @@ try {
     const asset = html.match(/src="([^"]+\.js)"/)
     if (!asset) throw new Error('Frontend asset missing')
     await (await request(asset[1])).arrayBuffer(); checks.push('frontend-assets')
-    await runtime.close(); runtime = await startRuntime(config, Number(new URL(origin).port))
+    await runtime.close(); runtime = await startRuntime(config, Number(new URL(origin).port)); trackRequests(runtime.server.server)
     const projects = await (await request('/api/projects')).json()
     if (!projects.some(item => item.id === project.id)) throw new Error('SQLite persistence failed')
     checks.push('sqlite-reopen-persistence')

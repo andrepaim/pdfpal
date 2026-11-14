@@ -17,7 +17,7 @@ export class AIService {
   const selected=provider||(this.config.aiMode==='chatgpt'?'chatgpt':this.config.agent)
   if(selected==='chatgpt'){
    const runtime=direct.get(this.config)
-   if(!runtime)return Promise.reject(new Error('Open the Windows desktop app to use the ChatGPT connection, or explicitly select an installed agent.'))
+   if(!runtime)return Promise.reject(new Error('Open the pdfpal desktop app to use the ChatGPT connection, or explicitly select an installed agent.'))
    if(!this.db)return runtime.invoke(prompt,model,options)
    const id=randomUUID(),now=()=>new Date().toISOString();let partial='', checkpoint=0
    this.db.prepare("INSERT INTO ai_jobs(id,project_id,source_id,question,provider,model,status,created_at,updated_at) VALUES (?,?,?,?,?,?,'running',?,?)").run(id,options.projectId||null,options.sourceId||null,options.question||prompt,'chatgpt',model||null,now(),now())
