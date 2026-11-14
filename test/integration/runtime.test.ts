@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { spawn } from 'node:child_process'
+import net from 'node:net'
 import { startRuntime, existingServer } from '../../src/server/runtime.js'
 import { testConfig } from '../helpers/test-utils.js'
 import { openDatabase } from '../../src/core/database.js'
@@ -27,6 +28,29 @@ test('server lease prevents duplicate ownership and validates a running endpoint
   const restarted = await startRuntime(config, 0)
   await restarted.close()
   fs.rmSync(config.dataDir, { recursive: true, force: true })
+})
+
+test('closing does not wait for a spare connection that never sent a request', async () => {
+  const config = testConfig()
+  const runtime = await startRuntime(config, 0)
+  const url = new URL(runtime.origin)
+  // A browser keeps spare connections like this one. Node counts it as busy until its headers timeout.
+  const spare = net.connect({ host: url.hostname, port: Number(url.port) })
+  try {
+    await new Promise<void>((resolve, reject) => { spare.once('connect', resolve); spare.once('error', reject) })
+    assert.equal((await fetch(`${runtime.origin}/api/health`)).status, 200)
+    const ended = new Promise<void>(resolve => spare.once('close', () => resolve()))
+    const started = Date.now()
+    let timer: NodeJS.Timeout | undefined
+    const closed = await Promise.race([
+      runtime.close().then(() => true),
+      new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(false), 5000) }),
+    ])
+    clearTimeout(timer)
+    assert.equal(closed, true, 'close was still waiting after 5 seconds')
+    assert.ok(Date.now() - started < 5000)
+    await ended
+  } finally { spare.destroy(); fs.rmSync(config.dataDir, { recursive: true, force: true }) }
 })
 
 test('newer schemas are rejected without changing the database', () => {
