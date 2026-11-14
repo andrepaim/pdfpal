@@ -24,8 +24,23 @@ process.parentPort.on('message', async ({ data }) => {
     process.parentPort.postMessage({type:'chatgpt-cancel'})
     for(const job of directPending.values()){clearTimeout(job.timer);job.reject(new Error('pdfpal is closing.'))};directPending.clear()
     stopping = true
-    await runtime?.close(phase => process.parentPort.postMessage({ type: 'shutdown-progress', phase }))
-    process.exit(0)
+    const progress = phase => process.parentPort.postMessage({ type: 'shutdown-progress', phase })
+    // Content-free evidence for a slow or failed close: open connection count and active resource type names only.
+    const slow = setTimeout(() => {
+      const counts = {}
+      for (const name of process.getActiveResourcesInfo()) counts[name] = (counts[name] ?? 0) + 1
+      const report = count => progress(`slow-close:connections=${count};${Object.entries(counts).sort().map(([name, n]) => `${name}x${n}`).join(',')}`)
+      try { runtime.server.server.getConnections((error, count) => report(error ? 'unknown' : count)) } catch { report('unknown') }
+    }, 10000)
+    let code = 0
+    try { await runtime?.close(progress) }
+    catch (error) {
+      // Report the failure and exit, so the app does not wait out its 30-second limit on a close that already failed.
+      code = 1
+      progress(`close-failed:${/^[A-Z_0-9]{1,40}$/.test(error?.code ?? '') ? error.code : /^[A-Za-z]{1,40}$/.test(error?.name ?? '') ? error.name : 'Error'}`)
+      if (process.env.PDFPAL_M0_SMOKE === '1') console.error(`Local service close failed: ${error?.message}`)
+    } finally { clearTimeout(slow) }
+    process.exit(code)
   }
   if (data.type !== 'rpc') return
   try {
