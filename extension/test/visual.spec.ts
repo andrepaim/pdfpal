@@ -7,7 +7,7 @@ import { buildServer } from '../../dist/server/app.js';
 import { loadConfig } from '../../dist/core/config.js';
 import { openDatabase } from '../../dist/core/database.js';
 import { ExtensionAuth } from '../../dist/core/extension-auth.js';
-import { visualFixture } from '../../test/fixtures/visual';
+import { visualFixtureV2 as visualFixture } from '../../test/fixtures/visual';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 test('visual explanations work in Kindle, project chat and the PDF reader, including offline export and saved history', async ({}, info) => {
