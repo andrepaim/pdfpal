@@ -5,7 +5,7 @@ import { webVisualTransport } from '../lib/visual-api'
 export default function VisualPage() {
   const { projectId, id } = useParams<{ projectId: string; id: string }>()
   if (!projectId || !id) return null
-  return <main className="visual-page"><Link to={`/projects/${projectId}`}>← Project</Link>
+  return <main className="visual-page"><div className="visual-page-inner"><Link to={`/projects/${projectId}`}>← Project</Link>
     <VisualExplanation key={id} id={id} transport={webVisualTransport(projectId)} />
-  </main>
+  </div></main>
 }
