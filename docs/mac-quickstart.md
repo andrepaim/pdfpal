@@ -1,6 +1,6 @@
 # Install pdfpal on a Mac
 
-> **Experimental.** The Mac app is a port of the Windows desktop app and has not yet been tested on real Mac hardware. Expect rough edges, keep backups of your library, and report what you find. The [Mac desktop plan](mac-desktop-plan.md) lists what is done and what is still to be checked.
+> **Experimental.** The Mac app is a port of the Windows desktop app and has passed automated packaging and start-up checks on a GitHub macOS runner, but has not yet been used by a person on a Mac. Expect rough edges, keep backups of your library, and report what you find. The [Mac desktop plan](mac-desktop-plan.md) lists what is done and what is still to be checked.
 
 The Mac app is the same reader, library format and assistants as the Windows app. It includes its own runtime; you do not need to install Node.js to use it.
 

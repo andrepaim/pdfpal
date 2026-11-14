@@ -1,6 +1,6 @@
 # pdfpal desktop preview (Windows and Mac)
 
-This folder holds the Electron desktop app. Windows is the tested platform and most of this guide is about it. An experimental Apple Silicon Mac build is described in [Mac build](#mac-build-experimental) below; it has not yet been tested on real Mac hardware.
+This folder holds the Electron desktop app. Windows is the tested platform and most of this guide is about it. An experimental Apple Silicon Mac build is described in [Mac build](#mac-build-experimental) below; it has passed automated packaging and start-up checks on a GitHub macOS runner, but nobody has used it on a Mac yet.
 
 M3 adds a branded per-user Windows installer, versioned desktop releases, guarded upgrades/uninstall, manual update checking, license notices, and signing configuration to the accepted M2 desktop application. See the [Windows quickstart](../docs/windows-quickstart.md), [M3 results](../docs/windows-m3-results.md), and [implementation plan](../docs/windows-desktop-plan.md).
 

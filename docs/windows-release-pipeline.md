@@ -2,7 +2,7 @@
 
 The **Publish Windows desktop release** GitHub Actions workflow (`.github/workflows/windows-release.yml`) builds and publishes the desktop app when `desktop/version.json` changes on `master`. It keeps its original name, but it now builds two platforms: a Windows x64 installer and an Apple Silicon Mac disk image. Both go into one GitHub release, and the release is published only when both builds pass.
 
-> **The Mac part is experimental and has never run.** The `build-mac` job and the two-platform publication logic are covered by unit tests on Linux, but no GitHub Actions run has exercised them and the Mac build has not been tested on a Mac. The first version bump after this change is the first real run. See [Turning the Mac requirement off](#turning-the-mac-requirement-off) if it blocks a Windows release.
+> **The Mac part is experimental.** The same Mac build runs in the separate **Mac desktop build** workflow and has passed there on a macOS runner, but the `build-mac` job in this workflow and the two-platform publication have only been covered by unit tests on Linux, and nobody has used the Mac app on a Mac yet. The first version bump after this change is the first real two-platform publication. See [Turning the Mac requirement off](#turning-the-mac-requirement-off) if it blocks a Windows release.
 
 ## What a release contains
 

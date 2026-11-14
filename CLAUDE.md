@@ -1,6 +1,6 @@
 # pdfpal developer guide
 
-pdfpal is a local-first reading assistant for PDFs and Kindle books. It has four surfaces that share one TypeScript core: the desktop app (Windows; an experimental Apple Silicon Mac build that has not yet been tested on a Mac), the browser reader, the `pdfpal` CLI, and the Chrome Kindle companion.
+pdfpal is a local-first reading assistant for PDFs and Kindle books. It has four surfaces that share one TypeScript core: the desktop app (Windows; an experimental Apple Silicon Mac build that passes automated checks on a macOS runner but has not been used by a person on a Mac), the browser reader, the `pdfpal` CLI, and the Chrome Kindle companion.
 
 ## Stack
 

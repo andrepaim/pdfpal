@@ -1,21 +1,23 @@
 # Mac desktop build plan
 
-Status: implemented on 2026-11-14 on the branch `feat/mac-desktop`, tested on Linux only. No part of it has run on a Mac yet; see Progress. Baseline is desktop `2.8.0-beta.1`.
+Status: implemented on 2026-11-14 on the branch `feat/mac-desktop` (pull request #16). The Mac build passes on a GitHub macOS runner; nobody has used the app on a Mac yet. See Progress. Baseline is desktop `2.8.0-beta.1`.
 
 ## Progress (2026-11-14)
 
 | Task | State |
 | --- | --- |
-| MAC-01, MAC-02, MAC-16 | Written. The build configuration validates, and a cross-package on Linux produced a correctly laid-out `pdfpal.app` (arm64 binary, launcher, icon). Ad-hoc signing, the disk image and launching the app have never run. The target is `dmg` only; the `zip` in the original task was dropped because nothing uses it. Electron 45 declares macOS 13 as the minimum. |
-| MAC-03 | Written and unit-tested with an injected platform. Not run against a real Mac login shell or real assistant installs. |
+| MAC-01, MAC-02, MAC-16 | Done and run on a macOS runner (`macos-15`, Apple Silicon): the app is packaged and ad-hoc signed, the signature verifies, and the disk image is built and its checksum verified. The target is `dmg` only; the `zip` in the original task was dropped because nothing uses it. Electron 45 declares macOS 13 as the minimum. How the icon looks in the Dock and Finder is unchecked. |
+| MAC-03 | Written and unit-tested with an injected platform. The runner has no assistants installed, so discovery reported both as missing; finding a real install from an app opened in Finder is unchecked. |
 | MAC-04 | Not done. It needs the MacBook. |
-| MAC-10 to MAC-15, MAC-17 | Written and unit-tested. The shared code paths passed a packaged-style smoke run under Electron on Linux; the Mac branches (menu bar, Dock, title bar, login item, Applications move) have never run. |
-| MAC-20 | Written. The workflow has never run. Its first run is the first real test of everything above. |
+| MAC-10 to MAC-15, MAC-17 | Written and unit-tested. On the runner the packaged app starts, creates a project, imports a PDF, mounts the reader and closes gracefully, including with a minimal `PATH`. The menu bar, Dock behaviour, title bar, login item and Applications move have not been exercised or seen. |
+| MAC-20 | Done. The workflow passes on pull request #16. |
 | MAC-21 | Done and unit-tested for both platforms. |
-| MAC-22 | Written and unit-tested with a mocked GitHub client. The `build-mac` job has never run. Do not merge to `master` before MAC-20 passes: a failing Mac job would block Windows prereleases. |
-| MAC-23 | Written. The quickstart marks the Mac build as experimental and untested on real hardware. |
-| MAC-30, MAC-31 | Written and unit-tested. The launcher script was tested on Linux shells, not on macOS's `/bin/sh`. |
+| MAC-22 | Written and unit-tested with a mocked GitHub client. The `build-mac` job in the release workflow runs the same driver as MAC-20 but has not itself run, and no two-platform release has been published. |
+| MAC-23 | Written. The quickstart marks the Mac build as experimental. |
+| MAC-30, MAC-31 | Written and unit-tested. On the runner the bundled launcher ran through a symlink and printed the app version. `pdfpal --desktop status` against a running app and the settings panel's link are unchecked. |
 | MAC-40, MAC-41 | Not started. Waiting on the Apple Developer Program decision. |
+
+Known issue: in the first runner build, one app launch did not finish closing its local service and was stopped after 30 seconds. It did not recur in the next 24 launches, and its cause is unknown. The backend now records what is still open when a close takes more than 10 seconds (`slow-close` in the smoke receipt).
 
 Open question from MAC-22: with the Mac job required, a stable (unsuffixed) version cannot be published for Windows either until Mac signing exists. Suffixed previews are unaffected.
 

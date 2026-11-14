@@ -129,7 +129,7 @@ jobs:
             ${{ runner.temp }}/pdfpal-desktop-release/artifacts/release-plan.json
             ${{ runner.temp }}/pdfpal-desktop-release/artifacts/release-notes.md
 
-  # Experimental: the Mac build has not yet been confirmed on a real Mac.
+  # Experimental: the Mac build passes on a macOS runner but has not been used by a person on a Mac.
   # Preview (suffixed) versions only: Mac builds are ad-hoc signed and not
   # notarized, so a stable version stops here until Mac signing exists.
   build-mac:

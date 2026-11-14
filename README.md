@@ -106,7 +106,7 @@ The Windows installer is currently an **unsigned engineering preview**, so Windo
 
 ### Mac desktop preview (experimental)
 
-The Mac app is the same reader and library format as the Windows app, packaged for Apple Silicon Macs. It is **experimental**: it has not yet been tested on real Mac hardware, and there is no Intel build.
+The Mac app is the same reader and library format as the Windows app, packaged for Apple Silicon Macs. It is **experimental**: it has passed automated packaging and start-up checks on a GitHub macOS runner, but nobody has used it on a Mac yet, and there is no Intel build.
 
 1. From a release on the [GitHub Releases page](https://github.com/andrepaim/pdfpal/releases) that includes a Mac build, download **pdfpal-…-arm64.dmg**.
 2. Open it and drag **pdfpal** into **Applications**.
