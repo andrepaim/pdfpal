@@ -56,6 +56,23 @@ test('web visuals preserve source scope and history, deduplicate generation, and
   } finally { await s.close() }
 })
 
+test('a web visual with a selection page includes that page and its neighbours', async () => {
+  const s = await setup()
+  try {
+    const text = '[Page 1]\nPreceding page about warmup schedules.\n[Page 2]\nSelected sentence about clipping.\n[Page 3]\nFollowing page about divergence.'
+    const source = createSource(s.db, s.project.id, text)
+    new RetrievalService(s.db).index(source, text)
+    const base = `/api/projects/${s.project.id}/visuals`
+    const payload = { request_id: randomUUID(), question: 'Explain', source_id: source, selection: 'Selected sentence about clipping.', selection_page: 2 }
+    const response = await s.app.inject({ method: 'POST', url: base, payload }); assert.equal(response.statusCode, 202)
+    const result = await complete(s.app, `${base}/${response.json().id}`)
+    assert.equal(result.status, 'complete')
+    const prompt = fs.readFileSync(s.prompt, 'utf8')
+    assert.match(prompt, /warmup schedules/); assert.match(prompt, /divergence/)
+    assert.equal((await s.app.inject({ method: 'POST', url: base, payload: { ...payload, request_id: randomUUID(), selection_page: 0 } })).statusCode, 400)
+  } finally { await s.close() }
+})
+
 test('invalid visuals fail explicitly and retry uses the original context and replaces the failed history card', async () => {
   const s = await setup()
   try {

@@ -24,8 +24,9 @@ interface Props {
   initialPage?: number
   isResizing?: boolean
   onPageChange?: (page: number) => void
-  onTextSelected?: (text: string) => void
-  onExplainVisually?: (text: string) => void
+  /** `page` is the PDF page the selection starts on, when it can be determined. */
+  onTextSelected?: (text: string, page?: number) => void
+  onExplainVisually?: (text: string, page?: number) => void
   annotations?: Annotation[]
   onHighlightCreate?: (data: { page_number: number; x1: number; y1: number; x2: number; y2: number; rects: PageRect[]; text: string; color: string }) => void
   onHighlightClick?: (annotation: Annotation) => void
@@ -210,14 +211,14 @@ export default function PdfViewer({
 
   const handleAsk = () => {
     if (!bubble) return
-    onTextSelected?.(bubble.text)
+    onTextSelected?.(bubble.text, bubble.coords?.page)
     setBubble(null)
     window.getSelection()?.removeAllRanges()
   }
 
   const handleVisual = () => {
     if (!bubble) return
-    onExplainVisually?.(bubble.text)
+    onExplainVisually?.(bubble.text, bubble.coords?.page)
     setBubble(null)
     window.getSelection()?.removeAllRanges()
   }

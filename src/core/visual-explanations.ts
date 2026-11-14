@@ -15,7 +15,7 @@ export class VisualError extends Error { constructor(public readonly status: num
 export const webVisualInput = z.object({
   request_id: z.string().uuid(), question: z.string().trim().min(1).max(8000),
   source_id: z.string().min(1).max(200).optional(), active_source_ids: z.array(z.string().min(1).max(200)).max(200).optional(),
-  selection: z.string().max(60_000).optional(), answer: z.string().max(24_000).optional(),
+  selection: z.string().max(60_000).optional(), selection_page: z.number().int().positive().max(1_000_000).optional(), answer: z.string().max(24_000).optional(),
   agent: z.enum(['claude', 'codex', 'opencode', 'chatgpt']).optional(), model: z.string().max(200).optional(),
 }).strict().refine(input => !input.selection || !!input.source_id, 'A selected passage needs its source.')
 type Row = { id: string; project_id: string; client_id: string | null; request_hash: string; question: string; status: VisualRecord['status']; definition_json: string | null; references_json: string; error: string | null; note_id: string | null; created_at: string }
@@ -105,10 +105,13 @@ export class VisualExplanationService {
     const sources = new SourceService(this.db, this.config)
     const selected = input.source_id ? [sources.resolve(projectId, input.source_id)]
       : input.active_source_ids ? input.active_source_ids.map(id => sources.resolve(projectId, id)) : sources.list(projectId)
-    let passages = selected.length ? new RetrievalService(this.db).search(projectId, `${input.question} ${input.selection || ''}`, selected.map(source => source.id), 6) : []
-    if (!passages.length) passages = selected.filter(source => source.pdf_text).slice(0, 4).map(source => ({ source_id: source.id, source_title: source.title || 'Source', page_number: 1, content: source.pdf_text!.slice(0, 10_000), score: 0 }))
+    // The reader may send the selection's page; that page and its neighbours then lead the context.
+    const page = input.source_id && input.selection && input.selection_page ? { source: selected[0]!, page: input.selection_page, selection: input.selection } : undefined
+    let passages = selected.length ? new RetrievalService(this.db).context(projectId, `${input.question} ${input.selection || ''}`, selected.map(source => source.id), 6, page) : []
+    const fallback = !passages.length
+    if (fallback) passages = selected.filter(source => source.pdf_text).slice(0, 4).map(source => ({ source_id: source.id, source_title: source.title || 'Source', page_number: 1, content: source.pdf_text!.slice(0, 10_000), score: 0 }))
     // Fallback text may span several pages, so its reference never claims page 1.
-    const references = passages.map((passage, i) => ({ id: `pdf-${i + 1}`, label: `${passage.source_title}${passage.score ? ` · p. ${passage.page_number}` : ' · source text'}` }))
+    const references = passages.map((passage, i) => ({ id: `pdf-${i + 1}`, label: `${passage.source_title}${fallback ? ' · source text' : ` · p. ${passage.page_number}`}` }))
     if (input.selection) references.push({ id: 'selection', label: `${selected[0]!.title || 'PDF'} · selected passage` })
     const chat = new ChatService(this.db, this.config)
     const context = JSON.stringify({ selection: input.selection, previousAnswer: input.answer, passages: passages.map((passage, i) => ({ referenceId: references[i]!.id, text: passage.content.slice(0, 12_000) })),

@@ -20,8 +20,10 @@ interface Props {
   pdfUrl: string
   disabled: boolean
   selectedText?: string
+  /** PDF page the selection came from, sent so the server can include that page. */
+  selectedPage?: number | null
   onSelectedTextUsed?: () => void
-  visualSelectionRequest?: { id: string; text: string; scope: string } | null
+  visualSelectionRequest?: { id: string; text: string; page?: number; scope: string } | null
   onVisualSelectionHandled?: () => void
   // v2
   projectId?: string | null
@@ -31,7 +33,7 @@ interface Props {
   initialMessages?: { role: string; content: string }[]
 }
 
-export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onSelectedTextUsed, visualSelectionRequest, onVisualSelectionHandled, projectId, sourceId, sessionId, initialMessages }: Props) {
+export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, selectedPage, onSelectedTextUsed, visualSelectionRequest, onVisualSelectionHandled, projectId, sourceId, sessionId, initialMessages }: Props) {
   // Retained in the component contract for older callers; context is now
   // loaded by the server-side ChatService from source IDs.
   void pdfText
@@ -96,7 +98,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
     }, 10)
   }, [selectedText, disabled])
 
-  const send = async (override?: Extract<ChatInput, { kind: 'text' | 'visual' }>, selection = selectedText) => {
+  const send = async (override?: Extract<ChatInput, { kind: 'text' | 'visual' }>, selection = selectedText, selectionPage = selectedPage) => {
     if (loading || historyLoading || disabled) return
     const command = override || parseChatInput(input, !!selection)
     if (command.kind === 'help' || command.kind === 'empty') { textareaRef.current?.focus(); return }
@@ -113,7 +115,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
     try {
       if (asVisual && projectId) {
         const visual = await startWebVisual(projectId, { question: userMsg, ...(sourceId ? { source_id: sourceId } : {}),
-          ...(selection ? { selection } : {}), ...(agent ? { agent } : {}) })
+          ...(selection ? { selection } : {}), ...(selection && sourceId && selectionPage ? { selection_page: selectionPage } : {}), ...(agent ? { agent } : {}) })
         if (scope === scopeRef.current) { setMessages([...newHistory, { role: 'assistant', content: '', visual_id: visual.id }]); onSelectedTextUsed?.() }
         return
       }
@@ -125,6 +127,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
           agent,
           project_id: projectId ?? null,
           source_id: sourceId ?? null,
+          ...(selection && selectionPage ? { selection_page: selectionPage } : {}),
         }),
       })
 
@@ -174,7 +177,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, onS
     if (!visualSelectionRequest || visualSelectionRequest.scope !== scopeRef.current || !agent || loading || historyLoading || disabled || handledVisualRequest.current === visualSelectionRequest.id) return
     handledVisualRequest.current = visualSelectionRequest.id
     onVisualSelectionHandled?.()
-    void send({ kind: 'visual', question: 'Explain the selected passage visually.' }, visualSelectionRequest.text)
+    void send({ kind: 'visual', question: 'Explain the selected passage visually.' }, visualSelectionRequest.text, visualSelectionRequest.page ?? null)
   }, [visualSelectionRequest, agent, loading, historyLoading, disabled])
 
   const chooseVisual = () => { setInput('/visual '); textareaRef.current?.focus() }

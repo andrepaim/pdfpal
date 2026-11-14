@@ -19,7 +19,16 @@ export interface AskOptions {
   collectionSelector?: string
   agent?: AgentName
   model?: string
+  /**
+   * Page of the open paper that an attached selection came from (sent by the
+   * reader). That page and its neighbours are always included in the context.
+   * Ignored unless exactly one source is selected.
+   */
+  selectionPage?: number
 }
+
+/** The reader appends a selection to the question as Markdown quote lines. */
+const quotedSelection = (message: string) => message.split('\n').filter(line => line.startsWith('> ')).map(line => line.slice(2)).join('\n')
 
 export class ChatService {
   private readonly projects: ProjectService
@@ -49,7 +58,9 @@ export class ChatService {
       const collectionSources = this.sources.list(project.id).filter(source => ids.has(source.id))
       scope = [...new Map([...selected, ...collectionSources].map(source => [source.id, source])).values()]
     }
-    let passages = this.retrieval.search(project.id, question, scope.map(source => source.id))
+    const page = options.selectionPage && selected.length === 1 && scope.length === 1
+      ? { source: selected[0]!, page: options.selectionPage, selection: quotedSelection(question) } : undefined
+    let passages = this.retrieval.context(project.id, question, scope.map(source => source.id), 16, page)
     if (!passages.length) {
       const fallback = scope.length ? scope : this.sources.list(project.id)
       passages = fallback.filter(source => source.pdf_text).slice(0, 4).map(source => ({

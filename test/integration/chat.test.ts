@@ -25,6 +25,29 @@ test('chat retrieves context, invokes an agent, and persists history', async () 
   }
 })
 
+test('a selection page sent by the reader puts that page and its neighbours in the context', async () => {
+  const config = testConfig(), db = testDb(config)
+  config.claudeBin = '/bin/echo'
+  try {
+    const project = new ProjectService(db).create('Selection Chat')
+    const text = '[Page 1]\nBackground on optimisers.\n[Page 2]\nGradient clipping limits update size.\n[Page 3]\nWhy it matters: exploding gradients.\n[Page 4]\nUnrelated appendix.'
+    const source = createSource(db, project.id, text)
+    new RetrievalService(db).index(source, text)
+    const chat = new ChatService(db, config)
+    // Nothing in a Portuguese question matches, but the selection's pages still arrive.
+    const withPage = await chat.ask(project.id, 'Por que isso?\n\n> Gradient clipping limits update size.', { sourceSelectors: [source], selectionPage: 2 })
+    assert.deepEqual(withPage.sources[0]?.pages, [1, 2, 3])
+    // Without the field, behaviour is unchanged: search alone.
+    const without = await chat.ask(project.id, 'appendix', { sourceSelectors: [source] })
+    assert.deepEqual(without.sources[0]?.pages, [4])
+    // Project chat over several sources ignores the field.
+    const other = createSource(db, project.id, '[Page 1]\nAnother appendix.')
+    new RetrievalService(db).index(other, '[Page 1]\nAnother appendix.')
+    const project_ = await chat.ask(project.id, 'appendix', { sourceSelectors: [source, other], selectionPage: 2 })
+    assert.ok(project_.sources.every(entry => !entry.pages.includes(2)))
+  } finally { cleanup(config, db) }
+})
+
 test('failed agent requests do not persist chat messages', async () => {
   const config = testConfig(), db = testDb(config)
   config.claudeBin = '/does/not/exist'

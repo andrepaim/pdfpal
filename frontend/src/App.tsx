@@ -156,7 +156,9 @@ export default function App({ user }: { user: User }) {
   const [pdfPages, setPdfPages] = useState(0)
   const [pdfLabel, setPdfLabel] = useState('')
   const [selectedText, setSelectedText] = useState('')
-  const [visualSelectionRequest, setVisualSelectionRequest] = useState<{ id: string; text: string; scope: string } | null>(null)
+  // PDF page the selection came from; lets chat include that page as context.
+  const [selectedPage, setSelectedPage] = useState<number | null>(null)
+  const [visualSelectionRequest, setVisualSelectionRequest] = useState<{ id: string; text: string; page?: number; scope: string } | null>(null)
   const [annotations, setAnnotations] = useState<Annotation[]>([])
   const [splitPct, setSplitPct] = useState(55)
   const [loading, setLoading] = useState(true)
@@ -199,7 +201,7 @@ export default function App({ user }: { user: User }) {
   }, [projectId, sourceId])
 
   useEffect(() => { loadSource() }, [loadSource])
-  useEffect(() => { setSelectedText(''); setVisualSelectionRequest(null) }, [projectId, sourceId])
+  useEffect(() => { setSelectedText(''); setSelectedPage(null); setVisualSelectionRequest(null) }, [projectId, sourceId])
 
   const flushReadingProgress = useCallback(() => {
     if (!projectId || !sourceId) return
@@ -294,6 +296,7 @@ export default function App({ user }: { user: User }) {
 
   const handleHighlightClick = (ann: Annotation) => {
     setSelectedText(ann.text)
+    setSelectedPage(ann.page_number)
     setRightPanel('chat')
   }
 
@@ -417,9 +420,9 @@ export default function App({ user }: { user: User }) {
             initialPage={source?.last_page_read ?? 1}
             isResizing={isResizing}
             onPageChange={handlePageChange}
-            onTextSelected={text => { setSelectedText(text); setRightPanel('chat') }}
-            onExplainVisually={text => {
-              setSelectedText(text); setRightPanel('chat'); setVisualSelectionRequest({ id: crypto.randomUUID(), text, scope: `${projectId}:${sourceId}` })
+            onTextSelected={(text, page) => { setSelectedText(text); setSelectedPage(page ?? null); setRightPanel('chat') }}
+            onExplainVisually={(text, page) => {
+              setSelectedText(text); setSelectedPage(page ?? null); setRightPanel('chat'); setVisualSelectionRequest({ id: crypto.randomUUID(), text, page, scope: `${projectId}:${sourceId}` })
             }}
             annotations={annotations}
             onHighlightCreate={handleHighlightCreate}
@@ -451,9 +454,10 @@ export default function App({ user }: { user: User }) {
               pdfUrl={source?.url || ''}
               disabled={!hasPdfText}
               selectedText={selectedText}
+              selectedPage={selectedPage}
               visualSelectionRequest={visualSelectionRequest}
               onVisualSelectionHandled={() => setVisualSelectionRequest(null)}
-              onSelectedTextUsed={() => setSelectedText('')}
+              onSelectedTextUsed={() => { setSelectedText(''); setSelectedPage(null) }}
               projectId={projectId || null}
               sourceId={sourceId || null}
             />

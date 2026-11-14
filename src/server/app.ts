@@ -141,18 +141,21 @@ export async function buildServer(config: PdfpalConfig, cli?: CliRuntime) {
     return reply.type('application/pdf').send(result.bytes)
   })
 
-  app.post<{ Body: { message: string; project_id: string; source_id?: string; active_source_ids?: string[]; collection_id?: string; agent?: AgentName; model?: string } }>('/api/chat', async (request, reply) => {
+  app.post<{ Body: { message: string; project_id: string; source_id?: string; active_source_ids?: string[]; collection_id?: string; agent?: AgentName; model?: string; selection_page?: number } }>('/api/chat', async (request, reply) => {
     const selectors = request.body.source_id ? [request.body.source_id] : request.body.active_source_ids
+    // Optional: the reader sends the page an attached selection came from.
+    const page = request.body.selection_page
+    const selectionPage = typeof page === 'number' && Number.isInteger(page) && page > 0 ? page : undefined
     if (request.body.agent === 'chatgpt') {
       reply.hijack(); reply.raw.writeHead(200, { 'content-type':'text/event-stream', 'cache-control':'no-cache' })
       try {
-        const result = await chat.ask(request.body.project_id, request.body.message, { sourceSelectors: selectors, collectionSelector: request.body.collection_id, agent: 'chatgpt', model: request.body.model,
+        const result = await chat.ask(request.body.project_id, request.body.message, { sourceSelectors: selectors, collectionSelector: request.body.collection_id, agent: 'chatgpt', model: request.body.model, selectionPage,
           onDelta: text => { if (!reply.raw.destroyed) reply.raw.write(`data: ${JSON.stringify({text})}\n\n`) } })
         if (!reply.raw.destroyed) reply.raw.write(`data: ${JSON.stringify({text: result.answer, sources: result.sources})}\n\n`)
       } catch (e) { if (!reply.raw.destroyed) reply.raw.write(`data: ${JSON.stringify({error: (e as Error).message})}\n\n`) }
       reply.raw.end('data: [DONE]\n\n');return
     }
-    const result = await chat.ask(request.body.project_id, request.body.message, { sourceSelectors: selectors, collectionSelector: request.body.collection_id, agent: request.body.agent, model: request.body.model })
+    const result = await chat.ask(request.body.project_id, request.body.message, { sourceSelectors: selectors, collectionSelector: request.body.collection_id, agent: request.body.agent, model: request.body.model, selectionPage })
     reply.raw.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' })
     reply.raw.write(`data: ${JSON.stringify({ text: result.answer, sources: result.sources })}\n\n`)
     reply.raw.end('data: [DONE]\n\n')
