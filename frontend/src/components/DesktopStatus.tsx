@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DesktopServiceState } from '../desktop'
+import { isMacDesktop } from '../lib/desktop-platform'
 
 export default function DesktopStatus() {
   const bridge = window.pdfpalDesktop
@@ -17,7 +18,7 @@ export default function DesktopStatus() {
   }, [bridge])
   useEffect(() => bridge?.onOpenDiagnostics?.(() => {
     dialog.current?.showModal(); setError(''); setReport(undefined)
-    void bridge.diagnostics?.().then(setReport).catch(() => setError('Could not prepare diagnostics. Retry from the tray.'))
+    void bridge.diagnostics?.().then(setReport).catch(() => setError(isMacDesktop() ? 'Could not prepare diagnostics. Retry from the Help menu.' : 'Could not prepare diagnostics. Retry from the tray.'))
   }), [bridge])
   if (!bridge) return null
   const visible = !dismissed && (state.state !== 'ready' || state.interrupted)

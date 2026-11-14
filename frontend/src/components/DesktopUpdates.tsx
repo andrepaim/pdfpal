@@ -1,6 +1,7 @@
 import {useSettingsPanel} from '../lib/settings-panels'
 import { useEffect, useRef, useState } from 'react'
 import type { DesktopUpdateState } from '../desktop'
+import { isMacDesktop } from '../lib/desktop-platform'
 
 export default function DesktopUpdates() {
   const bridge = window.pdfpalDesktop
@@ -32,7 +33,7 @@ export default function DesktopUpdates() {
     <header className="ai-settings-header"><div><span className="ai-settings-eyebrow">PDFPAL</span><h2 id="desktop-updates-title">Software updates</h2><p>{state ? `Version ${state.currentVersion}${state.distribution === 'unsigned' ? ' · Unsigned preview' : ''}` : 'Checking your desktop version…'}</p></div><button className="ai-settings-close" aria-label="Close software updates" onClick={() => dialog.current?.close()}>×</button></header>
     <div className="ai-settings-content">
       {checking ? <p role="status" className="ai-settings-help">Checking signed stable releases…</p> : <>
-        {state?.state === 'available' && <><h3>pdfpal {state.version} is available</h3><p className="ai-settings-help">Download the installer, quit pdfpal from its tray menu, then run the installer. Your library is kept.</p><p className="ai-settings-help">Publisher: {state.publisher}</p>{state.notes && <div className="desktop-update-notes">{state.notes}</div>}</>}
+        {state?.state === 'available' && <><h3>pdfpal {state.version} is available</h3><p className="ai-settings-help">{isMacDesktop() ? 'Download the update, quit pdfpal, then replace the app in your Applications folder. Your library is kept.' : 'Download the installer, quit pdfpal from its tray menu, then run the installer. Your library is kept.'}</p><p className="ai-settings-help">Publisher: {state.publisher}</p>{state.notes && <div className="desktop-update-notes">{state.notes}</div>}</>}
         {state?.state === 'current' && <p role="status" className="ai-settings-notice">No newer signed stable release is available.</p>}
         {state?.state === 'unpublished' && <p role="status" className="ai-settings-help">No signed stable desktop release was found.</p>}
         {state?.state === 'error' && <p role="alert" className="ai-settings-error">{state.message}</p>}

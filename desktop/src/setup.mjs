@@ -20,6 +20,42 @@ export function setupScript(id, action, executable) {
     : `& ${psQuote(executable)} ${item.login.join(' ')}`
   return `$ErrorActionPreference = 'Stop'\ntry {\n${command}\nWrite-Host '\nReturn to pdfpal and choose Check again.'\n} catch { Write-Host 'Setup did not complete. See the official setup guide in pdfpal.' }\n`
 }
+/**
+ * The bundled CLI launcher. Windows ships bin/pdfpal.exe beside the executable; a Mac app bundle ships a shell
+ * launcher in Contents/Resources/bin/pdfpal (process.resourcesPath).
+ */
+export function cliLauncher(platform, { execPath, resourcesPath }) {
+  return platform === 'darwin' ? path.join(resourcesPath, 'bin', 'pdfpal') : path.join(path.dirname(execPath), 'bin', 'pdfpal.exe')
+}
+/** The user-facing Mac command: a symlink in ~/.local/bin, which needs no administrator password. */
+export function cliCommandLink(home) { return path.join(home, '.local', 'bin', 'pdfpal') }
+/** POSIX shell single quoting: the only character that needs care inside '…' is the quote itself. */
+export const posixQuote = value => `'${value.replaceAll("'", `'\\''`)}'`
+export function cliSetupCommand(platform, launcher) {
+  return platform === 'darwin' ? `${posixQuote(launcher)} --desktop skill install` : "& '" + launcher.replaceAll("'", "''") + "' --desktop skill install"
+}
+/** 'installed' when the link points at this launcher, 'missing' when nothing is there, otherwise 'conflict'. */
+export function cliLinkState(link, launcher) {
+  let stat
+  try { stat = fs.lstatSync(link) } catch (error) { if (['ENOENT', 'ENOTDIR'].includes(error.code)) return 'missing'; throw error }
+  if (!stat.isSymbolicLink()) return 'conflict'
+  return path.resolve(path.dirname(link), fs.readlinkSync(link)) === path.resolve(launcher) ? 'installed' : 'conflict'
+}
+/** Create the link if nothing is there. Never replaces another file or a link to something else. */
+export function installCliLink(link, launcher) {
+  let state = cliLinkState(link, launcher)
+  if (state === 'missing') {
+    try {
+      fs.mkdirSync(path.dirname(link), { recursive: true })
+      fs.symlinkSync(launcher, link)
+      state = 'installed'
+    } catch (error) {
+      if (error.code !== 'EEXIST') return { path: link, state: 'failed' }
+      state = cliLinkState(link, launcher)
+    }
+  }
+  return { path: link, state }
+}
 export function trustedSender(event, window, origin, recoveryURL) {
   if (!window || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame) return false
   try { return !!((origin && new URL(event.senderFrame.url).origin === origin) || (recoveryURL && event.senderFrame.url === recoveryURL)) } catch { return false }

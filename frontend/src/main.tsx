@@ -23,7 +23,11 @@ import DesktopChrome from './components/DesktopChrome'
 import CommandLineSettings from './components/CommandLineSettings'
 import LibraryChanges from './components/LibraryChanges'
 
-if(window.pdfpalDesktop?.chrome)document.documentElement.classList.add('desktop-shell')
+if(window.pdfpalDesktop?.chrome){
+  document.documentElement.classList.add('desktop-shell')
+  // The Mac title bar keeps its window buttons on the left (desktop-chrome.css).
+  if(window.pdfpalDesktop.platform==='darwin')document.documentElement.classList.add('desktop-mac')
+}
 
 // ── Error boundary ────────────────────────────────────────────────────────────
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {

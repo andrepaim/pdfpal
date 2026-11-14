@@ -2,6 +2,10 @@ html.desktop-shell{--desktop-titlebar-height:env(titlebar-area-height,44px);--ap
 .application-surface{flex:1;min-height:0;overflow:auto;position:relative}
 .desktop-chrome{height:var(--desktop-titlebar-height,44px);flex-shrink:0;background:#171820;color:#aeb0c1;border-bottom:1px solid #ffffff09;user-select:none;-webkit-app-region:drag;z-index:995}
 .desktop-chrome-inner{width:env(titlebar-area-width,calc(100% - 138px));height:100%;display:flex;align-items:center;gap:8px;padding:0 12px 0 10px;min-width:0}
+/* Mac: hidden-inset title bar. The window buttons sit on the left over the bar (chromeOptions places them at x 16),
+   so the bar starts after them and reserves nothing on the right. macOS hides the buttons in full screen. */
+html.desktop-mac .desktop-chrome-inner{width:100%;padding-left:84px}
+html.desktop-mac .desktop-chrome.is-fullscreen .desktop-chrome-inner{padding-left:10px}
 .desktop-chrome button{font-family:inherit;-webkit-app-region:no-drag;cursor:pointer}
 .desktop-chrome-button{display:grid;place-items:center;width:28px;height:28px;padding:5px;flex-shrink:0;border:0;border-radius:6px;background:transparent;color:inherit;transition:background .12s,color .12s}
 .desktop-chrome-button:hover,.desktop-brand:hover{background:#ffffff0d;color:#fff}.desktop-chrome-button:disabled{opacity:.3;cursor:default;background:none}

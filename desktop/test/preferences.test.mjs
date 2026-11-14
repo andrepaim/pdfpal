@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { preferences, restoreBounds, restoreLibraryRoute, safeRoute, startupArguments } from '../src/preferences.mjs'
+import { preferences, restoreBounds, restoreLibraryRoute, safeRoute, startupArguments, loginItemSettings, loginItemQuery, loginItemEnabled } from '../src/preferences.mjs'
 
 test('window bounds return to an available monitor and fit small displays', () => {
   const displays = [{ workArea: { x: 0, y: 0, width: 1024, height: 768 } }]
@@ -27,6 +27,22 @@ test('preferences survive relaunch and reject external or malformed routes', () 
 test('Windows startup preserves paths containing spaces as individual arguments', () => {
   const args = startupArguments({ dataDir: 'C:\\My Library', dbPath: 'C:\\My Library\\pdfpal.db', port: 8200 }, 'C:\\Profile Folder')
   assert.deepEqual(args, ['--hidden', '"--data-dir=C:\\My Library"', '"--db=C:\\My Library\\pdfpal.db"', '--port=8200', '"--profile=C:\\Profile Folder"'])
+})
+
+test('login items keep the Windows Run entry and use only openAtLogin on a Mac', () => {
+  const registration = { name: 'io.pdfpal.desktop', openAtLogin: true, path: 'C:\\pdfpal\\pdfpal.exe', args: ['--hidden', '--selected-library=original'] }
+  assert.deepEqual(loginItemSettings('win32', registration), registration)
+  assert.deepEqual(loginItemQuery('win32', 'C:\\pdfpal\\pdfpal.exe'), { path: 'C:\\pdfpal\\pdfpal.exe' })
+  // name/path/args are Windows-only; a Mac launch reads the library from activeLibrary in the preferences instead.
+  assert.deepEqual(loginItemSettings('darwin', registration), { openAtLogin: true })
+  assert.deepEqual(loginItemSettings('darwin', { ...registration, openAtLogin: false }), { openAtLogin: false })
+  assert.equal(loginItemQuery('darwin', '/Applications/pdfpal.app/Contents/MacOS/pdfpal'), undefined)
+  const windows = { launchItems: [{ name: 'other', enabled: true }, { name: 'io.pdfpal.desktop', enabled: false }] }
+  assert.equal(loginItemEnabled('win32', windows, 'io.pdfpal.desktop'), false)
+  assert.equal(loginItemEnabled('win32', { launchItems: [{ name: 'io.pdfpal.desktop', enabled: true }] }, 'io.pdfpal.desktop'), true)
+  assert.equal(loginItemEnabled('darwin', { openAtLogin: true }, 'io.pdfpal.desktop'), true)
+  assert.equal(loginItemEnabled('darwin', { openAtLogin: false }, 'io.pdfpal.desktop'), false)
+  assert.equal(loginItemEnabled('linux', { openAtLogin: true }, 'io.pdfpal.desktop'), false)
 })
 
 test('a saved alpha project missing from the current library reopens home without clearing valid routes', async () => {

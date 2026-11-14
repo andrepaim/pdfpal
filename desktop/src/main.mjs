@@ -1,4 +1,4 @@
-import { safeStorage, app, BrowserWindow, utilityProcess, Tray, Menu, nativeImage, nativeTheme, Notification, dialog, shell, screen, ipcMain } from 'electron'
+import { safeStorage, app, BrowserWindow, utilityProcess, Tray, Menu, nativeImage, nativeTheme, Notification, dialog, shell, screen, ipcMain, powerMonitor } from 'electron'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import fs from 'node:fs'
@@ -6,15 +6,18 @@ import os from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawn, execFile } from 'node:child_process'
 import { installSkill, skillStatus } from './dist/cli/skill-install.js'
-import { provider, setupScript, trustedSender, recoveryMessage, diagnostics } from './setup.mjs'
+import { provider, setupScript, trustedSender, recoveryMessage, diagnostics, cliLauncher, cliCommandLink, cliLinkState, cliSetupCommand, installCliLink } from './setup.mjs'
 import { checkDesktopUpdates, releasePage } from './updates.mjs'
-import { preferences, registeredLibrary, restoreBounds, restoreLibraryRoute, safeRoute, startupArguments } from './preferences.mjs'
+import { preferences, registeredLibrary, restoreBounds, restoreLibraryRoute, safeRoute, startupArguments, loginItemSettings, loginItemQuery, loginItemEnabled } from './preferences.mjs'
 import { Session } from './chatgpt/session.mjs'
 import { protectedVault } from './chatgpt/vault.mjs'
 import { betaOptions, betaAcceptance } from './beta-acceptance.mjs'
-import {chromeCommands,chromeOptions,chromeShortcut,feedbackIssueURL,readerHistoryTarget} from './chrome.mjs'
+import {chromeCommands,chromeOptions,chromeShortcut,feedbackIssueURL,readerHistoryTarget,desktopShell,desktopText,applicationMenuTemplate,dockMenuTemplate,bindMenu,shouldOfferApplicationsMove} from './chrome.mjs'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
+// Tray on Windows, Dock and application menu on a Mac (see desktopShell).
+const platformShell = desktopShell(process.platform)
+const text = desktopText(process.platform)
 const metadata = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).pdfpalDesktop ?? {}
 const applicationId = metadata.appId ?? 'io.pdfpal.desktop'
 if (metadata.cloudPreview) {
@@ -61,6 +64,9 @@ if (registeredLibrary(knownLibraries,selectedLibrary)) {
 let libraryId = registeredLibrary(knownLibraries,selectedLibrary) ? selectedLibrary : 'original'
 let chatgpt
 let backend, window, tray, ready, pendingReceipt, stopping = false, exited = true, booting = false, crashRetries = 0, secondLaunches = 0
+// started: whenReady has reached boot (a Mac can emit `activate` earlier). sessionEnding: macOS is shutting down or logging out.
+// relocating: a Mac copy is moving itself to /Applications and must be allowed to quit.
+let started = false, sessionEnding = false, relocating = false
 const recoveryURL = pathToFileURL(path.join(root, 'recovery.html')).href
 const journal = diagnostics(path.join(profile, 'diagnostics.json'))
 let lastAgents = [], diagnosticPreview, setupProcess, setupPending = false, loadedOrigin, failureCode = 'STARTING', existingOrigin
@@ -140,7 +146,7 @@ async function setAgent(agent) {
   const effective = await rpc('set-agent', { agent })
   ready.agent = effective
   window?.webContents.send('pdfpal:agent-changed', effective)
-  updateTray()
+  refreshMenus()
   return effective
 }
 async function aiSettings() {
@@ -168,9 +174,67 @@ function startupArgs() {
   return [...startupArguments(ready.startup, app.getPath('userData')),`--selected-library=${libraryId}`]
 }
 function loginEnabled() {
-  return process.platform === 'win32' && app.getLoginItemSettings({ path: process.execPath }).launchItems.some(item => item.name === applicationId && item.enabled)
+  return platformShell.loginItems && loginItemEnabled(process.platform, app.getLoginItemSettings(loginItemQuery(process.platform, process.execPath)), applicationId)
 }
-function updateTray() {
+function setOpenAtLogin(enabled) {
+  // Windows: the named Run entry with startup arguments. Mac: openAtLogin only (see loginItemSettings).
+  try { app.setLoginItemSettings(loginItemSettings(process.platform, { name: applicationId, openAtLogin: enabled, path: process.execPath, args: startupArgs() })); savePrefs({ startAtLogin: enabled }) }
+  catch (error) { dialog.showErrorBox('Startup preference', error.message) }
+  refreshMenus()
+}
+/**
+ * Mac only. macOS runs an app opened from a disk image or Downloads from a randomised read-only copy
+ * (App Translocation) until it is moved, which breaks Open at Login and the ~/.local/bin/pdfpal link to the
+ * bundled CLI launcher. Offer the move before the local service starts, so nothing needs flushing. Never
+ * asks in development (unpackaged) runs or automated smoke and acceptance runs. Returns true when relaunching.
+ */
+async function offerApplicationsMove() {
+  if (!shouldOfferApplicationsMove({ platform: process.platform, packaged: app.isPackaged, automated: smoke || !!beta || installationCheck,
+    declined: prefs.value.applicationsMoveDeclined === true, inApplications: () => app.isInApplicationsFolder() })) return false
+  const choice = await dialog.showMessageBox({ type: 'question', message: text.moveMessage, detail: text.moveDetail,
+    buttons: [text.moveButton, text.moveLater], defaultId: 0, cancelId: 1, checkboxLabel: text.moveNeverAsk })
+  if (choice.response !== 0) { if (choice.checkboxChecked) savePrefs({ applicationsMoveDeclined: true }); return false }
+  relocating = true
+  try {
+    const moved = app.moveToApplicationsFolder({ conflictHandler: kind => kind === 'exists' && dialog.showMessageBoxSync({ type: 'question',
+      message: text.moveReplace, buttons: [text.moveReplaceButton, text.moveCancel], defaultId: 0, cancelId: 1 }) === 0 })
+    // Electron relaunches the moved copy once this process has exited.
+    if (moved) { app.exit(0); return true }
+  } catch { dialog.showErrorBox(text.moveFailedTitle, text.moveFailed) }
+  relocating = false
+  return false
+}
+function openDiagnostics() { showWindow(); if (loadedOrigin && !window.webContents.getURL().startsWith('file:')) window.webContents.send('pdfpal:open-diagnostics'); else void window.loadURL(recoveryURL) }
+function retryService() { crashRetries = 0; void boot() }
+async function openLicenses() {
+  const error = await shell.openPath(path.join(process.resourcesPath, 'THIRD_PARTY_NOTICES.txt'))
+  if (error) throw new Error('The license file could not be opened. Find THIRD_PARTY_NOTICES.txt in the application resources folder.')
+  return true
+}
+/** Mac menu window actions take the same validated path as the in-window menu and the Windows shortcuts. */
+function windowCommand(command) {
+  if (!window || window.isDestroyed()) return
+  if (['find', 'home'].includes(command)) showWindow()
+  void chromeCommand(command).catch(() => notify('pdfpal', text.actionFailed))
+}
+/** Handlers for the Mac application and Dock menus: chromeCommand or the same functions the tray uses. */
+const menuActions = {
+  'ai-settings': () => { void aiSettings().catch(error => dialog.showErrorBox('AI settings', error.message)) },
+  updates: () => { void openUpdates() },
+  'open-at-login': item => setOpenAtLogin(item.checked),
+  diagnostics: openDiagnostics,
+  retry: () => { if (!ready && !booting) retryService() },
+  licenses: () => { void openLicenses().catch(error => dialog.showErrorBox('Open-source licenses', error.message)) },
+  quit: () => { void requestQuit() },
+  ...Object.fromEntries(['back', 'forward', 'zoom-in', 'zoom-out', 'zoom-reset', 'find', 'home', 'open-browser', 'feedback'].map(command => [command, () => windowCommand(command)])),
+}
+/** Rebuild every native menu from the current state: the tray on Windows, the application and Dock menus on a Mac. */
+function refreshMenus() {
+  if (platformShell.menu === 'application') {
+    const state = { name: app.getName(), ready: !!ready, booting, openAtLogin: !!ready && loginEnabled(), packaged: app.isPackaged }
+    Menu.setApplicationMenu(Menu.buildFromTemplate(bindMenu(applicationMenuTemplate(state), menuActions)))
+    app.dock?.setMenu(Menu.buildFromTemplate(bindMenu(dockMenuTemplate(state), menuActions)))
+  }
   if (!tray) return
   tray.setToolTip(ready ? 'pdfpal — running' : 'pdfpal — starting or needs attention')
   tray.setContextMenu(Menu.buildFromTemplate([
@@ -179,14 +243,10 @@ function updateTray() {
     { label: 'AI settings', enabled: !!ready, click: () => { void aiSettings().catch(error => dialog.showErrorBox('AI settings', error.message)) } },
     { label: 'Start with Windows', type: 'checkbox', enabled: !!ready && process.platform === 'win32',
       checked: !!ready && loginEnabled(),
-      click: item => {
-        try { app.setLoginItemSettings({ name: applicationId, openAtLogin: item.checked, path: process.execPath, args: startupArgs() }); savePrefs({ startAtLogin: item.checked }) }
-        catch (error) { dialog.showErrorBox('Startup preference', error.message) }
-        updateTray()
-      } },
+      click: item => setOpenAtLogin(item.checked) },
     { label: 'Check for updates…', click: () => { void openUpdates() } },
-    { label: 'Diagnostics', click: () => { showWindow(); if (loadedOrigin && !window.webContents.getURL().startsWith('file:')) window.webContents.send('pdfpal:open-diagnostics'); else void window.loadURL(recoveryURL) } },
-    { label: 'Retry service', enabled: !ready && !booting, click: () => { crashRetries = 0; void boot() } },
+    { label: 'Diagnostics', click: openDiagnostics },
+    { label: 'Retry service', enabled: !ready && !booting, click: retryService },
     { type: 'separator' },
     { label: 'Quit', click: () => { void requestQuit() } },
   ]))
@@ -255,9 +315,10 @@ function ensureWindow() {
         window.webContents.on('page-title-updated', event => { event.preventDefault(); window.setTitle('pdfpal Cloud Preview') })
       }
       restoreWindowState = true
-      if(process.platform==='win32'){
+      // Windows only. A Mac handles every window shortcut through application-menu accelerators instead.
+      if(platformShell.inputShortcuts){
         window.setMenu(null)
-        window.webContents.on('before-input-event',(event,input)=>{const command=chromeShortcut(input);if(command&&!['menu','find','home','ai-settings'].includes(command)){event.preventDefault();void chromeCommand(command).catch(()=>notify('pdfpal','This action could not finish. Save your changes and try again.'))}})
+        window.webContents.on('before-input-event',(event,input)=>{const command=chromeShortcut(input,process.platform);if(command&&!['menu','find','home','ai-settings'].includes(command)){event.preventDefault();void chromeCommand(command).catch(()=>notify('pdfpal',text.actionFailed))}})
       }
       for(const event of ['focus','blur','maximize','unmaximize','enter-full-screen','leave-full-screen'])window.on(event,sendChromeState)
       window.webContents.on('did-navigate-in-page',sendChromeState)
@@ -275,11 +336,16 @@ function ensureWindow() {
       for (const event of ['move', 'resize', 'maximize', 'unmaximize']) window.on(event, () => { clearTimeout(boundsTimer); boundsTimer = setTimeout(saveWindow, 200) })
       window.on('close', event => {
         saveWindow()
-        if (!stopping && tray) {
-          event.preventDefault(); window.hide()
-          if (!prefs.value.hideNotice) { savePrefs({ hideNotice: true }); notify('pdfpal is still running', 'Reopen pdfpal from the tray. Choose Quit there to stop it.') }
+        // Windows hides to the tray; a Mac hides and keeps the Dock icon (no notice: that is the usual Mac behaviour).
+        if (!stopping && (tray || platformShell.dock)) {
+          event.preventDefault()
+          // Hiding a full-screen Mac window leaves an empty full-screen Space behind, so leave full screen first.
+          if (platformShell.dock && window.isFullScreen()) { window.once('leave-full-screen', () => window.hide()); window.setFullScreen(false) }
+          else window.hide()
+          if (tray && platformShell.closeNotice && !prefs.value.hideNotice) { savePrefs({ hideNotice: true }); notify(text.closeNoticeTitle, text.closeNoticeBody) }
         } else if (!stopping) { event.preventDefault(); void requestQuit() }
       })
+      // Windows log-off and shutdown. macOS uses powerMonitor 'shutdown' (registered once in whenReady).
       window.on('session-end', () => { void requestQuit('cancel') })
     }
 }
@@ -317,7 +383,7 @@ async function launchSetup(agent, action) {
 }
 async function boot() {
   if (booting || stopping) return
-  booting = true; ready = undefined; failureCode = 'STARTING'; existingOrigin = undefined; journal.record('STARTING'); updateTray()
+  booting = true; ready = undefined; failureCode = 'STARTING'; existingOrigin = undefined; journal.record('STARTING'); refreshMenus()
   try {
     ensureWindow()
     setServiceState({ state: 'starting' })
@@ -356,7 +422,7 @@ async function boot() {
         if (backend === child) { exited = true; rejectPending() }
         reject(new Error(`Local service stopped (${code}).`))
         if (!stopping && ready && backend === child && !booting) {
-          journal.record('BACKEND_STOPPED'); ready = undefined; updateTray(); setServiceState({ state: 'failed' })
+          journal.record('BACKEND_STOPPED'); ready = undefined; refreshMenus(); setServiceState({ state: 'failed' })
           if (crashRetries++ < 1 && (!smoke || recoveryFixture)) { notify('pdfpal is restarting', 'The local service stopped. Retry any interrupted question.'); void boot() }
           else if (!smoke) showWindow()
         }
@@ -375,7 +441,7 @@ async function boot() {
     savePrefs({lastNativeReportAt:new Date().toISOString()})
     if (exited) throw new Error('The local service stopped during startup. Retry.')
     if (!smoke && (!process.argv.includes('--hidden') || !tray || !prefs.value.setupComplete)) showWindow()
-    booting = false; updateTray()
+    booting = false; refreshMenus()
     if (beta) {
       await betaAcceptance({ options: beta, app, window, ready, tray, showWindow, requestQuit, secondLaunches: () => secondLaunches })
     } else if (installationCheck) {
@@ -383,7 +449,7 @@ async function boot() {
       await installedAcceptance({ app, window, ready, prefs, requestQuit, shutdown })
     } else if (smoke) await smokeTest()
   } catch (error) {
-    booting = false; ready = undefined; updateTray()
+    booting = false; ready = undefined; refreshMenus()
     if (backend && !exited) {
       const child = backend
       const closed = new Promise(resolve => child.once('exit', resolve))
@@ -423,7 +489,9 @@ async function smokeTest() {
   if (ready.providers?.agents.some(agent => agent.generation !== 'passed')) pendingReceipt.status = 'provider_gate_failed'
   if (recoveryScreenPassed && !pendingReceipt.checks.includes('startup-recovery-screen-and-retry')) pendingReceipt.checks.push('startup-recovery-screen-and-retry')
   if (m1) {
-    check(tray && !tray.isDestroyed(), 'Tray was not created')
+    // A Mac has no tray: it must instead have the application menu (with its AI settings item) and a Dock.
+    if (platformShell.dock) check(!tray && !!app.dock && !!Menu.getApplicationMenu()?.getMenuItemById('ai-settings')?.enabled, 'Application menu was not created')
+    else check(tray && !tray.isDestroyed(), 'Tray was not created')
     if (m2 && !recoveryFixture) {
       for (let i = 0; i < 350; i++) {
         if (await window.webContents.executeJavaScript('!!document.querySelector(".ai-settings[open][aria-busy=false] input[type=radio]")')) break
@@ -540,8 +608,10 @@ if (!app.requestSingleInstanceLock()) app.exit(0)
 else {
   app.on('second-instance', () => { secondLaunches++; showWindow() })
   app.on('window-all-closed', () => {})
-  app.on('before-quit', event => { if (!stopping) { event.preventDefault(); void requestQuit() } })
-  app.on('activate', showWindow)
+  // A Mac shutdown or logout gets the same bounded, dialog-free flush as the Windows session-end path.
+  app.on('before-quit', event => { if (relocating) return; if (!stopping) { event.preventDefault(); void requestQuit(sessionEnding ? 'cancel' : undefined) } })
+  // A Mac emits this when the Dock icon is clicked (never on Windows); ignore it until startup reaches boot.
+  app.on('activate', () => { if (started) showWindow() })
   function handle(name, callback, recovery = false) {
     ipcMain.handle(`pdfpal:${name}`, async (event, ...args) => {
       if (!trustedSender(event, window, ready?.origin ?? loadedOrigin, recovery ? recoveryURL : undefined)) throw new Error('Untrusted sender')
@@ -554,17 +624,24 @@ else {
   handle('chrome-command',chromeCommand,true)
   handle('cli-setup', async action => {
     if (!['status','install','check'].includes(action)) throw new Error('Unsupported CLI setup action')
-    const launcher = path.join(path.dirname(process.execPath), 'bin', 'pdfpal.exe')
+    const launcher = cliLauncher(process.platform, { execPath: process.execPath, resourcesPath: process.resourcesPath })
+    const available = ['win32', 'darwin'].includes(process.platform) && fs.existsSync(launcher)
     const skill = action === 'install' ? installSkill() : skillStatus()
+    // Mac: the command is a ~/.local/bin/pdfpal symlink to the bundled launcher. Install never replaces another file.
+    let link
+    if (process.platform === 'darwin') {
+      const target = cliCommandLink(os.homedir())
+      link = action === 'install' && available ? installCliLink(target, launcher) : { path: target, state: cliLinkState(target, launcher) }
+    }
     let check
     if (action === 'check') {
       const env = {...process.env,PDFPAL_DESKTOP_PROFILE:profile}
       delete env.PDFPAL_DATA_DIR;delete env.PDFPAL_DB;delete env.PDFPAL_PORT
       check = await new Promise((resolve,reject)=>execFile(launcher,['--desktop','--json','--profile',profile,'doctor'],{env,windowsHide:true,encoding:'utf8',timeout:15000,maxBuffer:256*1024},(_error,stdout)=>{
-        try {resolve(JSON.parse(stdout))}catch {reject(new Error('The bundled CLI could not be checked. Repair the Windows installation.'))}
+        try {resolve(JSON.parse(stdout))}catch {reject(new Error(text.cliCheckFailed))}
       }))
     }
-    return {available:process.platform==='win32'&&fs.existsSync(launcher),launcher,version:app.getVersion(),library:prefs.value.libraries?.[libraryId]?.label??'Current library',skill,setupCommand:"& '"+launcher.replaceAll("'","''")+"' --desktop skill install",...(check?{check}:{})}
+    return {available,launcher,version:app.getVersion(),library:prefs.value.libraries?.[libraryId]?.label??'Current library',skill,setupCommand:cliSetupCommand(process.platform,launcher),...(link?{link}:{}),...(check?{check}:{})}
   })
   handle('library-state', () => ({active:libraryId,libraries:Object.entries(prefs.value.libraries??{}).map(([id,item])=>({id,label:item.label}))}))
   handle('choose-backup-folder', async () => {
@@ -593,11 +670,7 @@ else {
   handle('check-updates', checkUpdates, true)
   handle('download-update', () => { if (updateState.state !== 'available') throw new Error('Check for an available update first'); openBrowser(updateState.downloadURL); return true }, true)
   handle('release-notes', () => { openBrowser(updateState.releaseURL ?? releasePage); return true }, true)
-  handle('open-licenses', async () => {
-    const error = await shell.openPath(path.join(process.resourcesPath, 'THIRD_PARTY_NOTICES.txt'))
-    if (error) throw new Error('The license file could not be opened. Find THIRD_PARTY_NOTICES.txt in the application resources folder.')
-    return true
-  }, true)
+  handle('open-licenses', openLicenses, true)
   handle('chatgpt-stop', () => { chatgpt.cancelAll(); return chatgpt.summary() })
   handle('chatgpt-state', () => chatgpt.summary())
   handle('chatgpt-connect', id => chatgpt.connect(id))
@@ -613,7 +686,7 @@ else {
   handle('setup-action', launchSetup)
   handle('choose-binary', async agent => {
     provider(agent)
-    const choice = await dialog.showOpenDialog(window, { title: 'Choose your installed assistant', properties: ['openFile'], filters: [{ name: 'Application', extensions: process.platform === 'win32' ? ['exe'] : ['*'] }] })
+    const choice = await dialog.showOpenDialog(window, { title: 'Choose your installed assistant', properties: process.platform === 'darwin' ? ['openFile', 'showHiddenFiles'] : ['openFile'], filters: [{ name: 'Application', extensions: process.platform === 'win32' ? ['exe'] : ['*'] }] })
     if (choice.canceled || !choice.filePaths[0]) return false
     return rpc('choose-binary', { agent, executable: choice.filePaths[0] })
   })
@@ -647,15 +720,20 @@ else {
   }, true)
   handle('quit', () => { void requestQuit(); return true }, true)
   app.whenReady().then(async () => {
-  if(process.platform==='win32')Menu.setApplicationMenu(null)
+  if(platformShell.menu==='none')Menu.setApplicationMenu(null)
+  else if(platformShell.menu==='application')refreshMenus()
+  if (await offerApplicationsMove()) return
+  if (platformShell.dock) powerMonitor.on('shutdown', event => { event.preventDefault(); sessionEnding = true; void requestQuit('cancel') })
   chatgpt = new Session({ ...protectedVault(path.join(profile, 'chatgpt'), safeStorage), open: url => shell.openExternal(url) })
-  try { await chatgpt.init() } catch { chatgpt.data={host:'urn:uuid:'+randomUUID(),accounts:[],active:null};chatgpt.message='Windows could not unlock the saved connection. Reconnect in AI settings.' }
-    try {
+  try { await chatgpt.init() } catch { chatgpt.data={host:'urn:uuid:'+randomUUID(),accounts:[],active:null};chatgpt.message=text.chatgptLocked }
+    // No tray (menu bar) icon on a Mac: the Dock icon and the application menu replace it.
+    if (platformShell.tray) try {
       const icon = nativeImage.createFromPath(path.join(root, 'frontend/dist/favicon-32.png'))
       if (icon.isEmpty()) throw new Error('Tray icon is missing')
       tray = new Tray(icon)
       tray.on('double-click', showWindow); tray.on('click', showWindow)
     } catch { tray = undefined }
+    started = true
     await boot()
   })
 }

@@ -1,6 +1,22 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import ChatGPTSettings, { type ChatGPTState } from './ChatGPTSettings'
 import type { DesktopAssistant, DesktopSetupState } from '../desktop'
+import { isMacDesktop } from '../lib/desktop-platform'
+
+/** Windows opens PowerShell with the official installer; a Mac opens the official setup guide in the browser. */
+const setupText = (mac: boolean) => mac ? {
+  stopped: 'The service stopped. Retry from the Help menu when it is available.',
+  opened: 'The official setup guide has opened in your browser. Finish there, then choose Check again here.',
+  install: 'This opens the provider’s official setup guide in your browser. Follow its steps in Terminal to install the assistant, then return here and choose Check again.',
+  login: 'This opens the provider’s official setup guide in your browser. Follow its sign-in steps and choose your Claude or ChatGPT account to use its included allowance. Your password is entered only with the provider.',
+  installButton: 'Open setup guide', loginButton: 'Open setup guide',
+} : {
+  stopped: 'The service stopped. Retry from the tray when it is available.',
+  opened: 'An official setup window has opened. Finish there, close it, then choose Check again here.',
+  install: 'This opens a PowerShell window and runs the provider’s official installer. It downloads and installs the assistant for your Windows user. No separate Node.js installation is required.',
+  login: 'This opens the assistant’s official sign-in flow in a separate window. Choose your Claude or ChatGPT account to use its included allowance. Your password is entered only with the provider.',
+  installButton: 'Open official installer', loginButton: 'Open sign-in',
+}
 
 const supported = (id: string) => id === 'claude' || id === 'codex'
 const label = (agent: DesktopAssistant) => agent.id === 'claude' ? 'Claude Code' : agent.id === 'opencode' ? 'OpenCode' : agent.label
@@ -19,6 +35,7 @@ function status(assistant: DesktopAssistant): string {
 
 export default function AISettings() {
   const bridge = window.pdfpalDesktop
+  const text = setupText(isMacDesktop())
   const dialog = useRef<HTMLDialogElement>(null)
   const generation = useRef(0)
   const [openId, setOpenId] = useState(0)
@@ -137,7 +154,7 @@ export default function AISettings() {
   const cancelTest = async () => {
     generation.current++
     try { await bridge?.cancelTest?.(); setNotice('Connection test cancelled.') }
-    catch { setError('The service stopped. Retry from the tray when it is available.') }
+    catch { setError(text.stopped) }
     finally { setTesting(false); testingRef.current = false }
   }
   const launch = async () => {
@@ -145,7 +162,7 @@ export default function AISettings() {
     setSaving(true); setError('')
     try {
       await bridge?.setupAction?.(consent.agent, consent.action)
-      setNotice('An official setup window has opened. Finish there, close it, then choose Check again here.')
+      setNotice(text.opened)
       setConsent(undefined)
     } catch (cause) { setError(cause instanceof Error ? cause.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '') : 'Could not open setup. Use the official guide instead.') }
     finally { setSaving(false) }
@@ -203,8 +220,8 @@ export default function AISettings() {
         </>}
         {consent && <section className="ai-settings-confirm" aria-label="Confirm assistant setup">
           <h3>{consent.action === 'install' ? `Install ${consent.agent === 'claude' ? 'Claude Code' : 'Codex'}?` : 'Sign in with your account?'}</h3>
-          <p>{consent.action === 'install' ? 'This opens a PowerShell window and runs the provider’s official installer. It downloads and installs the assistant for your Windows user. No separate Node.js installation is required.' : 'This opens the assistant’s official sign-in flow in a separate window. Choose your Claude or ChatGPT account to use its included allowance. Your password is entered only with the provider.'}</p>
-          <div className="ai-settings-actions"><button type="button" onClick={() => { void launch() }} disabled={saving || testing}>Open {consent.action === 'install' ? 'official installer' : 'sign-in'}</button><button type="button" onClick={() => setConsent(undefined)} disabled={saving || testing}>Back</button></div>
+          <p>{consent.action === 'install' ? text.install : text.login}</p>
+          <div className="ai-settings-actions"><button type="button" onClick={() => { void launch() }} disabled={saving || testing}>{consent.action === 'install' ? text.installButton : text.loginButton}</button><button type="button" onClick={() => setConsent(undefined)} disabled={saving || testing}>Back</button></div>
         </section>}
         <p className="ai-settings-help">ChatGPT connects directly to your plan. Claude Code and Codex use their installed applications and current accounts. Provider limits apply; sign-in detection does not verify remaining allowance.</p>
         <button type="button" className="ai-settings-refresh" onClick={() => { setNotice(''); void refresh(true) }} disabled={loading || saving || testing || chatgptWorking}>Check again</button>
