@@ -72,7 +72,7 @@ test('visual explanations work in Kindle, project chat and the PDF reader, inclu
     offline.on('request', req => { if (/^https?:/.test(req.url())) remote.push(req.url()); });
     await offline.goto(`file://${file}`);
     await offline.getByRole('button', { name: 'Next', exact: true }).click();
-    await expect(offline.locator('#counter')).toHaveText('2 / 3');
+    await expect(offline.locator('#counter')).toHaveText('Step 2 of 3');
     expect(remote).toEqual([]);
     await panel.reload();
     await expect(panel.locator('.visual-card').getByRole('heading', { name: visualFixture.title })).toBeVisible();
