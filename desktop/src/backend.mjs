@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadConfig, saveAIModePreference, saveAgentBinary } from './dist/core/config.js'
-import { discoverAgent, refreshWindowsPath } from './dist/core/agent-discovery.js'
+import { discoverAgent, refreshWindowsPath, refreshMacPath } from './dist/core/agent-discovery.js'
 import { bindDirectProvider } from './dist/core/ai.js'
 import { randomUUID } from 'node:crypto'
 import { AgentService } from './dist/core/agents.js'
@@ -43,6 +43,7 @@ process.parentPort.on('message', async ({ data }) => {
     else if (data.command === 'login-command' || data.command === 'choose-binary') {
       if (!['claude', 'codex'].includes(data.agent)) throw new Error('Unknown assistant')
       await refreshWindowsPath()
+      await refreshMacPath()
       const binary = data.command === 'choose-binary' ? data.executable : data.agent === 'claude' ? config.claudeBin : config.codexBin
       const status = await discoverAgent(data.agent, binary)
       if (status.state !== 'installed') throw new Error('The selected executable could not be verified. Install or repair the assistant, then retry.')
@@ -77,6 +78,8 @@ try {
   const smoke = process.env.PDFPAL_M0_SMOKE === '1'
   if (smoke && process.env.PDFPAL_M2_FAILURE_FIXTURE === '1') throw Object.assign(new Error('Fixture occupied port'), { code: 'EADDRINUSE' })
   runtime = await startRuntime(config, smoke ? 0 : config.port)
+  // A Mac app opened from Finder has a minimal PATH; resolve the login-shell PATH early (no-op elsewhere).
+  void refreshMacPath()
   const origin = runtime.origin, checks = []
   let fixture
   if (smoke) {

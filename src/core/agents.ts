@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import type { PdfpalConfig } from './config.js'
 import { PdfpalError } from './types.js'
-import { agentCandidates, discoverAgent, runProbe, refreshWindowsPath } from './agent-discovery.js'
+import { agentCandidates, discoverAgent, runProbe, refreshMacPath, refreshWindowsPath, usesNativeDiscovery } from './agent-discovery.js'
 
 export type AgentName = 'claude' | 'codex' | 'opencode'
 
@@ -37,8 +37,9 @@ export class AgentService {
   }
 
   private async inspectWithSignal(signal: AbortSignal) {
-    if (process.platform !== 'win32') return this.list()
+    if (!usesNativeDiscovery()) return this.list()
     await refreshWindowsPath(signal)
+    await refreshMacPath(signal, { force: true })
     const agents = this.list()
     return Promise.all(agents.map(async item => {
       if (item.id === 'opencode') return item
@@ -56,7 +57,7 @@ export class AgentService {
     return (['claude', 'codex', 'opencode'] as AgentName[]).map(id => ({
       id,
       label: id[0]!.toUpperCase() + id.slice(1),
-      available: process.platform === 'win32' && id !== 'opencode'
+      available: usesNativeDiscovery() && id !== 'opencode'
         ? agentCandidates(id, { binary: this.binary(id) }).some(file => fs.existsSync(file))
         : commandAvailable(this.binary(id)),
     }))
@@ -79,7 +80,9 @@ export class AgentService {
 
   private async run(prompt: string, agent: AgentName, model: string, signal: AbortSignal, timeoutMs = 300_000): Promise<string> {
     let binary = this.binary(agent)
-    if (process.platform === 'win32' && agent !== 'opencode') {
+    // macOS desktop app: reuse the login-shell PATH resolved by inspection, or resolve it once.
+    await refreshMacPath(signal)
+    if (usesNativeDiscovery() && agent !== 'opencode') {
       const status = await discoverAgent(agent, binary, signal)
       if (signal.aborted) throw new PdfpalError('AGENT_CANCELLED', 'The AI request was cancelled.')
       if (status.state !== 'installed') throw new PdfpalError('AGENT_NOT_FOUND', `The ${agent} executable needs installation or repair.`)
