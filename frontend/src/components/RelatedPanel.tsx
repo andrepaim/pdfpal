@@ -13,6 +13,17 @@ interface Props {
 
 type SubTab = 'references' | 'citations'
 
+// Server errors do not all end in a full stop; add one so a following
+// sentence does not run on.
+function sentence(text: string): string {
+  const trimmed = text.trim()
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`
+}
+
+// When Semantic Scholar is busy the server retries and then tries OpenAlex,
+// which can take about ten seconds. Say so once a load runs this long.
+const SLOW_LOAD_MS = 3000
+
 function PaperCard({
   paper,
   projectId,
@@ -115,6 +126,7 @@ export default function RelatedPanel({ projectId, sourceId }: Props) {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
   const [subTab, setSubTab] = useState<SubTab>('references')
+  const [slow, setSlow] = useState(false)
   const [existingUrls, setExistingUrls] = useState<Set<string>>(new Set())
 
   useEffect(() => {
@@ -136,6 +148,13 @@ export default function RelatedPanel({ projectId, sourceId }: Props) {
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
   }, [projectId, sourceId])
+
+  useEffect(() => {
+    setSlow(false)
+    if (!loading && !refreshing) return
+    const timer = setTimeout(() => setSlow(true), SLOW_LOAD_MS)
+    return () => clearTimeout(timer)
+  }, [loading, refreshing])
 
   const handleRefresh = async () => {
     setRefreshing(true); setError('')
@@ -187,6 +206,19 @@ export default function RelatedPanel({ projectId, sourceId }: Props) {
         </button>
       </div>
 
+      {refreshing && slow && (
+        <div style={{ padding: '6px 16px', borderBottom: '1px solid var(--border)', color: '#9ca3af', fontSize: 11, flexShrink: 0 }}>
+          Semantic Scholar may be busy. Still trying, and checking OpenAlex if needed.
+        </div>
+      )}
+
+      {/* A refresh that failed still shows the papers found earlier. */}
+      {!loading && !error && data?.error && (refCount > 0 || citeCount > 0) && (
+        <div role="status" style={{ padding: '6px 16px', borderBottom: '1px solid var(--border)', color: '#9ca3af', fontSize: 11, flexShrink: 0 }}>
+          Couldn't refresh: {sentence(data.error)} Showing the papers found earlier.
+        </div>
+      )}
+
       {/* Sub-tabs */}
       {!loading && !error && (
         <div style={{ height: 32, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'stretch', paddingLeft: 8, flexShrink: 0 }}>
@@ -201,6 +233,7 @@ export default function RelatedPanel({ projectId, sourceId }: Props) {
           <div style={{ textAlign: 'center', paddingTop: 40, color: '#4b5563' }}>
             <div className="spinner" style={{ margin: '0 auto 12px' }} />
             <div style={{ fontSize: 12 }}>Finding related papers…</div>
+            {slow && <div style={{ fontSize: 11, marginTop: 6 }}>Semantic Scholar may be busy. Still trying, and checking OpenAlex if needed.</div>}
           </div>
         )}
 
