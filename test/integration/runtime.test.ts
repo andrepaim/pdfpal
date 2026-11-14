@@ -30,27 +30,31 @@ test('server lease prevents duplicate ownership and validates a running endpoint
   fs.rmSync(config.dataDir, { recursive: true, force: true })
 })
 
-test('closing does not wait for a spare connection that never sent a request', async () => {
+test('closing does not wait for spare connections that never send a request', async () => {
   const config = testConfig()
   const runtime = await startRuntime(config, 0)
   const url = new URL(runtime.origin)
-  // A browser keeps spare connections like this one. Node counts it as busy until its headers timeout.
-  const spare = net.connect({ host: url.hostname, port: Number(url.port) })
+  const spares: net.Socket[] = []
+  const spare = () => { const socket = net.connect({ host: url.hostname, port: Number(url.port) }); socket.on('error', () => {}); spares.push(socket); return socket }
   try {
-    await new Promise<void>((resolve, reject) => { spare.once('connect', resolve); spare.once('error', reject) })
+    // A browser keeps spare connections like these. Node counts a connection that has sent nothing as busy,
+    // so closing idle connections leaves it open until the headers timeout. The stall this guards against was
+    // only reproduced on macOS (about one app launch in fifteen), so this test states the requirement; it does
+    // not fail on Linux when the fix is removed.
+    const early = spare()
+    await new Promise<void>(resolve => early.once('connect', resolve))
     assert.equal((await fetch(`${runtime.origin}/api/health`)).status, 200)
-    const ended = new Promise<void>(resolve => spare.once('close', () => resolve()))
     const started = Date.now()
     let timer: NodeJS.Timeout | undefined
-    const closed = await Promise.race([
-      runtime.close().then(() => true),
-      new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(false), 5000) }),
-    ])
+    const closing = runtime.close().then(() => true)
+    // More arrive while the server is closing, before it stops listening (seen on macOS when the window closes).
+    spare(); queueMicrotask(spare); process.nextTick(spare); setImmediate(spare)
+    for (const delay of [0, 1, 2, 3, 5, 8]) setTimeout(spare, delay)
+    const closed = await Promise.race([closing, new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(false), 5000) })])
     clearTimeout(timer)
     assert.equal(closed, true, 'close was still waiting after 5 seconds')
     assert.ok(Date.now() - started < 5000)
-    await ended
-  } finally { spare.destroy(); fs.rmSync(config.dataDir, { recursive: true, force: true }) }
+  } finally { for (const socket of spares) socket.destroy(); fs.rmSync(config.dataDir, { recursive: true, force: true }) }
 })
 
 test('newer schemas are rejected without changing the database', () => {

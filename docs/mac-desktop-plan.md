@@ -17,7 +17,9 @@ Status: implemented on 2026-11-14 on the branch `feat/mac-desktop` (pull request
 | MAC-30, MAC-31 | Written and unit-tested. On the runner the bundled launcher ran through a symlink and printed the app version. `pdfpal --desktop status` against a running app and the settings panel's link are unchecked. |
 | MAC-40, MAC-41 | Not started. Waiting on the Apple Developer Program decision. |
 
-Known issue: in the first runner build, one app launch did not finish closing its local service and was stopped after 30 seconds. It did not recur in the next 24 launches, and its cause is unknown. The backend now records what is still open when a close takes more than 10 seconds (`slow-close` in the smoke receipt).
+Fixed during the first runner builds: about one app launch in fifteen did not finish quitting. A spare connection from the reader window, one that had never sent a request, was left open, and the local service waited for it until it was stopped at the 30-second limit. The server now closes connections that are serving no request when it shuts down. After the fix, 80 consecutive launches on the runner closed cleanly. The stall was never reproduced off a Mac.
+
+Also fixed: the Windows beta-measurement harness (`desktop/src/beta-acceptance.mjs`, used by `windows-m4.ps1`) had been failing on `master` since the cloud and command-line dialogs were added, because it selected the assistant dialog by a shared CSS class.
 
 Open question from MAC-22: with the Mac job required, a stable (unsuffixed) version cannot be published for Windows either until Mac signing exists. Suffixed previews are unaffected.
 
