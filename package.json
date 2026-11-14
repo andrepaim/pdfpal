@@ -41,6 +41,8 @@
     "skill:install": "bash scripts/install-skill.sh",
     "skill:uninstall": "bash scripts/install-skill.sh --uninstall",
     "test:package": "node scripts/test-package.mjs",
+    "eval:retrieval": "tsx scripts/eval-retrieval.ts",
+    "eval:retrieval:fetch": "tsx scripts/fetch-retrieval-fixtures.ts",
     "test:archive": "node scripts/test-extension-archive.mjs",
     "test:cloud": "node --import tsx --test test/integration/cloud.test.ts test/integration/cloud-firestore.test.ts",
     "test:firebase": "firebase --config cloud/firebase.json emulators:exec --only firestore,storage --project demo-pdfpal-sync \"node --import tsx --test test/integration/cloud-firestore.test.ts\"",

@@ -1,0 +1,875 @@
+{
+  "description": "Labelled questions for the retrieval evaluation. Gold pages were chosen by reading the fixture page text, never from search output. Every gold page carries at least one verbatim evidence snippet that the evaluation checks against the fixture. Questions marked holdout are excluded from the default run and must not be looked at while tuning retrieval.",
+  "questions": [
+    {
+      "id": "exact-01",
+      "category": "exact",
+      "path": "reader-chat",
+      "question": "How does the rolling buffer cache store keys and values?",
+      "source": "mistral-7b",
+      "pages": [2, 3],
+      "evidence": [
+        { "page": 2, "text": "the keys and values for the timestep i are stored in position i mod W" },
+        { "page": 3, "text": "Keys and values for position i are stored in position i mod W of the cache" }
+      ]
+    },
+    {
+      "id": "exact-02",
+      "category": "exact",
+      "path": "reader-chat",
+      "question": "How many experts does the router network select for each token?",
+      "source": "mixtral",
+      "pages": [1, 2, 3, 8],
+      "evidence": [
+        { "page": 1, "text": "a router network selects two experts to process the current state" },
+        { "page": 2, "text": "Each input vector is assigned to 2 of the 8 experts by a router" },
+        { "page": 3, "text": "This means each token is routed to two SwiGLU sub-blocks" },
+        { "page": 8, "text": "Because it only uses two experts at each time" }
+      ]
+    },
+    {
+      "id": "exact-03",
+      "category": "exact",
+      "path": "reader-chat",
+      "question": "What percentage of the LLaMA pre-training data comes from English CommonCrawl?",
+      "source": "llama",
+      "pages": [2],
+      "evidence": [
+        { "page": 2, "text": "English CommonCrawl [67%]" }
+      ]
+    },
+    {
+      "id": "exact-04",
+      "category": "exact",
+      "path": "reader-chat",
+      "question": "What computation data type does QLoRA use?",
+      "source": "qlora",
+      "pages": [4, 5],
+      "evidence": [
+        { "page": 4, "text": "we dequantize the tensor to BFloat16" },
+        { "page": 5, "text": "a computation data type (16-bit BrainFloat)" }
+      ]
+    },
+    {
+      "id": "exact-05",
+      "category": "exact",
+      "path": "reader-chat",
+      "question": "What are the Selective Copying and Induction Heads tasks?",
+      "source": "mamba",
+      "pages": [5, 6],
+      "holdout": true,
+      "evidence": [
+        { "page": 5, "text": "The Selective Copying task modifies the popular Copying task" },
+        { "page": 6, "text": "The Selective Copying task has random" }
+      ]
+    },
+    {
+      "id": "exact-06",
+      "category": "exact",
+      "path": "reader-chat",
+      "question": "What is the contrastive InfoNCE loss?",
+      "source": "contriever",
+      "pages": [4],
+      "evidence": [
+        { "page": 4, "text": "the contrastive InfoNCE loss is defined as" }
+      ]
+    },
+    {
+      "id": "exact-07",
+      "category": "exact",
+      "path": "reader-chat",
+      "question": "What is the consistency-based filter and why is it used?",
+      "source": "e5",
+      "pages": [2, 3],
+      "evidence": [
+        { "page": 2, "text": "filter [15] to improve data quality" },
+        { "page": 3, "text": "a model is first trained on the 1.3B noisy text pairs" }
+      ]
+    },
+    {
+      "id": "exact-08",
+      "category": "exact",
+      "path": "reader-chat",
+      "question": "How does ColBERTv2 encode each vector using a centroid and a residual?",
+      "source": "colbertv2",
+      "pages": [4, 5],
+      "evidence": [
+        { "page": 4, "text": "ColBERTv2 encodes each vector v as the index of its closest centroid" },
+        { "page": 5, "text": "We encode each vector using its nearest centroid plus a residual." }
+      ]
+    },
+    {
+      "id": "exact-09",
+      "category": "exact",
+      "path": "reader-chat",
+      "question": "Why could the symmetric numerator in the attention similarity be a disadvantage?",
+      "source": "intro-transformers",
+      "pages": [4],
+      "evidence": [
+        { "page": 4, "text": "numerator in this construction is symmetric. This could be a disadvantage" }
+      ]
+    },
+    {
+      "id": "exact-10",
+      "category": "exact",
+      "path": "reader-chat",
+      "question": "What fraction of input tokens are selected for prediction in the masked language model?",
+      "source": "fm4nlp-ch2",
+      "pages": [8],
+      "evidence": [
+        { "page": 8, "text": "Roughly 15% of the input tokens in the training documents are selected for prediction" }
+      ]
+    },
+    {
+      "id": "forms-01",
+      "category": "word-forms",
+      "path": "reader-chat",
+      "question": "Which layer inputs get normalized in LLaMA, and with what function?",
+      "source": "llama",
+      "pages": [3],
+      "evidence": [
+        { "page": 3, "text": "we normalize the input of each transformer sub-layer" }
+      ]
+    },
+    {
+      "id": "forms-02",
+      "category": "word-forms",
+      "path": "reader-chat",
+      "question": "How does the efficient attention implementation exploit causal masking?",
+      "source": "llama",
+      "pages": [3],
+      "evidence": [
+        { "page": 3, "text": "puting the key/query scores that are masked due to the causal nature" }
+      ]
+    },
+    {
+      "id": "forms-03",
+      "category": "word-forms",
+      "path": "reader-chat",
+      "question": "How does BERT's masking procedure replace the selected tokens?",
+      "source": "fm4nlp-ch2",
+      "pages": [8],
+      "evidence": [
+        { "page": 8, "text": "a special [MASK] token for 80% of the time" }
+      ]
+    },
+    {
+      "id": "forms-04",
+      "category": "word-forms",
+      "path": "reader-chat",
+      "question": "How are token representations normalized inside the transformer block?",
+      "source": "intro-transformers",
+      "pages": [5, 6],
+      "note": "American spelling in the question, British spelling (normalises, normalisation) in the paper.",
+      "evidence": [
+        { "page": 5, "text": "which normalises each token separately" },
+        { "page": 6, "text": "As this transform normalises each token individually" }
+      ]
+    },
+    {
+      "id": "forms-05",
+      "category": "word-forms",
+      "path": "reader-chat",
+      "question": "Why does Mamba not need caching when generating text?",
+      "source": "mamba",
+      "pages": [2, 5],
+      "evidence": [
+        { "page": 2, "text": "since it does not require a cache of previous elements" },
+        { "page": 5, "text": "recurrent models are efficient because they have a finite state" }
+      ]
+    },
+    {
+      "id": "forms-06",
+      "category": "word-forms",
+      "path": "reader-chat",
+      "question": "Does expert choice repeat across consecutive tokens?",
+      "source": "mixtral",
+      "pages": [7, 8],
+      "evidence": [
+        { "page": 7, "text": "consecutive tokens are often assigned the same experts" },
+        { "page": 8, "text": "Percentage of expert assignment repetitions" }
+      ]
+    },
+    {
+      "id": "forms-07",
+      "category": "word-forms",
+      "path": "reader-chat",
+      "question": "What happens when the adapters are applied only to the query and value projection matrix?",
+      "source": "qlora",
+      "pages": [6],
+      "evidence": [
+        { "page": 6, "text": "applying LoRA to query and value attention projection matrices" }
+      ]
+    },
+    {
+      "id": "forms-08",
+      "category": "word-forms",
+      "path": "reader-chat",
+      "question": "How are the two views cropped from one document?",
+      "source": "contriever",
+      "pages": [5, 6],
+      "holdout": true,
+      "evidence": [
+        { "page": 5, "text": "This strategy thus samples independently two spans from a document to form a positive pair" },
+        { "page": 6, "text": "using random cropping and tokens from each element of the pair are deleted" }
+      ]
+    },
+    {
+      "id": "forms-09",
+      "category": "word-forms",
+      "path": "reader-chat",
+      "question": "Why are inputs prefixed differently even though the encoder is shared?",
+      "source": "e5",
+      "pages": [4],
+      "evidence": [
+        { "page": 4, "text": "break the symmetry by adding two prefix identifiers" }
+      ]
+    },
+    {
+      "id": "forms-10",
+      "category": "word-forms",
+      "path": "reader-chat",
+      "question": "How are passages indexed before search?",
+      "source": "colbertv2",
+      "pages": [3, 5],
+      "evidence": [
+        { "page": 3, "text": "During offline indexing, every passage d in the corpus is encoded into a set of vectors" },
+        { "page": 5, "text": "ColBERTv2 divides indexing into three stages" }
+      ]
+    },
+    {
+      "id": "para-01",
+      "category": "paraphrase",
+      "path": "reader-chat",
+      "question": "What's the argument for spending extra training compute on a modest-sized network?",
+      "source": "llama",
+      "pages": [1],
+      "evidence": [
+        { "page": 1, "text": "one trained longer will ultimately be cheaper at inference" }
+      ]
+    },
+    {
+      "id": "para-02",
+      "category": "paraphrase",
+      "path": "reader-chat",
+      "question": "What was the environmental cost of building the whole model family?",
+      "source": "llama",
+      "pages": [10],
+      "evidence": [
+        { "page": 10, "text": "would have cost around 2,638 MWh under our assumptions" }
+      ]
+    },
+    {
+      "id": "para-03",
+      "category": "paraphrase",
+      "path": "reader-chat",
+      "question": "With a capped look-back per layer, how much of the past can the top of the network still see?",
+      "source": "mistral-7b",
+      "pages": [2],
+      "holdout": true,
+      "evidence": [
+        { "page": 2, "text": "At each attention layer, information can move forward by W tokens" }
+      ]
+    },
+    {
+      "id": "para-04",
+      "category": "paraphrase",
+      "path": "reader-chat",
+      "question": "Do the experts become specialists for particular subjects?",
+      "source": "mixtral",
+      "pages": [7, 8],
+      "evidence": [
+        { "page": 7, "text": "we do not observe obvious patterns in the assignment of experts based on the topic" },
+        { "page": 8, "text": "The selection of experts appears to be more aligned with the syntax rather than the domain" }
+      ]
+    },
+    {
+      "id": "para-05",
+      "category": "paraphrase",
+      "path": "reader-chat",
+      "question": "What keeps a long-sequence batch from crashing the card during finetuning?",
+      "source": "qlora",
+      "pages": [1, 2, 4, 5, 6],
+      "evidence": [
+        { "page": 1, "text": "Paged Optimizers to manage memory" },
+        { "page": 2, "text": "Paged Optimizers, using NVIDIA unified memory to avoid the gradient checkpointing memory spikes" },
+        { "page": 4, "text": "we introduce Paged Optimizers, to prevent memory spikes during gradient checkpointing" },
+        { "page": 5, "text": "automatically evicted to CPU RAM when the GPU runs out-of-memory" },
+        { "page": 6, "text": "the paging only occurs when processing mini-batches with long sequence lengths" }
+      ]
+    },
+    {
+      "id": "para-06",
+      "category": "paraphrase",
+      "path": "reader-chat",
+      "question": "In what sense does self-attention refuse to summarise what it has seen?",
+      "source": "mamba",
+      "pages": [5],
+      "evidence": [
+        { "page": 5, "text": "it explicitly does not compress context at all" }
+      ]
+    },
+    {
+      "id": "para-07",
+      "category": "paraphrase",
+      "path": "reader-chat",
+      "question": "Why did the authors use one network for both questions and passages?",
+      "source": "contriever",
+      "pages": [4],
+      "evidence": [
+        { "page": 4, "text": "using the same encoder, such as in Xiong et al. (2020) and Reimers & Gurevych (2019), generally improves robustness" }
+      ]
+    },
+    {
+      "id": "para-08",
+      "category": "paraphrase",
+      "path": "reader-chat",
+      "question": "Why would a network trained on messy data still be useful for cleaning that same data?",
+      "source": "e5",
+      "pages": [3],
+      "holdout": true,
+      "evidence": [
+        { "page": 3, "text": "neural networks tend to memorize the clean labels first" }
+      ]
+    },
+    {
+      "id": "para-09",
+      "category": "paraphrase",
+      "path": "reader-chat",
+      "question": "How much less disk space does the new version need than the original system?",
+      "source": "colbertv2",
+      "pages": [1, 2, 4, 9],
+      "evidence": [
+        { "page": 1, "text": "reducing the space footprint of late interaction models by 6–10×" },
+        { "page": 2, "text": "to reduce the space footprint of late interaction by 6–10×" },
+        { "page": 4, "text": "This total of 20 or 36 bytes per vector contrasts with ColBERT" },
+        { "page": 9, "text": "Whereas ColBERT requires 154 GiB to store the index for MS MARCO" }
+      ]
+    },
+    {
+      "id": "para-10",
+      "category": "paraphrase",
+      "path": "reader-chat",
+      "question": "Did predicting whether two segments follow each other actually help BERT?",
+      "source": "fm4nlp-ch2",
+      "pages": [9],
+      "evidence": [
+        { "page": 9, "text": "this task did not have a major impact on BERT" }
+      ]
+    },
+    {
+      "id": "para-11",
+      "category": "paraphrase",
+      "path": "reader-chat",
+      "question": "Why might attention cope better with distant context than a recurrent network?",
+      "source": "intro-transformers",
+      "pages": [4],
+      "evidence": [
+        { "page": 4, "text": "treats all observations at all time-points in an identical manner, no matter how far away they are" }
+      ]
+    },
+    {
+      "id": "select-01",
+      "category": "selection",
+      "path": "reader-chat",
+      "question": "Why is that a problem?",
+      "selection": { "page": 3, "text": "Note that EP introduces challenges in load balancing" },
+      "source": "mixtral",
+      "pages": [3],
+      "evidence": [
+        { "page": 3, "text": "it is essential to distribute the workload evenly across the GPUs to prevent overloading individual GPUs" }
+      ]
+    },
+    {
+      "id": "select-02",
+      "category": "selection",
+      "path": "reader-chat",
+      "question": "What is Expert Parallelism?",
+      "selection": { "page": 8, "text": "cases with high locality are more likely to cause over-subscription of certain experts when doing Expert Parallelism" },
+      "source": "mixtral",
+      "pages": [3],
+      "holdout": true,
+      "evidence": [
+        { "page": 3, "text": "kind of partitioning strategy called Expert Parallelism (EP)" }
+      ]
+    },
+    {
+      "id": "select-03",
+      "category": "selection",
+      "path": "reader-chat",
+      "question": "Where do they think this comes from?",
+      "selection": { "page": 9, "text": "Our model is particularly bi- ased in the religion category (+10% compared to OPT-175B), followed by age and gender." },
+      "source": "llama",
+      "pages": [9],
+      "evidence": [
+        { "page": 9, "text": "We ex- pect these biases to come from CommonCrawl" }
+      ]
+    },
+    {
+      "id": "select-04",
+      "category": "selection",
+      "path": "reader-chat",
+      "question": "How do they avoid this?",
+      "selection": { "page": 3, "text": "if a large magnitude value (i.e., an outlier) occurs in the input tensor, then the quantization bins—certain bit combinations—are not utilized well" },
+      "source": "qlora",
+      "pages": [3],
+      "evidence": [
+        { "page": 3, "text": "To prevent the outlier issue, a common approach is to chunk the input tensor into blocks" }
+      ]
+    },
+    {
+      "id": "select-05",
+      "category": "selection",
+      "path": "reader-chat",
+      "question": "Why is that?",
+      "selection": { "page": 2, "text": "all prior SSMs models must be time- and input-invariant in order to be computationally efficient" },
+      "source": "mamba",
+      "pages": [4, 6],
+      "evidence": [
+        { "page": 4, "text": "all structured SSMs have been LTI (e.g. computed as convolutions) because of fundamental efficiency constraints" },
+        { "page": 6, "text": "which was why S4 and all derivatives used LTI (non-selective) models" }
+      ]
+    },
+    {
+      "id": "select-06",
+      "category": "selection",
+      "path": "reader-chat",
+      "question": "How do they get around that?",
+      "selection": { "page": 5, "text": "A downside of this approach is that it requires extremely large batch sizes to work well" },
+      "source": "contriever",
+      "pages": [6],
+      "holdout": true,
+      "evidence": [
+        { "page": 6, "text": "This allows for smaller batch size" }
+      ]
+    },
+    {
+      "id": "select-07",
+      "category": "selection",
+      "path": "reader-chat",
+      "question": "How large a batch did they actually use?",
+      "selection": { "page": 4, "text": "We find that this simple strategy enables more stable training and outperforms methods such as MoCo [25] when the batch size is sufficiently large." },
+      "source": "e5",
+      "pages": [5, 8, 15],
+      "evidence": [
+        { "page": 5, "text": "The batch size is set to a large value" },
+        { "page": 8, "text": "increasing batch size from 1K to 32K leads to consistent gains" },
+        { "page": 15, "text": "batch size 32K 32K 32K" }
+      ]
+    },
+    {
+      "id": "select-08",
+      "category": "selection",
+      "path": "reader-chat",
+      "question": "How does the residual compression work?",
+      "selection": { "page": 3, "text": "ColBERTv2 is the first approach to use residual compression for scalable neural IR" },
+      "source": "colbertv2",
+      "pages": [4, 5],
+      "evidence": [
+        { "page": 4, "text": "we quantize every dimension of r into one or two bits" },
+        { "page": 5, "text": "We encode each vector using its nearest centroid plus a residual." }
+      ]
+    },
+    {
+      "id": "select-09",
+      "category": "selection",
+      "path": "reader-chat",
+      "question": "Why is this needed?",
+      "selection": { "page": 8, "text": "if we mask the attention matrix so that it is upper-triangular" },
+      "source": "intro-transformers",
+      "pages": [7, 8],
+      "evidence": [
+        { "page": 7, "text": "to auto-regressive prediction is compu- tationally expensive" },
+        { "page": 8, "text": "Every token attends to every other token, so if we add a" }
+      ]
+    },
+    {
+      "id": "select-10",
+      "category": "selection",
+      "path": "reader-chat",
+      "question": "What discrepancy, and how do they deal with it?",
+      "selection": { "page": 8, "text": "there is a discrepancy between pre-training and the subsequent fine-tuning" },
+      "source": "fm4nlp-ch2",
+      "pages": [8],
+      "evidence": [
+        { "page": 8, "text": "The authors mitigate this issue by occasionally replacing [MASK] with the original token" }
+      ]
+    },
+    {
+      "id": "select-11",
+      "category": "selection",
+      "path": "visual",
+      "question": "Why split the prompt into chunks?",
+      "selection": { "page": 3, "text": "We process a sequence in three chunks" },
+      "source": "mistral-7b",
+      "pages": [3],
+      "evidence": [
+        { "page": 3, "text": "If the prompt is very large, we can chunk it into smaller pieces" }
+      ]
+    },
+    {
+      "id": "symbol-01",
+      "category": "symbols",
+      "path": "reader-chat",
+      "question": "What is n_kv_heads in Mistral 7B?",
+      "source": "mistral-7b",
+      "pages": [2],
+      "evidence": [
+        { "page": 2, "text": "n_heads 32 n_kv_heads 8" }
+      ]
+    },
+    {
+      "id": "symbol-02",
+      "category": "symbols",
+      "path": "reader-chat",
+      "question": "What does G(x) := Softmax(TopK(x · Wg)) compute?",
+      "source": "mixtral",
+      "pages": [2],
+      "evidence": [
+        { "page": 2, "text": "We use G(x) := Softmax(TopK(x · Wg ))" }
+      ]
+    },
+    {
+      "id": "symbol-03",
+      "category": "symbols",
+      "path": "reader-chat",
+      "question": "What is gpt-3.5-turbo-1106 in the comparison?",
+      "source": "mixtral",
+      "pages": [4],
+      "evidence": [
+        { "page": 4, "text": "the latest GPT-3.5-Turbo model available, gpt-3.5-turbo-1106" }
+      ]
+    },
+    {
+      "id": "symbol-04",
+      "category": "symbols",
+      "path": "reader-chat",
+      "question": "What values of β1 and β2 does the AdamW optimizer use?",
+      "source": "llama",
+      "pages": [3],
+      "evidence": [
+        { "page": 3, "text": "β1 = 0.9, β2 = 0.95" }
+      ]
+    },
+    {
+      "id": "symbol-05",
+      "category": "symbols",
+      "path": "reader-chat",
+      "question": "What is the mean perplexity of Float4 (E2M1)?",
+      "source": "qlora",
+      "pages": [7],
+      "holdout": true,
+      "evidence": [
+        { "page": 7, "text": "Float4 (E2M1) 31.07" }
+      ]
+    },
+    {
+      "id": "symbol-06",
+      "category": "symbols",
+      "path": "reader-chat",
+      "question": "What is NF4?",
+      "source": "qlora",
+      "pages": [1, 2, 4, 5],
+      "evidence": [
+        { "page": 1, "text": "4-bit NormalFloat (NF4), a new data type" },
+        { "page": 2, "text": "4-bit NormalFloat, an information theoretically optimal" },
+        { "page": 4, "text": "4-bit NormalFloat (NF4) quantization and Double Quantization" },
+        { "page": 5, "text": "k-bit NormalFloat (NFk)" }
+      ]
+    },
+    {
+      "id": "symbol-07",
+      "category": "symbols",
+      "path": "reader-chat",
+      "question": "What is the zero-order hold (ZOH) rule?",
+      "source": "mamba",
+      "pages": [3],
+      "evidence": [
+        { "page": 3, "text": "zero-order hold (ZOH) defined in equation (4)" }
+      ]
+    },
+    {
+      "id": "symbol-08",
+      "category": "symbols",
+      "path": "reader-chat",
+      "question": "What is τ set to in E5?",
+      "source": "e5",
+      "pages": [4, 15],
+      "note": "The single-character symbol is dropped by the current query tokenizer.",
+      "evidence": [
+        { "page": 4, "text": "Where τ is set to 0.01 in our experiments by default" },
+        { "page": 15, "text": "τ 0.01 0.01 0.01 0.01 0.01 0.01" }
+      ]
+    },
+    {
+      "id": "symbol-09",
+      "category": "symbols",
+      "path": "reader-chat",
+      "question": "Why divide by sqrt(d_k) in attention?",
+      "source": "fm4nlp-ch2",
+      "pages": [4],
+      "note": "The text writes the factor as 1/√dk.",
+      "evidence": [
+        { "page": 4, "text": "The factor .1/√dk avoids large value" }
+      ]
+    },
+    {
+      "id": "symbol-10",
+      "category": "symbols",
+      "path": "reader-chat",
+      "question": "How many parameters does BERT-base have?",
+      "source": "fm4nlp-ch2",
+      "pages": [9],
+      "note": "The extracted text renders the model name as BERT.BASE.",
+      "evidence": [
+        { "page": 9, "text": "and a total of 110 million parameters" }
+      ]
+    },
+    {
+      "id": "symbol-11",
+      "category": "symbols",
+      "path": "reader-chat",
+      "question": "What dominates the O(HDN^2) cost of multi-head self-attention?",
+      "source": "intro-transformers",
+      "pages": [4],
+      "evidence": [
+        { "page": 4, "text": "dominated by the matrix mul- tiplication involving the attention matrix" }
+      ]
+    },
+    {
+      "id": "symbol-12",
+      "category": "symbols",
+      "path": "reader-chat",
+      "question": "What MRR@10 does ColBERTv2 reach on the MS MARCO dev set?",
+      "source": "colbertv2",
+      "pages": [7],
+      "holdout": true,
+      "evidence": [
+        { "page": 7, "text": "ColBERTv2 39.7 86.8 98.4" }
+      ]
+    },
+    {
+      "id": "project-01",
+      "category": "project",
+      "path": "project-chat",
+      "question": "Which paper reports that its system prompt makes the model decline every harmful question?",
+      "scope": ["llama", "mistral-7b", "mixtral", "qlora"],
+      "source": "mistral-7b",
+      "pages": [5],
+      "evidence": [
+        { "page": 5, "text": "With the recommended system prompt, the model properly declines to answer" }
+      ]
+    },
+    {
+      "id": "project-02",
+      "category": "project",
+      "path": "project-chat",
+      "question": "In which of these papers does the tokenizer break numbers into single digits?",
+      "scope": ["llama", "mistral-7b", "mixtral", "qlora"],
+      "source": "llama",
+      "pages": [2],
+      "evidence": [
+        { "page": 2, "text": "we split all numbers into individual digits" }
+      ]
+    },
+    {
+      "id": "project-03",
+      "category": "project",
+      "path": "project-chat",
+      "question": "Where is the claim that finetuning a 65B model fits on a single 48GB GPU?",
+      "scope": ["llama", "mistral-7b", "mixtral", "qlora"],
+      "source": "qlora",
+      "pages": [1, 2, 6],
+      "evidence": [
+        { "page": 1, "text": "finetune a 65B parameter model on a single 48GB GPU" },
+        { "page": 2, "text": "average memory requirements of finetuning a 65B parameter model" },
+        { "page": 6, "text": "critical to do 33B/65B QLORA tuning on a single 24/48GB GPU" }
+      ]
+    },
+    {
+      "id": "project-04",
+      "category": "project",
+      "path": "project-chat",
+      "question": "Which paper compares models on French, German, Spanish and Italian benchmarks?",
+      "scope": ["llama", "mistral-7b", "mixtral", "qlora"],
+      "source": "mixtral",
+      "pages": [5],
+      "holdout": true,
+      "evidence": [
+        { "page": 5, "text": "Mixtral significantly outperforms Llama 2 70B in French, German, Spanish, and Italian" }
+      ]
+    },
+    {
+      "id": "project-05",
+      "category": "project",
+      "path": "project-chat",
+      "question": "Which paper retrieves English documents from Arabic queries?",
+      "scope": ["contriever", "e5", "colbertv2"],
+      "source": "contriever",
+      "pages": [1, 9],
+      "evidence": [
+        { "page": 1, "text": "perform cross-lingual retrieval between different scripts" },
+        { "page": 9, "text": "pairs of languages with different scripts such as English and Arabic" }
+      ]
+    },
+    {
+      "id": "project-06",
+      "category": "project",
+      "path": "project-chat",
+      "question": "Which paper builds its training pairs from Reddit posts and comments?",
+      "scope": ["contriever", "e5", "colbertv2"],
+      "source": "e5",
+      "pages": [3, 15],
+      "holdout": true,
+      "evidence": [
+        { "page": 3, "text": "(post, comment) pairs from Reddit" },
+        { "page": 15, "text": "Reddit (post, upvoted comment)" }
+      ]
+    },
+    {
+      "id": "project-07",
+      "category": "project",
+      "path": "project-chat",
+      "question": "Which paper introduces a benchmark of natural search queries over long-tail topics?",
+      "scope": ["contriever", "e5", "colbertv2"],
+      "source": "colbertv2",
+      "pages": [2, 3, 5],
+      "evidence": [
+        { "page": 2, "text": "we introduce a new benchmark, dubbed LoTTE" },
+        { "page": 3, "text": "we introduce LoTTE, a new dataset for out-of-domain retrieval" },
+        { "page": 5, "text": "We introduce LoTTE (pronounced latte)" }
+      ]
+    },
+    {
+      "id": "project-08",
+      "category": "project",
+      "path": "project-chat",
+      "question": "Which document proposes renaming LayerNorm to TokenNorm?",
+      "scope": ["intro-transformers", "fm4nlp-ch2", "mamba"],
+      "source": "intro-transformers",
+      "pages": [6],
+      "evidence": [
+        { "page": 6, "text": "TokenNorm. This transform stops feature representations blowing up" }
+      ]
+    },
+    {
+      "id": "project-09",
+      "category": "project",
+      "path": "project-chat",
+      "question": "Where is top-p sampling explained?",
+      "scope": ["intro-transformers", "fm4nlp-ch2", "mamba"],
+      "source": "fm4nlp-ch2",
+      "pages": [23],
+      "evidence": [
+        { "page": 23, "text": "Top-p sampling considers the smallest set of top candidates" }
+      ]
+    },
+    {
+      "id": "project-10",
+      "category": "project",
+      "path": "project-chat",
+      "question": "Which model solves induction heads and extrapolates to sequences of a million tokens?",
+      "scope": ["intro-transformers", "fm4nlp-ch2", "mamba"],
+      "source": "mamba",
+      "pages": [2, 10],
+      "evidence": [
+        { "page": 2, "text": "Mamba not only solves them easily but can extrapolate solutions indefinitely long" },
+        { "page": 10, "text": "It generalizes perfectly to million-length sequences" }
+      ]
+    },
+    {
+      "id": "project-11",
+      "category": "project",
+      "path": "project-search",
+      "question": "carbon emissions of training",
+      "source": "llama",
+      "pages": [10, 11],
+      "note": "Whole-library search, as in the project search box and `pdfpal search`.",
+      "evidence": [
+        { "page": 10, "text": "the tons of carbon emissions: tCO2eq = MWh × 0.385" },
+        { "page": 11, "text": "Carbon footprint of training different models in the same data center" }
+      ]
+    },
+    {
+      "id": "pt-01",
+      "category": "portuguese",
+      "path": "reader-chat",
+      "question": "Qual é a porcentagem de dados do CommonCrawl no pré-treinamento do LLaMA?",
+      "source": "llama",
+      "pages": [2],
+      "evidence": [
+        { "page": 2, "text": "English CommonCrawl [67%]" }
+      ]
+    },
+    {
+      "id": "pt-02",
+      "category": "portuguese",
+      "path": "reader-chat",
+      "question": "Como funciona o cache de buffer rotativo do Mistral?",
+      "source": "mistral-7b",
+      "pages": [2, 3],
+      "evidence": [
+        { "page": 2, "text": "the keys and values for the timestep i are stored in position i mod W" },
+        { "page": 3, "text": "Keys and values for position i are stored in position i mod W of the cache" }
+      ]
+    },
+    {
+      "id": "pt-03",
+      "category": "portuguese",
+      "path": "reader-chat",
+      "question": "Por que o BERT substitui os tokens por [MASK] só em 80% das vezes?",
+      "source": "fm4nlp-ch2",
+      "pages": [8],
+      "evidence": [
+        { "page": 8, "text": "The authors mitigate this issue by occasionally replacing [MASK] with the original token" }
+      ]
+    },
+    {
+      "id": "pt-04",
+      "category": "portuguese",
+      "path": "reader-chat",
+      "question": "O que é a quantização dupla e quanta memória ela economiza?",
+      "source": "qlora",
+      "pages": [1, 2, 5],
+      "evidence": [
+        { "page": 1, "text": "Double Quantization to reduce the average memory footprint" },
+        { "page": 2, "text": "Double Quantization, a method that quantizes the quantization constants" },
+        { "page": 5, "text": "a reduction of 0.373 bits per parameter" }
+      ]
+    },
+    {
+      "id": "pt-05",
+      "category": "portuguese",
+      "path": "reader-chat",
+      "question": "Como o codificador de chaves é atualizado no MoCo?",
+      "source": "contriever",
+      "pages": [6],
+      "evidence": [
+        { "page": 6, "text": "Momentum encoder, is updated from the parameters of the query network" }
+      ]
+    },
+    {
+      "id": "pt-06",
+      "category": "portuguese",
+      "path": "reader-chat",
+      "question": "O que o mecanismo de seleção permite ao Mamba fazer?",
+      "source": "mamba",
+      "pages": [1, 2],
+      "evidence": [
+        { "page": 1, "text": "allowing the model to selectively propagate or forget information along the sequence length dimension" },
+        { "page": 2, "text": "we design a simple selection mechanism by parameterizing the SSM parameters based on the input" }
+      ]
+    },
+    {
+      "id": "pt-07",
+      "category": "portuguese",
+      "path": "reader-chat",
+      "question": "Por que os autores colocam os prefixos query e passage nas entradas?",
+      "source": "e5",
+      "pages": [4],
+      "evidence": [
+        { "page": 4, "text": "break the symmetry by adding two prefix identifiers" }
+      ]
+    }
+  ]
+}

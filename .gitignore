@@ -1,6 +1,8 @@
 node_modules/
 dist/
 coverage/
+# Retrieval evaluation corpus text, downloaded by `npm run eval:retrieval:fetch`; never redistributed.
+/.cache/retrieval/
 frontend/test-results/
 frontend/playwright-report/
 frontend/dist/
