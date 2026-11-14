@@ -89,6 +89,11 @@ test.describe('Explain visually player', () => {
     expect(box.y + box.height).toBeLessThanOrEqual(900);
     expect(box.width).toBeGreaterThan(800);
     await expect(dialog.locator('.visual-caption')).toHaveText(frames[2]!.caption);
+    // A plot on a shared scale (frames 3 to 5) is laid out narrower rather than shrunk, so its text keeps the size it
+    // was measured at.
+    await dialog.locator('.visual-progress button').nth(3).click();
+    await expect.poll(() => dialog.locator('.visual-canvas svg').evaluate(svg => svg.getBoundingClientRect().height / (svg as SVGSVGElement).viewBox.baseVal.height)).toBeGreaterThan(0.95);
+    await dialog.locator('.visual-progress button').nth(2).click();
     // Caption and controls stay on screen below the figure.
     const next = dialog.getByRole('button', { name: 'Next step' });
     await expect(next).toBeInViewport();

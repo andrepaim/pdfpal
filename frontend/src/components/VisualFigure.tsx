@@ -22,8 +22,8 @@ function injectStyles() {
  * Inter font has loaded). Returns null until the first layout is ready.
  */
 // eslint-disable-next-line react-refresh/only-export-components -- the hook and the component are one contract
-export function useVisualDrawing(input: FigureInput, container: RefObject<HTMLElement | null>, options?: { minWidth?: number; maxWidth?: number }): Drawing | null {
-  const minWidth = options?.minWidth ?? 320, maxWidth = Math.max(minWidth, options?.maxWidth ?? 720)
+export function useVisualDrawing(input: FigureInput, container: RefObject<HTMLElement | null>, options?: { minWidth?: number; maxWidth?: number; maxHeight?: number }): Drawing | null {
+  const minWidth = options?.minWidth ?? 320, maxWidth = Math.max(minWidth, options?.maxWidth ?? 720), maxHeight = options?.maxHeight
   const [fontReady, setFontReady] = useState(visualFontReady)
   const [measured, setMeasured] = useState<number | null>(null)
   const [checked, setChecked] = useState(false)
@@ -56,13 +56,23 @@ export function useVisualDrawing(input: FigureInput, container: RefObject<HTMLEl
   return useMemo(() => {
     if (!fontReady || !checked) return null
     try {
-      if (scene) return drawSceneV2(scene, { width, measure: measureVisualText })
+      if (scene) {
+        // Text keeps its size, so a figure that would be too tall is laid out narrower instead of being shrunk to fit.
+        let drawing = drawSceneV2(scene, { width, measure: measureVisualText })
+        // Only plots on a shared scale get shorter when narrower; a narrower flow gets taller, so it is kept as it was.
+        for (let tries = 0; maxHeight && drawing.height > maxHeight && drawing.width > minWidth && tries < 3; tries++) {
+          const narrower = drawSceneV2(scene, { width: Math.max(minWidth, Math.floor(drawing.width * maxHeight / drawing.height)), measure: measureVisualText })
+          if (narrower.height >= drawing.height) break
+          drawing = narrower
+        }
+        return drawing
+      }
       return step ? drawStepV1(step, { measure: measureVisualText }) : null
     } catch (error) {
       console.error('Could not lay out the figure', error)
       return fallbackDrawing('This figure could not be drawn.', width)
     }
-  }, [scene, step, width, fontReady, checked])
+  }, [scene, step, width, maxHeight, minWidth, fontReady, checked])
 }
 
 const reactName = (key: string) => key === 'class' ? 'className' : key.startsWith('data-') || key.startsWith('aria-') ? key : key.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())

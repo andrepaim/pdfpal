@@ -43,6 +43,19 @@ function Transcript({ record, definition, frames }: { record: VisualRecord; defi
   </details>
 }
 
+/** The height the expanded dialog leaves for its figure; mirrors the max-height rules in visual.css. */
+function useExpandedFigureHeight(expanded: boolean): number | undefined {
+  const read = () => typeof window === 'undefined' ? 400 : Math.max(window.innerWidth < 640 ? 160 : 200, window.innerHeight - (window.innerWidth < 640 ? 430 : 500))
+  const [height, setHeight] = useState(read)
+  useEffect(() => {
+    if (!expanded) return
+    const update = () => setHeight(read())
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [expanded])
+  return expanded ? height : undefined
+}
+
 export function VisualStory({ record, expanded = false, stepIndex, onStepChange }: { record: VisualRecord; expanded?: boolean; stepIndex?: number; onStepChange?: (index: number) => void }) {
   const definition = record.definition!
   const frames = useMemo(() => visualFrames(definition), [definition])
@@ -53,7 +66,8 @@ export function VisualStory({ record, expanded = false, stepIndex, onStepChange 
   const scenes = sceneCount(definition)
   const canvas = useRef<HTMLDivElement>(null), progress = useRef<HTMLDivElement>(null), focusSegment = useRef(false)
   const input = useMemo(() => figureInput(definition, frame.scene), [definition, frame.scene])
-  const drawing = useVisualDrawing(input, canvas, { minWidth: 280, maxWidth: expanded ? 900 : 640 })
+  const roomHeight = useExpandedFigureHeight(expanded)
+  const drawing = useVisualDrawing(input, canvas, { minWidth: 280, maxWidth: expanded ? 900 : 640, maxHeight: roomHeight })
   const selected = selection?.frame === index ? selection.hotspot : undefined
 
   // A stored or retried record can have fewer frames than the index the parent holds.
