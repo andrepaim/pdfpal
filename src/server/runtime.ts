@@ -24,6 +24,7 @@ export async function startRuntime(config: PdfpalConfig, port = config.port) {
   const cliSecret = randomUUID()
   const identity = { protocol: 1, instance: randomUUID(), library: createHash('sha256').update(canonical).digest('hex') }
   const pipeSockets = new WeakSet<Socket>()
+  const connections = new Map<Socket, number>()
   const cliPipe = process.platform === 'win32' ? cliPipeName(identity.instance) : undefined
   try {
     server = await buildServer(config, { identity, credential: cliSecret, build: buildVersion(), privateSocket: socket => pipeSockets.has(socket) })
@@ -32,6 +33,14 @@ export async function startRuntime(config: PdfpalConfig, port = config.port) {
       if (typeof challenge === 'string' && /^[a-f0-9]{64}$/.test(challenge)) return { ...identity, proof: identityProof(secret, challenge, identity) }
       if (request.headers['x-pdfpal-owner'] !== secret) return reply.code(403).send({ code: 'FORBIDDEN' })
       return identity
+    })
+    // Open connections and how many requests each is serving. Node counts a connection that has not sent a
+    // request yet as busy, so closeIdleConnections() leaves it open; a browser keeps such spare connections.
+    server.server.on('connection', socket => { connections.set(socket, 0); socket.once('close', () => connections.delete(socket)) })
+    server.server.on('request', (request, response) => {
+      const socket = request.socket
+      connections.set(socket, (connections.get(socket) ?? 0) + 1)
+      response.once('close', () => { if (connections.has(socket)) connections.set(socket, Math.max(0, connections.get(socket)! - 1)) })
     })
     const pipe = cliPipe ? createCliPipe(server, cliPipe, pipeSockets) : undefined
     server.addHook('preClose', async () => { await pipe?.close() })
@@ -57,13 +66,26 @@ export async function startRuntime(config: PdfpalConfig, port = config.port) {
       AgentService.stopAccepting()
       const closing = server!.close()
       // Fastify begins raw HTTP close asynchronously. Drain connections that
-      // become idle after the initial close call without aborting active writes.
-      const drain = setInterval(() => server!.server.closeIdleConnections(), 100)
+      // become idle after the initial close call without aborting active writes,
+      // including spare connections that never sent a request.
+      // What each connection closed here looked like: bytes read and written, whether it still had an HTTP
+      // parser, and its state. No addresses or content.
+      const unused: string[] = []
+      const closeUnused = () => {
+        server!.server.closeIdleConnections()
+        for (const [socket, serving] of connections) {
+          if (serving !== 0 || socket.destroyed) continue
+          if (unused.length < 5) unused.push(`read${socket.bytesRead}-written${socket.bytesWritten}-${(socket as Socket & { parser?: unknown }).parser ? 'parser' : 'noparser'}-${socket.readyState}`)
+          socket.destroy()
+        }
+      }
+      const drain = setInterval(closeUnused, 100)
       try {
         await AgentService.cancelAll()
         onPhase('agents-stopped')
-        server!.server.closeIdleConnections()
+        closeUnused()
         await closing
+        if (unused.length) onPhase(`closed-unused:${unused.join('|')}`)
         onPhase('database-closed')
       } finally { clearInterval(drain) }
     } }
