@@ -12,7 +12,7 @@ import { preferences, registeredLibrary, restoreBounds, restoreLibraryRoute, saf
 import { Session } from './chatgpt/session.mjs'
 import { protectedVault } from './chatgpt/vault.mjs'
 import { betaOptions, betaAcceptance } from './beta-acceptance.mjs'
-import {chromeOptions,chromeShortcut,readerHistoryTarget} from './chrome.mjs'
+import {chromeCommands,chromeOptions,chromeShortcut,feedbackIssueURL,readerHistoryTarget} from './chrome.mjs'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
 const metadata = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).pdfpalDesktop ?? {}
@@ -85,7 +85,7 @@ function chromeState(){
 }
 function sendChromeState(){if(window&&!window.isDestroyed())window.webContents.send('pdfpal:chrome-state',chromeState())}
 async function chromeCommand(command){
-  if(!['back','forward','zoom-in','zoom-out','zoom-reset','fullscreen','open-browser','quit','menu','find','home','ai-settings'].includes(command))throw new Error('Unsupported window action')
+  if(!chromeCommands.includes(command))throw new Error('Unsupported window action')
   if(command==='quit'){void requestQuit();return true}
   if(command==='fullscreen')window.setFullScreen(!window.isFullScreen())
   else if(command.startsWith('zoom-'))window.webContents.setZoomFactor(command==='zoom-reset'?1:Math.min(1.75,Math.max(.75,Math.round((window.webContents.getZoomFactor()+(command==='zoom-in' ? .1 : -.1))*100)/100)))
@@ -93,6 +93,7 @@ async function chromeCommand(command){
     const index=readerHistory(command==='back'?-1:1)
     if(index!==undefined){await window.webContents.executeJavaScript('window.pdfpalFlushPending?.()');window.webContents.navigationHistory.goToIndex(index)}
   }else if(command==='open-browser'){if(ready)openBrowser(ready.origin+safeRoute(new URL(window.webContents.getURL()).pathname))}
+  else if(command==='feedback')openBrowser(feedbackIssueURL({version:app.getVersion(),platform:process.platform,release:process.getSystemVersion()}))
   else window.webContents.send('pdfpal:chrome-command',command)
   sendChromeState();return true
 }

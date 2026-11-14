@@ -10,6 +10,44 @@ export function readerHistoryTarget(entries, index, offset, origin) {
   try { if (new URL(entries[target].url).origin === origin) return target } catch {}
 }
 
+/** Commands the renderer may send through `pdfpal:chrome-command`. None of them carry data. */
+export const chromeCommands = ['back','forward','zoom-in','zoom-out','zoom-reset','fullscreen','open-browser','quit','menu','find','home','ai-settings','feedback']
+
+export const feedbackIssueBase = 'https://github.com/andrepaim/pdfpal/issues/new'
+const versionToken = value => typeof value === 'string' && /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$/.test(value) ? value : 'unknown'
+
+/** Name the operating system from the platform and its version number only (e.g. "Windows 11 (10.0.22631)"). */
+export function systemDescription(platform, release) {
+  const version = versionToken(release)
+  if (platform === 'win32') {
+    const build = Number(version.split('.')[2])
+    return `${version.startsWith('10.') && build >= 22000 ? 'Windows 11' : version.startsWith('10.') ? 'Windows 10' : 'Windows'} (${version})`
+  }
+  return `${({ darwin: 'macOS', linux: 'Linux' })[platform] ?? 'Other'} ${version}`
+}
+
+/**
+ * Build the prefilled "Send feedback" issue. It carries only the pdfpal version, the operating system
+ * version and fixed template text; the reader reviews and edits it on GitHub before anything is sent.
+ */
+export function feedbackIssueURL({ version, platform, release }) {
+  const url = new URL(feedbackIssueBase)
+  url.searchParams.set('title', 'Feedback: ')
+  url.searchParams.set('body', [
+    '**What happened?**',
+    '<!-- Describe what you were doing and what you saw. Please do not paste private document text, file paths, or account details. -->',
+    '',
+    '',
+    '**What did you expect?**',
+    '',
+    '',
+    '---',
+    `pdfpal version: ${versionToken(version)}`,
+    `Operating system: ${systemDescription(platform, release)}`,
+  ].join('\n'))
+  return url.toString()
+}
+
 export function chromeShortcut(input) {
   if (input.type !== 'keyDown') return
   const key = input.key.toLowerCase()

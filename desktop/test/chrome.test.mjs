@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {chromeOptions,chromeShortcut,readerHistoryTarget} from '../src/chrome.mjs'
+import {chromeCommands,chromeOptions,chromeShortcut,feedbackIssueBase,feedbackIssueURL,readerHistoryTarget,systemDescription} from '../src/chrome.mjs'
 
 test('Windows keeps native caption buttons with a hidden title bar; other platforms retain their frame',()=>{
  const options=chromeOptions('win32')
@@ -22,4 +22,26 @@ test('desktop shortcuts preserve native Alt+F4, editing keys and AltGr combinati
  assert.equal(chromeShortcut(input('F10')),'menu');assert.equal(chromeShortcut(input('F11')),'fullscreen')
  assert.equal(chromeShortcut(input('ArrowLeft',{alt:true})),'back')
  for(const event of [input('F4',{alt:true}),input('c',{control:true}),input('v',{control:true}),input('z',{control:true}),input('a',{control:true}),input('k',{control:true,alt:true}),input('k',{control:true,type:'keyUp'})])assert.equal(chromeShortcut(event),undefined)
+})
+test('Send feedback opens a GitHub issue that carries only the app and Windows versions',()=>{
+ const url=new URL(feedbackIssueURL({version:'2.8.0-beta.1',platform:'win32',release:'10.0.22631'}))
+ assert.equal(url.origin+url.pathname,feedbackIssueBase);assert.equal(url.protocol,'https:');assert.equal(url.username+url.password+url.hash,'')
+ assert.deepEqual([...url.searchParams.keys()].sort(),['body','title'])
+ assert.equal(url.searchParams.get('title'),'Feedback: ')
+ const body=url.searchParams.get('body')
+ assert.match(body,/^pdfpal version: 2\.8\.0-beta\.1$/m);assert.match(body,/^Operating system: Windows 11 \(10\.0\.22631\)$/m)
+ assert.equal(feedbackIssueURL({version:'2.8.0-beta.1',platform:'win32',release:'10.0.22631'}),url.toString(),'the link depends only on its inputs')
+ assert.equal(systemDescription('win32','10.0.19045'),'Windows 10 (10.0.19045)');assert.equal(systemDescription('linux','6.1.0'),'Linux 6.1.0')
+})
+test('feedback links refuse anything that is not a plain version token',()=>{
+ for(const value of ['C:\\Users\\reader\\Thesis.pdf','/home/reader/thesis.pdf','reader@example.com','2.8.0 Secret project','http://127.0.0.1:8200/projects/abc','',undefined,{toString:()=>'x'},'1'.repeat(80)]){
+  const body=new URL(feedbackIssueURL({version:value,platform:'win32',release:value})).searchParams.get('body')
+  assert.match(body,/^pdfpal version: unknown$/m);assert.match(body,/^Operating system: Windows \(unknown\)$/m)
+  if(typeof value==='string'&&value)assert.ok(!body.includes(value))
+ }
+})
+test('the feedback window action takes no URL from the renderer',()=>{
+ assert.ok(chromeCommands.includes('feedback'))
+ for(const command of chromeCommands)assert.match(command,/^[a-z-]+$/)
+ for(const value of [feedbackIssueURL({version:'2.8.0',platform:'win32',release:'10.0.22631'}),feedbackIssueBase,'https://example.com','feedback ',' feedback','FEEDBACK'])assert.ok(!chromeCommands.includes(value))
 })
