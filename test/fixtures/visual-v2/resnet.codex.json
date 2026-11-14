@@ -1,0 +1,331 @@
+{
+ "question": "Why do residual connections make very deep networks easier to train?",
+ "references": [
+  {
+   "id": "pdf-1",
+   "label": "Deep Residual Learning for Image Recognition · p. 2"
+  },
+  {
+   "id": "pdf-2",
+   "label": "Deep Residual Learning for Image Recognition · p. 1"
+  },
+  {
+   "id": "pdf-3",
+   "label": "Deep Residual Learning for Image Recognition · p. 2"
+  },
+  {
+   "id": "pdf-4",
+   "label": "Deep Residual Learning for Image Recognition · p. 3"
+  },
+  {
+   "id": "pdf-5",
+   "label": "Deep Residual Learning for Image Recognition · p. 9"
+  }
+ ],
+ "definition": {
+  "version": 2,
+  "title": "Why residual connections help very deep networks train",
+  "summary": "Residual connections preserve an input path and let layers learn corrections, making optimization easier without guaranteeing that every deeper network trains well.",
+  "scenes": [
+   {
+    "title": "Learn a correction to the input",
+    "kind": "flow",
+    "nodes": [
+     {
+      "id": "input",
+      "label": "Input x",
+      "tone": "primary"
+     },
+     {
+      "id": "layers",
+      "label": "Learn F(x)",
+      "sub": "Stacked layers",
+      "tone": "accent"
+     },
+     {
+      "id": "sum",
+      "label": "+",
+      "shape": "op",
+      "tone": "neutral",
+      "appear": 2
+     },
+     {
+      "id": "output",
+      "label": "x + F(x)",
+      "sub": "Before activation",
+      "tone": "primary",
+      "appear": 2
+     }
+    ],
+    "edges": [
+     {
+      "from": "input",
+      "to": "layers",
+      "tone": "accent"
+     },
+     {
+      "from": "layers",
+      "to": "sum",
+      "tone": "accent",
+      "appear": 2
+     },
+     {
+      "from": "input",
+      "to": "sum",
+      "label": "Identity shortcut",
+      "tone": "primary",
+      "appear": 2
+     },
+     {
+      "from": "sum",
+      "to": "output",
+      "tone": "primary",
+      "appear": 2
+     }
+    ],
+    "beats": [
+     {
+      "caption": "The stacked layers learn a residual: the correction F(x) = H(x) − x needed to reach the desired mapping H(x).",
+      "explanation": "The paper changes what the layers must learn. They learn a change relative to their input rather than the entire desired mapping.",
+      "basis": "source",
+      "referenceIds": [
+       "pdf-1"
+      ],
+      "focus": [
+       "layers"
+      ]
+     },
+     {
+      "caption": "The shortcut carries x unchanged, and addition combines it with the learned correction.",
+      "explanation": "This identity shortcut skips the stacked layers. The diagram shows the addition; the original block applies a nonlinearity afterward.",
+      "basis": "source",
+      "referenceIds": [
+       "pdf-1",
+       "pdf-4"
+      ],
+      "focus": [
+       "input",
+       "sum",
+       "output"
+      ]
+     },
+     {
+      "caption": "If preserving the input is useful, the residual layers can aim for zero.",
+      "explanation": "Then x + F(x) becomes x at the addition. The authors hypothesize that pushing a residual toward zero is easier than making stacked nonlinear layers learn an identity mapping.",
+      "basis": "source",
+      "referenceIds": [
+       "pdf-1"
+      ],
+      "focus": [
+       "layers",
+       "output"
+      ]
+     }
+    ]
+   },
+   {
+    "title": "Addition works one entry at a time",
+    "kind": "cells",
+    "rows": [
+     {
+      "id": "x",
+      "label": "Input x",
+      "tone": "primary",
+      "cells": [
+       {
+        "text": "2"
+       },
+       {
+        "text": "5"
+       },
+       {
+        "text": "1"
+       }
+      ]
+     },
+     {
+      "id": "residual",
+      "label": "Correction F(x)",
+      "tone": "accent",
+      "appear": 2,
+      "cells": [
+       {
+        "text": "+1"
+       },
+       {
+        "text": "−1"
+       },
+       {
+        "text": "0"
+       }
+      ]
+     },
+     {
+      "id": "result",
+      "label": "x + F(x)",
+      "tone": "primary",
+      "appear": 3,
+      "cells": [
+       {
+        "text": "3"
+       },
+       {
+        "text": "4"
+       },
+       {
+        "text": "1"
+       }
+      ]
+     }
+    ],
+    "links": [
+     {
+      "from": [
+       "x",
+       0
+      ],
+      "to": [
+       "result",
+       0
+      ],
+      "label": "+1",
+      "tone": "accent",
+      "appear": 3
+     },
+     {
+      "from": [
+       "x",
+       1
+      ],
+      "to": [
+       "result",
+       1
+      ],
+      "label": "−1",
+      "tone": "accent",
+      "appear": 3
+     },
+     {
+      "from": [
+       "x",
+       2
+      ],
+      "to": [
+       "result",
+       2
+      ],
+      "label": "+0",
+      "tone": "accent",
+      "appear": 3
+     }
+    ],
+    "beats": [
+     {
+      "caption": "In this illustration, the shortcut preserves all three input entries.",
+      "explanation": "These invented values represent a small feature vector. A real residual block can operate on much larger feature tensors.",
+      "basis": "illustration",
+      "referenceIds": [],
+      "focus": [
+       "x"
+      ]
+     },
+     {
+      "caption": "The residual branch supplies changes: increase one entry, decrease another, and leave the third alone.",
+      "explanation": "The illustrative correction is [1, −1, 0]. Residuals need not be small; these values simply make the operation visible.",
+      "basis": "illustration",
+      "referenceIds": [],
+      "focus": [
+       "residual"
+      ]
+     },
+     {
+      "caption": "Adding corresponding entries gives [3, 4, 1], preserving the third entry without rebuilding it.",
+      "explanation": "This illustrates the sum before activation. Element-wise addition requires matching shapes; the paper uses a shortcut projection when dimensions must change.",
+      "basis": "illustration",
+      "referenceIds": [],
+      "focus": [
+       "result"
+      ]
+     }
+    ]
+   },
+   {
+    "title": "Why this helps optimization",
+    "kind": "compare",
+    "columns": [
+     {
+      "id": "plain",
+      "title": "Plain stack",
+      "tone": "secondary"
+     },
+     {
+      "id": "residual",
+      "title": "Residual block",
+      "tone": "primary"
+     }
+    ],
+    "rows": [
+     {
+      "label": "Learns",
+      "cells": [
+       "Full mapping H(x)",
+       "Correction F(x) = H(x) − x"
+      ]
+     },
+     {
+      "label": "Identity",
+      "cells": [
+       "Layers must reproduce x",
+       "Zero residual preserves x at addition"
+      ]
+     },
+     {
+      "label": "Gradient",
+      "cells": [
+       "Through every layer in the stack",
+       "Also through an identity path"
+      ],
+      "appear": 2
+     },
+     {
+      "label": "Local derivative",
+      "cells": [
+       "Product of layer derivatives",
+       "I + J_F before activation"
+      ],
+      "appear": 2
+     }
+    ],
+    "beats": [
+     {
+      "caption": "Extra layers become easier to optimize when preserving a useful representation is an accessible solution.",
+      "explanation": "The paper shows that a deeper plain network can have higher training error, so added capacity alone does not solve optimization. Residual learning eases this degradation problem.",
+      "basis": "source",
+      "referenceIds": [
+       "pdf-1",
+       "pdf-2"
+      ],
+      "focus": [
+       "plain",
+       "residual"
+      ]
+     },
+     {
+      "caption": "The shortcut also gives gradients a direct route across the residual branch.",
+      "explanation": "As background calculus, the derivative of x + F(x) is I + J_F, where I is the identity and J_F is the residual's derivative. This route helps gradient propagation, but subsequent activations and repeated blocks mean it does not guarantee nonvanishing gradients.",
+      "basis": "background",
+      "referenceIds": [],
+      "focus": [
+       "residual"
+      ]
+     }
+    ]
+   }
+  ],
+  "takeaways": [
+   "Residual layers learn how to change an input while a shortcut carries it forward.",
+   "A zero residual makes preserving the input easy at the addition.",
+   "Easier optimization and a direct gradient path help make much deeper networks trainable."
+  ]
+ }
+}

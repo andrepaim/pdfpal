@@ -1,0 +1,1067 @@
+{
+ "question": "Why do residual connections make very deep networks easier to train?",
+ "references": [
+  {
+   "id": "pdf-1",
+   "label": "Deep Residual Learning for Image Recognition · p. 2"
+  },
+  {
+   "id": "pdf-2",
+   "label": "Deep Residual Learning for Image Recognition · p. 1"
+  },
+  {
+   "id": "pdf-3",
+   "label": "Deep Residual Learning for Image Recognition · p. 2"
+  },
+  {
+   "id": "pdf-4",
+   "label": "Deep Residual Learning for Image Recognition · p. 3"
+  },
+  {
+   "id": "pdf-5",
+   "label": "Deep Residual Learning for Image Recognition · p. 9"
+  }
+ ],
+ "definition": {
+  "version": 1,
+  "title": "Why residual connections make very deep networks trainable",
+  "summary": "Residual connections let a group of layers learn only a correction F(x) to its input x; an identity shortcut carries x forward and adds it back. The paper hypothesizes this is easier to optimize, because 'changing nothing' only requires pushing F toward zero. The supplied excerpts cover the hypothesis and headline results, not the full experiments; the gradient-flow scene is background knowledge.",
+  "steps": [
+   {
+    "title": "The problem: deeper plain networks train worse",
+    "caption": "On CIFAR-10, a 56-layer plain network ends with higher training error than a 20-layer one. The curves are a schematic of the paper's Figure 1, not its exact data.",
+    "explanation": "The paper starts from a puzzle. Depth matters a great deal for image recognition, yet stacking more layers onto a plain network (one with no shortcuts) does not reliably help. Figure 1 compares 20-layer and 56-layer plain networks on CIFAR-10, and the deeper one has higher training error, and thus higher test error. The paper calls this the degradation problem.\n\nThe key detail is that the training error is worse. As background: overfitting would show up as low training error with high test error. Here the deeper network fits even its own training data less well, which points to a difficulty in optimization, not a lack of capacity.\n\nAlso background, because the supplied excerpt is cut off just before this argument: a deeper network could in principle copy a shallower one and let its extra layers pass their input through unchanged, so it should never do worse. The optimizer evidently struggles to find such a solution. Residual connections are designed to make it easy to find.\n\nThe curves are drawn to show the ordering only. Their shapes and values are not taken from the figure.",
+    "basis": "source",
+    "referenceIds": [
+     "pdf-2",
+     "pdf-1"
+    ],
+    "scene": {
+     "height": 350,
+     "elements": [
+      {
+       "id": "s1axes",
+       "color": "slate",
+       "detail": "Vertical axis: training error (higher is worse). Horizontal axis: training iterations. Schematic only; no numeric scale is implied.",
+       "type": "path",
+       "points": [
+        {
+         "x": 50,
+         "y": 40
+        },
+        {
+         "x": 50,
+         "y": 300
+        },
+        {
+         "x": 335,
+         "y": 300
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s1ylabel",
+       "color": "slate",
+       "type": "text",
+       "x": 130,
+       "y": 30,
+       "text": "training error",
+       "size": 16
+      },
+      {
+       "id": "s1xlabel",
+       "color": "slate",
+       "type": "text",
+       "x": 170,
+       "y": 326,
+       "text": "iterations",
+       "size": 16
+      },
+      {
+       "id": "s1deep",
+       "color": "rose",
+       "detail": "56-layer plain network: its training error stays above that of the shallower network. Shape is schematic.",
+       "type": "path",
+       "points": [
+        {
+         "x": 55,
+         "y": 60
+        },
+        {
+         "x": 80,
+         "y": 88
+        },
+        {
+         "x": 110,
+         "y": 108
+        },
+        {
+         "x": 150,
+         "y": 122
+        },
+        {
+         "x": 200,
+         "y": 132
+        },
+        {
+         "x": 260,
+         "y": 138
+        },
+        {
+         "x": 325,
+         "y": 142
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s1shallow",
+       "color": "teal",
+       "detail": "20-layer plain network: it reaches lower training error than the 56-layer network. Shape is schematic.",
+       "type": "path",
+       "points": [
+        {
+         "x": 55,
+         "y": 75
+        },
+        {
+         "x": 80,
+         "y": 130
+        },
+        {
+         "x": 110,
+         "y": 175
+        },
+        {
+         "x": 150,
+         "y": 210
+        },
+        {
+         "x": 200,
+         "y": 236
+        },
+        {
+         "x": 260,
+         "y": 254
+        },
+        {
+         "x": 325,
+         "y": 262
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s1deepLabel",
+       "color": "rose",
+       "detail": "A plain network stacks layers with no shortcut connections. The paper reports that this deeper network has higher training error, and thus higher test error, than the 20-layer one on CIFAR-10.",
+       "type": "node",
+       "x": 175,
+       "y": 62,
+       "width": 165,
+       "height": 48,
+       "label": "56-layer plain",
+       "shape": "box"
+      },
+      {
+       "id": "s1shallowLabel",
+       "color": "teal",
+       "detail": "The shallower network trains to a lower error. More layers made things worse, which is the degradation problem the paper sets out to address.",
+       "type": "node",
+       "x": 175,
+       "y": 160,
+       "width": 165,
+       "height": 48,
+       "label": "20-layer plain",
+       "shape": "box"
+      }
+     ]
+    }
+   },
+   {
+    "title": "The fix: learn the correction, carry the input",
+    "caption": "A residual block sends x down two routes. The layers compute F(x), the shortcut carries x unchanged, and the two are added.",
+    "explanation": "Call the mapping a few stacked layers should ideally compute H(x). A plain network asks those layers to produce H(x) directly. The paper instead asks them to fit a different function, the residual F(x) := H(x) - x, and then recovers the original mapping as F(x) + x.\n\nThe diagram follows the building block in the paper's Figure 2. The input x goes through a weight layer, a ReLU nonlinearity and a second weight layer to give F(x). At the same time a shortcut connection, meaning a connection that skips one or more layers, carries x around them. Here the shortcut is an identity mapping, so it delivers x unchanged. The two streams meet in an element-wise addition, and a second ReLU is applied after it.\n\nNothing else about the network changes. The identity shortcut adds no parameters and no computational complexity beyond the negligible addition, and the whole network is still trained end to end by SGD with backpropagation.\n\nOne practical condition: x and F(x) must have the same dimensions to be added. Where they differ, for example when the number of channels changes, the paper uses a linear projection on the shortcut to match them.",
+    "basis": "source",
+    "referenceIds": [
+     "pdf-1",
+     "pdf-4"
+    ],
+    "scene": {
+     "height": 460,
+     "elements": [
+      {
+       "id": "s2x",
+       "color": "slate",
+       "detail": "The input to the block: the output of whatever layers came before.",
+       "type": "node",
+       "x": 110,
+       "y": 20,
+       "width": 60,
+       "height": 40,
+       "label": "x",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s2a1",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 140,
+       "y1": 60,
+       "x2": 140,
+       "y2": 100
+      },
+      {
+       "id": "s2w1",
+       "color": "indigo",
+       "detail": "A learned layer. The paper writes the notation for fully-connected layers for simplicity, but says it applies to convolutional layers too.",
+       "type": "node",
+       "x": 60,
+       "y": 100,
+       "width": 160,
+       "height": 44,
+       "label": "weight layer",
+       "shape": "box"
+      },
+      {
+       "id": "s2a2",
+       "color": "indigo",
+       "type": "arrow",
+       "x1": 140,
+       "y1": 144,
+       "x2": 140,
+       "y2": 196,
+       "label": "ReLU"
+      },
+      {
+       "id": "s2w2",
+       "color": "indigo",
+       "detail": "Second learned layer. Together the stacked layers compute the residual function F(x). The paper's experiments use F with two or three layers; with only one layer it observed no advantage.",
+       "type": "node",
+       "x": 60,
+       "y": 196,
+       "width": 160,
+       "height": 44,
+       "label": "weight layer",
+       "shape": "box"
+      },
+      {
+       "id": "s2a3",
+       "color": "indigo",
+       "type": "arrow",
+       "x1": 140,
+       "y1": 240,
+       "x2": 140,
+       "y2": 290,
+       "label": "F(x)"
+      },
+      {
+       "id": "s2plus",
+       "color": "slate",
+       "detail": "Element-wise addition of the layers' output F(x) and the shortcut's output x. Both must have the same dimensions.",
+       "type": "node",
+       "x": 115,
+       "y": 290,
+       "width": 50,
+       "height": 50,
+       "label": "+",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s2a4",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 140,
+       "y1": 340,
+       "x2": 140,
+       "y2": 390,
+       "label": "ReLU"
+      },
+      {
+       "id": "s2out",
+       "color": "teal",
+       "detail": "The block's output. If F(x) equals H(x) - x, then F(x) + x is exactly the desired mapping H(x). The second ReLU is applied after the addition.",
+       "type": "node",
+       "x": 50,
+       "y": 390,
+       "width": 180,
+       "height": 48,
+       "label": "F(x) + x",
+       "shape": "box"
+      },
+      {
+       "id": "s2pathTop",
+       "color": "amber",
+       "type": "path",
+       "points": [
+        {
+         "x": 170,
+         "y": 40
+        },
+        {
+         "x": 250,
+         "y": 42
+        },
+        {
+         "x": 282,
+         "y": 56
+        },
+        {
+         "x": 295,
+         "y": 90
+        },
+        {
+         "x": 295,
+         "y": 130
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s2short",
+       "color": "amber",
+       "detail": "A shortcut connection skips one or more layers. In this design it performs an identity mapping: it passes x along unchanged, with no weights of its own, so it adds neither parameters nor computational complexity.",
+       "type": "node",
+       "x": 245,
+       "y": 130,
+       "width": 100,
+       "height": 84,
+       "label": "identity shortcut",
+       "shape": "box"
+      },
+      {
+       "id": "s2pathBot",
+       "color": "amber",
+       "type": "path",
+       "points": [
+        {
+         "x": 295,
+         "y": 214
+        },
+        {
+         "x": 295,
+         "y": 262
+        },
+        {
+         "x": 284,
+         "y": 296
+        },
+        {
+         "x": 256,
+         "y": 313
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s2a5",
+       "color": "amber",
+       "type": "arrow",
+       "x1": 256,
+       "y1": 313,
+       "x2": 167,
+       "y2": 315,
+       "label": "x"
+      }
+     ]
+    }
+   },
+   {
+    "title": "Why the new target is easier: zero beats identity",
+    "caption": "If the best thing a block can do is change nothing, plain layers must reproduce x exactly, while residual layers only need to output zero. The plots are a simplified model.",
+    "explanation": "The paper's central claim is a hypothesis: that it is easier to optimize the residual mapping than the original, unreferenced mapping. Unreferenced means the layers must build their output from scratch, with no baseline to work from.\n\nThe clearest case is the extreme one the paper gives. Suppose the optimal behavior for some layers is the identity mapping, so the output should equal the input. A plain stack of nonlinear layers has to arrange its weights so that, after the nonlinearities, the output equals x across all inputs. In a residual block the same goal becomes F(x) = 0, and the paper says it would be easier to push the residual to zero than to fit an identity mapping with a stack of nonlinear layers.\n\nThis reframing changes the default. In a plain network, extra layers that have learned nothing useful still transform, and can distort, the signal. In a residual network, a block that outputs zero passes its input through unchanged, and learning consists of small adjustments relative to that reference.\n\nThe mini-plots are a simplified one-dimensional model, not figures from the paper. On the left the layers' output wobbles around a diagonal target line. On the right the layers' output F only needs to settle near a flat zero line. The paper supports the hypothesis with experiments, which the supplied excerpts mention but do not reproduce.",
+    "basis": "source",
+    "referenceIds": [
+     "pdf-1"
+    ],
+    "scene": {
+     "height": 440,
+     "elements": [
+      {
+       "id": "s3plainHead",
+       "color": "slate",
+       "detail": "Stacked nonlinear layers with no shortcut. Their output must itself be the full desired mapping H(x).",
+       "type": "node",
+       "x": 15,
+       "y": 20,
+       "width": 150,
+       "height": 44,
+       "label": "Plain layers",
+       "shape": "box"
+      },
+      {
+       "id": "s3resHead",
+       "color": "teal",
+       "detail": "The same layers plus an identity shortcut. The layers only supply F(x); the shortcut supplies x.",
+       "type": "node",
+       "x": 195,
+       "y": 20,
+       "width": 150,
+       "height": 44,
+       "label": "Residual block",
+       "shape": "box"
+      },
+      {
+       "id": "s3a1",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 90,
+       "y1": 64,
+       "x2": 90,
+       "y2": 110
+      },
+      {
+       "id": "s3a2",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 270,
+       "y1": 64,
+       "x2": 270,
+       "y2": 110
+      },
+      {
+       "id": "s3plainGoal",
+       "color": "rose",
+       "detail": "When the identity mapping is optimal, a plain stack has to reproduce its input through weight layers and nonlinearities.",
+       "type": "node",
+       "x": 15,
+       "y": 110,
+       "width": 150,
+       "height": 76,
+       "label": "Layers must output x exactly",
+       "shape": "box"
+      },
+      {
+       "id": "s3resGoal",
+       "color": "indigo",
+       "detail": "When the identity mapping is optimal, the residual is zero. The shortcut already delivers x, so the layers just need to contribute nothing.",
+       "type": "node",
+       "x": 195,
+       "y": 110,
+       "width": 150,
+       "height": 76,
+       "label": "Layers output F(x) = 0",
+       "shape": "box"
+      },
+      {
+       "id": "s3plainAxes",
+       "color": "slate",
+       "type": "path",
+       "points": [
+        {
+         "x": 25,
+         "y": 230
+        },
+        {
+         "x": 25,
+         "y": 350
+        },
+        {
+         "x": 155,
+         "y": 350
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s3target",
+       "color": "slate",
+       "detail": "Target: output equals input, drawn as a diagonal line. Simplified one-dimensional picture.",
+       "type": "path",
+       "points": [
+        {
+         "x": 25,
+         "y": 350
+        },
+        {
+         "x": 155,
+         "y": 230
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s3wobble",
+       "color": "rose",
+       "detail": "Illustrative only: a nonlinear stack approximating the identity imperfectly. This is not data from the paper.",
+       "type": "path",
+       "points": [
+        {
+         "x": 25,
+         "y": 345
+        },
+        {
+         "x": 45,
+         "y": 335
+        },
+        {
+         "x": 65,
+         "y": 305
+        },
+        {
+         "x": 85,
+         "y": 300
+        },
+        {
+         "x": 105,
+         "y": 270
+        },
+        {
+         "x": 125,
+         "y": 262
+        },
+        {
+         "x": 155,
+         "y": 236
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s3resAxis",
+       "color": "slate",
+       "type": "path",
+       "points": [
+        {
+         "x": 205,
+         "y": 230
+        },
+        {
+         "x": 205,
+         "y": 350
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s3zero",
+       "color": "slate",
+       "detail": "The zero line. A residual of zero means the block passes its input through unchanged.",
+       "type": "path",
+       "points": [
+        {
+         "x": 205,
+         "y": 290
+        },
+        {
+         "x": 335,
+         "y": 290
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s3flat",
+       "color": "indigo",
+       "detail": "Illustrative only: the layers' output F hovering near zero. This is not data from the paper.",
+       "type": "path",
+       "points": [
+        {
+         "x": 205,
+         "y": 294
+        },
+        {
+         "x": 240,
+         "y": 287
+        },
+        {
+         "x": 270,
+         "y": 292
+        },
+        {
+         "x": 300,
+         "y": 288
+        },
+        {
+         "x": 335,
+         "y": 290
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s3hard",
+       "color": "rose",
+       "detail": "The paper's wording: fitting an identity mapping by a stack of nonlinear layers is the harder of the two.",
+       "type": "node",
+       "x": 15,
+       "y": 372,
+       "width": 150,
+       "height": 48,
+       "label": "Harder to fit",
+       "shape": "box"
+      },
+      {
+       "id": "s3easy",
+       "color": "teal",
+       "detail": "The paper's wording: it would be easier to push the residual to zero. This is stated as a hypothesis, backed by the paper's experiments.",
+       "type": "node",
+       "x": 195,
+       "y": 372,
+       "width": 150,
+       "height": 48,
+       "label": "Easier: shrink F to 0",
+       "shape": "box"
+      }
+     ]
+    }
+   },
+   {
+    "title": "Stacked blocks: a path that never closes",
+    "caption": "Across many blocks, the identity shortcuts form a route along which the input is always passed on, while each block adds its own learned correction.",
+    "explanation": "Stack many residual blocks and the picture is a main line with side branches. Each block reads the current signal, computes a residual F, and adds it back. The signal that reaches the end is the original input plus an accumulation of corrections.\n\nThe paper contrasts this with highway networks, a concurrent design whose shortcuts have gating functions. Those gates depend on the data and have parameters of their own, and when a gate is closed (approaching zero) the layers represent non-residual functions. The paper's identity shortcuts have no gate. In its words they are never closed, all information is always passed through, and the formulation always learns residual functions.\n\nBeing parameter-free also matters for evidence. Because the shortcut adds no parameters and only a negligible element-wise addition, a plain network and a residual network can have the same depth, width, number of parameters and computational cost. Any difference in how well they train can then be attributed to the shortcuts.\n\nThe drawing is a simplified model. It omits the ReLU applied after each addition and the linear projection used on the shortcut where dimensions change, so the amber line is not literally one untouched copy of x from start to finish.",
+    "basis": "source",
+    "referenceIds": [
+     "pdf-3",
+     "pdf-4"
+    ],
+    "scene": {
+     "height": 480,
+     "elements": [
+      {
+       "id": "s4x",
+       "color": "slate",
+       "detail": "The input entering a stack of residual blocks.",
+       "type": "node",
+       "x": 40,
+       "y": 16,
+       "width": 60,
+       "height": 40,
+       "label": "x",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s4open",
+       "color": "amber",
+       "detail": "The paper says its identity shortcuts are never closed and all information is always passed through. Highway networks, by contrast, use data-dependent gates with parameters that can close.",
+       "type": "node",
+       "x": 150,
+       "y": 14,
+       "width": 190,
+       "height": 56,
+       "label": "Identity path: always open",
+       "shape": "box"
+      },
+      {
+       "id": "s4m1",
+       "color": "amber",
+       "type": "arrow",
+       "x1": 70,
+       "y1": 56,
+       "x2": 70,
+       "y2": 120
+      },
+      {
+       "id": "s4p1",
+       "color": "slate",
+       "detail": "Element-wise addition of the carried signal and the first block's residual.",
+       "type": "node",
+       "x": 50,
+       "y": 120,
+       "width": 40,
+       "height": 40,
+       "label": "+",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s4m2",
+       "color": "amber",
+       "type": "arrow",
+       "x1": 70,
+       "y1": 160,
+       "x2": 70,
+       "y2": 230
+      },
+      {
+       "id": "s4p2",
+       "color": "slate",
+       "detail": "Element-wise addition for the second block.",
+       "type": "node",
+       "x": 50,
+       "y": 230,
+       "width": 40,
+       "height": 40,
+       "label": "+",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s4m3",
+       "color": "amber",
+       "type": "arrow",
+       "x1": 70,
+       "y1": 270,
+       "x2": 70,
+       "y2": 340
+      },
+      {
+       "id": "s4p3",
+       "color": "slate",
+       "detail": "Element-wise addition for the third block.",
+       "type": "node",
+       "x": 50,
+       "y": 340,
+       "width": 40,
+       "height": 40,
+       "label": "+",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s4m4",
+       "color": "amber",
+       "type": "arrow",
+       "x1": 70,
+       "y1": 380,
+       "x2": 70,
+       "y2": 412
+      },
+      {
+       "id": "s4out",
+       "color": "teal",
+       "detail": "In this simplified picture: the input plus the corrections added by each block. The real blocks also apply a ReLU after each addition.",
+       "type": "node",
+       "x": 20,
+       "y": 412,
+       "width": 100,
+       "height": 44,
+       "label": "output",
+       "shape": "box"
+      },
+      {
+       "id": "s4b1",
+       "color": "indigo",
+       "type": "arrow",
+       "x1": 72,
+       "y1": 92,
+       "x2": 250,
+       "y2": 118
+      },
+      {
+       "id": "s4f1",
+       "color": "indigo",
+       "detail": "The first block's stacked layers. They learn a residual function of the signal they receive.",
+       "type": "node",
+       "x": 180,
+       "y": 118,
+       "width": 160,
+       "height": 44,
+       "label": "layers: F1",
+       "shape": "box"
+      },
+      {
+       "id": "s4r1",
+       "color": "indigo",
+       "type": "arrow",
+       "x1": 180,
+       "y1": 140,
+       "x2": 90,
+       "y2": 140
+      },
+      {
+       "id": "s4b2",
+       "color": "indigo",
+       "type": "arrow",
+       "x1": 72,
+       "y1": 202,
+       "x2": 250,
+       "y2": 228
+      },
+      {
+       "id": "s4f2",
+       "color": "indigo",
+       "detail": "The second block's layers. If they have nothing useful to add, an output near zero leaves the signal as it was.",
+       "type": "node",
+       "x": 180,
+       "y": 228,
+       "width": 160,
+       "height": 44,
+       "label": "layers: F2",
+       "shape": "box"
+      },
+      {
+       "id": "s4r2",
+       "color": "indigo",
+       "type": "arrow",
+       "x1": 180,
+       "y1": 250,
+       "x2": 90,
+       "y2": 250
+      },
+      {
+       "id": "s4b3",
+       "color": "indigo",
+       "type": "arrow",
+       "x1": 72,
+       "y1": 312,
+       "x2": 250,
+       "y2": 338
+      },
+      {
+       "id": "s4f3",
+       "color": "indigo",
+       "detail": "The third block's layers. The paper evaluates stacks reaching 152 layers on ImageNet.",
+       "type": "node",
+       "x": 180,
+       "y": 338,
+       "width": 160,
+       "height": 44,
+       "label": "layers: F3",
+       "shape": "box"
+      },
+      {
+       "id": "s4r3",
+       "color": "indigo",
+       "type": "arrow",
+       "x1": 180,
+       "y1": 360,
+       "x2": 90,
+       "y2": 360
+      },
+      {
+       "id": "s4free",
+       "color": "amber",
+       "detail": "Identity shortcuts add neither parameters nor computational complexity, apart from the negligible element-wise addition. This lets plain and residual networks be compared at equal depth, width, parameter count and cost.",
+       "type": "node",
+       "x": 180,
+       "y": 406,
+       "width": 160,
+       "height": 56,
+       "label": "No extra parameters",
+       "shape": "box"
+      }
+     ]
+    }
+   },
+   {
+    "title": "Background: the shortcut also carries the training signal",
+    "caption": "General knowledge, not from the supplied excerpts: during backpropagation the addition gives the error signal a direct route back to earlier layers.",
+    "explanation": "This scene is background knowledge about how backpropagation behaves. The supplied excerpts do not make this argument, so read it as a complementary explanation, not as the paper's stated reasoning.\n\nTraining adjusts each weight according to how the final error changes when that weight changes. That information travels backward through the network, layer by layer, and each layer it passes through rescales it. Through many layers those rescalings multiply together, so the signal can become very small or very large by the time it reaches the early layers.\n\nA residual block computes y = F(x) + x. Differentiating gives two terms: the derivative of F, plus 1 from the shortcut. The error signal arriving at y therefore reaches x by two routes. One goes through the layers and is rescaled by them. The other goes through the shortcut and arrives as it was. Even if the layer route contributes little, the shortcut route still delivers a usable signal to earlier layers.\n\nTwo caveats keep this accurate. First, the formula ignores the ReLU that the paper applies after the addition, which modifies the signal at each block. Second, the paper's own framing in the supplied text is about which function is easier to optimize, as in the previous scenes. The excerpts mention vanishing and exploding gradients only when describing earlier work that used shortcuts to auxiliary classifiers.",
+    "basis": "background",
+    "referenceIds": [],
+    "scene": {
+     "height": 500,
+     "elements": [
+      {
+       "id": "s5early",
+       "color": "slate",
+       "detail": "Layers before this block. They can only improve if a meaningful error signal reaches them.",
+       "type": "node",
+       "x": 90,
+       "y": 20,
+       "width": 180,
+       "height": 44,
+       "label": "earlier layers",
+       "shape": "box"
+      },
+      {
+       "id": "s5viaF",
+       "color": "indigo",
+       "detail": "Background: the signal passing back through the weight layers is multiplied by their derivatives. Across many layers these factors multiply and can shrink or inflate the signal.",
+       "type": "node",
+       "x": 15,
+       "y": 170,
+       "width": 150,
+       "height": 88,
+       "label": "Via layers: rescaled by F's derivative",
+       "shape": "box"
+      },
+      {
+       "id": "s5viaS",
+       "color": "amber",
+       "detail": "Background: the identity shortcut has derivative 1, so the signal on this route is not rescaled by the block's layers.",
+       "type": "node",
+       "x": 195,
+       "y": 170,
+       "width": 150,
+       "height": 88,
+       "label": "Via shortcut: passed unchanged",
+       "shape": "box"
+      },
+      {
+       "id": "s5loss",
+       "color": "slate",
+       "detail": "Backpropagation sends the error measured at the output backward through the network to compute how each weight should change.",
+       "type": "node",
+       "x": 90,
+       "y": 380,
+       "width": 180,
+       "height": 48,
+       "label": "error signal from the loss",
+       "shape": "box"
+      },
+      {
+       "id": "s5u1",
+       "color": "indigo",
+       "type": "arrow",
+       "x1": 130,
+       "y1": 380,
+       "x2": 90,
+       "y2": 258
+      },
+      {
+       "id": "s5u2",
+       "color": "amber",
+       "type": "arrow",
+       "x1": 230,
+       "y1": 380,
+       "x2": 270,
+       "y2": 258
+      },
+      {
+       "id": "s5u3",
+       "color": "indigo",
+       "type": "arrow",
+       "x1": 90,
+       "y1": 170,
+       "x2": 140,
+       "y2": 64
+      },
+      {
+       "id": "s5u4",
+       "color": "amber",
+       "type": "arrow",
+       "x1": 270,
+       "y1": 170,
+       "x2": 220,
+       "y2": 64
+      },
+      {
+       "id": "s5formula",
+       "color": "slate",
+       "detail": "For y = F(x) + x. The + 1 is the shortcut's contribution. This simplified form leaves out the ReLU applied after the addition.",
+       "type": "node",
+       "x": 60,
+       "y": 444,
+       "width": 240,
+       "height": 40,
+       "label": "dy/dx = dF/dx + 1",
+       "shape": "box"
+      }
+     ]
+    }
+   },
+   {
+    "title": "The payoff: depth starts helping again",
+    "caption": "The paper reports residual networks up to 152 layers on ImageNet, 8 times deeper than VGG nets, with an ensemble reaching 3.57% test error. Bars are roughly to scale.",
+    "explanation": "With the degradation problem addressed, added depth turns back into added accuracy. The abstract states that residual networks are easier to optimize and can gain accuracy from considerably increased depth.\n\nThe bars compare depth. The paper notes that the leading ImageNet results before it used models sixteen to thirty layers deep. It then evaluates residual networks up to 152 layers deep, which it describes as 8 times deeper than VGG nets while still having lower complexity. The left bar is drawn at 30 layers, the top of the earlier range, and the right bar at 152.\n\nThe reported outcomes: an ensemble of residual networks achieved 3.57% error on the ImageNet test set and won first place in the ILSVRC 2015 classification task. The authors also report a 28% relative improvement on COCO object detection, which they attribute solely to the extremely deep representations, and they present CIFAR-10 analysis with 100 and 1000 layers.\n\nA limit of this explanation: the supplied excerpts contain these headline numbers and the statement that the evidence is comprehensive, but not the experiments themselves. The claim that residual networks are easier to optimize is the paper's reported finding. The mechanism in the earlier scenes is its hypothesis for why.",
+    "basis": "source",
+    "referenceIds": [
+     "pdf-2"
+    ],
+    "scene": {
+     "height": 470,
+     "elements": [
+      {
+       "id": "s6base",
+       "color": "slate",
+       "type": "path",
+       "points": [
+        {
+         "x": 20,
+         "y": 360
+        },
+        {
+         "x": 340,
+         "y": 360
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s6barOld",
+       "color": "slate",
+       "detail": "Drawn at 30 layers, the upper end of the sixteen-to-thirty range the paper cites for earlier leading ImageNet models.",
+       "type": "path",
+       "points": [
+        {
+         "x": 60,
+         "y": 300
+        },
+        {
+         "x": 130,
+         "y": 300
+        },
+        {
+         "x": 130,
+         "y": 360
+        },
+        {
+         "x": 60,
+         "y": 360
+        }
+       ],
+       "closed": true
+      },
+      {
+       "id": "s6barRes",
+       "color": "teal",
+       "detail": "Drawn at 152 layers, the deepest residual network the paper evaluates on ImageNet.",
+       "type": "path",
+       "points": [
+        {
+         "x": 230,
+         "y": 60
+        },
+        {
+         "x": 300,
+         "y": 60
+        },
+        {
+         "x": 300,
+         "y": 360
+        },
+        {
+         "x": 230,
+         "y": 360
+        }
+       ],
+       "closed": true
+      },
+      {
+       "id": "s6result",
+       "color": "teal",
+       "detail": "Achieved by an ensemble of residual networks; it won first place in the ILSVRC 2015 classification task. The paper also reports a 28% relative improvement on COCO object detection.",
+       "type": "node",
+       "x": 15,
+       "y": 70,
+       "width": 170,
+       "height": 88,
+       "label": "3.57% ImageNet test error (ensemble)",
+       "shape": "box"
+      },
+      {
+       "id": "s6oldLabel",
+       "color": "slate",
+       "detail": "The paper notes that the leading ImageNet results before it all used very deep models, with a depth of sixteen to thirty layers.",
+       "type": "node",
+       "x": 20,
+       "y": 376,
+       "width": 150,
+       "height": 66,
+       "label": "16 to 30 layers: earlier leaders",
+       "shape": "box"
+      },
+      {
+       "id": "s6resLabel",
+       "color": "teal",
+       "detail": "Described as 8 times deeper than VGG nets but still having lower complexity. The paper also analyzes CIFAR-10 networks with 100 and 1000 layers.",
+       "type": "node",
+       "x": 190,
+       "y": 376,
+       "width": 150,
+       "height": 66,
+       "label": "Up to 152 layers: residual nets",
+       "shape": "box"
+      }
+     ]
+    }
+   }
+  ],
+  "takeaways": [
+   "A residual block asks its layers to learn only the difference F(x) = H(x) - x; an identity shortcut adds the input x back, giving F(x) + x.",
+   "The paper's hypothesis: this is easier to optimize because a block that should change nothing only has to push F toward zero, not rebuild the identity through nonlinear layers.",
+   "Identity shortcuts are never closed and add no parameters, so the input is always passed forward and plain and residual networks can be compared at equal cost.",
+   "Background, not from the excerpts: the addition also gives the backward error signal a direct route to earlier layers, which complements the paper's optimization argument."
+  ]
+ }
+}

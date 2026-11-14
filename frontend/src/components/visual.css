@@ -1,4 +1,128 @@
-.visual-card{box-sizing:border-box;min-width:0;width:100%;border:1px solid #373555;border-radius:14px;background:#171821;color:#e2e8f0;padding:14px;font:14px/1.6 system-ui,sans-serif;overflow-wrap:anywhere;text-align:left}
-.visual-card *{box-sizing:border-box}.visual-card button,.visual-card a{font:inherit}.visual-card button{width:auto;padding:5px 10px;background:#252640;color:#c7d2fe;border:1px solid #454466;border-radius:7px;cursor:pointer;line-height:1.5}.visual-card button:disabled{opacity:.4;cursor:default}.visual-card button:focus-visible,.visual-hotspot:focus-visible{outline:2px solid #a5b4fc;outline-offset:3px}.visual-card a{color:#a5b4fc}
-.visual-story h3{font-size:19px;line-height:1.3;margin:3px 0 10px;color:#f1f5f9}.visual-story h4{font-size:15px;margin:14px 0 0;line-height:1.4}.visual-story p{margin:8px 0}.visual-story .visual-eyebrow{margin:0;color:#a5b4fc;font-size:10px;text-transform:uppercase;letter-spacing:1.4px;font-weight:700}.visual-summary{color:#b7c0d1;font-size:13px}.visual-navigation{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:16px}.visual-navigation span{color:#a5b4fc;font-size:12px}.visual-story .visual-basis{color:#9aa8bf;font-size:11px;margin:4px 0 8px}
-.visual-story figure{margin:8px 0}.visual-story svg{display:block;width:100%;height:auto;background:#10121c;border-radius:10px;font-family:system-ui,sans-serif;overflow:visible}.visual-hotspot{cursor:pointer}.visual-hotspot:hover>rect,.visual-hotspot:hover>ellipse{fill-opacity:.25}.visual-story figcaption{font-size:14px;margin:10px 0;color:#e2e8f0}.visual-story .visual-hint{font-size:11px;color:#8995ae}.visual-story .visual-detail{padding:10px;border-left:3px solid #818cf8;background:#222337;border-radius:5px}.visual-story details{margin:10px 0;font-size:13px}.visual-story summary{cursor:pointer;color:#a5b4fc}.visual-story .visual-references{font-size:11px;color:#94a3b8}.visual-takeaways section{border-top:1px solid #303245;padding-top:10px;margin-top:10px}.visual-actions{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid #303245;font-size:11px}.visual-actions button{font-size:11px}.visual-loading{display:flex;gap:8px;align-items:center;color:#a5b4fc;font-size:13px}.visual-error{color:#fda4af}.visual-dialog{color:#e2e8f0;background:#171821;border:1px solid #454466;border-radius:16px;width:min(820px,calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);padding:16px;overflow:auto}.visual-dialog::backdrop{background:#000b}.visual-dialog-header{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #303245;padding-bottom:10px;margin-bottom:16px;color:#a5b4fc}.visual-story-expanded{max-width:650px;margin:auto}.visual-story-expanded svg{max-height:60vh}.visual-page{max-width:850px;margin:auto;padding:24px}.visual-page>a{display:inline-block;margin-bottom:18px;color:#a5b4fc}@media(prefers-reduced-motion:reduce){.visual-card *{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+/* Explain visually: the card around a figure. Tokens follow the fixed style (study, "A fixed style"); the figure's own
+   classes and tone colours come from VISUAL_KIT_CSS, injected by VisualFigure. The figure is never dimmed. */
+.visual-card,.visual-dialog{
+  --vx-card:#171821;--vx-canvas:#0e1016;--vx-hair:#2a2f3e;--vx-raised:#20222e;--vx-ink:#eceef4;--vx-muted:#9aa3b5;--vx-faint:#596275;
+  --vx-primary:#8fa2ff;--vx-secondary:#45d0c1;--vx-accent:#f6bd4f;--vx-positive:#6fd694;--vx-negative:#ff8a8f;
+  --vx-font:"Inter Variable",Inter,"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+}
+.visual-card{box-sizing:border-box;min-width:0;width:100%;border:1px solid var(--vx-hair);border-radius:14px;background:var(--vx-card);color:var(--vx-ink);padding:14px;
+  font:14px/1.55 var(--vx-font);overflow-wrap:anywhere;text-align:left}
+.visual-card *{box-sizing:border-box}
+.visual-card button,.visual-card a{font:inherit}
+.visual-card button{width:auto;padding:5px 11px;background:transparent;color:var(--vx-ink);border:1px solid var(--vx-hair);border-radius:8px;cursor:pointer;line-height:1.5;font-size:12.5px;font-weight:550}
+.visual-card button:hover:enabled{background:var(--vx-raised)}
+.visual-card button:disabled{opacity:.35;cursor:default}
+.visual-card button:focus-visible,.visual-story:focus-visible{outline:2px solid var(--vx-primary);outline-offset:2px}
+.visual-story:focus{outline:none}
+.visual-story:focus-visible{outline-offset:6px;border-radius:10px}
+.visual-card a{color:var(--vx-primary)}
+
+/* Head: eyebrow, title, a short summary. */
+.visual-head{margin:0}
+.visual-story .visual-eyebrow{margin:0 0 4px;font-size:10.5px;font-weight:650;letter-spacing:.12em;text-transform:uppercase;color:var(--vx-primary)}
+.visual-story h3{margin:0;font-size:18px;line-height:1.25;font-weight:650;letter-spacing:-.01em;color:var(--vx-ink);text-wrap:balance}
+.visual-story .visual-summary{margin:6px 0 0;color:var(--vx-muted);font-size:13px;line-height:1.5;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}
+
+/* The figure. */
+.visual-stage{margin-top:12px;border-radius:12px;background:var(--vx-canvas);border:1px solid var(--vx-hair);overflow:hidden}
+.visual-stage-head{display:flex;align-items:baseline;gap:8px;padding:10px 14px 0;font-size:11.5px;color:var(--vx-muted);min-width:0}
+.visual-stage-head span{flex:none;font-variant-numeric:tabular-nums;letter-spacing:.04em}
+.visual-stage-head h4{margin:0;font-size:inherit;line-height:1.4;font-weight:600;color:var(--vx-ink);min-width:0}
+.visual-canvas{padding:2px 0 6px;min-width:0}
+.visual-canvas>svg{display:block;width:100%;height:auto;margin:0 auto;font-family:var(--vx-font)}
+.visual-canvas-placeholder{aspect-ratio:16/9;max-height:320px;width:100%}
+
+/* Segmented progress: one segment per step, grouped by figure. Each segment is a button. */
+.visual-progress{display:flex;gap:10px;margin-top:10px}
+.visual-progress-scene{display:flex;gap:3px;flex:1 1 0;min-width:0}
+.visual-card .visual-progress button{flex:1 1 0;min-width:10px;height:18px;padding:7px 0;border:0;border-radius:0;background:none;cursor:pointer}
+.visual-card .visual-progress button:hover:enabled{background:none}
+.visual-progress button::before{content:"";display:block;height:4px;border-radius:2px;background:var(--vx-hair);transition:background .2s}
+.visual-progress button:hover::before{background:var(--vx-faint)}
+.visual-progress button.is-done::before{background:var(--vx-faint)}
+.visual-progress button.is-now::before{background:var(--vx-primary)}
+
+/* Under the figure: the step's caption, its basis and sources. */
+.visual-story .visual-caption{margin:6px 0 0;font-size:15px;line-height:1.45;color:var(--vx-ink);text-wrap:pretty}
+.visual-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;font-size:11.5px;color:var(--vx-muted);min-width:0}
+.visual-basis{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border:1px solid var(--vx-hair);border-radius:99px;white-space:nowrap}
+.visual-basis::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--vx-faint)}
+.visual-basis[data-basis=source]::before{background:var(--vx-secondary)}
+.visual-basis[data-basis=illustration]::before{background:var(--vx-accent)}
+.visual-references{color:var(--vx-muted);min-width:0}
+.visual-story .visual-hint{margin:8px 0 0;font-size:11.5px;color:var(--vx-muted)}
+.visual-detail{position:relative;margin-top:10px;padding:9px 34px 9px 12px;border-radius:8px;background:var(--vx-canvas);border:1px solid var(--vx-hair);font-size:13px}
+.visual-detail p{margin:0}
+.visual-detail b{font-weight:600}
+.visual-card .visual-detail-close{position:absolute;top:5px;right:5px;padding:0 7px;border:0;font-size:16px;line-height:1.4;color:var(--vx-muted)}
+.visual-more{margin-top:10px;font-size:13px;color:var(--vx-muted)}
+.visual-more summary,.visual-transcript summary{cursor:pointer;color:var(--vx-primary);font-weight:550;width:max-content;max-width:100%}
+.visual-more p{margin:6px 0 0;color:var(--vx-ink)}
+
+/* Previous / next. */
+.visual-navigation{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--vx-hair)}
+.visual-navigation span{font-size:12px;color:var(--vx-muted);font-variant-numeric:tabular-nums;text-align:center}
+.visual-card .visual-navigation button{padding:6px 14px;font-size:13px}
+.visual-card .visual-navigation button.is-primary{background:var(--vx-primary);border-color:var(--vx-primary);color:var(--vx-canvas)}
+.visual-card .visual-navigation button.is-primary:hover:enabled{background:#a5b4ff}
+
+/* Takeaways and transcript. */
+.visual-transcript{margin-top:12px;font-size:13px}
+.visual-transcript[open]{padding-bottom:4px}
+.visual-transcript h4{margin:14px 0 4px;font-size:13px;font-weight:650;color:var(--vx-ink)}
+.visual-transcript p{margin:4px 0}
+.visual-transcript ul{margin:4px 0;padding-left:18px}
+.visual-transcript section{border-top:1px solid var(--vx-hair);margin-top:12px}
+.visual-transcript-summary{color:var(--vx-muted)}
+.visual-transcript-beat{margin-top:6px}
+.visual-transcript-basis{color:var(--vx-muted);font-size:11.5px}
+.visual-transcript-words{color:var(--vx-muted)}
+
+.visual-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--vx-hair);font-size:12px}
+.visual-card .visual-actions button{font-size:12px;padding:4px 10px}
+
+/* Waiting and failure. */
+.visual-working{display:flex;gap:12px;align-items:flex-start}
+.visual-working p{margin:0}
+.visual-working-mark{flex:none;width:16px;height:16px;margin-top:3px;border-radius:50%;border:2px solid var(--vx-hair);border-top-color:var(--vx-primary);animation:visual-spin .9s linear infinite}
+.visual-working-title{font-weight:600;color:var(--vx-ink)}
+.visual-elapsed{margin-left:4px;font-weight:500;color:var(--vx-muted);font-variant-numeric:tabular-nums}
+.visual-working-note{color:var(--vx-muted);font-size:12.5px}
+@keyframes visual-spin{to{transform:rotate(360deg)}}
+.visual-failed p{margin:0 0 8px}
+.visual-failed-title{font-weight:600;color:var(--vx-negative)}
+.visual-failed-reason{color:var(--vx-ink);white-space:pre-wrap}
+.visual-error{color:var(--vx-negative);margin:0 0 10px}
+
+/* Expanded view: centred, sized to the screen, figure re-laid out wider and capped in height. */
+.visual-dialog{position:fixed;inset:0;margin:auto;padding:0;width:min(980px,calc(100vw - 32px));max-width:none;height:fit-content;max-height:calc(100dvh - 32px);
+  overflow:hidden;color:var(--vx-ink);background:var(--vx-card);border:1px solid var(--vx-hair);border-radius:16px;box-shadow:0 24px 80px #000a;font:14px/1.55 var(--vx-font);text-align:left}
+.visual-dialog[open]{display:flex;flex-direction:column}
+.visual-dialog::backdrop{background:#000b}
+.visual-dialog-header{flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px 10px 18px;border-bottom:1px solid var(--vx-hair);color:var(--vx-muted);font-size:12px}
+.visual-card .visual-dialog-header button{border:0;font-size:20px;line-height:1;padding:4px 9px}
+.visual-dialog-body{flex:1 1 auto;min-height:0;overflow:auto;padding:16px 20px 18px}
+.visual-story-expanded{max-width:900px;margin:0 auto}
+.visual-story-expanded .visual-canvas>svg{max-height:max(200px,calc(100dvh - 500px))}
+.visual-story-expanded .visual-canvas-placeholder{max-height:max(200px,calc(100dvh - 500px))}
+@media (max-width:640px){
+  .visual-dialog{width:calc(100vw - 16px);max-height:calc(100dvh - 16px);border-radius:12px}
+  .visual-dialog-body{padding:12px}
+  .visual-story-expanded .visual-canvas>svg{max-height:max(160px,calc(100dvh - 430px))}
+}
+
+/* Narrow hosts: the reader side panel and the Kindle side panel. */
+@media (max-width:420px){
+  .visual-card{padding:12px}
+  .visual-stage-head{padding:8px 10px 0}
+  .visual-card .visual-navigation button{padding:5px 10px}
+}
+
+.visual-page{flex:1;min-height:0;overflow:auto;width:100%;padding:24px 16px}
+.visual-page-inner{max-width:760px;margin:0 auto}
+.visual-page-inner>a{display:inline-block;margin-bottom:18px;color:#a5b4fc}
+
+@media (prefers-reduced-motion:reduce){
+  .visual-card *,.visual-dialog *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+  .visual-working-mark{border-top-color:var(--vx-hair);background:var(--vx-primary);transform:scale(.5)}
+}

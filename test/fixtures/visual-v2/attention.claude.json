@@ -1,0 +1,509 @@
+{
+ "question": "how attention works in a transformer",
+ "references": [],
+ "definition": {
+  "version": 2,
+  "title": "How attention works in a transformer",
+  "summary": "Each token scores every token with a query-key dot product, turns the scores into weights, and blends their values; based on general knowledge, as no source text was supplied.",
+  "scenes": [
+   {
+    "kind": "cells",
+    "title": "What attention produces",
+    "rows": [
+     {
+      "id": "tokens",
+      "label": "tokens",
+      "tone": "secondary",
+      "cells": [
+       {
+        "text": "The"
+       },
+       {
+        "text": "cat"
+       },
+       {
+        "text": "hid"
+       },
+       {
+        "text": "as"
+       },
+       {
+        "text": "it",
+        "tone": "primary"
+       },
+       {
+        "text": "was"
+       },
+       {
+        "text": "shy"
+       }
+      ]
+     },
+     {
+      "id": "weights",
+      "label": "weights for \"it\"",
+      "tone": "accent",
+      "appear": 2,
+      "cells": [
+       {
+        "text": "0.02",
+        "weight": 0.02
+       },
+       {
+        "text": "0.63",
+        "weight": 0.63
+       },
+       {
+        "text": "0.09",
+        "weight": 0.09
+       },
+       {
+        "text": "0.02",
+        "weight": 0.02
+       },
+       {
+        "text": "0.12",
+        "weight": 0.12
+       },
+       {
+        "text": "0.04",
+        "weight": 0.04
+       },
+       {
+        "text": "0.08",
+        "weight": 0.08
+       }
+      ]
+     }
+    ],
+    "brackets": [
+     {
+      "row": "weights",
+      "from": 0,
+      "to": 6,
+      "label": "sums to 1",
+      "tone": "accent",
+      "appear": 2
+     }
+    ],
+    "beats": [
+     {
+      "caption": "Alone, the vector for \"it\" carries no information about which earlier word it refers to.",
+      "explanation": "A transformer represents every token as a vector. Attention is the step that lets each token's vector be rewritten using information from the rest of the sequence.",
+      "basis": "background",
+      "referenceIds": [],
+      "focus": [
+       "tokens"
+      ]
+     },
+     {
+      "caption": "Attention gives \"it\" one weight per token, summing to 1, and here most of the weight lands on \"cat\".",
+      "explanation": "These numbers are invented for illustration. Every token gets its own row of weights like this one, so the full result is a table of weights between all pairs of tokens.",
+      "basis": "illustration",
+      "referenceIds": [],
+      "focus": [
+       "weights"
+      ]
+     }
+    ]
+   },
+   {
+    "kind": "plot",
+    "title": "Scoring relevance: query meets key",
+    "x": {
+     "min": -1.5,
+     "max": 2.8
+    },
+    "y": {
+     "min": -1.5,
+     "max": 2.2
+    },
+    "axes": false,
+    "equal": true,
+    "marks": [
+     {
+      "id": "q",
+      "type": "vector",
+      "from": [
+       0,
+       0
+      ],
+      "to": [
+       2,
+       1
+      ],
+      "label": "query: it",
+      "tone": "primary",
+      "appear": 1
+     },
+     {
+      "id": "kcat",
+      "type": "vector",
+      "from": [
+       0,
+       0
+      ],
+      "to": [
+       1,
+       1.5
+      ],
+      "label": "key: cat",
+      "tone": "secondary",
+      "appear": 2
+     },
+     {
+      "id": "khid",
+      "type": "vector",
+      "from": [
+       0,
+       0
+      ],
+      "to": [
+       1.3,
+       -1
+      ],
+      "label": "key: hid",
+      "tone": "secondary",
+      "appear": 2
+     },
+     {
+      "id": "kas",
+      "type": "vector",
+      "from": [
+       0,
+       0
+      ],
+      "to": [
+       -0.8,
+       1.6
+      ],
+      "label": "key: as",
+      "tone": "secondary",
+      "appear": 2
+     },
+     {
+      "id": "a1",
+      "type": "angle",
+      "vertex": [
+       0,
+       0
+      ],
+      "from": [
+       2,
+       1
+      ],
+      "to": [
+       1,
+       1.5
+      ],
+      "label": "small angle",
+      "tone": "neutral",
+      "appear": 3
+     }
+    ],
+    "beats": [
+     {
+      "caption": "The token being updated emits a query vector, a learned description of what it is looking for.",
+      "explanation": "This is a simplified two-dimensional picture with made-up coordinates. Real query vectors have dozens to hundreds of dimensions.",
+      "basis": "illustration",
+      "referenceIds": [],
+      "focus": [
+       "q"
+      ]
+     },
+     {
+      "caption": "Every token in the sequence offers a key vector, a learned description of what it contains.",
+      "explanation": "Only three of the seven keys are drawn to keep the picture readable. Queries and keys live in the same space so that they can be compared directly.",
+      "basis": "illustration",
+      "referenceIds": [],
+      "focus": [
+       "kcat",
+       "khid",
+       "kas"
+      ]
+     },
+     {
+      "caption": "The score is the dot product of query and key: 3.5 for the well-aligned \"cat\" key, 0 for the perpendicular \"as\" key.",
+      "explanation": "A dot product grows when two vectors point the same way, so alignment means relevance; the \"hid\" key scores 1.6. Real transformers also divide the scores by the square root of the key dimension, which is omitted here.",
+      "basis": "illustration",
+      "referenceIds": [],
+      "focus": [
+       "q",
+       "kcat",
+       "a1"
+      ]
+     }
+    ]
+   },
+   {
+    "kind": "cells",
+    "title": "From scores to a new vector",
+    "rows": [
+     {
+      "id": "tokens",
+      "label": "tokens",
+      "tone": "secondary",
+      "cells": [
+       {
+        "text": "The"
+       },
+       {
+        "text": "cat"
+       },
+       {
+        "text": "hid"
+       },
+       {
+        "text": "as"
+       },
+       {
+        "text": "it",
+        "tone": "primary"
+       },
+       {
+        "text": "was"
+       },
+       {
+        "text": "shy"
+       }
+      ]
+     },
+     {
+      "id": "scores",
+      "label": "scores",
+      "tone": "neutral",
+      "cells": [
+       {
+        "text": "0.0"
+       },
+       {
+        "text": "3.5"
+       },
+       {
+        "text": "1.6"
+       },
+       {
+        "text": "0.0"
+       },
+       {
+        "text": "1.8"
+       },
+       {
+        "text": "0.7"
+       },
+       {
+        "text": "1.4"
+       }
+      ]
+     },
+     {
+      "id": "weights",
+      "label": "weights",
+      "tone": "accent",
+      "appear": 2,
+      "cells": [
+       {
+        "text": "0.02",
+        "weight": 0.02
+       },
+       {
+        "text": "0.63",
+        "weight": 0.63
+       },
+       {
+        "text": "0.09",
+        "weight": 0.09
+       },
+       {
+        "text": "0.02",
+        "weight": 0.02
+       },
+       {
+        "text": "0.12",
+        "weight": 0.12
+       },
+       {
+        "text": "0.04",
+        "weight": 0.04
+       },
+       {
+        "text": "0.08",
+        "weight": 0.08
+       }
+      ]
+     },
+     {
+      "id": "out",
+      "label": "new vector",
+      "tone": "primary",
+      "appear": 3,
+      "cells": [
+       {
+        "text": "it′",
+        "span": 7
+       }
+      ]
+     }
+    ],
+    "links": [
+     {
+      "from": [
+       "weights",
+       1
+      ],
+      "to": [
+       "out",
+       0
+      ],
+      "label": "63% cat",
+      "tone": "accent",
+      "appear": 3
+     }
+    ],
+    "beats": [
+     {
+      "caption": "Dot products with all seven keys give \"it\" one raw score per token.",
+      "explanation": "The scores for \"cat\", \"hid\" and \"as\" are the ones from the previous picture; the others are invented in the same way. Raw scores can be any size, so they are not yet usable as proportions.",
+      "basis": "illustration",
+      "referenceIds": [],
+      "focus": [
+       "scores"
+      ]
+     },
+     {
+      "caption": "Softmax exponentiates and normalises the scores into positive weights that sum to 1, sharpening the lead of \"cat\".",
+      "explanation": "Each weight is e raised to the score, divided by the total over all tokens. Because of the exponential, a modest gap in score becomes a large gap in weight.",
+      "basis": "illustration",
+      "referenceIds": [],
+      "focus": [
+       "weights"
+      ]
+     },
+     {
+      "caption": "Each token also offers a value vector, and the new vector for \"it\" is the sum of those values weighted by attention.",
+      "explanation": "Here 63% of the mix comes from the value of \"cat\", so the updated vector now carries information about its referent. The key decides whether a token is attended to; the value decides what it contributes.",
+      "basis": "illustration",
+      "referenceIds": [],
+      "focus": [
+       "weights",
+       "out"
+      ]
+     }
+    ]
+   },
+   {
+    "kind": "flow",
+    "title": "One attention head, end to end",
+    "direction": "down",
+    "nodes": [
+     {
+      "id": "tok",
+      "label": "token vectors",
+      "sub": "whole sequence",
+      "tone": "neutral"
+     },
+     {
+      "id": "qn",
+      "label": "query",
+      "sub": "from \"it\"",
+      "tone": "primary",
+      "detail": "The vector of the token being updated, multiplied by the learned matrix W_Q. It encodes what this token is looking for."
+     },
+     {
+      "id": "kn",
+      "label": "keys",
+      "sub": "from every token",
+      "tone": "secondary",
+      "detail": "Each token's vector multiplied by the learned matrix W_K. A key encodes what the token can be matched on."
+     },
+     {
+      "id": "vn",
+      "label": "values",
+      "sub": "from every token",
+      "tone": "secondary",
+      "detail": "Each token's vector multiplied by the learned matrix W_V. A value is the content the token passes on if it is attended to."
+     },
+     {
+      "id": "sc",
+      "label": "scores",
+      "sub": "dot products",
+      "tone": "neutral"
+     },
+     {
+      "id": "wn",
+      "label": "attention weights",
+      "sub": "sum to 1",
+      "tone": "accent"
+     },
+     {
+      "id": "sum",
+      "label": "weighted sum",
+      "tone": "neutral"
+     },
+     {
+      "id": "outn",
+      "label": "updated vector",
+      "sub": "for \"it\"",
+      "tone": "primary"
+     }
+    ],
+    "edges": [
+     {
+      "from": "tok",
+      "to": "qn",
+      "label": "× W_Q"
+     },
+     {
+      "from": "tok",
+      "to": "kn",
+      "label": "× W_K"
+     },
+     {
+      "from": "tok",
+      "to": "vn",
+      "label": "× W_V"
+     },
+     {
+      "from": "qn",
+      "to": "sc"
+     },
+     {
+      "from": "kn",
+      "to": "sc"
+     },
+     {
+      "from": "sc",
+      "to": "wn",
+      "label": "softmax"
+     },
+     {
+      "from": "wn",
+      "to": "sum",
+      "tone": "accent"
+     },
+     {
+      "from": "vn",
+      "to": "sum"
+     },
+     {
+      "from": "sum",
+      "to": "outn"
+     }
+    ],
+    "beats": [
+     {
+      "caption": "Three learned matrices turn token vectors into queries, keys and values, and everything after that is fixed arithmetic.",
+      "explanation": "Every token runs this as the query at the same time. A transformer runs several such heads side by side, each with its own matrices, and stacks many layers of them.",
+      "basis": "background",
+      "referenceIds": []
+     }
+    ]
+   }
+  ],
+  "takeaways": [
+   "Attention rewrites each token's vector as a weighted mix of value vectors from the whole sequence.",
+   "The weights are a softmax over query-key dot products, so what counts as relevant is learned rather than hard-coded.",
+   "Multiple heads and stacked layers repeat this step, each able to capture a different kind of relationship."
+  ]
+ }
+}

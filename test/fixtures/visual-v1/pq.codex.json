@@ -1,0 +1,427 @@
+{
+ "question": "How does product quantization compress a vector and estimate distances?",
+ "references": [
+  {
+   "id": "pdf-1",
+   "label": "Product Quantization for Nearest Neighbor Search · p. 4"
+  },
+  {
+   "id": "pdf-2",
+   "label": "Product Quantization for Nearest Neighbor Search · p. 2"
+  },
+  {
+   "id": "pdf-3",
+   "label": "Product Quantization for Nearest Neighbor Search · p. 1"
+  },
+  {
+   "id": "pdf-4",
+   "label": "Product Quantization for Nearest Neighbor Search · p. 6"
+  }
+ ],
+ "definition": {
+  "version": 1,
+  "title": "Product quantization: compress in parts, compare by lookup",
+  "summary": "Product quantization splits a vector into parts and stores a centroid index for each part. Distances are estimated by summing distances to those centroids. The supplied excerpts support this architecture and its accuracy tradeoff; the worked numbers and explicit distance formula below are background illustrations, not reproduced paper examples.",
+  "steps": [
+   {
+    "title": "1. Split the vector into smaller spaces",
+    "caption": "Each part gets its own small codebook of representative vectors, called centroids.",
+    "explanation": "The paper decomposes the vector space into a Cartesian product of lower-dimensional subspaces and quantizes each separately. Instead of learning an enormous collection of complete vectors, it learns smaller collections of vector parts. Combining one centroid from each collection defines a reconstructed full vector. The diagram shows two parts as a simplified model; its dimensions and labels are illustrative.",
+    "basis": "source",
+    "referenceIds": [
+     "pdf-3",
+     "pdf-2"
+    ],
+    "scene": {
+     "height": 350,
+     "elements": [
+      {
+       "id": "whole",
+       "color": "indigo",
+       "detail": "A vector is an ordered list of numerical coordinates. Product quantization represents groups of those coordinates separately.",
+       "type": "node",
+       "x": 50,
+       "y": 20,
+       "width": 260,
+       "height": 60,
+       "label": "One database vector",
+       "shape": "box"
+      },
+      {
+       "id": "splitA",
+       "color": "indigo",
+       "type": "arrow",
+       "x1": 115,
+       "y1": 80,
+       "x2": 90,
+       "y2": 130
+      },
+      {
+       "id": "splitB",
+       "color": "indigo",
+       "type": "arrow",
+       "x1": 245,
+       "y1": 80,
+       "x2": 270,
+       "y2": 130
+      },
+      {
+       "id": "partA",
+       "color": "teal",
+       "detail": "One group of coordinates, treated as a smaller vector.",
+       "type": "node",
+       "x": 20,
+       "y": 135,
+       "width": 140,
+       "height": 60,
+       "label": "Part A",
+       "shape": "box"
+      },
+      {
+       "id": "partB",
+       "color": "amber",
+       "detail": "Another group of coordinates, with its own independently learned codebook.",
+       "type": "node",
+       "x": 200,
+       "y": 135,
+       "width": 140,
+       "height": 60,
+       "label": "Part B",
+       "shape": "box"
+      },
+      {
+       "id": "assignA",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 90,
+       "y1": 195,
+       "x2": 90,
+       "y2": 245
+      },
+      {
+       "id": "assignB",
+       "color": "amber",
+       "type": "arrow",
+       "x1": 270,
+       "y1": 195,
+       "x2": 270,
+       "y2": 245
+      },
+      {
+       "id": "bookA",
+       "color": "teal",
+       "detail": "A small collection of representative points for Part A. Choose the nearest centroid when encoding.",
+       "type": "node",
+       "x": 20,
+       "y": 250,
+       "width": 140,
+       "height": 75,
+       "label": "Codebook A",
+       "shape": "box"
+      },
+      {
+       "id": "bookB",
+       "color": "amber",
+       "detail": "A separate collection for Part B. Possible complete reconstructions are combinations of entries from both codebooks.",
+       "type": "node",
+       "x": 200,
+       "y": 250,
+       "width": 140,
+       "height": 75,
+       "label": "Codebook B",
+       "shape": "box"
+      }
+     ]
+    }
+   },
+   {
+    "title": "2. Store indices, share the codebooks",
+    "caption": "Eight parts with 256 centroids each need eight 8-bit indices: a 64-bit code per vector.",
+    "explanation": "The paper identifies m = 8 parts and k* = 256 centroids per part as a reasonable choice. Selecting one of 256 entries takes 8 bits, so the stored vector code takes 8 × 8 = 64 bits, or 8 bytes. The learned codebooks are shared across database vectors and require additional storage. There are 256^8 = 2^64 possible centroid combinations, but only 8 × 256 subspace centroids to store. This avoids explicitly storing 2^64 full-dimensional centroids. The bit arithmetic explains the supplied configuration; the diagram condenses eight indices into one code.",
+    "basis": "source",
+    "referenceIds": [
+     "pdf-1",
+     "pdf-2",
+     "pdf-3"
+    ],
+    "scene": {
+     "height": 340,
+     "elements": [
+      {
+       "id": "parts",
+       "color": "indigo",
+       "detail": "Each part is assigned independently to the nearest centroid in its own codebook.",
+       "type": "node",
+       "x": 50,
+       "y": 20,
+       "width": 260,
+       "height": 60,
+       "label": "8 vector parts",
+       "shape": "box"
+      },
+      {
+       "id": "encode",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 180,
+       "y1": 80,
+       "x2": 180,
+       "y2": 125
+      },
+      {
+       "id": "indices",
+       "color": "teal",
+       "detail": "Each index identifies one of 256 centroids. The code stores these indices, rather than the original coordinates.",
+       "type": "node",
+       "x": 50,
+       "y": 130,
+       "width": 260,
+       "height": 75,
+       "label": "8 indices × 8 bits",
+       "shape": "box"
+      },
+      {
+       "id": "compact",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 180,
+       "y1": 205,
+       "x2": 180,
+       "y2": 250
+      },
+      {
+       "id": "code",
+       "color": "indigo",
+       "detail": "This is the per-vector product-quantization code size. Shared codebooks and any search index consume additional memory.",
+       "type": "node",
+       "x": 70,
+       "y": 255,
+       "width": 220,
+       "height": 60,
+       "label": "64 bits = 8 bytes",
+       "shape": "box"
+      }
+     ]
+    }
+   },
+   {
+    "title": "3. Estimate distance by adding lookups",
+    "caption": "Keep the query exact. For each part, look up its squared distance to the stored centroid, then add.",
+    "explanation": "Background formula and invented worked example: let the query be x = (1, 3, 5, 8). Suppose a database vector y = (1, 2, 7, 8) was encoded using centroids (0, 2) and (6, 8). Its reconstruction is q(y) = (0, 2, 6, 8). The squared-distance estimate is ||x − q(y)||² = [(1 − 0)² + (3 − 2)²] + [(5 − 6)² + (8 − 8)²] = 2 + 1 = 3. For each query, precompute a table of squared distances from each query part to every centroid in its codebook. Each database code then selects one entry per table; adding those entries scores the vector without reconstructing it explicitly. This sum estimates squared Euclidean distance; take its square root if Euclidean distance itself is needed.",
+    "basis": "illustration",
+    "referenceIds": [],
+    "scene": {
+     "height": 410,
+     "elements": [
+      {
+       "id": "queryA",
+       "color": "teal",
+       "detail": "The first part of the query remains unquantized.",
+       "type": "node",
+       "x": 20,
+       "y": 20,
+       "width": 140,
+       "height": 65,
+       "label": "Query (1, 3)",
+       "shape": "box"
+      },
+      {
+       "id": "queryB",
+       "color": "amber",
+       "detail": "The second part of the same query also remains unquantized.",
+       "type": "node",
+       "x": 200,
+       "y": 20,
+       "width": 140,
+       "height": 65,
+       "label": "Query (5, 8)",
+       "shape": "box"
+      },
+      {
+       "id": "lookupA",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 90,
+       "y1": 85,
+       "x2": 90,
+       "y2": 125
+      },
+      {
+       "id": "lookupB",
+       "color": "amber",
+       "type": "arrow",
+       "x1": 270,
+       "y1": 85,
+       "x2": 270,
+       "y2": 125
+      },
+      {
+       "id": "centroidA",
+       "color": "teal",
+       "detail": "The database code selects this centroid's table entry: (1 − 0)² + (3 − 2)² = 2.",
+       "type": "node",
+       "x": 20,
+       "y": 130,
+       "width": 140,
+       "height": 80,
+       "label": "To (0, 2): 2",
+       "shape": "box"
+      },
+      {
+       "id": "centroidB",
+       "color": "amber",
+       "detail": "The other stored index selects this entry: (5 − 6)² + (8 − 8)² = 1.",
+       "type": "node",
+       "x": 200,
+       "y": 130,
+       "width": 140,
+       "height": 80,
+       "label": "To (6, 8): 1",
+       "shape": "box"
+      },
+      {
+       "id": "sumA",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 90,
+       "y1": 210,
+       "x2": 145,
+       "y2": 285
+      },
+      {
+       "id": "sumB",
+       "color": "amber",
+       "type": "arrow",
+       "x1": 270,
+       "y1": 210,
+       "x2": 215,
+       "y2": 285
+      },
+      {
+       "id": "estimate",
+       "color": "indigo",
+       "detail": "The true squared distance to y is 5. The estimate is 3 because it measures distance to q(y), the centroid reconstruction, rather than to y.",
+       "type": "node",
+       "x": 65,
+       "y": 290,
+       "width": 230,
+       "height": 80,
+       "label": "Estimate: 2 + 1 = 3",
+       "shape": "box"
+      }
+     ]
+    }
+   },
+   {
+    "title": "4. Compression moves the target",
+    "caption": "The query stays fixed, but the stored vector is replaced by a nearby reconstruction.",
+    "explanation": "This schematic shows the geometry of asymmetric distance computation: compare the original query x with the reconstruction q(y), rather than with the original database vector y. The paper states that leaving the query unquantized reduces quantization noise and improves precision compared with quantizing both sides. Approximate scores can still change the ordering of close neighbors. The supplied excerpt reports that these distance estimators underestimate distances on average in its analysis and introduces an expected-squared-distance estimator to address bias. An average tendency does not mean every individual estimate is too small. The sketch is qualitative and is not plotted from experimental data.",
+    "basis": "source",
+    "referenceIds": [
+     "pdf-2",
+     "pdf-3",
+     "pdf-4"
+    ],
+    "scene": {
+     "height": 350,
+     "elements": [
+      {
+       "id": "trueLine",
+       "color": "slate",
+       "detail": "The true distance connects the query x to the original database vector y.",
+       "type": "path",
+       "points": [
+        {
+         "x": 75,
+         "y": 255
+        },
+        {
+         "x": 280,
+         "y": 65
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "approxLine",
+       "color": "indigo",
+       "detail": "The approximate distance connects x to q(y). The query itself has not moved.",
+       "type": "path",
+       "points": [
+        {
+         "x": 75,
+         "y": 255
+        },
+        {
+         "x": 245,
+         "y": 155
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "errorLine",
+       "color": "rose",
+       "detail": "Quantization replaces y with q(y). This displacement is the reconstruction error.",
+       "type": "arrow",
+       "x1": 280,
+       "y1": 90,
+       "x2": 255,
+       "y2": 130
+      },
+      {
+       "id": "query",
+       "color": "indigo",
+       "detail": "The original, unquantized query.",
+       "type": "node",
+       "x": 35,
+       "y": 230,
+       "width": 80,
+       "height": 55,
+       "label": "x",
+       "shape": "ellipse"
+      },
+      {
+       "id": "original",
+       "color": "slate",
+       "detail": "The original database vector. Its full coordinates are not needed for the approximate scan.",
+       "type": "node",
+       "x": 240,
+       "y": 35,
+       "width": 80,
+       "height": 55,
+       "label": "y",
+       "shape": "ellipse"
+      },
+      {
+       "id": "reconstruction",
+       "color": "teal",
+       "detail": "The reconstructed vector obtained by concatenating the centroids identified by the stored code.",
+       "type": "node",
+       "x": 205,
+       "y": 130,
+       "width": 100,
+       "height": 55,
+       "label": "q(y)",
+       "shape": "ellipse"
+      },
+      {
+       "id": "errorLabel",
+       "color": "rose",
+       "type": "text",
+       "x": 25,
+       "y": 65,
+       "text": "Quantization error",
+       "size": 18
+      }
+     ]
+    }
+   }
+  ],
+  "takeaways": [
+   "Compression stores one centroid index per vector part; the codebooks are shared.",
+   "For each query, build small distance tables. Score each database code with lookups and a sum.",
+   "The score measures distance to a reconstruction, so compression can change which neighbors appear closest."
+  ]
+ }
+}

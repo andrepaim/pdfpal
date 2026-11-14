@@ -1,0 +1,517 @@
+{
+ "question": "Explain the selected passage visually.",
+ "references": [
+  {
+   "id": "pdf-1",
+   "label": "Neural Discrete Representation Learning (VQ-VAE) · p. 3"
+  },
+  {
+   "id": "pdf-2",
+   "label": "Neural Discrete Representation Learning (VQ-VAE) · p. 2"
+  },
+  {
+   "id": "pdf-3",
+   "label": "Neural Discrete Representation Learning (VQ-VAE) · p. 4"
+  },
+  {
+   "id": "pdf-4",
+   "label": "Neural Discrete Representation Learning (VQ-VAE) · p. 1"
+  },
+  {
+   "id": "pdf-5",
+   "label": "Neural Discrete Representation Learning (VQ-VAE) · p. 7"
+  },
+  {
+   "id": "pdf-6",
+   "label": "Neural Discrete Representation Learning (VQ-VAE) · p. 8"
+  },
+  {
+   "id": "pdf-7",
+   "label": "Neural Discrete Representation Learning (VQ-VAE) · p. 5"
+  },
+  {
+   "id": "pdf-8",
+   "label": "Neural Discrete Representation Learning (VQ-VAE) · p. 8"
+  },
+  {
+   "id": "pdf-9",
+   "label": "Neural Discrete Representation Learning (VQ-VAE) · p. 1"
+  },
+  {
+   "id": "selection",
+   "label": "Neural Discrete Representation Learning (VQ-VAE) · selected passage"
+  }
+ ],
+ "definition": {
+  "version": 2,
+  "title": "VQ-VAE forward pass: snapping the encoder output to a codebook vector",
+  "summary": "The encoder's continuous output is replaced by the nearest of K learned embedding vectors, and that vector, not the raw output, is what the decoder receives.",
+  "scenes": [
+   {
+    "title": "The forward pipeline",
+    "kind": "flow",
+    "direction": "down",
+    "nodes": [
+     {
+      "id": "x",
+      "label": "Input x",
+      "shape": "pill",
+      "tone": "neutral",
+      "appear": 1
+     },
+     {
+      "id": "enc",
+      "label": "Encoder",
+      "shape": "box",
+      "tone": "neutral",
+      "appear": 1
+     },
+     {
+      "id": "ze",
+      "label": "ze(x)",
+      "sub": "continuous vector",
+      "shape": "box",
+      "tone": "primary",
+      "appear": 1,
+      "detail": "The encoder output: a vector of D real numbers. It lives in the same D-dimensional space as the embedding vectors, which is what makes a distance comparison possible."
+     },
+     {
+      "id": "codebook",
+      "label": "Embedding space e",
+      "sub": "K vectors, each of size D",
+      "shape": "box",
+      "tone": "secondary",
+      "appear": 2,
+      "detail": "A learned table e with K rows, one embedding vector per row. It is shared: every latent is looked up in the same table. Its entries are model parameters alongside the encoder and decoder weights."
+     },
+     {
+      "id": "lookup",
+      "label": "Nearest-neighbour look-up",
+      "sub": "z = k",
+      "shape": "box",
+      "tone": "accent",
+      "appear": 2,
+      "detail": "Finds the index k whose embedding has the smallest Euclidean distance to ze(x). That index is the discrete latent variable z (equation 1 in the paper)."
+     },
+     {
+      "id": "ek",
+      "label": "Embedding ek",
+      "sub": "zq(x)",
+      "shape": "box",
+      "tone": "accent",
+      "appear": 3,
+      "detail": "The row of the table selected by the index k. The paper calls it zq(x), the quantised version of ze(x) (equation 2)."
+     },
+     {
+      "id": "dec",
+      "label": "Decoder",
+      "shape": "box",
+      "tone": "neutral",
+      "appear": 3
+     },
+     {
+      "id": "out",
+      "label": "Reconstruction",
+      "shape": "pill",
+      "tone": "neutral",
+      "appear": 3
+     }
+    ],
+    "edges": [
+     {
+      "from": "x",
+      "to": "enc",
+      "appear": 1
+     },
+     {
+      "from": "enc",
+      "to": "ze",
+      "appear": 1
+     },
+     {
+      "from": "ze",
+      "to": "lookup",
+      "tone": "primary",
+      "appear": 2
+     },
+     {
+      "from": "codebook",
+      "to": "lookup",
+      "label": "K candidates",
+      "tone": "secondary",
+      "appear": 2
+     },
+     {
+      "from": "lookup",
+      "to": "ek",
+      "label": "index k",
+      "tone": "accent",
+      "appear": 3
+     },
+     {
+      "from": "ek",
+      "to": "dec",
+      "tone": "accent",
+      "appear": 3
+     },
+     {
+      "from": "dec",
+      "to": "out",
+      "appear": 3
+     }
+    ],
+    "beats": [
+     {
+      "caption": "The encoder turns the input x into a continuous vector ze(x), exactly as in an ordinary autoencoder.",
+      "explanation": "Up to this point nothing is discrete. ze(x) is a vector of real numbers produced by the encoder network.",
+      "basis": "source",
+      "referenceIds": [
+       "selection",
+       "pdf-1"
+      ]
+     },
+     {
+      "caption": "ze(x) is compared with a shared table of K embedding vectors; the index k of the nearest one is the discrete latent z.",
+      "explanation": "The embedding space e holds K vectors, each of dimension D. The nearest-neighbour look-up picks the one closest to ze(x), and its index is the discrete code.",
+      "basis": "source",
+      "referenceIds": [
+       "selection",
+       "pdf-1"
+      ],
+      "focus": [
+       "ze",
+       "codebook",
+       "lookup"
+      ]
+     },
+     {
+      "caption": "The decoder receives the chosen embedding ek, not ze(x) itself, and reconstructs the input from it.",
+      "explanation": "The paper writes this decoder input as zq(x) = ek. Whatever detail of ze(x) is not captured by the chosen embedding is discarded at this step.",
+      "basis": "source",
+      "referenceIds": [
+       "selection",
+       "pdf-1",
+       "pdf-3"
+      ],
+      "focus": [
+       "ek",
+       "dec",
+       "out"
+      ]
+     }
+    ]
+   },
+   {
+    "title": "Nearest neighbour in embedding space",
+    "kind": "plot",
+    "x": {
+     "min": 0,
+     "max": 10
+    },
+    "y": {
+     "min": 0,
+     "max": 8
+    },
+    "axes": false,
+    "equal": true,
+    "marks": [
+     {
+      "id": "e1",
+      "type": "point",
+      "xy": [
+       2,
+       6
+      ],
+      "label": "e1",
+      "tone": "secondary",
+      "appear": 1
+     },
+     {
+      "id": "e2",
+      "type": "point",
+      "xy": [
+       7,
+       6.5
+      ],
+      "label": "e2",
+      "tone": "secondary",
+      "appear": 1
+     },
+     {
+      "id": "e3",
+      "type": "point",
+      "xy": [
+       2.5,
+       1.5
+      ],
+      "label": "e3",
+      "tone": "secondary",
+      "appear": 1
+     },
+     {
+      "id": "e4",
+      "type": "point",
+      "xy": [
+       8,
+       2
+      ],
+      "label": "e4",
+      "tone": "secondary",
+      "appear": 1
+     },
+     {
+      "id": "zep",
+      "type": "point",
+      "xy": [
+       6,
+       5
+      ],
+      "label": "ze(x)",
+      "tone": "primary",
+      "appear": 1
+     },
+     {
+      "id": "d1",
+      "type": "line",
+      "from": [
+       6,
+       5
+      ],
+      "to": [
+       2,
+       6
+      ],
+      "label": "4.1",
+      "labelAt": "mid",
+      "dashed": true,
+      "tone": "neutral",
+      "appear": 2
+     },
+     {
+      "id": "d2",
+      "type": "line",
+      "from": [
+       6,
+       5
+      ],
+      "to": [
+       7,
+       6.5
+      ],
+      "label": "1.8",
+      "labelAt": "mid",
+      "dashed": true,
+      "tone": "neutral",
+      "appear": 2
+     },
+     {
+      "id": "d3",
+      "type": "line",
+      "from": [
+       6,
+       5
+      ],
+      "to": [
+       2.5,
+       1.5
+      ],
+      "label": "4.9",
+      "labelAt": "mid",
+      "dashed": true,
+      "tone": "neutral",
+      "appear": 2
+     },
+     {
+      "id": "d4",
+      "type": "line",
+      "from": [
+       6,
+       5
+      ],
+      "to": [
+       8,
+       2
+      ],
+      "label": "3.6",
+      "labelAt": "mid",
+      "dashed": true,
+      "tone": "neutral",
+      "appear": 2
+     },
+     {
+      "id": "pick",
+      "type": "circle",
+      "center": [
+       7,
+       6.5
+      ],
+      "r": 0.6,
+      "label": "zq(x) = e2",
+      "tone": "accent",
+      "appear": 3
+     }
+    ],
+    "beats": [
+     {
+      "caption": "Picture a toy embedding space with D = 2 and K = 4: four embedding vectors and one encoder output ze(x) share the same space.",
+      "explanation": "This is a simplified model with invented coordinates. Real models use many more embeddings and more dimensions, but the geometry is the same.",
+      "basis": "illustration",
+      "referenceIds": []
+     },
+     {
+      "caption": "Measure the Euclidean distance from ze(x) to every embedding; in this example e2 is the closest at 1.8.",
+      "explanation": "This is the comparison inside the nearest-neighbour look-up: one distance per embedding, K distances in total. The values shown are invented for the example.",
+      "basis": "illustration",
+      "referenceIds": []
+     },
+     {
+      "caption": "ze(x) is replaced by e2, so the discrete latent is z = 2 and the decoder input zq(x) is exactly e2.",
+      "explanation": "Any encoder output that lands closer to e2 than to the other embeddings yields the same code. The continuous space is thereby carved into K regions, one per embedding.",
+      "basis": "illustration",
+      "referenceIds": [],
+      "focus": [
+       "zep",
+       "d2",
+       "e2",
+       "pick"
+      ]
+     }
+    ]
+   },
+   {
+    "title": "The 1-of-K non-linearity",
+    "kind": "cells",
+    "rows": [
+     {
+      "id": "codebook",
+      "label": "embeddings ej",
+      "tone": "secondary",
+      "appear": 1,
+      "cells": [
+       {
+        "text": "e1"
+       },
+       {
+        "text": "e2"
+       },
+       {
+        "text": "e3"
+       },
+       {
+        "text": "e4"
+       }
+      ]
+     },
+     {
+      "id": "dist",
+      "label": "distance to ze(x)",
+      "tone": "neutral",
+      "appear": 1,
+      "cells": [
+       {
+        "text": "4.1"
+       },
+       {
+        "text": "1.8",
+        "tone": "accent"
+       },
+       {
+        "text": "4.9"
+       },
+       {
+        "text": "3.6"
+       }
+      ]
+     },
+     {
+      "id": "onehot",
+      "label": "q(z = j | x)",
+      "tone": "neutral",
+      "appear": 2,
+      "cells": [
+       {
+        "text": "0"
+       },
+       {
+        "text": "1",
+        "tone": "accent"
+       },
+       {
+        "text": "0"
+       },
+       {
+        "text": "0"
+       }
+      ]
+     },
+     {
+      "id": "out",
+      "label": "decoder input",
+      "tone": "accent",
+      "appear": 3,
+      "offset": 1,
+      "cells": [
+       {
+        "text": "e2",
+        "tone": "accent"
+       }
+      ]
+     }
+    ],
+    "links": [
+     {
+      "from": [
+       "dist",
+       1
+      ],
+      "to": [
+       "onehot",
+       1
+      ],
+      "label": "argmin",
+      "tone": "accent",
+      "appear": 2
+     },
+     {
+      "from": [
+       "onehot",
+       1
+      ],
+      "to": [
+       "out",
+       0
+      ],
+      "label": "look-up",
+      "tone": "accent",
+      "appear": 3
+     }
+    ],
+    "beats": [
+     {
+      "caption": "The same example as a table: every one of the K = 4 embeddings gets a distance to ze(x).",
+      "explanation": "Each column is one slot of the embedding table. The distances are the ones drawn in the previous figure.",
+      "basis": "illustration",
+      "referenceIds": []
+     },
+     {
+      "caption": "Equation 1 makes the posterior one-hot: probability 1 at the index with the smallest distance, 0 everywhere else.",
+      "explanation": "In the paper, q(z = k | x) is 1 for the k that minimises the distance between ze(x) and ej, and 0 otherwise. The choice is deterministic, with no sampling involved; the numbers here continue the invented example.",
+      "basis": "illustration",
+      "referenceIds": []
+     },
+     {
+      "caption": "Equation 2 reads out that one row of the table, so the non-linearity maps any ze(x) to one of only K possible vectors.",
+      "explanation": "This is what the passage means by a regular autoencoder with a particular non-linearity: a layer between encoder and decoder whose output is always one of K fixed vectors. Unlike ReLU-style non-linearities, it is a hard selection.",
+      "basis": "illustration",
+      "referenceIds": []
+     }
+    ]
+   }
+  ],
+  "takeaways": [
+   "The VQ-VAE forward pass is an autoencoder with one extra step: replace the encoder output with the nearest of K learned embedding vectors.",
+   "The discrete latent z is only the index of that vector; the decoder sees the vector ek itself.",
+   "Because the selection is an argmin it has no real gradient, which the paper handles separately with a straight-through estimator."
+  ]
+ }
+}

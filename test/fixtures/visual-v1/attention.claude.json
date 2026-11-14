@@ -1,0 +1,780 @@
+{
+ "question": "how attention works in a transformer",
+ "references": [],
+ "definition": {
+  "version": 1,
+  "title": "How attention works in a transformer",
+  "summary": "Attention lets every token in a sequence update its own vector by pulling in information from the other tokens, weighted by relevance. Each token issues a query, every token offers a key, the match scores become weights, and the weights blend the tokens' values. No sources were supplied, so this is a general-knowledge explanation; the example sentence and all numbers are invented for illustration.",
+  "steps": [
+   {
+    "title": "The problem: meaning depends on context",
+    "caption": "On its own, the token 'bank' is ambiguous. The nearby token 'river' holds the clue. Attention is the mechanism that lets 'bank' fetch that clue.",
+    "explanation": "A transformer first turns each token (a word or word piece) into a vector, a list of numbers. That starting vector is the same wherever the token appears, so 'bank' begins with one representation whether the sentence is about money or about rivers.\n\nTo be useful, the vector for 'bank' has to absorb information from the rest of the sentence. Attention does exactly this: it lets each token look at every token in the sequence, decide which ones matter for it, and mix their information into its own vector.\n\nThe next four scenes follow a single token, 'bank', through one attention step in the made-up sentence 'the river bank flooded'.",
+    "basis": "background",
+    "referenceIds": [],
+    "scene": {
+     "height": 340,
+     "elements": [
+      {
+       "id": "s1the",
+       "color": "slate",
+       "detail": "A function word. It carries little information that helps to pin down which sense of 'bank' is meant.",
+       "type": "node",
+       "x": 20,
+       "y": 30,
+       "width": 110,
+       "height": 44,
+       "label": "the",
+       "shape": "box"
+      },
+      {
+       "id": "s1river",
+       "color": "slate",
+       "detail": "The decisive clue. A model that can connect 'bank' to 'river' can settle on the river's-edge sense.",
+       "type": "node",
+       "x": 20,
+       "y": 110,
+       "width": 110,
+       "height": 44,
+       "label": "river",
+       "shape": "box"
+      },
+      {
+       "id": "s1bank",
+       "color": "indigo",
+       "detail": "The token we follow through the rest of the explanation. Indigo marks the token that is asking for context.",
+       "type": "node",
+       "x": 20,
+       "y": 190,
+       "width": 110,
+       "height": 44,
+       "label": "bank",
+       "shape": "box"
+      },
+      {
+       "id": "s1flooded",
+       "color": "slate",
+       "detail": "Also informative: flooding is something that happens to river banks more than to financial ones.",
+       "type": "node",
+       "x": 20,
+       "y": 270,
+       "width": 110,
+       "height": 44,
+       "label": "flooded",
+       "shape": "box"
+      },
+      {
+       "id": "s1clue",
+       "color": "rose",
+       "detail": "Rose marks attention throughout: information flowing from one token to another according to relevance.",
+       "type": "arrow",
+       "x1": 75,
+       "y1": 154,
+       "x2": 75,
+       "y2": 190
+      },
+      {
+       "id": "s1money",
+       "color": "slate",
+       "detail": "One possible sense. Nothing in the isolated vector for 'bank' rules it out.",
+       "type": "node",
+       "x": 206,
+       "y": 110,
+       "width": 148,
+       "height": 64,
+       "label": "Money bank?",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s1edge",
+       "color": "slate",
+       "detail": "The sense intended in this sentence. The model can only reach it by using the surrounding tokens.",
+       "type": "node",
+       "x": 206,
+       "y": 236,
+       "width": 148,
+       "height": 64,
+       "label": "River's edge?",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s1a1",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 130,
+       "y1": 204,
+       "x2": 206,
+       "y2": 148
+      },
+      {
+       "id": "s1a2",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 130,
+       "y1": 220,
+       "x2": 206,
+       "y2": 262
+      }
+     ]
+    }
+   },
+   {
+    "title": "Each token plays three roles",
+    "caption": "Every token's vector is transformed into three new vectors: a query, a key and a value. Each comes from multiplying by a different learned matrix.",
+    "explanation": "Attention gives every token three separate vectors, each produced by multiplying the token's vector by a learned weight matrix (W_Q, W_K, W_V).\n\nThe query is used when the token is the one gathering context: it encodes what kind of information this token is looking for.\n\nThe key is used when other tokens are deciding whether to attend to this one: it is what queries are compared against.\n\nThe value is the content the token actually contributes once it has been selected.\n\nSeparating key from value matters. What makes a token easy to find (key) need not be the same as what it should hand over (value).\n\nThe phrases 'what I need' and 'how I'm found' are an interpretive shorthand. Literally, these are just vectors, and the matrices that produce them are learned during training rather than designed by hand.",
+    "basis": "background",
+    "referenceIds": [],
+    "scene": {
+     "height": 360,
+     "elements": [
+      {
+       "id": "s2tok",
+       "color": "slate",
+       "detail": "The token's current vector: its embedding in the first layer, or the output of the previous layer later on. Every token in the sequence goes through the same three transformations.",
+       "type": "node",
+       "x": 10,
+       "y": 138,
+       "width": 110,
+       "height": 84,
+       "label": "Each token's vector",
+       "shape": "box"
+      },
+      {
+       "id": "s2q",
+       "color": "indigo",
+       "detail": "Query vector. Used when this token gathers context. It is compared with the keys of all tokens.",
+       "type": "node",
+       "x": 220,
+       "y": 30,
+       "width": 130,
+       "height": 70,
+       "label": "Query: what I need",
+       "shape": "box"
+      },
+      {
+       "id": "s2k",
+       "color": "teal",
+       "detail": "Key vector. Used when other tokens' queries are checking how relevant this token is to them.",
+       "type": "node",
+       "x": 220,
+       "y": 145,
+       "width": 130,
+       "height": 70,
+       "label": "Key: how I'm found",
+       "shape": "box"
+      },
+      {
+       "id": "s2v",
+       "color": "amber",
+       "detail": "Value vector. The information this token contributes to whichever tokens attend to it.",
+       "type": "node",
+       "x": 220,
+       "y": 260,
+       "width": 130,
+       "height": 70,
+       "label": "Value: what I hand over",
+       "shape": "box"
+      },
+      {
+       "id": "s2aq",
+       "color": "slate",
+       "detail": "W_Q is a learned matrix. Multiplying the token vector by it gives the query.",
+       "type": "arrow",
+       "x1": 120,
+       "y1": 165,
+       "x2": 220,
+       "y2": 65,
+       "label": "W_Q"
+      },
+      {
+       "id": "s2ak",
+       "color": "slate",
+       "detail": "W_K is a learned matrix. Multiplying the token vector by it gives the key.",
+       "type": "arrow",
+       "x1": 120,
+       "y1": 180,
+       "x2": 220,
+       "y2": 180,
+       "label": "W_K"
+      },
+      {
+       "id": "s2av",
+       "color": "slate",
+       "detail": "W_V is a learned matrix. Multiplying the token vector by it gives the value.",
+       "type": "arrow",
+       "x1": 120,
+       "y1": 195,
+       "x2": 220,
+       "y2": 295,
+       "label": "W_V"
+      }
+     ]
+    }
+   },
+   {
+    "title": "The query is scored against every key",
+    "caption": "The query from 'bank' is compared with the key of every token, itself included. Each comparison is a dot product that yields one relevance score. Numbers are invented.",
+    "explanation": "To decide where 'bank' should look, the model takes the query vector of 'bank' and computes a dot product with the key vector of each token in the sequence.\n\nA dot product multiplies the two vectors component by component and adds up the results. It is large when the vectors point in a similar direction, near zero when they are unrelated, and negative when they oppose. So a high score means 'this key matches what the query is looking for'.\n\nIn the standard formulation, each score is then divided by the square root of the key dimension (√d_k). This scaling keeps scores from growing too large as vectors get longer, which would otherwise make the next step too sharp and harm training. Treat the scores shown here as already scaled.\n\nIn this invented example, 'river' scores highest (3), 'flooded' next (2), 'bank' itself lower (1), and 'the' lowest (0). A token does score against its own key; nothing forces it to attend mostly to itself.",
+    "basis": "illustration",
+    "referenceIds": [],
+    "scene": {
+     "height": 380,
+     "elements": [
+      {
+       "id": "s3q",
+       "color": "indigo",
+       "detail": "The query vector produced from 'bank'. The same query is compared with all four keys.",
+       "type": "node",
+       "x": 10,
+       "y": 160,
+       "width": 100,
+       "height": 64,
+       "label": "bank's Query",
+       "shape": "box"
+      },
+      {
+       "id": "s3k1",
+       "color": "teal",
+       "detail": "Key of 'the'. Invented score 0: no particular match with what 'bank' is looking for.",
+       "type": "node",
+       "x": 230,
+       "y": 30,
+       "width": 120,
+       "height": 50,
+       "label": "Key: the",
+       "shape": "box"
+      },
+      {
+       "id": "s3k2",
+       "color": "teal",
+       "detail": "Key of 'river'. Invented score 3: the strongest match.",
+       "type": "node",
+       "x": 230,
+       "y": 120,
+       "width": 120,
+       "height": 50,
+       "label": "Key: river",
+       "shape": "box"
+      },
+      {
+       "id": "s3k3",
+       "color": "teal",
+       "detail": "Key of 'bank' itself. A token is compared with its own key too. Invented score 1.",
+       "type": "node",
+       "x": 230,
+       "y": 210,
+       "width": 120,
+       "height": 50,
+       "label": "Key: bank",
+       "shape": "box"
+      },
+      {
+       "id": "s3k4",
+       "color": "teal",
+       "detail": "Key of 'flooded'. Invented score 2: a useful but weaker match.",
+       "type": "node",
+       "x": 230,
+       "y": 300,
+       "width": 120,
+       "height": 50,
+       "label": "Key: flooded",
+       "shape": "box"
+      },
+      {
+       "id": "s3a1",
+       "color": "rose",
+       "detail": "Dot product of bank's query with the key of 'the', after scaling by √d_k. Illustrative value.",
+       "type": "arrow",
+       "x1": 110,
+       "y1": 180,
+       "x2": 230,
+       "y2": 55,
+       "label": "score 0"
+      },
+      {
+       "id": "s3a2",
+       "color": "rose",
+       "detail": "Dot product of bank's query with the key of 'river', after scaling by √d_k. Illustrative value.",
+       "type": "arrow",
+       "x1": 110,
+       "y1": 188,
+       "x2": 230,
+       "y2": 145,
+       "label": "score 3"
+      },
+      {
+       "id": "s3a3",
+       "color": "rose",
+       "detail": "Dot product of bank's query with its own key, after scaling by √d_k. Illustrative value.",
+       "type": "arrow",
+       "x1": 110,
+       "y1": 196,
+       "x2": 230,
+       "y2": 235,
+       "label": "score 1"
+      },
+      {
+       "id": "s3a4",
+       "color": "rose",
+       "detail": "Dot product of bank's query with the key of 'flooded', after scaling by √d_k. Illustrative value.",
+       "type": "arrow",
+       "x1": 110,
+       "y1": 204,
+       "x2": 230,
+       "y2": 325,
+       "label": "score 2"
+      }
+     ]
+    }
+   },
+   {
+    "title": "Softmax turns scores into attention weights",
+    "caption": "The scores 0, 3, 1, 2 pass through softmax and become positive weights that add up to 1. Bar length shows each weight: 'river' gets about 64% of bank's attention.",
+    "explanation": "Raw scores can be any size and any sign, so they are not yet usable as mixing proportions. The softmax function fixes that. It raises e to the power of each score, then divides each result by the total.\n\nWith the invented scores: e^0 ≈ 1.0, e^3 ≈ 20.1, e^1 ≈ 2.7, e^2 ≈ 7.4, totalling about 31.2. Dividing gives roughly 0.03 for 'the', 0.64 for 'river', 0.09 for 'bank' and 0.24 for 'flooded'.\n\nTwo properties are worth noticing. First, the weights are all positive and sum to 1, so they behave like shares of a fixed attention budget. Second, softmax exaggerates differences: a score of 3 against 2 looks like a modest lead, but it becomes 0.64 against 0.24.\n\nAttention is still soft, not a hard choice. Every token receives some weight, even if tiny, which keeps the whole operation smooth and trainable by gradient descent.\n\nIn models that generate text left to right, scores for later tokens are masked out before the softmax, so a token cannot attend to positions that come after it.",
+    "basis": "illustration",
+    "referenceIds": [],
+    "scene": {
+     "height": 400,
+     "elements": [
+      {
+       "id": "s4n1",
+       "color": "slate",
+       "detail": "Score 0 becomes weight ≈ 0.03 (1.0 ÷ 31.2).",
+       "type": "node",
+       "x": 10,
+       "y": 30,
+       "width": 110,
+       "height": 48,
+       "label": "the 0.03",
+       "shape": "box"
+      },
+      {
+       "id": "s4n2",
+       "color": "slate",
+       "detail": "Score 3 becomes weight ≈ 0.64 (20.1 ÷ 31.2).",
+       "type": "node",
+       "x": 10,
+       "y": 100,
+       "width": 110,
+       "height": 48,
+       "label": "river 0.64",
+       "shape": "box"
+      },
+      {
+       "id": "s4n3",
+       "color": "slate",
+       "detail": "Score 1 becomes weight ≈ 0.09 (2.7 ÷ 31.2).",
+       "type": "node",
+       "x": 10,
+       "y": 170,
+       "width": 110,
+       "height": 48,
+       "label": "bank 0.09",
+       "shape": "box"
+      },
+      {
+       "id": "s4n4",
+       "color": "slate",
+       "detail": "Score 2 becomes weight ≈ 0.24 (7.4 ÷ 31.2).",
+       "type": "node",
+       "x": 10,
+       "y": 240,
+       "width": 110,
+       "height": 48,
+       "label": "flooded 0.24",
+       "shape": "box"
+      },
+      {
+       "id": "s4axis",
+       "color": "slate",
+       "type": "path",
+       "points": [
+        {
+         "x": 135,
+         "y": 20
+        },
+        {
+         "x": 135,
+         "y": 298
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s4b1",
+       "color": "rose",
+       "detail": "Attention weight on 'the': about 0.03.",
+       "type": "path",
+       "points": [
+        {
+         "x": 135,
+         "y": 38
+        },
+        {
+         "x": 145,
+         "y": 38
+        },
+        {
+         "x": 145,
+         "y": 70
+        },
+        {
+         "x": 135,
+         "y": 70
+        }
+       ],
+       "closed": true
+      },
+      {
+       "id": "s4b2",
+       "color": "rose",
+       "detail": "Attention weight on 'river': about 0.64, the largest share.",
+       "type": "path",
+       "points": [
+        {
+         "x": 135,
+         "y": 108
+        },
+        {
+         "x": 335,
+         "y": 108
+        },
+        {
+         "x": 335,
+         "y": 140
+        },
+        {
+         "x": 135,
+         "y": 140
+        }
+       ],
+       "closed": true
+      },
+      {
+       "id": "s4b3",
+       "color": "rose",
+       "detail": "Attention weight on 'bank' itself: about 0.09.",
+       "type": "path",
+       "points": [
+        {
+         "x": 135,
+         "y": 178
+        },
+        {
+         "x": 163,
+         "y": 178
+        },
+        {
+         "x": 163,
+         "y": 210
+        },
+        {
+         "x": 135,
+         "y": 210
+        }
+       ],
+       "closed": true
+      },
+      {
+       "id": "s4b4",
+       "color": "rose",
+       "detail": "Attention weight on 'flooded': about 0.24.",
+       "type": "path",
+       "points": [
+        {
+         "x": 135,
+         "y": 248
+        },
+        {
+         "x": 210,
+         "y": 248
+        },
+        {
+         "x": 210,
+         "y": 280
+        },
+        {
+         "x": 135,
+         "y": 280
+        }
+       ],
+       "closed": true
+      },
+      {
+       "id": "s4sum",
+       "color": "slate",
+       "detail": "Softmax: weight = e^score ÷ (sum of e^score over all tokens). Here 0.03 + 0.64 + 0.09 + 0.24 = 1.00.",
+       "type": "node",
+       "x": 60,
+       "y": 320,
+       "width": 240,
+       "height": 56,
+       "label": "Softmax: weights sum to 1",
+       "shape": "box"
+      }
+     ]
+    }
+   },
+   {
+    "title": "The weights blend the values",
+    "caption": "Each token's value vector is multiplied by its attention weight, and the results are added. The sum is a new vector for 'bank' that is mostly shaped by 'river'.",
+    "explanation": "The weights now do their job. The output for 'bank' is a weighted sum of the value vectors:\n\n0.03 × value(the) + 0.64 × value(river) + 0.09 × value(bank) + 0.24 × value(flooded).\n\nBecause 'river' has the largest weight, its value dominates the mix, with a solid contribution from 'flooded'. The result is a vector for 'bank' that now carries context pointing toward the river's-edge sense.\n\nNote which vectors were used where. Queries and keys only decided how much to take from each token. The values are what was actually taken.\n\nThe whole computation is often written as one line: Attention(Q, K, V) = softmax(Q Kᵀ / √d_k) V.\n\nIn a real transformer this blended vector does not replace the old one outright. It is added back to the token's incoming vector through a residual connection, so the token keeps its own identity while gaining context.\n\nThis picture is a simplified model: real vectors have hundreds or thousands of dimensions, and the weights here are invented.",
+    "basis": "illustration",
+    "referenceIds": [],
+    "scene": {
+     "height": 380,
+     "elements": [
+      {
+       "id": "s5v1",
+       "color": "amber",
+       "detail": "Value vector of 'the'. With weight 0.03 it barely affects the result.",
+       "type": "node",
+       "x": 10,
+       "y": 30,
+       "width": 120,
+       "height": 50,
+       "label": "Value: the",
+       "shape": "box"
+      },
+      {
+       "id": "s5v2",
+       "color": "amber",
+       "detail": "Value vector of 'river'. With weight 0.64 it contributes most of the new vector.",
+       "type": "node",
+       "x": 10,
+       "y": 120,
+       "width": 120,
+       "height": 50,
+       "label": "Value: river",
+       "shape": "box"
+      },
+      {
+       "id": "s5v3",
+       "color": "amber",
+       "detail": "Value vector of 'bank' itself, with weight 0.09.",
+       "type": "node",
+       "x": 10,
+       "y": 210,
+       "width": 120,
+       "height": 50,
+       "label": "Value: bank",
+       "shape": "box"
+      },
+      {
+       "id": "s5v4",
+       "color": "amber",
+       "detail": "Value vector of 'flooded', with weight 0.24.",
+       "type": "node",
+       "x": 10,
+       "y": 300,
+       "width": 120,
+       "height": 50,
+       "label": "Value: flooded",
+       "shape": "box"
+      },
+      {
+       "id": "s5out",
+       "color": "indigo",
+       "detail": "The attention output for 'bank': the weighted sum of all four value vectors. It is then added to bank's incoming vector through a residual connection.",
+       "type": "node",
+       "x": 236,
+       "y": 140,
+       "width": 114,
+       "height": 90,
+       "label": "New bank vector",
+       "shape": "box"
+      },
+      {
+       "id": "s5a1",
+       "color": "rose",
+       "detail": "Scale the value of 'the' by its attention weight, 0.03.",
+       "type": "arrow",
+       "x1": 130,
+       "y1": 55,
+       "x2": 236,
+       "y2": 160,
+       "label": "× 0.03"
+      },
+      {
+       "id": "s5a2",
+       "color": "rose",
+       "detail": "Scale the value of 'river' by its attention weight, 0.64.",
+       "type": "arrow",
+       "x1": 130,
+       "y1": 145,
+       "x2": 236,
+       "y2": 177,
+       "label": "× 0.64"
+      },
+      {
+       "id": "s5a3",
+       "color": "rose",
+       "detail": "Scale the value of 'bank' by its attention weight, 0.09.",
+       "type": "arrow",
+       "x1": 130,
+       "y1": 235,
+       "x2": 236,
+       "y2": 193,
+       "label": "× 0.09"
+      },
+      {
+       "id": "s5a4",
+       "color": "rose",
+       "detail": "Scale the value of 'flooded' by its attention weight, 0.24.",
+       "type": "arrow",
+       "x1": 130,
+       "y1": 325,
+       "x2": 236,
+       "y2": 210,
+       "label": "× 0.24"
+      }
+     ]
+    }
+   },
+   {
+    "title": "All tokens, many heads, many layers",
+    "caption": "What 'bank' just did, every token does at the same time. Several attention heads run side by side, their outputs are merged, and the whole block repeats layer after layer.",
+    "explanation": "Three things turn the single step into a working transformer.\n\nEvery token at once. Each token issues its own query and gets its own set of weights. All of this is computed together as matrix multiplications, which is why transformers process sequences in parallel instead of one token at a time.\n\nMultiple heads. A layer runs several attention computations side by side, each with its own W_Q, W_K and W_V. Because each head has different matrices, each can learn to track a different kind of relationship. Their outputs are concatenated and passed through another learned matrix.\n\nStacked layers. The merged result is added to the layer's input and normalized, then passed through a small feed-forward network applied to each token separately. The output vectors feed the next layer, where attention runs again on vectors that are already context-aware. Repeating this lets later layers build on relationships found by earlier ones.\n\nOne more ingredient: attention by itself ignores word order, since it only compares vectors. Transformers therefore inject position information into the token vectors or into the attention scores.\n\nThe diagram shows two heads for space; real models use more, and the exact ordering of normalization varies between architectures.",
+    "basis": "background",
+    "referenceIds": [],
+    "scene": {
+     "height": 450,
+     "elements": [
+      {
+       "id": "s6in",
+       "color": "slate",
+       "detail": "The vectors for every token in the sequence, with position information included. All are processed in parallel.",
+       "type": "node",
+       "x": 80,
+       "y": 20,
+       "width": 200,
+       "height": 44,
+       "label": "All token vectors",
+       "shape": "box"
+      },
+      {
+       "id": "s6h1",
+       "color": "rose",
+       "detail": "One attention head: the full query, key, score, softmax and value-blend procedure, with its own learned matrices.",
+       "type": "node",
+       "x": 15,
+       "y": 110,
+       "width": 155,
+       "height": 64,
+       "label": "Head 1: own Q, K, V",
+       "shape": "box"
+      },
+      {
+       "id": "s6h2",
+       "color": "rose",
+       "detail": "A second head with different learned matrices, so it can pick up a different kind of relationship between tokens. Real layers have more than two heads.",
+       "type": "node",
+       "x": 190,
+       "y": 110,
+       "width": 155,
+       "height": 64,
+       "label": "Head 2: own Q, K, V",
+       "shape": "box"
+      },
+      {
+       "id": "s6merge",
+       "color": "slate",
+       "detail": "Head outputs are concatenated and projected by a learned matrix. The result is added to the layer's input (residual connection) and normalized.",
+       "type": "node",
+       "x": 70,
+       "y": 220,
+       "width": 220,
+       "height": 44,
+       "label": "Merge heads, add input",
+       "shape": "box"
+      },
+      {
+       "id": "s6ffn",
+       "color": "slate",
+       "detail": "A small neural network applied to each token's vector separately. It further transforms what attention gathered. Tokens do not exchange information in this sub-step.",
+       "type": "node",
+       "x": 70,
+       "y": 300,
+       "width": 220,
+       "height": 44,
+       "label": "Feed-forward network",
+       "shape": "box"
+      },
+      {
+       "id": "s6out",
+       "color": "indigo",
+       "detail": "One updated vector per token, now carrying context. These become the input to the next layer, where the whole block repeats.",
+       "type": "node",
+       "x": 70,
+       "y": 380,
+       "width": 220,
+       "height": 44,
+       "label": "Context-aware vectors",
+       "shape": "box"
+      },
+      {
+       "id": "s6a1",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 130,
+       "y1": 64,
+       "x2": 92,
+       "y2": 110
+      },
+      {
+       "id": "s6a2",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 230,
+       "y1": 64,
+       "x2": 268,
+       "y2": 110
+      },
+      {
+       "id": "s6a3",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 92,
+       "y1": 174,
+       "x2": 130,
+       "y2": 220
+      },
+      {
+       "id": "s6a4",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 268,
+       "y1": 174,
+       "x2": 230,
+       "y2": 220
+      },
+      {
+       "id": "s6a5",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 180,
+       "y1": 264,
+       "x2": 180,
+       "y2": 300
+      },
+      {
+       "id": "s6a6",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 180,
+       "y1": 344,
+       "x2": 180,
+       "y2": 380
+      }
+     ]
+    }
+   }
+  ],
+  "takeaways": [
+   "Attention updates each token's vector with a weighted mix of information from all tokens, so meaning can depend on context.",
+   "Queries and keys decide how much to take from each token; values are what is actually taken. In one line: softmax(Q Kᵀ / √d_k) V.",
+   "Softmax makes the weights positive and sum to 1, sharpening differences while keeping attention soft and trainable.",
+   "A transformer runs this for every token in parallel, across several heads with separate learned matrices, and repeats it over many layers."
+  ]
+ }
+}
