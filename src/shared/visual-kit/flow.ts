@@ -146,6 +146,7 @@ export function drawFlow(ctx: Ctx, spec: FlowScene): { width: number; height: nu
   for (const e of lay.edges) for (const n of e.chain) if (n.dummy) n.x += shift
   // Group frames first, so they sit behind everything.
   const groups = new Map<string, Real[]>(), late: VNode[] = [], chips: Chip[] = []
+  const framed: Array<{ members: Real[]; label: string; appear: number; x0: number; x1: number; y0: number; y1: number; rect: VNode; left: number; right: number }> = []
   for (const n of lay.nodes) if (n.spec.group) { const list = groups.get(n.spec.group) ?? []; list.push(n); groups.set(n.spec.group, list) }
   for (const [name, members] of groups) {
     const x0 = Math.min(...members.map(n => n.x - n.w / 2)) - 9, x1 = Math.max(...members.map(n => n.x + n.w / 2)) + 9
@@ -159,19 +160,11 @@ export function drawFlow(ctx: Ctx, spec: FlowScene): { width: number; height: nu
     const fits = (room: number) => room >= 50 && kit.widest(kit.wrap(label, room - 10, TEXT.tag), TEXT.tag) <= room - 8
     const side = fits(roomLeft) ? 'left' : fits(roomRight) ? 'right' : 'top'
     const rows = side === 'top' ? [label] : kit.wrap(label, (side === 'left' ? roomLeft : roomRight) - 10, TEXT.tag)
-    const reach = x0 + 14 + kit.width(label, TEXT.tag)
-    const crossing = (top: boolean) => lay.edges.filter(e => {
-      const a = first(e), b = last(e), inA = members.includes(a), inB = members.includes(b)
-      if (inA === inB) return false
-      const inner = inA ? a : b, outer = inA ? b : a
-      return (top ? outer.y < inner.y : outer.y > inner.y) && inner.x - inner.w / 2 < reach
-    }).length
-    const atBottom = side === 'top' && crossing(true) > crossing(false)
-    const text = side === 'top' ? h('text', { class: 'tag halo', x: r1(x0 + 10), y: r1(atBottom ? y1 : y0), 'dominant-baseline': 'central' }, label)
-      : lines(rows, side === 'left' ? x0 - 9 : x1 + 9, (y0 + y1) / 2, 'tag', 13, side === 'left' ? 'end' : 'start')
     const appear = Math.min(...members.map(n => n.spec.appear ?? 1))
-    out.push(plain(ctx, appear, h('rect', { class: 'group', x: r1(x0), y: r1(y0), width: r1(x1 - x0), height: r1(y1 - y0), rx: 12 })))
-    late.push(plain(ctx, appear, text)) // drawn over the arrows, so a name on the frame is never struck through
+    const rect = h('rect', { class: 'group', x: r1(x0), y: r1(y0), width: r1(x1 - x0), height: r1(y1 - y0), rx: 12 })
+    out.push(plain(ctx, appear, rect))
+    if (side === 'top') framed.push({ members, label, appear, x0, x1, y0, y1, rect, left: x0 - roomLeft, right: x1 + roomRight }) // placed once the ports are known
+    else late.push(plain(ctx, appear, lines(rows, side === 'left' ? x0 - 9 : x1 + 9, (y0 + y1) / 2, 'tag', 13, side === 'left' ? 'end' : 'start')))
   }
   // Ports: spread the edges that share a side of a node.
   const spread = (n: Real, list: Edge[], key: (e: Edge) => Vert) => {
@@ -182,6 +175,35 @@ export function drawFlow(ctx: Ctx, spec: FlowScene): { width: number; height: nu
     sorted.forEach((e, i) => { e.ports.set(n, n.spec.shape === 'op' ? 0 : Math.max(-span / 2, Math.min(span / 2, offsets[i]! + slide))) })
   }
   for (const n of lay.nodes) { spread(n, n.out, e => e.chain[1]!); spread(n, n.inn, e => e.chain[e.chain.length - 2]!) }
+  // A frame name with no room beside the frame sits on its top (or bottom) edge, on a halo, clear of the arrows that
+  // enter or leave the frame through that edge.
+  for (const f of framed) {
+    const w = kit.width(f.label, TEXT.tag)
+    const crossings = (top: boolean) => lay.edges.flatMap(e => {
+      const a = first(e), b = last(e), inA = f.members.includes(a), inB = f.members.includes(b)
+      if (inA === inB) return []
+      const inner = inA ? a : b, outer = inA ? b : a
+      if (H || (top ? outer.y >= inner.y : outer.y <= inner.y)) return []
+      return [inner.x + (e.ports.get(inner) ?? 0)]
+    })
+    // long edges running past the frame's edge as straight lines through their waypoints
+    const passing = (y: number) => H ? [] : lay.edges.flatMap(e => e.chain.filter((d): d is Dummy => d.dummy && y > d.m0 - 24 && y < d.m1 + 24).map(d => d.x))
+    const spot = (top: boolean) => {
+      const xs = [...crossings(top), ...passing(top ? f.y0 : f.y1)], starts = [f.x0 + 10, f.x1 - 10 - w, ...xs.map(x => x + 8), ...xs.map(x => x - 8 - w)]
+      return starts.find(sx => sx >= f.x0 + 6 && sx + w <= Math.min(canvasW - 4, f.x1 + 24) && xs.every(x => x < sx - 4 || x > sx + w + 4))
+    }
+    let top = spot(true), bottom = top === undefined ? spot(false) : undefined
+    if (top === undefined && bottom === undefined) { // a narrow frame: widen it into the free margin so the name fits beside the arrows
+      const xs = [...crossings(true), ...passing(f.y0)]
+      const wantLeft = Math.min(...xs) - 8 - w - 10, wantRight = Math.max(...xs) + 8 + w + 10
+      if (xs.length && wantLeft >= f.left - 6 && wantLeft < f.x0) { f.x0 = wantLeft; top = f.x0 + 10 }
+      else if (xs.length && wantRight <= f.right + 6 && wantRight > f.x1) { f.x1 = wantRight; top = wantRight - 10 - w }
+      f.rect.attrs.x = r1(f.x0); f.rect.attrs.width = r1(f.x1 - f.x0)
+    }
+    const atBottom = top === undefined && (bottom !== undefined || crossings(true).length > crossings(false).length)
+    const x = top ?? bottom ?? f.x0 + 10
+    late.push(plain(ctx, f.appear, h('text', { class: 'tag halo', x: r1(x), y: r1(atBottom ? f.y1 : f.y0), 'dominant-baseline': 'central' }, f.label)))
+  }
   // Labels on short edges that leave the same gap are staggered along the arrows.
   const along = new Map<Edge, number>(), gaps = new Map<number, Edge[]>()
   for (const e of lay.edges) if (e.spec.label && e.chain.length === 2 && !lay.edges.some(o => o !== e && o.chain.length === 2 && o.chain[0] === e.chain[0] && o.chain[1] === e.chain[1])) {

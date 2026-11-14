@@ -95,7 +95,7 @@ function toReact(node: VNode, key: number, state: RenderState, hiddenParent: boo
     if (isSelected) classes.push('is-selected')
     props.role = 'button'
     props.tabIndex = hidden ? -1 : 0
-    props['aria-label'] = `${spot.label}: show more`
+    props['aria-label'] = spot.label
     props['aria-pressed'] = isSelected
     props.focusable = hidden ? 'false' : 'true'
     props.onClick = () => { if (!hidden) onSelect(spot) }

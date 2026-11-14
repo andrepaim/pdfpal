@@ -26,9 +26,10 @@ export function plain(ctx: Ctx, appear: number | undefined, ...kids: Kid[]): VNo
   return h('g', { class: 'el', 'data-at': beatOf(ctx, appear) }, ...kids)
 }
 
-/** Marks an item as tappable and records it. The marker is a small dot on the item's top-right corner. */
+/** Marks an item as tappable and records it (aria-label = its label). The marker is a small dot on the item's top-right corner. */
 export function hotspot(ctx: Ctx, node: VNode, id: string, label: string, detail: string): void {
   node.attrs['data-hotspot'] = id
+  node.attrs['aria-label'] = label
   node.attrs.class = `${node.attrs.class} hot`
   if (!ctx.hotspots.some(spot => spot.id === id)) ctx.hotspots.push({ id, label, detail })
 }

@@ -38,9 +38,10 @@ const items = (drawing: Drawing) => nodes(drawing.svg).filter(n => n.attrs['data
 
 test('every stored fixture lays out at 360 and 640 without throwing, and v1 steps restyle', () => {
   assert.ok(v2.length >= 7 && v1.length >= 7)
-  for (const { name, scene: s } of allScenes) for (const width of [320, 360, 640]) {
+  for (const { name, scene: s } of allScenes) for (const width of [280, 320, 360, 640, 900]) {
     const drawing = drawSceneV2(s, { width, measure })
     assert.ok(drawing.width >= width && drawing.height > 40, `${name} at ${width}`)
+    assert.ok(drawing.width <= width || s.kind === 'flow', `${name} at ${width} is no wider than asked`)
     assert.equal(drawing.svg.tag, 'svg')
     assert.equal(drawing.svg.attrs.viewBox, `0 0 ${drawing.width} ${drawing.height}`)
     assert.equal(drawing.beats, s.beats.length)
@@ -114,6 +115,7 @@ test('flow nodes, quadrant items and v1 nodes with detail become hotspots with a
       const node = items(drawing).find(n => n.attrs['data-hotspot'] === spot.id)!
       assert.ok(node, spot.id)
       assert.match(String(node.attrs.class), /\bhot\b/)
+      assert.equal(node.tag, 'g'); assert.equal(node.attrs['aria-label'], spot.label)
       assert.ok(node.children.some(k => typeof k !== 'string' && k.tag === 'circle' && k.attrs.class === 'hint'), `${spot.id} has a marker`)
       assert.ok(spot.label && spot.detail)
     }
