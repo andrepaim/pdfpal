@@ -128,6 +128,19 @@ test('partial drafts can resume; foreign tags and mismatched published assets ca
   } finally { await f.cleanup() }
 })
 
+test('beta release notes describe selection context and Send feedback, and earlier previews omit them', async () => {
+  const f = await fixture('2.8.0-beta.1'), earlier = await fixture('2.7.0-preview.2')
+  try {
+    await prepareRelease(f.directory, f.options)
+    const notes = await fs.readFile(path.join(f.directory, 'release-notes.md'), 'utf8')
+    assert.match(notes, /Better context for your questions/)
+    assert.match(notes, /Send feedback/)
+    assert.match(notes, /Unsigned engineering preview/)
+    await prepareRelease(earlier.directory, earlier.options)
+    assert.doesNotMatch(await fs.readFile(path.join(earlier.directory, 'release-notes.md'), 'utf8'), /Send feedback/)
+  } finally { await f.cleanup(); await earlier.cleanup() }
+})
+
 test('ChatGPT preview release notes explain direct plan access', async () => {
   const f = await fixture('2.2.0-preview.1')
   try {
