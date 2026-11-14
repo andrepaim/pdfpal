@@ -166,17 +166,9 @@ export function parseVisualDefinitionV2(value: unknown): { definition: VisualDef
   return { definition: result.data, dropped }
 }
 
-/** One frame of the player: v1 has one frame per step; v2 has one frame per beat, grouped by scene. */
-export type VisualFrame = {
-  scene: number; beat: number; beats: number; sceneTitle: string;
-  caption: string; explanation: string; basis: 'source' | 'illustration' | 'background'; referenceIds: string[];
-}
-export function visualFrames(definition: VisualDefinition): VisualFrame[] {
-  if (definition.version === 1) return definition.steps.map((step, scene) => ({ scene, beat: 1, beats: 1, sceneTitle: step.title.replace(/^\d+[.)]\s+/, ''),
-    caption: step.caption, explanation: step.explanation, basis: step.basis, referenceIds: step.referenceIds }))
-  return definition.scenes.flatMap((scene, index) => scene.beats.map((beat, b) => ({ scene: index, beat: b + 1, beats: scene.beats.length, sceneTitle: scene.title,
-    caption: beat.caption, explanation: beat.explanation, basis: beat.basis, referenceIds: beat.referenceIds })))
-}
+// Frames live in a zod-free module so the browser bundles do not pull in the schema library.
+export { visualFrames, type VisualFrame } from './visual-frames.js'
+import type { VisualFrame } from './visual-frames.js'
 export type VisualReference = { id: string; label: string }
 export type VisualRecord = {
   id: string; project_id: string; question: string; status: 'pending' | 'running' | 'complete' | 'failed';

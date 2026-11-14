@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { visualFrames, type VisualDefinition, type VisualFrame, type VisualRecord } from '../../../src/shared/visual'
+import type { VisualDefinition, VisualRecord } from '../../../src/shared/visual'
+import { visualFrames, type VisualFrame } from '../../../src/shared/visual-frames'
 import type { Hotspot } from '../../../src/shared/visual-kit'
 import { downloadVisual, figureWords, visualBasisLabel } from '../lib/visual-html'
 import { measureVisualText, visualFontDataUrl } from '../lib/visual-measure'

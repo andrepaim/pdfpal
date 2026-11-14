@@ -2,7 +2,8 @@
 // uses (src/shared/visual-kit), so the export cannot drift from what the reader saw. Pure string building: importable
 // under Node (tests use the approximate measurer) and in the browser (the app passes its canvas measurer and the
 // bundled Inter font as a data URL).
-import { visualFrames, type VisualDefinition, type VisualFrame, type VisualRecord } from '../../../src/shared/visual'
+import type { VisualDefinition, VisualRecord } from '../../../src/shared/visual'
+import { visualFrames, type VisualFrame } from '../../../src/shared/visual-frames'
 import { approximateMeasure, drawSceneV2, drawStepV1, svgMarkup, VISUAL_KIT_CSS, type Drawing, type Hotspot, type Measure, type VNode } from '../../../src/shared/visual-kit/index'
 
 export type VisualHtmlOptions = {
