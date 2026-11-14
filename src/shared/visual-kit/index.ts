@@ -1,42 +1,56 @@
-// CONTRACT STUB — to be implemented by the renderer work (port of the study prototype's kit.js).
+// The figure renderer for "Explain visually". The assistant names WHAT to draw (a flow, a plot, bars, cells, a
+// comparison, a quadrant); this kit decides WHERE everything goes and how it looks.
 // Pure functions: no DOM, no canvas. The caller passes a text measurer, so layout runs in the browser, in Node tests
 // and in the HTML export alike.
 import type { VisualSceneV2, VisualStepV1 } from '../visual.js'
+import { drawBars } from './bars.js'
+import { drawCells } from './cells.js'
+import type { Ctx } from './common.js'
+import { drawCompare } from './compare.js'
+import { drawFlow } from './flow.js'
+import { drawPlot } from './plot.js'
+import { drawQuadrant } from './quadrant.js'
+import { makeKit } from './text.js'
+import { drawV1 } from './v1.js'
+import { h, r1, type DrawOptions, type Drawing, type VNode } from './vnode.js'
 
-/** Width in px of `text` set in the visual typeface (Inter) at `size` px and `weight`. */
-export type Measure = (text: string, size: number, weight: number) => number
+export type { DrawOptions, Drawing, Hotspot, Measure, VNode } from './vnode.js'
+export { svgMarkup, escapeXml, hiddenAt, walk, textContent } from './vnode.js'
+export { VISUAL_KIT_CSS, VISUAL_FONT_FAMILY } from './css.js'
+export { approximateMeasure } from './metrics.js'
+export { TEXT, makeKit, type Kit, type TextStyle } from './text.js'
 
-/** A tiny virtual SVG tree. Attribute values are already rounded and escaped only at serialisation. */
-export type VNode = { tag: string; attrs: Record<string, string | number>; children: Array<VNode | string> }
+type Drawn = { width: number; height: number; kids: VNode[] }
 
-/** Something the reader can tap for more (a flow node or quadrant item with `detail`, a v1 node with `detail`). */
-export type Hotspot = { id: string; label: string; detail: string }
-
-/**
- * A laid-out figure. `svg` is the root <svg> node (viewBox 0 0 width height, class "vx-svg").
- * Conventions every consumer relies on:
- *  - a drawn item is a <g class="el t-<tone> ..."> with data-at="<beat, 1-based>"; it is visible on beats >= data-at;
- *  - a tappable item also has data-hotspot="<Hotspot.id>" (and a visible "has more" marker drawn by the kit);
- *  - all styling comes from classes defined in VISUAL_KIT_CSS (no inline colours), so themes are pure CSS.
- */
-export type Drawing = { width: number; height: number; svg: VNode; beats: number; hotspots: Hotspot[] }
-
-export type DrawOptions = { width: number; measure: Measure }
+function finish(ctx: Ctx, drawn: Drawn, title: string): Drawing {
+  const width = r1(drawn.width), height = r1(drawn.height)
+  const svg = h('svg', { class: 'vx-svg', viewBox: `0 0 ${width} ${height}`, width, height, role: 'img', 'aria-label': title }, drawn.kids)
+  return { width, height, svg, beats: ctx.beats, hotspots: ctx.hotspots }
+}
 
 /** Lays out one v2 scene at the given width. */
-export function drawSceneV2(_scene: VisualSceneV2, _options: DrawOptions): Drawing { throw new Error('visual-kit: not implemented') }
+export function drawSceneV2(scene: VisualSceneV2, options: DrawOptions): Drawing {
+  const W = Math.max(240, Math.round(options.width))
+  const ctx: Ctx = { kit: makeKit(options.measure), W, beats: Math.max(1, scene.beats.length), hotspots: [] }
+  const drawn = scene.kind === 'flow' ? drawFlow(ctx, scene)
+    : scene.kind === 'plot' ? drawPlot(ctx, scene)
+    : scene.kind === 'bars' ? drawBars(ctx, scene)
+    : scene.kind === 'cells' ? drawCells(ctx, scene)
+    : scene.kind === 'compare' ? drawCompare(ctx, scene)
+    : drawQuadrant(ctx, scene)
+  return finish(ctx, drawn, scene.title)
+}
 
 /** Restyles one stored v1 step (absolute coordinates on a 360-wide canvas) with the same visual language. */
-export function drawStepV1(_step: VisualStepV1, _options: Pick<DrawOptions, 'measure'>): Drawing { throw new Error('visual-kit: not implemented') }
+export function drawStepV1(step: VisualStepV1, options: Pick<DrawOptions, 'measure'>): Drawing {
+  const ctx: Ctx = { kit: makeKit(options.measure), W: 360, beats: 1, hotspots: [] }
+  return finish(ctx, drawV1(ctx, step), step.title)
+}
 
-/**
- * Serialises a VNode tree to SVG markup, escaping all text and attribute values. With `beat`, items whose data-at is
- * greater than `beat` get the class "is-hidden".
- */
-export function svgMarkup(_node: VNode, _beat?: number): string { throw new Error('visual-kit: not implemented') }
+/** A plain figure saying the drawing failed, for callers that must show something. */
+export function fallbackDrawing(message: string, width = 360): Drawing {
+  const height = 120
+  return { width, height, beats: 1, hotspots: [], svg: h('svg', { class: 'vx-svg', viewBox: `0 0 ${width} ${height}`, width, height, role: 'img', 'aria-label': message },
+    h('text', { class: 'fallback', x: width / 2, y: height / 2, 'text-anchor': 'middle', 'dominant-baseline': 'central' }, message)) }
+}
 
-/** The stylesheet for figures: tokens (dark default, [data-theme=paper]), SVG classes, @font-face is NOT included. */
-export const VISUAL_KIT_CSS = ''
-
-/** A rough Inter-like measurer for Node tests and as a fallback before fonts load. */
-export function approximateMeasure(text: string, size: number, _weight: number): number { return text.length * size * 0.56 }
