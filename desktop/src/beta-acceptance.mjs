@@ -56,11 +56,13 @@ export async function betaAcceptance({ options, app, window, ready, tray, showWi
   const execute = async command => {
     switch (command.action) {
       case 'setup': {
-        await wait(() => evaluate('!!document.querySelector(".ai-settings[open]") && document.querySelector(".ai-settings").getAttribute("aria-busy") === "false"'), 'Setup did not finish loading')
+        // Several dialogs share the ai-settings class; address the assistant dialog by its title.
+        const setup = 'dialog[aria-labelledby="ai-settings-title"]'
+        await wait(() => evaluate(`document.querySelector('${setup}[open]')?.getAttribute('aria-busy') === 'false'`), 'Setup did not finish loading')
         const snapshot = await evaluate('window.pdfpalDesktop.setupState()')
-        if (!snapshot.agents.every(agent => !agent.available && (agent.id === 'opencode' || agent.state === 'missing'))) throw new Error('Missing-provider fixture reached an unexpected state')
-        await evaluate(`Array.from(document.querySelectorAll('.ai-settings button')).find(button => button.textContent === 'Continue without AI').click()`)
-        await wait(() => evaluate('!document.querySelector(".ai-settings[open]")'), 'Read-only continuation did not close setup')
+        if (!snapshot.agents.every(agent => !agent.available && (agent.id === 'opencode' || agent.id === 'chatgpt' || agent.state === 'missing'))) throw new Error('Missing-provider fixture reached an unexpected state')
+        await evaluate(`Array.from(document.querySelectorAll('${setup} button')).find(button => button.textContent === 'Continue without AI').click()`)
+        await wait(() => evaluate(`!document.querySelector('${setup}[open]')`), 'Read-only continuation did not close setup')
         return { checks: ['missing-providers-visible', 'continue-without-ai'], providerStates: snapshot.agents.map(({ id, state, available }) => ({ id, state, available })) }
       }
       case 'prepare': {
