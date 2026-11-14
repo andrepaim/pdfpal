@@ -34,17 +34,6 @@ jobs:
       - run: node desktop/scripts/stage.mjs
       - name: Build, sign ad-hoc, smoke-test and make the disk image
         run: node desktop/scripts/mac-build.mjs --source="$GITHUB_WORKSPACE" --work="$RUNNER_TEMP/pdfpal-mac-build" --arch=arm64
-      # TEMPORARY (remove before merge): repeat the packaged smoke run to catch an intermittent shutdown stall.
-      - name: Repeat the smoke run
-        if: always()
-        run: |
-          app="$RUNNER_TEMP/pdfpal-mac-build/artifacts/mac-arm64/pdfpal.app/Contents/MacOS/pdfpal"
-          for i in $(seq 1 16); do
-            receipt="$RUNNER_TEMP/repeat-receipt-$i.json"
-            PDFPAL_M0_RECEIPT="$receipt" PDFPAL_M2_FAILURE_FIXTURE=0 PDFPAL_M0_LIVE=0 PDFPAL_M1_LIVE_CODEX=0 PDFPAL_DESKTOP_PROFILE="$RUNNER_TEMP/repeat-profile-$i" "$app" --m0-smoke > "$RUNNER_TEMP/repeat-$i.log" 2>&1 || true
-            echo "run $i: $(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(r.status,JSON.stringify(r.shutdownPhases))' "$receipt" 2>/dev/null || echo no-receipt)"
-            grep -v "XPC error\|task_policy_set\|fake worker" "$RUNNER_TEMP/repeat-$i.log" | head -5 || true
-          done
       - uses: actions/upload-artifact@v4
         with:
           name: pdfpal-mac-arm64-unsigned
