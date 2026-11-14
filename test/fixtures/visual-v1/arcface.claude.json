@@ -1,0 +1,1124 @@
+{
+ "question": "Explain the selected passage visually.",
+ "references": [
+  {
+   "id": "pdf-1",
+   "label": "ArcFace: Additive Angular Margin Loss · p. 1"
+  },
+  {
+   "id": "pdf-2",
+   "label": "ArcFace: Additive Angular Margin Loss · p. 2"
+  },
+  {
+   "id": "pdf-3",
+   "label": "ArcFace: Additive Angular Margin Loss · p. 5"
+  },
+  {
+   "id": "pdf-4",
+   "label": "ArcFace: Additive Angular Margin Loss · p. 4"
+  },
+  {
+   "id": "pdf-5",
+   "label": "ArcFace: Additive Angular Margin Loss · p. 4"
+  },
+  {
+   "id": "pdf-6",
+   "label": "ArcFace: Additive Angular Margin Loss · p. 8"
+  },
+  {
+   "id": "selection",
+   "label": "ArcFace: Additive Angular Margin Loss · selected passage"
+  }
+ ],
+ "definition": {
+  "version": 1,
+  "title": "ArcFace: adding a margin to the angle, not the score",
+  "summary": "ArcFace turns the classifier's score into an angle on a sphere, widens the angle to the correct class by a fixed margin m, converts it back to a score, rescales, and then uses ordinary softmax. The drawings are simplified 2-D slices of a 512-D sphere. The curve uses m = 0.5 from the paper's Figure 4 legend. The supplied passages do not state the scale s used for ArcFace.",
+  "steps": [
+   {
+    "title": "Normalize: the score becomes cos θ",
+    "caption": "Once the face feature and the class center are both scaled to length 1, their dot product depends only on the angle θ between them. Simplified 2-D slice of the hypersphere.",
+    "explanation": "A deep network (DCNN) turns a face image into a feature vector x. The last fully connected layer holds one weight vector per identity, and the paper views each of these columns as a class center W.\n\nBackground: the dot product of two vectors equals the product of their lengths times the cosine of the angle between them. ArcFace normalizes both the feature and every center to length 1, so the lengths drop out and the dot product is exactly cos θ. The paper calls this value the cosine distance; it is more commonly called cosine similarity.\n\nAfter normalization the prediction depends only on the angle between feature and center. Every feature and every center sits on the same sphere, and only direction matters.\n\nThe drawing shows a quarter circle. In the paper the features are 512-dimensional, so the real object is a hypersphere that cannot be drawn literally.",
+    "basis": "source",
+    "referenceIds": [
+     "selection",
+     "pdf-1",
+     "pdf-4",
+     "pdf-5"
+    ],
+    "scene": {
+     "height": 430,
+     "elements": [
+      {
+       "id": "sphere1",
+       "color": "slate",
+       "detail": "A 2-D slice of the normalized hypersphere. Every length-1 vector ends somewhere on this surface.",
+       "type": "path",
+       "points": [
+        {
+         "x": 230,
+         "y": 330
+        },
+        {
+         "x": 227.1,
+         "y": 297
+        },
+        {
+         "x": 218.5,
+         "y": 265
+        },
+        {
+         "x": 204.5,
+         "y": 235
+        },
+        {
+         "x": 185.5,
+         "y": 207.9
+        },
+        {
+         "x": 162.1,
+         "y": 184.5
+        },
+        {
+         "x": 135,
+         "y": 165.5
+        },
+        {
+         "x": 105,
+         "y": 151.5
+        },
+        {
+         "x": 73,
+         "y": 142.9
+        },
+        {
+         "x": 40,
+         "y": 140
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "wArrow1",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 40,
+       "y1": 330,
+       "x2": 89,
+       "y2": 147
+      },
+      {
+       "id": "xArrow1",
+       "color": "indigo",
+       "type": "arrow",
+       "x1": 40,
+       "y1": 330,
+       "x2": 186,
+       "y2": 208
+      },
+      {
+       "id": "thetaArc1",
+       "color": "amber",
+       "detail": "The angle θ between the feature and its target class center.",
+       "type": "path",
+       "points": [
+        {
+         "x": 93.6,
+         "y": 285
+        },
+        {
+         "x": 85,
+         "y": 276.4
+        },
+        {
+         "x": 75,
+         "y": 269.4
+        },
+        {
+         "x": 63.9,
+         "y": 264.2
+        },
+        {
+         "x": 58.1,
+         "y": 262.4
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "thetaLabel1",
+       "color": "amber",
+       "type": "text",
+       "x": 90,
+       "y": 252,
+       "text": "θ",
+       "size": 22
+      },
+      {
+       "id": "wNode1",
+       "color": "teal",
+       "detail": "One column of the last fully connected layer's weight matrix. The paper views each column as the center of one identity. It is normalized to length 1.",
+       "type": "node",
+       "x": 70,
+       "y": 84,
+       "width": 164,
+       "height": 40,
+       "label": "Class center W",
+       "shape": "box"
+      },
+      {
+       "id": "xNode1",
+       "color": "indigo",
+       "detail": "The embedding the DCNN produces for one face image, normalized to length 1. In the paper it has 512 dimensions; here it is drawn in 2-D.",
+       "type": "node",
+       "x": 206,
+       "y": 180,
+       "width": 114,
+       "height": 40,
+       "label": "Feature x",
+       "shape": "box"
+      },
+      {
+       "id": "eqNode1",
+       "color": "amber",
+       "detail": "Background: a dot product equals length × length × cos(angle). With both lengths fixed at 1, only cos θ remains. This is the logit (raw score) for the class.",
+       "type": "node",
+       "x": 40,
+       "y": 362,
+       "width": 280,
+       "height": 44,
+       "label": "W · x = cos θ",
+       "shape": "box"
+      }
+     ]
+    }
+   },
+   {
+    "title": "Recover the angle and add the margin",
+    "caption": "Arc-cosine turns the score back into the angle θ. ArcFace then adds a fixed margin m to that angle, for the correct class only. The feature is not moved; it is scored as if it sat m farther away.",
+    "explanation": "The network outputs cos θ, but ArcFace wants to work on the angle itself. It applies the arc-cosine function, the inverse of cosine, to get θ, the angle between the current feature and its target (ground-truth) center.\n\nNext comes the defining move: an additive angular margin m is added to that target angle, giving θ + m. The rose arrow shows what this means. The feature stays where it is, but the loss treats it as if it were m farther from its own class center than it really is.\n\nThis happens only for the correct class. The angles to all other class centers are left untouched.\n\nBecause the correct class is deliberately under-scored, the network can only reach a low loss by pulling the real feature even closer to its center than plain classification would require. The paper describes the effect as enhancing intra-class compactness and inter-class discrepancy at the same time.",
+    "basis": "source",
+    "referenceIds": [
+     "selection",
+     "pdf-5",
+     "pdf-4"
+    ],
+    "scene": {
+     "height": 430,
+     "elements": [
+      {
+       "id": "sphere2",
+       "color": "slate",
+       "type": "path",
+       "points": [
+        {
+         "x": 230,
+         "y": 330
+        },
+        {
+         "x": 227.1,
+         "y": 297
+        },
+        {
+         "x": 218.5,
+         "y": 265
+        },
+        {
+         "x": 204.5,
+         "y": 235
+        },
+        {
+         "x": 185.5,
+         "y": 207.9
+        },
+        {
+         "x": 162.1,
+         "y": 184.5
+        },
+        {
+         "x": 135,
+         "y": 165.5
+        },
+        {
+         "x": 105,
+         "y": 151.5
+        },
+        {
+         "x": 73,
+         "y": 142.9
+        },
+        {
+         "x": 40,
+         "y": 140
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "wArrow2",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 40,
+       "y1": 330,
+       "x2": 89,
+       "y2": 147
+      },
+      {
+       "id": "xArrow2",
+       "color": "indigo",
+       "type": "arrow",
+       "x1": 40,
+       "y1": 330,
+       "x2": 186,
+       "y2": 208
+      },
+      {
+       "id": "penArrow2",
+       "color": "rose",
+       "detail": "Not a real vector. It marks the direction the feature is scored as having once the margin is added to its angle.",
+       "type": "arrow",
+       "x1": 40,
+       "y1": 330,
+       "x2": 226,
+       "y2": 294
+      },
+      {
+       "id": "thetaArc2",
+       "color": "amber",
+       "type": "path",
+       "points": [
+        {
+         "x": 93.6,
+         "y": 285
+        },
+        {
+         "x": 85,
+         "y": 276.4
+        },
+        {
+         "x": 75,
+         "y": 269.4
+        },
+        {
+         "x": 63.9,
+         "y": 264.2
+        },
+        {
+         "x": 58.1,
+         "y": 262.4
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "thetaLabel2",
+       "color": "amber",
+       "type": "text",
+       "x": 90,
+       "y": 252,
+       "text": "θ",
+       "size": 22
+      },
+      {
+       "id": "mArc2",
+       "color": "rose",
+       "detail": "The additive angular margin m, a fixed extra angle.",
+       "type": "path",
+       "points": [
+        {
+         "x": 148,
+         "y": 309
+        },
+        {
+         "x": 143.4,
+         "y": 292.4
+        },
+        {
+         "x": 135.3,
+         "y": 275
+        },
+        {
+         "x": 124.3,
+         "y": 259.3
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "mLabel2",
+       "color": "rose",
+       "type": "text",
+       "x": 158,
+       "y": 279,
+       "text": "m",
+       "size": 22
+      },
+      {
+       "id": "wNode2",
+       "color": "teal",
+       "detail": "The target center: the center of the identity this training face actually belongs to.",
+       "type": "node",
+       "x": 70,
+       "y": 84,
+       "width": 164,
+       "height": 40,
+       "label": "Class center W",
+       "shape": "box"
+      },
+      {
+       "id": "xNode2",
+       "color": "indigo",
+       "detail": "The actual feature. Its true angle to the target center is θ.",
+       "type": "node",
+       "x": 206,
+       "y": 180,
+       "width": 114,
+       "height": 40,
+       "label": "Feature x",
+       "shape": "box"
+      },
+      {
+       "id": "penNode2",
+       "color": "rose",
+       "detail": "The penalized target angle. Only the correct class gets this handicap; angles to other classes stay as they are.",
+       "type": "node",
+       "x": 246,
+       "y": 276,
+       "width": 90,
+       "height": 40,
+       "label": "θ + m",
+       "shape": "box"
+      },
+      {
+       "id": "eqNode2",
+       "color": "amber",
+       "detail": "Arc-cosine undoes the cosine: given the score cos θ, it returns the angle θ. Working on the angle is what lets the margin be a plain addition.",
+       "type": "node",
+       "x": 40,
+       "y": 362,
+       "width": 280,
+       "height": 44,
+       "label": "θ = arccos(W · x)",
+       "shape": "box"
+      }
+     ]
+    }
+   },
+   {
+    "title": "Back to a score: cos(θ + m)",
+    "caption": "Taking the cosine of the widened angle gives the new target logit. At every angle it sits below the plain cos θ curve. Sketch computed with m = 0.5, the ArcFace setting in the paper's Figure 4(b) legend.",
+    "explanation": "Softmax needs scores, not angles, so ArcFace applies the cosine function again. The target logit becomes cos(θ + m) instead of cos θ.\n\nThe amber curve is the plain logit and the rose curve is the ArcFace logit. Across the plotted range, cosine falls as the angle grows, so adding m always lowers the score. The rose arrow shows the drop for one example angle.\n\nRead it from the network's side: to earn the score that plain softmax would give at some angle, the feature must now be about m closer to its center.\n\nThe paper reports that the angle between a feature and its target center starts near 90° under random initialization and ends near 30° during ArcFace training. That is why its Figure 4(b) plots only 20° to 100°. This sketch extends the axis to 0° for readability.\n\nOn the value of m: the legend lists ArcFace as (1.00, 0.50, 0.00), meaning the additive angular margin is 0.5. Reading that as radians, about 29°, is background interpretation rather than something the supplied passages state. The paper also notes that the earlier SphereFace multiplied the angle by an integer, which made the target logit curve very steep and hindered convergence.",
+    "basis": "source",
+    "referenceIds": [
+     "selection",
+     "pdf-3",
+     "pdf-1"
+    ],
+    "scene": {
+     "height": 370,
+     "elements": [
+      {
+       "id": "axes3",
+       "color": "slate",
+       "detail": "Horizontal: angle θ between feature and target center. Vertical: target logit before rescaling.",
+       "type": "path",
+       "points": [
+        {
+         "x": 60,
+         "y": 60
+        },
+        {
+         "x": 60,
+         "y": 320
+        },
+        {
+         "x": 335,
+         "y": 320
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "tickOne3",
+       "color": "slate",
+       "type": "path",
+       "points": [
+        {
+         "x": 54,
+         "y": 80
+        },
+        {
+         "x": 66,
+         "y": 80
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "tickZero3",
+       "color": "slate",
+       "type": "path",
+       "points": [
+        {
+         "x": 54,
+         "y": 220
+        },
+        {
+         "x": 66,
+         "y": 220
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "yTitle3",
+       "color": "slate",
+       "type": "text",
+       "x": 30,
+       "y": 48,
+       "text": "logit",
+       "size": 16
+      },
+      {
+       "id": "yOne3",
+       "color": "slate",
+       "type": "text",
+       "x": 40,
+       "y": 86,
+       "text": "1",
+       "size": 16
+      },
+      {
+       "id": "yZero3",
+       "color": "slate",
+       "type": "text",
+       "x": 40,
+       "y": 226,
+       "text": "0",
+       "size": 16
+      },
+      {
+       "id": "xZero3",
+       "color": "slate",
+       "type": "text",
+       "x": 52,
+       "y": 344,
+       "text": "0°",
+       "size": 16
+      },
+      {
+       "id": "xMid3",
+       "color": "slate",
+       "type": "text",
+       "x": 176,
+       "y": 344,
+       "text": "50°",
+       "size": 16
+      },
+      {
+       "id": "xEnd3",
+       "color": "slate",
+       "type": "text",
+       "x": 300,
+       "y": 344,
+       "text": "100°",
+       "size": 16
+      },
+      {
+       "id": "cosCurve3",
+       "color": "amber",
+       "detail": "Plain normalized softmax: the target logit is cos θ.",
+       "type": "path",
+       "points": [
+        {
+         "x": 60,
+         "y": 80
+        },
+        {
+         "x": 86,
+         "y": 82.1
+        },
+        {
+         "x": 112,
+         "y": 88.4
+        },
+        {
+         "x": 138,
+         "y": 98.8
+        },
+        {
+         "x": 164,
+         "y": 112.8
+        },
+        {
+         "x": 190,
+         "y": 130
+        },
+        {
+         "x": 216,
+         "y": 150
+        },
+        {
+         "x": 242,
+         "y": 172.1
+        },
+        {
+         "x": 268,
+         "y": 195.7
+        },
+        {
+         "x": 294,
+         "y": 220
+        },
+        {
+         "x": 320,
+         "y": 244.3
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "arcCurve3",
+       "color": "rose",
+       "detail": "ArcFace: the target logit is cos(θ + m), drawn here with m = 0.5.",
+       "type": "path",
+       "points": [
+        {
+         "x": 60,
+         "y": 97.1
+        },
+        {
+         "x": 86,
+         "y": 110.7
+        },
+        {
+         "x": 112,
+         "y": 127.5
+        },
+        {
+         "x": 138,
+         "y": 147.2
+        },
+        {
+         "x": 164,
+         "y": 169
+        },
+        {
+         "x": 190,
+         "y": 192.4
+        },
+        {
+         "x": 216,
+         "y": 216.7
+        },
+        {
+         "x": 242,
+         "y": 241
+        },
+        {
+         "x": 268,
+         "y": 264.8
+        },
+        {
+         "x": 294,
+         "y": 287.1
+        },
+        {
+         "x": 320,
+         "y": 307.4
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "drop3",
+       "color": "rose",
+       "detail": "At θ = 40° the plain logit is about 0.77. With the margin it falls to about 0.36. These values are computed from the formula for this sketch, not read from the paper.",
+       "type": "arrow",
+       "x1": 164,
+       "y1": 118,
+       "x2": 164,
+       "y2": 163
+      },
+      {
+       "id": "cosNode3",
+       "color": "amber",
+       "detail": "The logit without any margin. This is still what every non-target class receives.",
+       "type": "node",
+       "x": 226,
+       "y": 84,
+       "width": 104,
+       "height": 40,
+       "label": "cos θ",
+       "shape": "box"
+      },
+      {
+       "id": "arcNode3",
+       "color": "rose",
+       "detail": "The penalized target logit. It is lower than cos θ at every angle in this range, so the correct class has to earn its score with a smaller angle.",
+       "type": "node",
+       "x": 72,
+       "y": 250,
+       "width": 130,
+       "height": 40,
+       "label": "cos(θ + m)",
+       "shape": "box"
+      }
+     ]
+    }
+   },
+   {
+    "title": "Rescale, then ordinary softmax",
+    "caption": "All logits, the penalized target and the untouched others, are multiplied by a fixed scale s. From there the pipeline is exactly the softmax loss.",
+    "explanation": "Only one logit was changed: the one for the correct class. Every other class keeps its plain cos θj.\n\nAll logits are then multiplied by a fixed number s, which the selected passage calls a fixed feature norm. The paper describes the learned features as distributed on a hypersphere of radius s. Normalization removed the features' natural lengths, and s puts one shared length back.\n\nBackground on why this helps: cosines lie between -1 and 1. Softmax applied to such a narrow range cannot produce confident probabilities, and scaling the scores up restores that contrast.\n\nNothing after this point is new. The scaled logits go through the softmax function and into the cross-entropy loss. In the paper's notation the loss is -log of e^(s·cos(θ+m)) divided by that same term plus the sum of e^(s·cos θj) over the other classes.\n\nThis is why the paper can say ArcFace needs only several lines of code. It is a small edit to one logit inside a standard classifier, with no extra loss terms.",
+    "basis": "source",
+    "referenceIds": [
+     "selection",
+     "pdf-5",
+     "pdf-4",
+     "pdf-2"
+    ],
+    "scene": {
+     "height": 380,
+     "elements": [
+      {
+       "id": "tgtNode4",
+       "color": "rose",
+       "detail": "The single logit that ArcFace modifies: the score for the face's true identity, computed from the widened angle.",
+       "type": "node",
+       "x": 10,
+       "y": 20,
+       "width": 160,
+       "height": 64,
+       "label": "Target logit cos(θ + m)",
+       "shape": "box"
+      },
+      {
+       "id": "othNode4",
+       "color": "amber",
+       "detail": "Scores for every other identity in the training set. They receive no margin.",
+       "type": "node",
+       "x": 190,
+       "y": 20,
+       "width": 160,
+       "height": 64,
+       "label": "Other logits cos θj",
+       "shape": "box"
+      },
+      {
+       "id": "tgtArrow4",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 90,
+       "y1": 86,
+       "x2": 140,
+       "y2": 134
+      },
+      {
+       "id": "othArrow4",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 270,
+       "y1": 86,
+       "x2": 220,
+       "y2": 134
+      },
+      {
+       "id": "scaleNode4",
+       "color": "indigo",
+       "detail": "s is a fixed feature norm. The paper describes the embedding features as lying on a hypersphere of radius s. The supplied passages do not give the value used for ArcFace.",
+       "type": "node",
+       "x": 60,
+       "y": 138,
+       "width": 240,
+       "height": 44,
+       "label": "Multiply all by s",
+       "shape": "box"
+      },
+      {
+       "id": "scaleArrow4",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 180,
+       "y1": 184,
+       "x2": 180,
+       "y2": 222
+      },
+      {
+       "id": "softNode4",
+       "color": "slate",
+       "detail": "Background: softmax turns a list of scores into probabilities that sum to 1.",
+       "type": "node",
+       "x": 100,
+       "y": 226,
+       "width": 160,
+       "height": 44,
+       "label": "Softmax",
+       "shape": "box"
+      },
+      {
+       "id": "softArrow4",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 180,
+       "y1": 272,
+       "x2": 180,
+       "y2": 310
+      },
+      {
+       "id": "lossNode4",
+       "color": "slate",
+       "detail": "Background: cross-entropy is small when the correct class gets high probability. Because the target logit was handicapped, a low loss requires a smaller true angle.",
+       "type": "node",
+       "x": 70,
+       "y": 314,
+       "width": 220,
+       "height": 44,
+       "label": "Cross-entropy loss",
+       "shape": "box"
+      }
+     ]
+    }
+   },
+   {
+    "title": "Why \"Arc\": the margin is a gap along the sphere",
+    "caption": "On a normalized sphere an angle corresponds exactly to an arc length, so an angular margin is a geodesic distance margin between classes. Simplified sketch of the idea behind the paper's Figure 3, not a reproduction of it.",
+    "explanation": "Background: on a circle of radius 1, the arc length between two points equals the angle between them in radians. A geodesic is the shortest path along a curved surface, and on a sphere that path is an arc.\n\nThe paper builds on this exact correspondence between angle and arc on the normalized hypersphere. Adding m to an angle is the same as demanding m extra distance measured along the surface. The loss therefore directly optimizes a geodesic distance margin, and the method takes its name from that arc.\n\nThe two panels sketch the consequence. Indigo arcs are the regions of the sphere occupied by each identity's features, and teal arrows are the class center directions. In the paper's toy experiment with 8 identities and 2-D features, the Norm-Softmax loss (normalization without a margin) gives roughly separable features but noticeable ambiguity at the decision boundaries. ArcFace enforces a more evident margin between the nearest classes.\n\nThe paper also compares the shape of the margin. For two classes, ArcFace has a constant linear angular margin throughout the whole interval, whereas SphereFace and CosFace have only a nonlinear angular margin.\n\nLimitation: the widths of the arcs and the gap here are illustrative. The supplied passages describe Figure 3 in words and do not provide measurements.",
+    "basis": "source",
+    "referenceIds": [
+     "selection",
+     "pdf-3",
+     "pdf-4",
+     "pdf-2"
+    ],
+    "scene": {
+     "height": 470,
+     "elements": [
+      {
+       "id": "nsLabel5",
+       "color": "slate",
+       "detail": "Softmax with normalized features and centers but no margin: the target logit is s · cos θ.",
+       "type": "node",
+       "x": 110,
+       "y": 20,
+       "width": 140,
+       "height": 40,
+       "label": "Norm-Softmax",
+       "shape": "box"
+      },
+      {
+       "id": "sphereTop5",
+       "color": "slate",
+       "type": "path",
+       "points": [
+        {
+         "x": 321.4,
+         "y": 158.6
+        },
+        {
+         "x": 308.6,
+         "y": 146.8
+        },
+        {
+         "x": 280,
+         "y": 126.8
+        },
+        {
+         "x": 248.4,
+         "y": 112.1
+        },
+        {
+         "x": 214.7,
+         "y": 103
+        },
+        {
+         "x": 180,
+         "y": 100
+        },
+        {
+         "x": 145.3,
+         "y": 103
+        },
+        {
+         "x": 111.6,
+         "y": 112.1
+        },
+        {
+         "x": 80,
+         "y": 126.8
+        },
+        {
+         "x": 51.4,
+         "y": 146.8
+        },
+        {
+         "x": 38.6,
+         "y": 158.6
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "featA1",
+       "color": "indigo",
+       "detail": "The stretch of the sphere covered by one identity's face features (illustrative width).",
+       "type": "path",
+       "points": [
+        {
+         "x": 161.3,
+         "y": 86.8
+        },
+        {
+         "x": 131.9,
+         "y": 91.5
+        },
+        {
+         "x": 99.8,
+         "y": 101.6
+        },
+        {
+         "x": 69.8,
+         "y": 116.6
+        },
+        {
+         "x": 45.3,
+         "y": 133.7
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "featB1",
+       "color": "indigo",
+       "detail": "Features of a second identity (illustrative width).",
+       "type": "path",
+       "points": [
+        {
+         "x": 198.7,
+         "y": 86.8
+        },
+        {
+         "x": 228.1,
+         "y": 91.5
+        },
+        {
+         "x": 260.2,
+         "y": 101.6
+        },
+        {
+         "x": 290.2,
+         "y": 116.6
+        },
+        {
+         "x": 314.7,
+         "y": 133.7
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "centerA1",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 123.8,
+       "y1": 160.9,
+       "x2": 105.8,
+       "y2": 116.4
+      },
+      {
+       "id": "centerB1",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 236.2,
+       "y1": 160.9,
+       "x2": 254.2,
+       "y2": 116.4
+      },
+      {
+       "id": "touchNode5",
+       "color": "slate",
+       "detail": "The paper reports that Norm-Softmax yields roughly separable features but noticeable ambiguity in the decision boundaries.",
+       "type": "node",
+       "x": 80,
+       "y": 176,
+       "width": 200,
+       "height": 40,
+       "label": "Ambiguous boundary",
+       "shape": "box"
+      },
+      {
+       "id": "afLabel5",
+       "color": "slate",
+       "detail": "The same setup with the additive angular margin: the target logit is s · cos(θ + m).",
+       "type": "node",
+       "x": 130,
+       "y": 240,
+       "width": 100,
+       "height": 40,
+       "label": "ArcFace",
+       "shape": "box"
+      },
+      {
+       "id": "sphereBot5",
+       "color": "slate",
+       "type": "path",
+       "points": [
+        {
+         "x": 321.4,
+         "y": 388.6
+        },
+        {
+         "x": 308.6,
+         "y": 376.8
+        },
+        {
+         "x": 280,
+         "y": 356.8
+        },
+        {
+         "x": 248.4,
+         "y": 342.1
+        },
+        {
+         "x": 214.7,
+         "y": 333
+        },
+        {
+         "x": 180,
+         "y": 330
+        },
+        {
+         "x": 145.3,
+         "y": 333
+        },
+        {
+         "x": 111.6,
+         "y": 342.1
+        },
+        {
+         "x": 80,
+         "y": 356.8
+        },
+        {
+         "x": 51.4,
+         "y": 376.8
+        },
+        {
+         "x": 38.6,
+         "y": 388.6
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "featA2",
+       "color": "indigo",
+       "detail": "With the margin, each identity's features crowd closer to their own center (intra-class compactness).",
+       "type": "path",
+       "points": [
+        {
+         "x": 131.9,
+         "y": 321.5
+        },
+        {
+         "x": 99.8,
+         "y": 331.6
+        },
+        {
+         "x": 69.8,
+         "y": 346.6
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "featB2",
+       "color": "indigo",
+       "type": "path",
+       "points": [
+        {
+         "x": 228.1,
+         "y": 321.5
+        },
+        {
+         "x": 260.2,
+         "y": 331.6
+        },
+        {
+         "x": 290.2,
+         "y": 346.6
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "gapArc5",
+       "color": "rose",
+       "detail": "The open stretch of sphere between neighbouring identities. Its length along the surface is the geodesic distance margin.",
+       "type": "path",
+       "points": [
+        {
+         "x": 142.8,
+         "y": 319.3
+        },
+        {
+         "x": 161.3,
+         "y": 316.8
+        },
+        {
+         "x": 180,
+         "y": 316
+        },
+        {
+         "x": 198.7,
+         "y": 316.8
+        },
+        {
+         "x": 217.2,
+         "y": 319.3
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "centerA2",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 123.8,
+       "y1": 390.9,
+       "x2": 105.8,
+       "y2": 346.4
+      },
+      {
+       "id": "centerB2",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 236.2,
+       "y1": 390.9,
+       "x2": 254.2,
+       "y2": 346.4
+      },
+      {
+       "id": "gapNode5",
+       "color": "rose",
+       "detail": "Because angle and arc length correspond exactly on the normalized sphere, the angular margin m is a margin in geodesic distance. That is the origin of the name ArcFace.",
+       "type": "node",
+       "x": 90,
+       "y": 406,
+       "width": 180,
+       "height": 40,
+       "label": "Arc gap = margin",
+       "shape": "box"
+      }
+     ]
+    }
+   }
+  ],
+  "takeaways": [
+   "Normalizing the feature and the class centers makes each score equal to cos θ, so classification depends only on angles on a sphere.",
+   "ArcFace changes one thing: the correct class's logit becomes cos(θ + m), computed by arccos, adding m, then cos. Rescaling by s, softmax and cross-entropy are standard.",
+   "Handicapping the correct class by a fixed angle forces features closer to their own center and farther from the others.",
+   "On a normalized sphere angle equals arc length, so the margin is a geodesic gap between identities. That is where the name ArcFace comes from."
+  ]
+ }
+}

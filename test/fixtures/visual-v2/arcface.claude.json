@@ -1,0 +1,639 @@
+{
+ "question": "Explain the selected passage visually.",
+ "references": [
+  {
+   "id": "pdf-1",
+   "label": "ArcFace: Additive Angular Margin Loss · p. 1"
+  },
+  {
+   "id": "pdf-2",
+   "label": "ArcFace: Additive Angular Margin Loss · p. 2"
+  },
+  {
+   "id": "pdf-3",
+   "label": "ArcFace: Additive Angular Margin Loss · p. 5"
+  },
+  {
+   "id": "pdf-4",
+   "label": "ArcFace: Additive Angular Margin Loss · p. 4"
+  },
+  {
+   "id": "pdf-5",
+   "label": "ArcFace: Additive Angular Margin Loss · p. 4"
+  },
+  {
+   "id": "pdf-6",
+   "label": "ArcFace: Additive Angular Margin Loss · p. 8"
+  },
+  {
+   "id": "selection",
+   "label": "ArcFace: Additive Angular Margin Loss · selected passage"
+  }
+ ],
+ "definition": {
+  "version": 2,
+  "title": "ArcFace: adding a margin to the angle, not the score",
+  "summary": "ArcFace turns a classifier's logits into angles on a unit hypersphere, adds a fixed margin to the target angle, and converts back; the worked numbers are illustrative.",
+  "scenes": [
+   {
+    "kind": "plot",
+    "title": "Logits become angles on a hypersphere",
+    "x": {
+     "min": -1.1,
+     "max": 1.25
+    },
+    "y": {
+     "min": -0.15,
+     "max": 1.2
+    },
+    "axes": false,
+    "equal": true,
+    "marks": [
+     {
+      "id": "sphere",
+      "type": "curve",
+      "tone": "neutral",
+      "points": [
+       [
+        1,
+        0
+       ],
+       [
+        0.966,
+        0.259
+       ],
+       [
+        0.866,
+        0.5
+       ],
+       [
+        0.707,
+        0.707
+       ],
+       [
+        0.5,
+        0.866
+       ],
+       [
+        0.259,
+        0.966
+       ],
+       [
+        0,
+        1
+       ],
+       [
+        -0.259,
+        0.966
+       ],
+       [
+        -0.5,
+        0.866
+       ],
+       [
+        -0.707,
+        0.707
+       ],
+       [
+        -0.866,
+        0.5
+       ]
+      ],
+      "label": "unit hypersphere",
+      "labelAt": "start"
+     },
+     {
+      "id": "wj",
+      "type": "vector",
+      "tone": "neutral",
+      "from": [
+       0,
+       0
+      ],
+      "to": [
+       -0.766,
+       0.643
+      ],
+      "label": "other center W_j"
+     },
+     {
+      "id": "wy",
+      "type": "vector",
+      "tone": "secondary",
+      "from": [
+       0,
+       0
+      ],
+      "to": [
+       0.94,
+       0.342
+      ],
+      "label": "target center W_y"
+     },
+     {
+      "id": "x",
+      "type": "vector",
+      "tone": "primary",
+      "from": [
+       0,
+       0
+      ],
+      "to": [
+       0.5,
+       0.866
+      ],
+      "label": "feature x"
+     },
+     {
+      "id": "theta",
+      "type": "angle",
+      "tone": "primary",
+      "appear": 2,
+      "vertex": [
+       0,
+       0
+      ],
+      "from": [
+       0.94,
+       0.342
+      ],
+      "to": [
+       0.5,
+       0.866
+      ],
+      "label": "θ"
+     },
+     {
+      "id": "arc-xy",
+      "type": "curve",
+      "tone": "primary",
+      "appear": 2,
+      "points": [
+       [
+        0.94,
+        0.342
+       ],
+       [
+        0.866,
+        0.5
+       ],
+       [
+        0.766,
+        0.643
+       ],
+       [
+        0.643,
+        0.766
+       ],
+       [
+        0.5,
+        0.866
+       ]
+      ],
+      "label": "arc = θ",
+      "labelAt": "peak"
+     },
+     {
+      "id": "m-angle",
+      "type": "angle",
+      "tone": "accent",
+      "appear": 3,
+      "vertex": [
+       0,
+       0
+      ],
+      "from": [
+       0.5,
+       0.866
+      ],
+      "to": [
+       0,
+       1
+      ],
+      "label": "m"
+     },
+     {
+      "id": "penalized",
+      "type": "line",
+      "tone": "accent",
+      "appear": 3,
+      "from": [
+       0,
+       0
+      ],
+      "to": [
+       0,
+       1
+      ],
+      "label": "θ + m",
+      "labelAt": "end",
+      "dashed": true
+     }
+    ],
+    "beats": [
+     {
+      "caption": "After normalization, feature x and its target center W_y lie on the same unit hypersphere, so their dot product is simply cos θ.",
+      "explanation": "Normalizing both vectors to length 1 removes magnitude, so the output of the last fully connected layer depends only on the angle. The paper says \"cosine distance\"; the quantity is the cosine similarity cos θ. The circle is a 2-D schematic of the 512-dimensional feature space.",
+      "basis": "source",
+      "referenceIds": [
+       "selection",
+       "pdf-4",
+       "pdf-5"
+      ]
+     },
+     {
+      "caption": "Arc-cosine recovers the angle θ, and on a unit sphere that angle is exactly the arc length from x to its center: the geodesic distance.",
+      "explanation": "A geodesic is the shortest path along a curved surface; on a sphere of radius 1 its length equals the angle in radians. This exact correspondence between angle and arc is what the name ArcFace refers to.",
+      "basis": "source",
+      "referenceIds": [
+       "selection",
+       "pdf-2"
+      ],
+      "focus": [
+       "theta",
+       "arc-xy"
+      ]
+     },
+     {
+      "caption": "ArcFace adds a margin m to the target angle, so x is scored as if it sat at θ + m, farther from its own center.",
+      "explanation": "The penalty applies only to the ground-truth class. To keep the loss low, the network must pull x closer to W_y than plain classification would require, which tightens each class and widens the gaps between classes.",
+      "basis": "source",
+      "referenceIds": [
+       "selection",
+       "pdf-4"
+      ],
+      "focus": [
+       "m-angle",
+       "penalized"
+      ]
+     }
+    ]
+   },
+   {
+    "kind": "cells",
+    "title": "One sample's logits, worked through",
+    "rows": [
+     {
+      "id": "cos",
+      "label": "cos θ",
+      "appear": 1,
+      "cells": [
+       {
+        "text": "0.77",
+        "tone": "primary"
+       },
+       {
+        "text": "0.17",
+        "tone": "neutral"
+       },
+       {
+        "text": "-0.17",
+        "tone": "neutral"
+       }
+      ]
+     },
+     {
+      "id": "ang",
+      "label": "θ = arccos",
+      "appear": 2,
+      "cells": [
+       {
+        "text": "40°",
+        "tone": "primary"
+       },
+       {
+        "text": "80°",
+        "tone": "neutral"
+       },
+       {
+        "text": "100°",
+        "tone": "neutral"
+       }
+      ]
+     },
+     {
+      "id": "marg",
+      "label": "after margin",
+      "appear": 3,
+      "cells": [
+       {
+        "text": "0.34",
+        "tone": "accent"
+       },
+       {
+        "text": "0.17",
+        "tone": "neutral"
+       },
+       {
+        "text": "-0.17",
+        "tone": "neutral"
+       }
+      ]
+     },
+     {
+      "id": "scaled",
+      "label": "× s = 10",
+      "appear": 4,
+      "cells": [
+       {
+        "text": "3.4",
+        "tone": "accent"
+       },
+       {
+        "text": "1.7",
+        "tone": "neutral"
+       },
+       {
+        "text": "-1.7",
+        "tone": "neutral"
+       }
+      ]
+     }
+    ],
+    "brackets": [
+     {
+      "row": "cos",
+      "from": 0,
+      "to": 0,
+      "label": "target class",
+      "tone": "primary",
+      "appear": 1
+     },
+     {
+      "row": "cos",
+      "from": 1,
+      "to": 2,
+      "label": "other classes",
+      "tone": "neutral",
+      "appear": 1
+     }
+    ],
+    "links": [
+     {
+      "from": [
+       "ang",
+       0
+      ],
+      "to": [
+       "marg",
+       0
+      ],
+      "label": "+ m = 30°",
+      "tone": "accent",
+      "appear": 3
+     }
+    ],
+    "beats": [
+     {
+      "caption": "Illustration: a normalized feature scores cosine 0.77 against its target center and lower cosines against two other centers.",
+      "explanation": "Each cell is the dot product of the unit feature with one unit class center, i.e. one output of the last fully connected layer. The values are invented for illustration.",
+      "basis": "illustration",
+      "referenceIds": []
+     },
+     {
+      "caption": "Arc-cosine converts the cosines to angles: this feature is 40° from its target center.",
+      "explanation": "Only the target angle is needed for the next step; the other angles are shown for context.",
+      "basis": "illustration",
+      "referenceIds": [],
+      "focus": [
+       "ang"
+      ]
+     },
+     {
+      "caption": "Only the target angle gets the margin: 40° + 30° = 70°, and cos 70° = 0.34 replaces 0.77 as the target logit.",
+      "explanation": "m = 30° is chosen for round numbers. The other classes' cosines pass through unchanged, so the correct class is deliberately scored as less certain than it really is.",
+      "basis": "illustration",
+      "referenceIds": [],
+      "focus": [
+       "marg"
+      ]
+     },
+     {
+      "caption": "Every logit is multiplied by a fixed scale s (here 10), then softmax and cross-entropy run exactly as usual.",
+      "explanation": "The target now leads 3.4 to 1.7 instead of 7.7 to 1.7, which drops its softmax probability from about 0.997 to about 0.84, so the loss stays higher until training shrinks the true angle. The scale s is a fixed hyperparameter; 10 is used here only to keep the arithmetic visible.",
+      "basis": "illustration",
+      "referenceIds": [],
+      "focus": [
+       "scaled"
+      ]
+     }
+    ]
+   },
+   {
+    "kind": "plot",
+    "title": "The margin as a constant angular shift",
+    "x": {
+     "label": "angle θ to target center",
+     "min": 20,
+     "max": 100,
+     "ticks": [
+      {
+       "at": 20,
+       "label": "20°"
+      },
+      {
+       "at": 40,
+       "label": "40°"
+      },
+      {
+       "at": 60,
+       "label": "60°"
+      },
+      {
+       "at": 80,
+       "label": "80°"
+      },
+      {
+       "at": 100,
+       "label": "100°"
+      }
+     ]
+    },
+    "y": {
+     "label": "target logit (before scale s)",
+     "min": -0.8,
+     "max": 1,
+     "ticks": [
+      {
+       "at": -0.5,
+       "label": "-0.5"
+      },
+      {
+       "at": 0,
+       "label": "0"
+      },
+      {
+       "at": 0.5,
+       "label": "0.5"
+      },
+      {
+       "at": 1,
+       "label": "1"
+      }
+     ]
+    },
+    "marks": [
+     {
+      "id": "plain",
+      "type": "curve",
+      "tone": "primary",
+      "points": [
+       [
+        20,
+        0.94
+       ],
+       [
+        30,
+        0.866
+       ],
+       [
+        40,
+        0.766
+       ],
+       [
+        50,
+        0.643
+       ],
+       [
+        60,
+        0.5
+       ],
+       [
+        70,
+        0.342
+       ],
+       [
+        80,
+        0.174
+       ],
+       [
+        90,
+        0
+       ],
+       [
+        100,
+        -0.174
+       ]
+      ],
+      "label": "cos θ",
+      "labelAt": "end"
+     },
+     {
+      "id": "arc",
+      "type": "curve",
+      "tone": "accent",
+      "appear": 2,
+      "points": [
+       [
+        20,
+        0.643
+       ],
+       [
+        30,
+        0.5
+       ],
+       [
+        40,
+        0.342
+       ],
+       [
+        50,
+        0.174
+       ],
+       [
+        60,
+        0
+       ],
+       [
+        70,
+        -0.174
+       ],
+       [
+        80,
+        -0.342
+       ],
+       [
+        90,
+        -0.5
+       ],
+       [
+        100,
+        -0.643
+       ]
+      ],
+      "label": "cos(θ + m)",
+      "labelAt": "end"
+     },
+     {
+      "id": "p-plain",
+      "type": "point",
+      "tone": "primary",
+      "appear": 2,
+      "xy": [
+       70,
+       0.342
+      ],
+      "label": "70°"
+     },
+     {
+      "id": "p-arc",
+      "type": "point",
+      "tone": "accent",
+      "appear": 2,
+      "xy": [
+       40,
+       0.342
+      ],
+      "label": "40°"
+     },
+     {
+      "id": "shift",
+      "type": "line",
+      "tone": "accent",
+      "appear": 2,
+      "from": [
+       40,
+       0.342
+      ],
+      "to": [
+       70,
+       0.342
+      ],
+      "label": "m = 30°",
+      "labelAt": "mid",
+      "dashed": true
+     }
+    ],
+    "beats": [
+     {
+      "caption": "Without a margin the target logit is cos θ, climbing as the feature turns toward its center.",
+      "explanation": "The curve is computed from the cosine over the 20° to 100° range the paper plots. The paper reports that target angles start near 90° and end near 30° during ArcFace training.",
+      "basis": "illustration",
+      "referenceIds": [
+       "pdf-3"
+      ]
+     },
+     {
+      "caption": "The margin slides the whole curve left by m: any given logit now requires an angle m smaller, the same shift everywhere.",
+      "explanation": "Drawn with the illustrative m = 30°: the logit 0.34 that plain cosine grants at 70° is granted only at 40°. The paper describes this as a constant linear angular margin, in contrast to margin designs whose angular effect varies with the angle.",
+      "basis": "illustration",
+      "referenceIds": [
+       "pdf-3"
+      ],
+      "focus": [
+       "arc",
+       "shift",
+       "p-plain",
+       "p-arc"
+      ]
+     }
+    ]
+   }
+  ],
+  "takeaways": [
+   "Normalizing features and class centers makes each logit the cosine of an angle on a hypersphere.",
+   "ArcFace adds a margin m to the target angle only, giving cos(θ + m), then rescales and uses ordinary softmax.",
+   "Because angle equals arc length on the unit sphere, the margin is a fixed geodesic distance between classes."
+  ]
+ }
+}

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { VisualElement, VisualRecord } from '../../../src/shared/visual'
+import type { VisualDefinitionV1, VisualElement, VisualRecord } from '../../../src/shared/visual'
 import { arrowHead, downloadVisual, visualColors, wrapLabel } from '../lib/visual-html'
 import './visual.css'
 
@@ -43,7 +43,7 @@ function Shape({ element: e, reveal }: { element: VisualElement; reveal: (text: 
 export function VisualStory({ record, expanded = false, stepIndex, onStepChange }: { record: VisualRecord; expanded?: boolean; stepIndex?: number; onStepChange?: (index: number) => void }) {
   const [localIndex, setLocalIndex] = useState(0), [detail, setDetail] = useState('')
   const index = stepIndex ?? localIndex
-  const v = record.definition!
+  const v = record.definition as VisualDefinitionV1 // TEMPORARY until the v2 player lands
   const step = v.steps[index] || v.steps[0]
   function move(next: number) { (onStepChange || setLocalIndex)(next); setDetail('') }
   return <div className={`visual-story${expanded ? ' visual-story-expanded' : ''}`}>

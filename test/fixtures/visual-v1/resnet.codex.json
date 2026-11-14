@@ -1,0 +1,541 @@
+{
+ "question": "Why do residual connections make very deep networks easier to train?",
+ "references": [
+  {
+   "id": "pdf-1",
+   "label": "Deep Residual Learning for Image Recognition · p. 2"
+  },
+  {
+   "id": "pdf-2",
+   "label": "Deep Residual Learning for Image Recognition · p. 1"
+  },
+  {
+   "id": "pdf-3",
+   "label": "Deep Residual Learning for Image Recognition · p. 2"
+  },
+  {
+   "id": "pdf-4",
+   "label": "Deep Residual Learning for Image Recognition · p. 3"
+  },
+  {
+   "id": "pdf-5",
+   "label": "Deep Residual Learning for Image Recognition · p. 9"
+  }
+ ],
+ "definition": {
+  "version": 1,
+  "title": "Why residual connections help deep networks train",
+  "summary": "Residual connections make each block learn a correction to an input carried along a shortcut. This makes preserving useful features easy and gives gradients a direct route through the addition. The supplied paper presents the optimization hypothesis and empirical support; the gradient explanation below is background knowledge.",
+  "steps": [
+   {
+    "title": "1. More layers can make fitting harder",
+    "caption": "The paper reports higher training error for a 56-layer plain network than for a 20-layer one. This is an optimization problem called degradation.",
+    "explanation": "A plain network passes information through successive learned layers without identity shortcuts. In the supplied CIFAR-10 comparison, the deeper plain network fits even its training data less well. That observation motivates changing how the network is parameterized, rather than simply adding layers. The drawing shows only the reported ordering; its curves are schematic and contain no measured values.",
+    "basis": "source",
+    "referenceIds": [
+     "pdf-2"
+    ],
+    "scene": {
+     "height": 330,
+     "elements": [
+      {
+       "id": "vertical",
+       "color": "slate",
+       "type": "path",
+       "points": [
+        {
+         "x": 45,
+         "y": 55
+        },
+        {
+         "x": 45,
+         "y": 270
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "horizontal",
+       "color": "slate",
+       "type": "path",
+       "points": [
+        {
+         "x": 45,
+         "y": 270
+        },
+        {
+         "x": 325,
+         "y": 270
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "error",
+       "color": "slate",
+       "type": "text",
+       "x": 50,
+       "y": 25,
+       "text": "Training error",
+       "size": 18
+      },
+      {
+       "id": "training",
+       "color": "slate",
+       "type": "text",
+       "x": 145,
+       "y": 300,
+       "text": "Training →",
+       "size": 18
+      },
+      {
+       "id": "deep_curve",
+       "color": "rose",
+       "type": "path",
+       "points": [
+        {
+         "x": 55,
+         "y": 80
+        },
+        {
+         "x": 85,
+         "y": 120
+        },
+        {
+         "x": 120,
+         "y": 150
+        },
+        {
+         "x": 170,
+         "y": 168
+        },
+        {
+         "x": 235,
+         "y": 174
+        },
+        {
+         "x": 320,
+         "y": 175
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "shallow_curve",
+       "color": "teal",
+       "type": "path",
+       "points": [
+        {
+         "x": 55,
+         "y": 90
+        },
+        {
+         "x": 85,
+         "y": 150
+        },
+        {
+         "x": 120,
+         "y": 192
+        },
+        {
+         "x": 170,
+         "y": 220
+        },
+        {
+         "x": 235,
+         "y": 230
+        },
+        {
+         "x": 320,
+         "y": 233
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "deep_label",
+       "color": "rose",
+       "type": "text",
+       "x": 165,
+       "y": 139,
+       "text": "56-layer plain",
+       "size": 18
+      },
+      {
+       "id": "shallow_label",
+       "color": "teal",
+       "type": "text",
+       "x": 165,
+       "y": 258,
+       "text": "20-layer plain",
+       "size": 18
+      }
+     ]
+    }
+   },
+   {
+    "title": "2. Keep the input; learn a correction",
+    "caption": "The learned branch produces F(x). The identity shortcut carries x unchanged. Addition produces y = x + F(x).",
+    "explanation": "If the desired mapping is H(x), define the residual as F(x) = H(x) − x. Learning F and adding x can represent the same desired mapping. What changes is the optimization task: the learned layers adjust an existing representation rather than having to produce the entire output themselves. This simplified diagram groups the learned layers together. In the paper’s illustrated block, a ReLU also follows the addition. Identity addition requires matching shapes; a projection can match dimensions when needed.",
+    "basis": "source",
+    "referenceIds": [
+     "pdf-1",
+     "pdf-4"
+    ],
+    "scene": {
+     "height": 430,
+     "elements": [
+      {
+       "id": "input",
+       "color": "indigo",
+       "detail": "The input is a feature tensor, not necessarily a single number.",
+       "type": "node",
+       "x": 120,
+       "y": 15,
+       "width": 120,
+       "height": 48,
+       "label": "x",
+       "shape": "ellipse"
+      },
+      {
+       "id": "into_layers",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 160,
+       "y1": 63,
+       "x2": 160,
+       "y2": 118
+      },
+      {
+       "id": "layers",
+       "color": "teal",
+       "detail": "The paper uses residual branches with two or three learned layers.",
+       "type": "node",
+       "x": 80,
+       "y": 118,
+       "width": 160,
+       "height": 78,
+       "label": "Learned layers F(x)",
+       "shape": "box"
+      },
+      {
+       "id": "to_sum",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 160,
+       "y1": 196,
+       "x2": 160,
+       "y2": 266
+      },
+      {
+       "id": "shortcut",
+       "color": "indigo",
+       "detail": "The identity shortcut copies x without learned weights.",
+       "type": "path",
+       "points": [
+        {
+         "x": 240,
+         "y": 39
+        },
+        {
+         "x": 300,
+         "y": 39
+        },
+        {
+         "x": 300,
+         "y": 290
+        },
+        {
+         "x": 192,
+         "y": 290
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "shortcut_label",
+       "color": "indigo",
+       "type": "text",
+       "x": 270,
+       "y": 165,
+       "text": "x",
+       "size": 18
+      },
+      {
+       "id": "sum",
+       "color": "amber",
+       "detail": "Add corresponding elements of x and F(x); this is not concatenation.",
+       "type": "node",
+       "x": 136,
+       "y": 266,
+       "width": 48,
+       "height": 48,
+       "label": "+",
+       "shape": "ellipse"
+      },
+      {
+       "id": "to_output",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 160,
+       "y1": 314,
+       "x2": 160,
+       "y2": 352
+      },
+      {
+       "id": "output",
+       "color": "indigo",
+       "detail": "This is the sum before any post-addition activation.",
+       "type": "node",
+       "x": 55,
+       "y": 352,
+       "width": 250,
+       "height": 54,
+       "label": "y = x + F(x)",
+       "shape": "box"
+      }
+     ]
+    }
+   },
+   {
+    "title": "3. Doing nothing becomes easy to express",
+    "caption": "If preserving x is useful, the residual branch only needs to output zero. Small changes can be expressed as small corrections.",
+    "explanation": "These scalar examples illustrate the parameterization; real blocks operate on feature tensors. To preserve an input of 5 at the addition, the branch can output 0. To produce 6, it can output 1. In a plain stack, the learned layers must themselves implement the full mapping, including identity when that is useful. The paper hypothesizes that pushing a residual toward zero is easier than making stacked nonlinear layers learn identity. This makes additional depth easier to use, but does not guarantee that training always finds the best solution. A post-addition activation can still alter the sum.",
+    "basis": "illustration",
+    "referenceIds": [],
+    "scene": {
+     "height": 320,
+     "elements": [
+      {
+       "id": "keep_label",
+       "color": "slate",
+       "type": "text",
+       "x": 30,
+       "y": 30,
+       "text": "Preserve",
+       "size": 18
+      },
+      {
+       "id": "keep_x",
+       "color": "indigo",
+       "detail": "Illustrative scalar input.",
+       "type": "node",
+       "x": 25,
+       "y": 60,
+       "width": 80,
+       "height": 60,
+       "label": "5",
+       "shape": "ellipse"
+      },
+      {
+       "id": "keep_f",
+       "color": "teal",
+       "detail": "A zero residual preserves the input at the addition.",
+       "type": "node",
+       "x": 140,
+       "y": 60,
+       "width": 80,
+       "height": 60,
+       "label": "+ 0",
+       "shape": "box"
+      },
+      {
+       "id": "keep_result",
+       "color": "indigo",
+       "detail": "The sum equals the input.",
+       "type": "node",
+       "x": 255,
+       "y": 60,
+       "width": 80,
+       "height": 60,
+       "label": "5",
+       "shape": "ellipse"
+      },
+      {
+       "id": "keep_a",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 105,
+       "y1": 90,
+       "x2": 140,
+       "y2": 90
+      },
+      {
+       "id": "keep_b",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 220,
+       "y1": 90,
+       "x2": 255,
+       "y2": 90
+      },
+      {
+       "id": "adjust_label",
+       "color": "slate",
+       "type": "text",
+       "x": 30,
+       "y": 180,
+       "text": "Adjust",
+       "size": 18
+      },
+      {
+       "id": "adjust_x",
+       "color": "indigo",
+       "detail": "The same illustrative input.",
+       "type": "node",
+       "x": 25,
+       "y": 210,
+       "width": 80,
+       "height": 60,
+       "label": "5",
+       "shape": "ellipse"
+      },
+      {
+       "id": "adjust_f",
+       "color": "teal",
+       "detail": "The learned branch supplies the correction.",
+       "type": "node",
+       "x": 140,
+       "y": 210,
+       "width": 80,
+       "height": 60,
+       "label": "+ 1",
+       "shape": "box"
+      },
+      {
+       "id": "adjust_result",
+       "color": "indigo",
+       "detail": "Input plus correction produces the desired sum.",
+       "type": "node",
+       "x": 255,
+       "y": 210,
+       "width": 80,
+       "height": 60,
+       "label": "6",
+       "shape": "ellipse"
+      },
+      {
+       "id": "adjust_a",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 105,
+       "y1": 240,
+       "x2": 140,
+       "y2": 240
+      },
+      {
+       "id": "adjust_b",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 220,
+       "y1": 240,
+       "x2": 255,
+       "y2": 240
+      }
+     ]
+    }
+   },
+   {
+    "title": "4. Addition also gives gradients a direct route",
+    "caption": "Background: during backpropagation, the gradient through y = x + F(x) has both a direct contribution and a contribution through F.",
+    "explanation": "Training uses gradients to tell earlier layers how to change. For the sum y = x + F(x), its Jacobian is I + J_F, where I is the identity matrix and J_F is the residual branch’s Jacobian. Thus an incoming gradient has a direct identity contribution as well as one propagated through the learned branch. Across many blocks, this provides routes that bypass repeated multiplication through every learned layer. The picture is a local backpropagation schematic, not a literal depiction of the whole network. It does not mean gradients can never vanish or explode: branch contributions can cancel, and post-addition activations introduce additional derivatives. Together with the easier identity parameterization, this helps explain why residual networks are easier to optimize.",
+    "basis": "background",
+    "referenceIds": [],
+    "scene": {
+     "height": 390,
+     "elements": [
+      {
+       "id": "incoming",
+       "color": "amber",
+       "detail": "A gradient describes how the loss changes with the block’s output.",
+       "type": "node",
+       "x": 80,
+       "y": 20,
+       "width": 200,
+       "height": 60,
+       "label": "Gradient at y",
+       "shape": "box"
+      },
+      {
+       "id": "split_left",
+       "color": "indigo",
+       "type": "arrow",
+       "x1": 120,
+       "y1": 80,
+       "x2": 90,
+       "y2": 145
+      },
+      {
+       "id": "split_right",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 240,
+       "y1": 80,
+       "x2": 270,
+       "y2": 145
+      },
+      {
+       "id": "direct",
+       "color": "indigo",
+       "detail": "The derivative of the identity shortcut is I, so this route contributes the incoming gradient unchanged at the sum.",
+       "type": "node",
+       "x": 20,
+       "y": 145,
+       "width": 140,
+       "height": 82,
+       "label": "Direct route",
+       "shape": "box"
+      },
+      {
+       "id": "branch",
+       "color": "teal",
+       "detail": "This contribution depends on the derivatives of the learned residual branch.",
+       "type": "node",
+       "x": 200,
+       "y": 145,
+       "width": 140,
+       "height": 82,
+       "label": "Through F",
+       "shape": "box"
+      },
+      {
+       "id": "merge_left",
+       "color": "indigo",
+       "type": "arrow",
+       "x1": 90,
+       "y1": 227,
+       "x2": 145,
+       "y2": 292
+      },
+      {
+       "id": "merge_right",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 270,
+       "y1": 227,
+       "x2": 215,
+       "y2": 292
+      },
+      {
+       "id": "combined",
+       "color": "amber",
+       "detail": "The two gradient contributions add. The direct route helps propagation, but does not guarantee a nonzero total gradient.",
+       "type": "node",
+       "x": 75,
+       "y": 292,
+       "width": 210,
+       "height": 66,
+       "label": "Add at x",
+       "shape": "box"
+      }
+     ]
+    }
+   }
+  ],
+  "takeaways": [
+   "A residual block learns a correction F(x) around an identity shortcut: y = x + F(x).",
+   "Preserving features becomes easy to express: set the residual to zero at the addition.",
+   "The shortcut also provides a direct gradient contribution, helping optimization across many blocks without guaranteeing perfect gradient flow."
+  ]
+ }
+}

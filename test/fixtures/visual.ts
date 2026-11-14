@@ -1,5 +1,5 @@
-import type { VisualDefinition } from '../../src/shared/visual.js'
-export const visualFixture: VisualDefinition = {
+import type { VisualDefinitionV1 } from '../../src/shared/visual.js'
+export const visualFixture: VisualDefinitionV1 = {
   version: 1, title: 'How attention builds context', summary: 'A word borrows information from other words according to their relevance.',
   steps: [
     { title: 'Start with a word', caption: 'The same word can mean different things in different sentences.', explanation: 'The word bank needs context to distinguish a financial institution from the edge of a river.', basis: 'illustration', referenceIds: [],

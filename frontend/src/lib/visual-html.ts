@@ -1,4 +1,4 @@
-import type { VisualElement, VisualRecord } from '../../../src/shared/visual'
+import type { VisualDefinitionV1, VisualElement, VisualRecord } from '../../../src/shared/visual'
 
 export const visualColors = { indigo: '#a5b4fc', teal: '#5eead4', amber: '#fcd34d', rose: '#fda4af', slate: '#cbd5e1' }
 export function wrapLabel(text: string, width: number): string[] {
@@ -30,7 +30,7 @@ function elementHtml(e: VisualElement): string {
 }
 
 export function visualHtml(record: VisualRecord): string {
-  const v = record.definition
+  const v = record.definition as VisualDefinitionV1 | null // TEMPORARY until the v2 export lands
   if (!v) throw new Error('Wait for the completed explanation before exporting.')
   return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(v.title)}</title>
 <style>body{margin:0;background:#101116;color:#e2e8f0;font:16px/1.6 system-ui,sans-serif}main{max-width:720px;margin:auto;padding:24px}h1{line-height:1.2}button{font:inherit;background:#252640;color:#e2e8f0;border:1px solid #6366f1;border-radius:8px;padding:7px 14px;cursor:pointer}button:disabled{opacity:.4}nav{display:flex;align-items:center;justify-content:space-between;gap:12px}svg{display:block;width:100%;max-height:65vh;background:#151722;border-radius:16px;font-family:system-ui,sans-serif}g[role=button]{cursor:pointer}g[role=button]:focus{outline:2px solid #a5b4fc}figcaption{margin-top:12px}figure{margin:18px 0}small{color:#94a3b8}#detail{padding:12px;border-left:3px solid #818cf8}footer{border-top:1px solid #333;padding-top:16px;margin-top:24px}@media print{.v-export-step[hidden]{display:block!important}nav{display:none}svg{max-height:none}figure{break-inside:avoid}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}</style>

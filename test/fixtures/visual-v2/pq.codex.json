@@ -1,0 +1,361 @@
+{
+ "question": "How does product quantization compress a vector and estimate distances?",
+ "references": [
+  {
+   "id": "pdf-1",
+   "label": "Product Quantization for Nearest Neighbor Search · p. 4"
+  },
+  {
+   "id": "pdf-2",
+   "label": "Product Quantization for Nearest Neighbor Search · p. 2"
+  },
+  {
+   "id": "pdf-3",
+   "label": "Product Quantization for Nearest Neighbor Search · p. 1"
+  },
+  {
+   "id": "pdf-4",
+   "label": "Product Quantization for Nearest Neighbor Search · p. 6"
+  }
+ ],
+ "definition": {
+  "version": 2,
+  "title": "Product quantization: short codes, fast distances",
+  "summary": "Product quantization replaces vector blocks with centroid indices, then estimates distances by adding small table lookups.",
+  "scenes": [
+   {
+    "title": "Compress each block separately",
+    "kind": "cells",
+    "rows": [
+     {
+      "id": "original",
+      "label": "Original vector",
+      "tone": "primary",
+      "cells": [
+       {
+        "text": "1"
+       },
+       {
+        "text": "2"
+       },
+       {
+        "text": "7"
+       },
+       {
+        "text": "8"
+       }
+      ]
+     },
+     {
+      "id": "reconstructed",
+      "label": "Selected centroids",
+      "tone": "secondary",
+      "appear": 2,
+      "cells": [
+       {
+        "text": "1"
+       },
+       {
+        "text": "1"
+       },
+       {
+        "text": "8"
+       },
+       {
+        "text": "8"
+       }
+      ]
+     },
+     {
+      "id": "code",
+      "label": "Stored code",
+      "tone": "accent",
+      "appear": 3,
+      "cells": [
+       {
+        "text": "3",
+        "span": 2
+       },
+       {
+        "text": "5",
+        "span": 2
+       }
+      ]
+     }
+    ],
+    "brackets": [
+     {
+      "row": "original",
+      "from": 0,
+      "to": 1,
+      "label": "Block A",
+      "tone": "neutral"
+     },
+     {
+      "row": "original",
+      "from": 2,
+      "to": 3,
+      "label": "Block B",
+      "tone": "neutral"
+     }
+    ],
+    "links": [
+     {
+      "from": [
+       "original",
+       0
+      ],
+      "to": [
+       "reconstructed",
+       0
+      ],
+      "appear": 2,
+      "tone": "secondary"
+     },
+     {
+      "from": [
+       "original",
+       2
+      ],
+      "to": [
+       "reconstructed",
+       2
+      ],
+      "appear": 2,
+      "tone": "secondary"
+     },
+     {
+      "from": [
+       "reconstructed",
+       0
+      ],
+      "to": [
+       "code",
+       0
+      ],
+      "appear": 3,
+      "tone": "accent"
+     },
+     {
+      "from": [
+       "reconstructed",
+       2
+      ],
+      "to": [
+       "code",
+       1
+      ],
+      "appear": 3,
+      "tone": "accent"
+     }
+    ],
+    "beats": [
+     {
+      "caption": "In this illustration, split a four-coordinate vector into two blocks.",
+      "explanation": "Each block occupies a lower-dimensional subspace and gets its own quantizer, which maps blocks to representative points.",
+      "basis": "illustration",
+      "referenceIds": [],
+      "focus": [
+       "original"
+      ]
+     },
+     {
+      "caption": "Replace each block with its nearest centroid, a representative learned for that block.",
+      "explanation": "Suppose block A selects (1, 1) and block B selects (8, 8). Joining these centroids reconstructs an approximation of the original vector; the differences are quantization error.",
+      "basis": "illustration",
+      "referenceIds": [],
+      "focus": [
+       "reconstructed"
+      ]
+     },
+     {
+      "caption": "Store only the centroid indices; the centroid coordinates live in shared codebooks.",
+      "explanation": "Here, indices 3 and 5 identify the selected centroids in separate codebooks. With 256 centroids per block, each index needs 8 bits, so this illustrative two-block code needs 16 bits, excluding shared codebook storage.",
+      "basis": "illustration",
+      "referenceIds": [],
+      "focus": [
+       "code"
+      ]
+     }
+    ]
+   },
+   {
+    "title": "Estimate distance with lookups",
+    "kind": "flow",
+    "direction": "down",
+    "nodes": [
+     {
+      "id": "query",
+      "label": "Query blocks",
+      "sub": "(2, 1) | (6, 8)",
+      "tone": "primary"
+     },
+     {
+      "id": "tableA",
+      "label": "Block A table",
+      "sub": "Index 3 → 1",
+      "tone": "accent",
+      "detail": "Squared distance to centroid (1, 1): (2 − 1)² + (1 − 1)² = 1."
+     },
+     {
+      "id": "tableB",
+      "label": "Block B table",
+      "sub": "Index 5 → 4",
+      "tone": "accent",
+      "detail": "Squared distance to centroid (8, 8): (6 − 8)² + (8 − 8)² = 4."
+     },
+     {
+      "id": "code",
+      "label": "Database code",
+      "sub": "[3, 5]",
+      "tone": "accent",
+      "appear": 2
+     },
+     {
+      "id": "sum",
+      "label": "Squared distance",
+      "sub": "1 + 4 = 5",
+      "tone": "secondary",
+      "appear": 2
+     }
+    ],
+    "edges": [
+     {
+      "from": "query",
+      "to": "tableA",
+      "label": "Squared distances",
+      "tone": "primary"
+     },
+     {
+      "from": "query",
+      "to": "tableB",
+      "label": "Squared distances",
+      "tone": "primary"
+     },
+     {
+      "from": "code",
+      "to": "tableA",
+      "label": "Select 3",
+      "tone": "accent",
+      "appear": 2
+     },
+     {
+      "from": "code",
+      "to": "tableB",
+      "label": "Select 5",
+      "tone": "accent",
+      "appear": 2
+     },
+     {
+      "from": "tableA",
+      "to": "sum",
+      "tone": "secondary",
+      "appear": 2
+     },
+     {
+      "from": "tableB",
+      "to": "sum",
+      "tone": "secondary",
+      "appear": 2
+     }
+    ],
+    "beats": [
+     {
+      "caption": "For each query, prepare a table of squared distances to every centroid in each block.",
+      "explanation": "The query stays uncompressed. This illustration shows just the two table entries selected by the example database code; the full tables can be reused across database vectors.",
+      "basis": "illustration",
+      "referenceIds": [],
+      "focus": [
+       "query",
+       "tableA",
+       "tableB"
+      ]
+     },
+     {
+      "caption": "The stored indices select entries whose sum estimates the full squared distance.",
+      "explanation": "Squared Euclidean distance adds across coordinate blocks, giving 5 for the reconstructed vector. The true squared distance to the original (1, 2, 7, 8) is 3, so this particular estimate is too large.",
+      "basis": "illustration",
+      "referenceIds": [],
+      "focus": [
+       "code",
+       "sum"
+      ]
+     }
+    ]
+   },
+   {
+    "title": "Why keep the query uncompressed?",
+    "kind": "compare",
+    "columns": [
+     {
+      "id": "asymmetric",
+      "title": "Asymmetric",
+      "tone": "primary"
+     },
+     {
+      "id": "symmetric",
+      "title": "Symmetric",
+      "tone": "secondary"
+     }
+    ],
+    "rows": [
+     {
+      "label": "Database",
+      "cells": [
+       "Quantized",
+       "Quantized"
+      ]
+     },
+     {
+      "label": "Query",
+      "cells": [
+       "Original coordinates",
+       "Quantized"
+      ]
+     },
+     {
+      "label": "Error sources",
+      "cells": [
+       "Database quantization",
+       "Database and query quantization"
+      ],
+      "appear": 2
+     },
+     {
+      "label": "Precision",
+      "cells": [
+       "Higher in the paper",
+       "Lower in the paper"
+      ],
+      "appear": 2
+     }
+    ],
+    "beats": [
+     {
+      "caption": "Asymmetric distance computation compares an original query with a compressed database vector.",
+      "explanation": "The paper also describes symmetric computation, which quantizes both vectors. Its asymmetric method avoids introducing quantization error on the query side.",
+      "basis": "source",
+      "referenceIds": [
+       "pdf-2",
+       "pdf-3"
+      ]
+     },
+     {
+      "caption": "Keeping the query intact improves precision, but estimated distances still contain quantization error.",
+      "explanation": "The paper reports average underestimation for both estimators, with stronger bias for the symmetric version. An average bias does not mean every individual estimate is too small.",
+      "basis": "source",
+      "referenceIds": [
+       "pdf-3",
+       "pdf-4"
+      ]
+     }
+    ]
+   }
+  ],
+  "takeaways": [
+   "A product-quantized code stores one centroid index per coordinate block.",
+   "Distance estimation adds query-to-centroid squared distances selected by those indices.",
+   "Compression saves storage and computation while introducing approximation error."
+  ]
+ }
+}

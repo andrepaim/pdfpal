@@ -1,0 +1,497 @@
+{
+ "question": "How does product quantization compress a vector and estimate distances?",
+ "references": [
+  {
+   "id": "pdf-1",
+   "label": "Product Quantization for Nearest Neighbor Search · p. 4"
+  },
+  {
+   "id": "pdf-2",
+   "label": "Product Quantization for Nearest Neighbor Search · p. 2"
+  },
+  {
+   "id": "pdf-3",
+   "label": "Product Quantization for Nearest Neighbor Search · p. 1"
+  },
+  {
+   "id": "pdf-4",
+   "label": "Product Quantization for Nearest Neighbor Search · p. 6"
+  }
+ ],
+ "definition": {
+  "version": 2,
+  "title": "Product quantization: short codes and distance estimates",
+  "summary": "A vector is split into pieces, each stored as a centroid index, and distances are read from lookup tables; the excerpts omit the exact distance equations.",
+  "scenes": [
+   {
+    "title": "From vector to short code",
+    "kind": "cells",
+    "rows": [
+     {
+      "id": "y",
+      "label": "vector y",
+      "tone": "primary",
+      "cells": [
+       {
+        "text": "0.9"
+       },
+       {
+        "text": "0.1"
+       },
+       {
+        "text": "0.4"
+       },
+       {
+        "text": "0.8"
+       },
+       {
+        "text": "0.2"
+       },
+       {
+        "text": "0.7"
+       },
+       {
+        "text": "0.5"
+       },
+       {
+        "text": "0.3"
+       }
+      ]
+     },
+     {
+      "id": "code",
+      "label": "code of y",
+      "tone": "accent",
+      "appear": 3,
+      "cells": [
+       {
+        "text": "5",
+        "span": 2
+       },
+       {
+        "text": "2",
+        "span": 2
+       },
+       {
+        "text": "7",
+        "span": 2
+       },
+       {
+        "text": "1",
+        "span": 2
+       }
+      ]
+     }
+    ],
+    "brackets": [
+     {
+      "row": "y",
+      "from": 0,
+      "to": 1,
+      "label": "u₁",
+      "tone": "neutral",
+      "appear": 2
+     },
+     {
+      "row": "y",
+      "from": 2,
+      "to": 3,
+      "label": "u₂",
+      "tone": "neutral",
+      "appear": 2
+     },
+     {
+      "row": "y",
+      "from": 4,
+      "to": 5,
+      "label": "u₃",
+      "tone": "neutral",
+      "appear": 2
+     },
+     {
+      "row": "y",
+      "from": 6,
+      "to": 7,
+      "label": "u₄",
+      "tone": "neutral",
+      "appear": 2
+     }
+    ],
+    "beats": [
+     {
+      "caption": "Start with one database vector y, here 8 made-up numbers standing in for a high-dimensional descriptor.",
+      "explanation": "The paper works with SIFT and GIST image descriptors, which have many more dimensions. The values here are invented to keep the picture small.",
+      "basis": "illustration",
+      "referenceIds": [
+       "pdf-3"
+      ],
+      "focus": [
+       "y"
+      ]
+     },
+     {
+      "caption": "Cut y into m equal subvectors, here m = 4 pieces of 2 numbers, so each piece lives in its own low-dimensional subspace.",
+      "explanation": "The paper decomposes the space into a Cartesian product of low-dimensional subspaces. Each subspace then gets its own small quantizer.",
+      "basis": "illustration",
+      "referenceIds": [
+       "pdf-3"
+      ],
+      "focus": [
+       "y"
+      ]
+     },
+     {
+      "caption": "Each piece is replaced by the index of its nearest centroid, and those m indices together are the stored code.",
+      "explanation": "A quantizer maps a subvector to the closest entry in a learned codebook of centroids, and only that entry's index is kept. The index values shown are invented.",
+      "basis": "illustration",
+      "referenceIds": [
+       "pdf-3"
+      ],
+      "focus": [
+       "code"
+      ]
+     }
+    ]
+   },
+   {
+    "title": "Why split instead of one big codebook",
+    "kind": "compare",
+    "columns": [
+     {
+      "id": "flat",
+      "title": "Single quantizer",
+      "tone": "negative"
+     },
+     {
+      "id": "pq",
+      "title": "Product quantizer",
+      "tone": "accent"
+     }
+    ],
+    "rows": [
+     {
+      "label": "Code length",
+      "cells": [
+       "64 bits",
+       "8 × 8 bits = 64 bits"
+      ]
+     },
+     {
+      "label": "Centroids stored",
+      "cells": [
+       "2⁶⁴",
+       "8 × 256 = 2,048"
+      ]
+     },
+     {
+      "label": "Learning",
+      "cells": [
+       "Needs several times 2⁶⁴ samples",
+       "Eight small codebooks, learned separately"
+      ]
+     }
+    ],
+    "beats": [
+     {
+      "caption": "A single quantizer giving 64-bit codes would need 2⁶⁴ centroids, too many to learn or even to store.",
+      "explanation": "The paper notes that the training set would have to be several times the number of centroids, the algorithm would be prohibitively complex, and the centroids would not fit in any available memory.",
+      "basis": "source",
+      "referenceIds": [
+       "pdf-2"
+      ],
+      "focus": [
+       "flat"
+      ]
+     },
+     {
+      "caption": "With m = 8 subquantizers of k* = 256 centroids each, the code is still 64 bits but only 2,048 centroids are stored.",
+      "explanation": "The paper calls k* = 256 and m = 8 often a reasonable choice and treats it as a 64-bit code. The count 8 × 256 = 2,048 is simple arithmetic; that the index combinations cover 256⁸ = 2⁶⁴ distinct reconstructions is background knowledge.",
+      "basis": "source",
+      "referenceIds": [
+       "pdf-1",
+       "pdf-4"
+      ],
+      "focus": [
+       "pq"
+      ]
+     }
+    ]
+   },
+   {
+    "title": "Estimating a distance from a code",
+    "kind": "cells",
+    "rows": [
+     {
+      "id": "q",
+      "label": "query x",
+      "tone": "secondary",
+      "cells": [
+       {
+        "text": "x₁"
+       },
+       {
+        "text": "x₂"
+       },
+       {
+        "text": "x₃"
+       },
+       {
+        "text": "x₄"
+       }
+      ]
+     },
+     {
+      "id": "ycode",
+      "label": "code of y",
+      "tone": "accent",
+      "cells": [
+       {
+        "text": "5"
+       },
+       {
+        "text": "2"
+       },
+       {
+        "text": "7"
+       },
+       {
+        "text": "1"
+       }
+      ]
+     },
+     {
+      "id": "look",
+      "label": "looked-up d²",
+      "tone": "neutral",
+      "appear": 2,
+      "cells": [
+       {
+        "text": "0.02"
+       },
+       {
+        "text": "0.05"
+       },
+       {
+        "text": "0.01"
+       },
+       {
+        "text": "0.04"
+       }
+      ]
+     },
+     {
+      "id": "sum",
+      "label": "sum",
+      "tone": "positive",
+      "appear": 2,
+      "cells": [
+       {
+        "text": "0.12",
+        "span": 4
+       }
+      ]
+     }
+    ],
+    "links": [
+     {
+      "from": [
+       "ycode",
+       0
+      ],
+      "to": [
+       "look",
+       0
+      ],
+      "tone": "neutral",
+      "appear": 2
+     },
+     {
+      "from": [
+       "ycode",
+       1
+      ],
+      "to": [
+       "look",
+       1
+      ],
+      "tone": "neutral",
+      "appear": 2
+     },
+     {
+      "from": [
+       "ycode",
+       2
+      ],
+      "to": [
+       "look",
+       2
+      ],
+      "tone": "neutral",
+      "appear": 2
+     },
+     {
+      "from": [
+       "ycode",
+       3
+      ],
+      "to": [
+       "look",
+       3
+      ],
+      "tone": "neutral",
+      "appear": 2
+     }
+    ],
+    "beats": [
+     {
+      "caption": "The query x is split the same way but kept exact; only the database vector y is reduced to its code.",
+      "explanation": "The paper stresses that the query is not quantized: distances are vector-to-centroid distances. This reduces quantization noise and improves search quality.",
+      "basis": "illustration",
+      "referenceIds": [
+       "pdf-2"
+      ],
+      "focus": [
+       "q",
+       "ycode"
+      ]
+     },
+     {
+      "caption": "Each index looks up a precomputed squared distance from that query piece to that centroid, and the m values are summed.",
+      "explanation": "The excerpts confirm that distances are computed with table lookups but do not show the equations. The per-subspace sum of squared distances is background knowledge about the method, and the numbers are invented.",
+      "basis": "illustration",
+      "referenceIds": [
+       "pdf-2"
+      ],
+      "focus": [
+       "look",
+       "sum"
+      ]
+     }
+    ]
+   },
+   {
+    "title": "The estimate runs slightly short",
+    "kind": "plot",
+    "equal": true,
+    "x": {
+     "label": "true distance",
+     "min": 0.4,
+     "max": 1.2
+    },
+    "y": {
+     "label": "estimated distance",
+     "min": 0.4,
+     "max": 1.2
+    },
+    "marks": [
+     {
+      "id": "diag",
+      "type": "line",
+      "from": [
+       0.4,
+       0.4
+      ],
+      "to": [
+       1.2,
+       1.2
+      ],
+      "label": "exact",
+      "labelAt": "end",
+      "dashed": true,
+      "tone": "neutral"
+     },
+     {
+      "id": "adc",
+      "type": "curve",
+      "points": [
+       [
+        0.4,
+        0.4
+       ],
+       [
+        0.6,
+        0.58
+       ],
+       [
+        0.8,
+        0.76
+       ],
+       [
+        1,
+        0.95
+       ],
+       [
+        1.2,
+        1.14
+       ]
+      ],
+      "label": "asymmetric",
+      "labelAt": "end",
+      "tone": "positive"
+     },
+     {
+      "id": "sdc",
+      "type": "curve",
+      "points": [
+       [
+        0.4,
+        0.4
+       ],
+       [
+        0.6,
+        0.53
+       ],
+       [
+        0.8,
+        0.68
+       ],
+       [
+        1,
+        0.85
+       ],
+       [
+        1.2,
+        1.03
+       ]
+      ],
+      "label": "symmetric",
+      "labelAt": "end",
+      "tone": "negative",
+      "appear": 2
+     }
+    ],
+    "beats": [
+     {
+      "caption": "If estimates were exact they would lie on the dashed diagonal; asymmetric estimates fall just below it.",
+      "explanation": "The paper states that its estimators underestimate the distance between points on average, and its Figure 3 shows this for a SIFT query against 1000 vectors. The line here is a schematic of that trend, not the paper's data.",
+      "basis": "illustration",
+      "referenceIds": [
+       "pdf-4"
+      ],
+      "focus": [
+       "diag",
+       "adc"
+      ]
+     },
+     {
+      "caption": "Symmetric estimates, computed between two codes, fall further below: quantizing the query too adds bias.",
+      "explanation": "The paper says the symmetric version is more sensitive to this bias, and that the asymmetric version increases precision because it compares a vector with a code. The gap drawn here is schematic.",
+      "basis": "illustration",
+      "referenceIds": [
+       "pdf-4",
+       "pdf-3"
+      ],
+      "focus": [
+       "sdc"
+      ]
+     }
+    ]
+   }
+  ],
+  "takeaways": [
+   "A vector is stored as m small centroid indices, one per subvector, instead of its original numbers.",
+   "Distances are estimated by summing looked-up vector-to-centroid distances while the query stays exact.",
+   "The estimates underestimate true distances on average, more so when both vectors are quantized."
+  ]
+ }
+}

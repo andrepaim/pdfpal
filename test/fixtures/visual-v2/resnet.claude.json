@@ -1,0 +1,459 @@
+{
+ "question": "Why do residual connections make very deep networks easier to train?",
+ "references": [
+  {
+   "id": "pdf-1",
+   "label": "Deep Residual Learning for Image Recognition · p. 2"
+  },
+  {
+   "id": "pdf-2",
+   "label": "Deep Residual Learning for Image Recognition · p. 1"
+  },
+  {
+   "id": "pdf-3",
+   "label": "Deep Residual Learning for Image Recognition · p. 2"
+  },
+  {
+   "id": "pdf-4",
+   "label": "Deep Residual Learning for Image Recognition · p. 3"
+  },
+  {
+   "id": "pdf-5",
+   "label": "Deep Residual Learning for Image Recognition · p. 9"
+  }
+ ],
+ "definition": {
+  "version": 2,
+  "title": "Why residual connections make deep networks easier to train",
+  "summary": "A shortcut adds the input back, so the layers learn only a correction to it; the paper offers easier optimization as a hypothesis backed by experiments, not a proof.",
+  "scenes": [
+   {
+    "title": "The problem: deeper plain nets train worse",
+    "kind": "plot",
+    "x": {
+     "label": "training iterations",
+     "min": 0,
+     "max": 6
+    },
+    "y": {
+     "label": "training error",
+     "min": 0,
+     "max": 20
+    },
+    "marks": [
+     {
+      "id": "shallow",
+      "type": "curve",
+      "tone": "secondary",
+      "dashed": true,
+      "label": "20-layer plain",
+      "labelAt": "end",
+      "points": [
+       [
+        0,
+        19
+       ],
+       [
+        0.5,
+        13
+       ],
+       [
+        1,
+        10.5
+       ],
+       [
+        2,
+        8.5
+       ],
+       [
+        3,
+        7
+       ],
+       [
+        4,
+        5.5
+       ],
+       [
+        5,
+        5
+       ],
+       [
+        6,
+        4.8
+       ]
+      ]
+     },
+     {
+      "id": "deep",
+      "type": "curve",
+      "tone": "secondary",
+      "appear": 2,
+      "label": "56-layer plain",
+      "labelAt": "end",
+      "points": [
+       [
+        0,
+        19.5
+       ],
+       [
+        0.5,
+        15
+       ],
+       [
+        1,
+        12.5
+       ],
+       [
+        2,
+        10.5
+       ],
+       [
+        3,
+        9.5
+       ],
+       [
+        4,
+        8
+       ],
+       [
+        5,
+        7.5
+       ],
+       [
+        6,
+        7.2
+       ]
+      ]
+     },
+     {
+      "id": "gapnote",
+      "type": "note",
+      "tone": "negative",
+      "appear": 2,
+      "xy": [
+       3.2,
+       15
+      ],
+      "text": "deeper trains worse"
+     }
+    ],
+    "beats": [
+     {
+      "caption": "A plain 20-layer network's training error falls as training proceeds (schematic curve).",
+      "explanation": "A plain network is a stack of layers with no shortcuts. The curve is a schematic based on the paper's Figure 1, not the measured values.",
+      "basis": "illustration",
+      "referenceIds": [
+       "pdf-2"
+      ]
+     },
+     {
+      "caption": "The 56-layer plain network ends with higher training error: more depth made the fit worse, not better.",
+      "explanation": "The paper reports this for CIFAR-10 and calls it the degradation problem; the curve shapes here are schematic. Because the error is higher on the training data itself, overfitting cannot be the cause.",
+      "basis": "illustration",
+      "referenceIds": [
+       "pdf-2",
+       "pdf-1"
+      ],
+      "focus": [
+       "deep",
+       "gapnote"
+      ]
+     }
+    ]
+   },
+   {
+    "title": "The fix: add the input back",
+    "kind": "flow",
+    "direction": "down",
+    "nodes": [
+     {
+      "id": "in",
+      "label": "x",
+      "sub": "block input",
+      "shape": "pill",
+      "tone": "neutral"
+     },
+     {
+      "id": "w1",
+      "label": "weight layer",
+      "sub": "then ReLU",
+      "shape": "box",
+      "tone": "primary",
+      "group": "stack",
+      "detail": "A layer with learnable weights, followed by the ReLU nonlinearity. The paper's notation covers both fully-connected and convolutional layers."
+     },
+     {
+      "id": "w2",
+      "label": "weight layer",
+      "shape": "box",
+      "tone": "primary",
+      "group": "stack",
+      "detail": "The paper's blocks use two or three such layers; with only one layer it observed no advantage."
+     },
+     {
+      "id": "add",
+      "label": "+",
+      "shape": "op",
+      "tone": "accent",
+      "appear": 2,
+      "detail": "Element-wise addition of the layers' output F(x) and the unchanged input x. It needs x and F(x) to have the same dimensions."
+     },
+     {
+      "id": "out",
+      "label": "F(x) + x",
+      "sub": "then ReLU",
+      "shape": "pill",
+      "tone": "neutral",
+      "appear": 2,
+      "detail": "The block's output. The second nonlinearity is applied after the addition."
+     }
+    ],
+    "edges": [
+     {
+      "from": "in",
+      "to": "w1"
+     },
+     {
+      "from": "w1",
+      "to": "w2"
+     },
+     {
+      "from": "w2",
+      "to": "add",
+      "label": "F(x)",
+      "tone": "primary",
+      "appear": 2
+     },
+     {
+      "from": "in",
+      "to": "add",
+      "label": "identity x",
+      "tone": "accent",
+      "appear": 2
+     },
+     {
+      "from": "add",
+      "to": "out",
+      "appear": 2
+     }
+    ],
+    "groups": [
+     {
+      "id": "stack",
+      "label": "stacked layers"
+     }
+    ],
+    "beats": [
+     {
+      "caption": "A plain stack of layers has to produce the entire desired mapping H(x) by itself.",
+      "explanation": "H(x) is the paper's name for the mapping these few layers should ideally compute. Without a shortcut, the layers are the only route from input to output.",
+      "basis": "source",
+      "referenceIds": [
+       "pdf-1"
+      ]
+     },
+     {
+      "caption": "The shortcut carries x around the layers and adds it back, so the layers only need to fit the residual F(x) = H(x) − x.",
+      "explanation": "The original mapping is recast as F(x) + x. The shortcut performs an identity mapping, so the layers are responsible only for the difference between the desired output and the input.",
+      "basis": "source",
+      "referenceIds": [
+       "pdf-1",
+       "pdf-4"
+      ],
+      "focus": [
+       "in",
+       "add",
+       "out"
+      ]
+     },
+     {
+      "caption": "The shortcut is never gated, so the signal always has a direct route past the layers, and so does the gradient in training.",
+      "explanation": "The paper states that its identity shortcuts are never closed and all information is always passed through. That the gradient also flows back unchanged through the addition is standard background, not stated in the supplied passages.",
+      "basis": "background",
+      "referenceIds": [
+       "pdf-3"
+      ],
+      "focus": [
+       "in",
+       "add"
+      ]
+     }
+    ]
+   },
+   {
+    "title": "Doing nothing becomes easy",
+    "kind": "cells",
+    "rows": [
+     {
+      "id": "x",
+      "label": "x",
+      "tone": "accent",
+      "cells": [
+       {
+        "text": "2"
+       },
+       {
+        "text": "-1"
+       },
+       {
+        "text": "3"
+       },
+       {
+        "text": "0.5"
+       }
+      ]
+     },
+     {
+      "id": "f",
+      "label": "F(x)",
+      "tone": "primary",
+      "appear": 2,
+      "cells": [
+       {
+        "text": "0"
+       },
+       {
+        "text": "0"
+       },
+       {
+        "text": "0"
+       },
+       {
+        "text": "0"
+       }
+      ]
+     },
+     {
+      "id": "y",
+      "label": "F(x)+x",
+      "tone": "accent",
+      "appear": 2,
+      "cells": [
+       {
+        "text": "2"
+       },
+       {
+        "text": "-1"
+       },
+       {
+        "text": "3"
+       },
+       {
+        "text": "0.5"
+       }
+      ]
+     }
+    ],
+    "brackets": [
+     {
+      "row": "f",
+      "from": 0,
+      "to": 3,
+      "label": "residual pushed to zero",
+      "tone": "primary",
+      "appear": 2
+     },
+     {
+      "row": "y",
+      "from": 0,
+      "to": 3,
+      "label": "identical to x",
+      "tone": "accent",
+      "appear": 2
+     }
+    ],
+    "beats": [
+     {
+      "caption": "Take a made-up input x and suppose the best this block can do is pass it on unchanged.",
+      "explanation": "This is the situation of an extra layer that is not needed: the ideal mapping is the identity, H(x) = x. The four values are invented for illustration.",
+      "basis": "illustration",
+      "referenceIds": []
+     },
+     {
+      "caption": "Setting the residual F(x) to zero makes the output exactly x, so the identity is reached without having to be learned.",
+      "explanation": "The paper argues that pushing a residual to zero is easier than fitting an identity mapping with a stack of nonlinear layers. With that fallback available, an added block need not make the network worse.",
+      "basis": "illustration",
+      "referenceIds": [
+       "pdf-1"
+      ],
+      "focus": [
+       "f",
+       "y"
+      ]
+     }
+    ]
+   },
+   {
+    "title": "Plain stack versus residual block",
+    "kind": "compare",
+    "columns": [
+     {
+      "id": "plain",
+      "title": "Plain stack",
+      "tone": "secondary"
+     },
+     {
+      "id": "res",
+      "title": "Residual block",
+      "tone": "primary"
+     }
+    ],
+    "rows": [
+     {
+      "label": "Layers fit",
+      "cells": [
+       "H(x) directly",
+       "F(x) = H(x) − x"
+      ]
+     },
+     {
+      "label": "Identity via",
+      "cells": [
+       "Nonlinear layers must learn to copy x",
+       "Push the residual to zero"
+      ]
+     },
+     {
+      "label": "Added cost",
+      "cells": [
+       "Baseline",
+       "No extra parameters, one cheap addition"
+      ]
+     },
+     {
+      "label": "More depth",
+      "cells": [
+       "Higher training error at 56 than 20 layers",
+       "Gains accuracy, up to 152 layers"
+      ],
+      "appear": 2
+     }
+    ],
+    "beats": [
+     {
+      "caption": "Same layers and same parameter count, but the residual block is asked for a correction instead of a whole mapping.",
+      "explanation": "Identity shortcuts add no parameters and only a negligible element-wise addition. The paper can therefore compare plain and residual networks of equal depth, width and cost.",
+      "basis": "source",
+      "referenceIds": [
+       "pdf-1",
+       "pdf-4"
+      ]
+     },
+     {
+      "caption": "In the paper's experiments, plain networks get worse with depth while residual networks keep gaining accuracy.",
+      "explanation": "The authors report residual networks of up to 152 layers on ImageNet that are easier to optimize and gain accuracy from depth. This is empirical support for their hypothesis, not a theoretical proof.",
+      "basis": "source",
+      "referenceIds": [
+       "pdf-2"
+      ]
+     }
+    ]
+   }
+  ],
+  "takeaways": [
+   "A residual block outputs F(x) + x, so its layers learn only the difference from their input.",
+   "If extra layers are not needed, driving F(x) to zero gives the identity, so added depth need not hurt.",
+   "The paper frames easier optimization as a hypothesis, supported by experiments with networks up to 152 layers deep."
+  ]
+ }
+}

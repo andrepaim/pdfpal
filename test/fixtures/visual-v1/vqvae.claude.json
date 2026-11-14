@@ -1,0 +1,1220 @@
+{
+ "question": "Explain the selected passage visually.",
+ "references": [
+  {
+   "id": "pdf-1",
+   "label": "Neural Discrete Representation Learning (VQ-VAE) · p. 3"
+  },
+  {
+   "id": "pdf-2",
+   "label": "Neural Discrete Representation Learning (VQ-VAE) · p. 2"
+  },
+  {
+   "id": "pdf-3",
+   "label": "Neural Discrete Representation Learning (VQ-VAE) · p. 4"
+  },
+  {
+   "id": "pdf-4",
+   "label": "Neural Discrete Representation Learning (VQ-VAE) · p. 1"
+  },
+  {
+   "id": "pdf-5",
+   "label": "Neural Discrete Representation Learning (VQ-VAE) · p. 7"
+  },
+  {
+   "id": "pdf-6",
+   "label": "Neural Discrete Representation Learning (VQ-VAE) · p. 8"
+  },
+  {
+   "id": "pdf-7",
+   "label": "Neural Discrete Representation Learning (VQ-VAE) · p. 5"
+  },
+  {
+   "id": "pdf-8",
+   "label": "Neural Discrete Representation Learning (VQ-VAE) · p. 8"
+  },
+  {
+   "id": "pdf-9",
+   "label": "Neural Discrete Representation Learning (VQ-VAE) · p. 1"
+  },
+  {
+   "id": "selection",
+   "label": "Neural Discrete Representation Learning (VQ-VAE) · selected passage"
+  }
+ ],
+ "definition": {
+  "version": 1,
+  "title": "How VQ-VAE turns an encoder output into a discrete code",
+  "summary": "The passage describes VQ-VAE's forward pass: an encoder produces a continuous vector z_e(x), a nearest-neighbour look-up swaps it for the closest of K learned embedding vectors, and the decoder sees only that vector. The scenes follow the supplied text and the Figure 1 caption. The figure itself is not in the context, so the 2-D layout, the staircase and the small grid are simplified sketches, not reproductions.",
+  "steps": [
+   {
+    "title": "The forward pipeline at a glance",
+    "caption": "Input x goes through the encoder, is snapped to one entry of the embedding space e, and that entry (not the encoder's own output) feeds the decoder.",
+    "explanation": "The passage describes a chain of four operations. The input x (an image, a sound clip) enters an encoder network, which outputs a vector written z_e(x); the subscript e stands for 'encoder' and is written here with an underscore. This vector is continuous: its numbers can take any value.\n\nNext comes the step that makes the model special. A nearest-neighbour look-up compares z_e(x) with every vector stored in an embedding space called e and picks the closest one, called e_k. That chosen vector, not z_e(x), is what the decoder receives. The decoder then tries to rebuild the input from it.\n\nThe paper notes that the model's parameters are the union of three things: the encoder, the decoder and the embedding space e. So the table of embeddings is learned, not fixed in advance.\n\nThe following scenes take the look-up apart: what the embedding space is, how 'nearest' is decided, what exactly is discrete, and why the passage calls the whole thing a non-linearity.",
+    "basis": "source",
+    "referenceIds": [
+     "selection",
+     "pdf-1",
+     "pdf-3"
+    ],
+    "scene": {
+     "height": 480,
+     "elements": [
+      {
+       "id": "s1in",
+       "color": "slate",
+       "detail": "The data being modelled, for example an image, a stretch of raw audio or video frames.",
+       "type": "node",
+       "x": 36,
+       "y": 12,
+       "width": 130,
+       "height": 38,
+       "label": "Input x",
+       "shape": "box"
+      },
+      {
+       "id": "s1a1",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 101,
+       "y1": 50,
+       "x2": 101,
+       "y2": 68
+      },
+      {
+       "id": "s1enc",
+       "color": "indigo",
+       "detail": "A neural network that compresses x into a latent representation. Its parameters are learned.",
+       "type": "node",
+       "x": 36,
+       "y": 70,
+       "width": 130,
+       "height": 40,
+       "label": "Encoder",
+       "shape": "box"
+      },
+      {
+       "id": "s1a2",
+       "color": "indigo",
+       "type": "arrow",
+       "x1": 101,
+       "y1": 110,
+       "x2": 101,
+       "y2": 128
+      },
+      {
+       "id": "s1ze",
+       "color": "indigo",
+       "detail": "The encoder's output: a vector of D real numbers. At this point nothing is discrete yet.",
+       "type": "node",
+       "x": 16,
+       "y": 130,
+       "width": 170,
+       "height": 60,
+       "label": "z_e(x): continuous",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s1a3",
+       "color": "indigo",
+       "type": "arrow",
+       "x1": 101,
+       "y1": 190,
+       "x2": 101,
+       "y2": 208
+      },
+      {
+       "id": "s1look",
+       "color": "amber",
+       "detail": "The nearest-neighbour look-up: find the embedding vector with the smallest distance to z_e(x). This is the discretisation step (equations 1 and 2 in the paper).",
+       "type": "node",
+       "x": 16,
+       "y": 210,
+       "width": 170,
+       "height": 56,
+       "label": "Nearest look-up",
+       "shape": "box"
+      },
+      {
+       "id": "s1code",
+       "color": "teal",
+       "detail": "A learned table of K vectors, each of dimension D. It plays the role of a codebook that the look-up consults.",
+       "type": "node",
+       "x": 226,
+       "y": 194,
+       "width": 120,
+       "height": 88,
+       "label": "Embedding space e",
+       "shape": "box"
+      },
+      {
+       "id": "s1a4",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 226,
+       "y1": 238,
+       "x2": 188,
+       "y2": 238
+      },
+      {
+       "id": "s1a5",
+       "color": "amber",
+       "type": "arrow",
+       "x1": 101,
+       "y1": 266,
+       "x2": 101,
+       "y2": 284
+      },
+      {
+       "id": "s1ek",
+       "color": "amber",
+       "detail": "The selected embedding vector. The paper also writes it z_q(x), the quantised version of the encoder output.",
+       "type": "node",
+       "x": 16,
+       "y": 286,
+       "width": 170,
+       "height": 60,
+       "label": "e_k: one of K",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s1a6",
+       "color": "amber",
+       "type": "arrow",
+       "x1": 101,
+       "y1": 346,
+       "x2": 101,
+       "y2": 364
+      },
+      {
+       "id": "s1dec",
+       "color": "rose",
+       "detail": "A neural network that receives the embedding vector e_k and models the input x given that vector.",
+       "type": "node",
+       "x": 36,
+       "y": 366,
+       "width": 130,
+       "height": 40,
+       "label": "Decoder",
+       "shape": "box"
+      },
+      {
+       "id": "s1a7",
+       "color": "rose",
+       "type": "arrow",
+       "x1": 101,
+       "y1": 406,
+       "x2": 101,
+       "y2": 424
+      },
+      {
+       "id": "s1out",
+       "color": "slate",
+       "detail": "The decoder's attempt to reproduce x. How well it does is measured by the reconstruction term of the training loss.",
+       "type": "node",
+       "x": 16,
+       "y": 426,
+       "width": 170,
+       "height": 38,
+       "label": "Reconstruction",
+       "shape": "box"
+      }
+     ]
+    }
+   },
+   {
+    "title": "The embedding space is a table of K vectors",
+    "caption": "The embedding space e holds K vectors, e_1 to e_K, each made of D numbers. An index k names one row.",
+    "explanation": "The paper defines the latent embedding space e as a K-by-D array. K is the size of the discrete latent space, that is, how many different codes exist. D is the dimensionality of each embedding vector. So there are K embedding vectors, each a list of D real numbers.\n\nTwo descriptions of the same row are worth keeping apart, because the rest of the passage relies on both:\n\n- The index k is a whole number from 1 to K. This is the discrete part.\n- The vector e_k is the row's content: D continuous numbers that a neural network can compute with.\n\nThe picture is a table drawn schematically. The context gives no concrete values for the entries; they are learned during training along with the encoder and decoder.",
+    "basis": "source",
+    "referenceIds": [
+     "pdf-1"
+    ],
+    "scene": {
+     "height": 340,
+     "elements": [
+      {
+       "id": "s2i1",
+       "color": "amber",
+       "detail": "An index: a whole number that names a row of the table.",
+       "type": "node",
+       "x": 16,
+       "y": 20,
+       "width": 84,
+       "height": 40,
+       "label": "k = 1",
+       "shape": "box"
+      },
+      {
+       "id": "s2e1",
+       "color": "teal",
+       "detail": "The first embedding vector: D real numbers.",
+       "type": "node",
+       "x": 136,
+       "y": 20,
+       "width": 208,
+       "height": 40,
+       "label": "e_1",
+       "shape": "box"
+      },
+      {
+       "id": "s2r1",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 100,
+       "y1": 40,
+       "x2": 134,
+       "y2": 40
+      },
+      {
+       "id": "s2i2",
+       "color": "amber",
+       "type": "node",
+       "x": 16,
+       "y": 74,
+       "width": 84,
+       "height": 40,
+       "label": "k = 2",
+       "shape": "box"
+      },
+      {
+       "id": "s2e2",
+       "color": "teal",
+       "detail": "The second embedding vector. Later scenes use this row as the example that gets selected.",
+       "type": "node",
+       "x": 136,
+       "y": 74,
+       "width": 208,
+       "height": 40,
+       "label": "e_2",
+       "shape": "box"
+      },
+      {
+       "id": "s2r2",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 100,
+       "y1": 94,
+       "x2": 134,
+       "y2": 94
+      },
+      {
+       "id": "s2i3",
+       "color": "amber",
+       "type": "node",
+       "x": 16,
+       "y": 128,
+       "width": 84,
+       "height": 40,
+       "label": "k = 3",
+       "shape": "box"
+      },
+      {
+       "id": "s2e3",
+       "color": "teal",
+       "type": "node",
+       "x": 136,
+       "y": 128,
+       "width": 208,
+       "height": 40,
+       "label": "e_3",
+       "shape": "box"
+      },
+      {
+       "id": "s2r3",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 100,
+       "y1": 148,
+       "x2": 134,
+       "y2": 148
+      },
+      {
+       "id": "s2d1",
+       "color": "slate",
+       "type": "text",
+       "x": 54,
+       "y": 198,
+       "text": "⋮",
+       "size": 22
+      },
+      {
+       "id": "s2d2",
+       "color": "slate",
+       "type": "text",
+       "x": 236,
+       "y": 198,
+       "text": "⋮",
+       "size": 22
+      },
+      {
+       "id": "s2iK",
+       "color": "amber",
+       "detail": "K is the size of the discrete latent space: the number of rows, and so the number of possible codes.",
+       "type": "node",
+       "x": 16,
+       "y": 214,
+       "width": 84,
+       "height": 40,
+       "label": "k = K",
+       "shape": "box"
+      },
+      {
+       "id": "s2eK",
+       "color": "teal",
+       "type": "node",
+       "x": 136,
+       "y": 214,
+       "width": 208,
+       "height": 40,
+       "label": "e_K",
+       "shape": "box"
+      },
+      {
+       "id": "s2rK",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 100,
+       "y1": 234,
+       "x2": 134,
+       "y2": 234
+      },
+      {
+       "id": "s2br",
+       "color": "slate",
+       "type": "path",
+       "points": [
+        {
+         "x": 136,
+         "y": 266
+        },
+        {
+         "x": 136,
+         "y": 276
+        },
+        {
+         "x": 344,
+         "y": 276
+        },
+        {
+         "x": 344,
+         "y": 266
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s2D",
+       "color": "slate",
+       "detail": "D is the dimensionality of every embedding vector. The encoder output z_e(x) lives in the same D-dimensional space, which is what makes distances between them meaningful.",
+       "type": "node",
+       "x": 155,
+       "y": 288,
+       "width": 170,
+       "height": 36,
+       "label": "D numbers each",
+       "shape": "box"
+      }
+     ]
+    }
+   },
+   {
+    "title": "Nearest-neighbour look-up: measure every distance",
+    "caption": "A simplified 2-D view: z_e(x) lands somewhere in the space, its distance to every embedding is measured, and the closest one wins. Here that is e_2.",
+    "explanation": "Because z_e(x) and the embedding vectors all have D numbers, they can be drawn as points in one common space. The real space has D dimensions; the picture flattens it to two so that distance is visible as line length. The positions are invented for the sketch.\n\nEquation 1 in the paper states the rule: choose the index k that minimises the distance between z_e(x) and e_j over all j, written k = argmin_j ||z_e(x) - e_j||_2. In words: compute the Euclidean distance to each of the K embeddings and keep the index of the smallest.\n\nThe caption of the paper's Figure 1 describes the same situation: the encoder output is mapped to the nearest point, e_2. The sketch follows that example, so the result of the look-up is k = 2.\n\nThe rule is all-or-nothing. It does not matter whether z_e(x) is very close to e_2 or only slightly closer to it than to the others; the outcome is the same index.",
+    "basis": "source",
+    "referenceIds": [
+     "selection",
+     "pdf-1",
+     "pdf-3"
+    ],
+    "scene": {
+     "height": 410,
+     "elements": [
+      {
+       "id": "s3note",
+       "color": "slate",
+       "type": "text",
+       "x": 250,
+       "y": 40,
+       "text": "2-D sketch",
+       "size": 16
+      },
+      {
+       "id": "s3e1",
+       "color": "teal",
+       "detail": "Embedding vector e_1. In this sketch it is far from the encoder output.",
+       "type": "node",
+       "x": 30,
+       "y": 40,
+       "width": 44,
+       "height": 36,
+       "label": "e1",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s3e5",
+       "color": "teal",
+       "detail": "Embedding vector e_5. Closer than some, but not the closest.",
+       "type": "node",
+       "x": 148,
+       "y": 22,
+       "width": 44,
+       "height": 36,
+       "label": "e5",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s3e2",
+       "color": "teal",
+       "detail": "Embedding vector e_2: the nearest neighbour of z_e(x) in this sketch, matching the example in the paper's Figure 1 caption.",
+       "type": "node",
+       "x": 246,
+       "y": 120,
+       "width": 44,
+       "height": 36,
+       "label": "e2",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s3ze",
+       "color": "indigo",
+       "detail": "The encoder's continuous output for this input. It can land anywhere in the space, not only on an embedding.",
+       "type": "node",
+       "x": 130,
+       "y": 170,
+       "width": 80,
+       "height": 38,
+       "label": "z_e(x)",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s3e3",
+       "color": "teal",
+       "type": "node",
+       "x": 40,
+       "y": 290,
+       "width": 44,
+       "height": 36,
+       "label": "e3",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s3e4",
+       "color": "teal",
+       "type": "node",
+       "x": 270,
+       "y": 300,
+       "width": 44,
+       "height": 36,
+       "label": "e4",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s3p1",
+       "color": "slate",
+       "detail": "Distance from z_e(x) to e_1.",
+       "type": "path",
+       "points": [
+        {
+         "x": 150,
+         "y": 166
+        },
+        {
+         "x": 70,
+         "y": 78
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s3p5",
+       "color": "slate",
+       "detail": "Distance from z_e(x) to e_5.",
+       "type": "path",
+       "points": [
+        {
+         "x": 170,
+         "y": 166
+        },
+        {
+         "x": 170,
+         "y": 62
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s3p3",
+       "color": "slate",
+       "detail": "Distance from z_e(x) to e_3.",
+       "type": "path",
+       "points": [
+        {
+         "x": 150,
+         "y": 212
+        },
+        {
+         "x": 78,
+         "y": 290
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s3p4",
+       "color": "slate",
+       "detail": "Distance from z_e(x) to e_4.",
+       "type": "path",
+       "points": [
+        {
+         "x": 190,
+         "y": 210
+        },
+        {
+         "x": 276,
+         "y": 300
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s3win",
+       "color": "amber",
+       "detail": "The shortest of the five distances. The look-up returns the index of this embedding.",
+       "type": "arrow",
+       "x1": 199,
+       "y1": 174,
+       "x2": 247,
+       "y2": 149
+      },
+      {
+       "id": "s3res",
+       "color": "amber",
+       "detail": "The outcome of the look-up is an index. Equation 1: k is the j that minimises the Euclidean distance between z_e(x) and e_j.",
+       "type": "node",
+       "x": 40,
+       "y": 356,
+       "width": 280,
+       "height": 40,
+       "label": "Smallest distance: k = 2",
+       "shape": "box"
+      }
+     ]
+    }
+   },
+   {
+    "title": "What is discrete, and what the decoder receives",
+    "caption": "The look-up yields a one-hot choice among K options. The discrete latent z is the winning index; the decoder input is that row's vector, z_q(x) = e_k.",
+    "explanation": "The passage separates two results of the look-up.\n\nFirst, the discrete latent variable z. The paper defines the posterior q(z = k | x) as one-hot: it is 1 for the index of the nearest embedding and 0 for every other index. Drawn as a row of K cells, exactly one cell holds a 1. In the running example that is cell 2, so z = 2. The paper points out that this choice is deterministic: the same z_e(x) always gives the same index.\n\nSecond, the decoder's input. An index alone is just a label, so it is used to fetch a row of the embedding table. Equation 2 names the result z_q(x) = e_k, the quantised latent. This vector goes to the decoder.\n\nNotice what does not travel forward: z_e(x) itself. In the forward pass the decoder never sees the encoder's exact output, only the embedding it was matched to. Any detail in z_e(x) that does not change which embedding is nearest is dropped at this point. That is the sense in which the look-up acts as a bottleneck. (z_e(x) is still used during training, in loss terms the paper introduces afterwards.)",
+    "basis": "source",
+    "referenceIds": [
+     "selection",
+     "pdf-1"
+    ],
+    "scene": {
+     "height": 400,
+     "elements": [
+      {
+       "id": "s4ze",
+       "color": "indigo",
+       "detail": "The encoder output, compared against all K embeddings as in the previous scene.",
+       "type": "node",
+       "x": 110,
+       "y": 10,
+       "width": 140,
+       "height": 42,
+       "label": "z_e(x)",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s4a0",
+       "color": "indigo",
+       "type": "arrow",
+       "x1": 180,
+       "y1": 52,
+       "x2": 180,
+       "y2": 74
+      },
+      {
+       "id": "s4br",
+       "color": "slate",
+       "type": "path",
+       "points": [
+        {
+         "x": 22,
+         "y": 86
+        },
+        {
+         "x": 22,
+         "y": 78
+        },
+        {
+         "x": 330,
+         "y": 78
+        },
+        {
+         "x": 330,
+         "y": 86
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s4c1",
+       "color": "slate",
+       "detail": "k = 1: e_1 is not the nearest embedding, so its probability is 0.",
+       "type": "node",
+       "x": 22,
+       "y": 90,
+       "width": 52,
+       "height": 44,
+       "label": "0",
+       "shape": "box"
+      },
+      {
+       "id": "s4c2",
+       "color": "amber",
+       "detail": "k = 2: e_2 is the nearest embedding, so q(z = 2 | x) = 1.",
+       "type": "node",
+       "x": 86,
+       "y": 90,
+       "width": 52,
+       "height": 44,
+       "label": "1",
+       "shape": "box"
+      },
+      {
+       "id": "s4c3",
+       "color": "slate",
+       "detail": "k = 3: probability 0.",
+       "type": "node",
+       "x": 150,
+       "y": 90,
+       "width": 52,
+       "height": 44,
+       "label": "0",
+       "shape": "box"
+      },
+      {
+       "id": "s4c4",
+       "color": "slate",
+       "detail": "k = 4: probability 0.",
+       "type": "node",
+       "x": 214,
+       "y": 90,
+       "width": 52,
+       "height": 44,
+       "label": "0",
+       "shape": "box"
+      },
+      {
+       "id": "s4c5",
+       "color": "slate",
+       "detail": "k = 5: probability 0. Five cells are drawn for space; the real row has K cells.",
+       "type": "node",
+       "x": 278,
+       "y": 90,
+       "width": 52,
+       "height": 44,
+       "label": "0",
+       "shape": "box"
+      },
+      {
+       "id": "s4a1",
+       "color": "amber",
+       "type": "arrow",
+       "x1": 112,
+       "y1": 134,
+       "x2": 112,
+       "y2": 154
+      },
+      {
+       "id": "s4z",
+       "color": "amber",
+       "detail": "The discrete latent variable: simply the index of the nearest embedding.",
+       "type": "node",
+       "x": 52,
+       "y": 156,
+       "width": 120,
+       "height": 40,
+       "label": "z = 2",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s4hot",
+       "color": "slate",
+       "detail": "The row of cells above is the posterior distribution over the K indices given x. One-hot means a single entry is 1 and the rest are 0, so there is no randomness in the choice.",
+       "type": "node",
+       "x": 214,
+       "y": 160,
+       "width": 130,
+       "height": 60,
+       "label": "One-hot q(z=k|x)",
+       "shape": "box"
+      },
+      {
+       "id": "s4a2",
+       "color": "amber",
+       "type": "arrow",
+       "x1": 112,
+       "y1": 196,
+       "x2": 112,
+       "y2": 214
+      },
+      {
+       "id": "s4row",
+       "color": "teal",
+       "detail": "The index selects one row of the embedding space e.",
+       "type": "node",
+       "x": 32,
+       "y": 216,
+       "width": 160,
+       "height": 42,
+       "label": "Look up row 2",
+       "shape": "box"
+      },
+      {
+       "id": "s4a3",
+       "color": "amber",
+       "type": "arrow",
+       "x1": 112,
+       "y1": 258,
+       "x2": 112,
+       "y2": 276
+      },
+      {
+       "id": "s4zq",
+       "color": "amber",
+       "detail": "Equation 2: the quantised latent is the embedding vector at the winning index. This is the decoder's input.",
+       "type": "node",
+       "x": 22,
+       "y": 278,
+       "width": 180,
+       "height": 46,
+       "label": "z_q(x) = e_2",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s4stay",
+       "color": "indigo",
+       "detail": "In the forward computation the decoder does not receive the encoder's exact output, only the embedding it was mapped to.",
+       "type": "node",
+       "x": 214,
+       "y": 282,
+       "width": 130,
+       "height": 60,
+       "label": "z_e(x) stays behind",
+       "shape": "box"
+      },
+      {
+       "id": "s4a4",
+       "color": "amber",
+       "type": "arrow",
+       "x1": 112,
+       "y1": 324,
+       "x2": 112,
+       "y2": 342
+      },
+      {
+       "id": "s4dec",
+       "color": "rose",
+       "detail": "Receives only z_q(x) = e_k and reconstructs x from it.",
+       "type": "node",
+       "x": 52,
+       "y": 344,
+       "width": 120,
+       "height": 42,
+       "label": "Decoder",
+       "shape": "box"
+      }
+     ]
+    }
+   },
+   {
+    "title": "Why the passage calls it a non-linearity",
+    "caption": "A 1-D illustration, not the real D-dimensional operation. A plain autoencoder hands the encoder output straight to the decoder (diagonal); the look-up snaps it to one of a few allowed levels (staircase).",
+    "explanation": "The passage ends with a change of viewpoint: the pipeline can be seen as 'a regular autoencoder with a particular non-linearity that maps the latents to 1-of-K embedding vectors'. This scene illustrates that sentence with a one-dimensional analogy.\n\nImagine the encoder output were a single number instead of a vector, and the embedding space held four numbers, e1 to e4. In a plain autoencoder the decoder would receive exactly what the encoder produced: the diagonal line, where output equals input. With the look-up in place, every input is replaced by whichever level is nearest, giving a staircase. Whole ranges of inputs produce the same output, and at certain thresholds the output jumps.\n\nSo the look-up behaves like a layer in the network: a fixed rule applied between encoder and decoder that is not a straight line. It differs from familiar non-linearities in that its set of possible outputs is finite (K of them) and the levels themselves are learned.\n\nIn the real model the flat steps become regions of the D-dimensional space, each region containing all points closest to one embedding.\n\nThe staircase also hints at a difficulty the paper raises next: on a flat step, small changes to the input do not change the output, and the paper says there is no real gradient defined for equation 2. It works around this by copying gradients from the decoder input back to the encoder output.",
+    "basis": "illustration",
+    "referenceIds": [
+     "selection",
+     "pdf-1"
+    ],
+    "scene": {
+     "height": 370,
+     "elements": [
+      {
+       "id": "s5ylab",
+       "color": "slate",
+       "detail": "Vertical axis: the value handed to the decoder.",
+       "type": "node",
+       "x": 20,
+       "y": 6,
+       "width": 160,
+       "height": 34,
+       "label": "Decoder input",
+       "shape": "box"
+      },
+      {
+       "id": "s5axes",
+       "color": "slate",
+       "type": "path",
+       "points": [
+        {
+         "x": 60,
+         "y": 52
+        },
+        {
+         "x": 60,
+         "y": 300
+        },
+        {
+         "x": 334,
+         "y": 300
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s5diag",
+       "color": "indigo",
+       "detail": "Plain autoencoder: the decoder input equals the encoder output.",
+       "type": "path",
+       "points": [
+        {
+         "x": 60,
+         "y": 300
+        },
+        {
+         "x": 320,
+         "y": 60
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s5stair",
+       "color": "amber",
+       "detail": "With the look-up: each input is replaced by the nearest allowed level, so the output moves in jumps.",
+       "type": "path",
+       "points": [
+        {
+         "x": 60,
+         "y": 270
+        },
+        {
+         "x": 125,
+         "y": 270
+        },
+        {
+         "x": 125,
+         "y": 210
+        },
+        {
+         "x": 190,
+         "y": 210
+        },
+        {
+         "x": 190,
+         "y": 150
+        },
+        {
+         "x": 255,
+         "y": 150
+        },
+        {
+         "x": 255,
+         "y": 90
+        },
+        {
+         "x": 320,
+         "y": 90
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s5l1",
+       "color": "teal",
+       "detail": "The lowest allowed level in this 1-D analogy.",
+       "type": "node",
+       "x": 10,
+       "y": 254,
+       "width": 40,
+       "height": 32,
+       "label": "e1",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s5l2",
+       "color": "teal",
+       "type": "node",
+       "x": 10,
+       "y": 194,
+       "width": 40,
+       "height": 32,
+       "label": "e2",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s5l3",
+       "color": "teal",
+       "type": "node",
+       "x": 10,
+       "y": 134,
+       "width": 40,
+       "height": 32,
+       "label": "e3",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s5l4",
+       "color": "teal",
+       "detail": "The highest allowed level. Four levels are drawn for clarity; the model has K embeddings, and they are vectors, not single numbers.",
+       "type": "node",
+       "x": 10,
+       "y": 74,
+       "width": 40,
+       "height": 32,
+       "label": "e4",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s5legq",
+       "color": "amber",
+       "detail": "The staircase. Its outputs are restricted to the K embedding values, which is what '1-of-K' refers to.",
+       "type": "node",
+       "x": 72,
+       "y": 62,
+       "width": 150,
+       "height": 58,
+       "label": "Quantised: K levels",
+       "shape": "box"
+      },
+      {
+       "id": "s5lega",
+       "color": "indigo",
+       "detail": "The diagonal. Nothing sits between encoder and decoder, so any value can pass through.",
+       "type": "node",
+       "x": 186,
+       "y": 226,
+       "width": 150,
+       "height": 58,
+       "label": "Plain autoencoder",
+       "shape": "box"
+      },
+      {
+       "id": "s5xlab",
+       "color": "slate",
+       "detail": "Horizontal axis: the continuous value produced by the encoder, z_e(x) reduced to one number for this illustration.",
+       "type": "node",
+       "x": 100,
+       "y": 312,
+       "width": 170,
+       "height": 36,
+       "label": "Encoder output",
+       "shape": "box"
+      }
+     ]
+    }
+   },
+   {
+    "title": "In practice: many latents, one table",
+    "caption": "Real inputs are encoded as a whole grid of latents. Each position gets its own index, and all positions are looked up in the same embedding table. The 3-by-3 grid and its index values are made up for the sketch.",
+    "explanation": "The passage speaks of 'the' discrete latent z as if there were one per input. The paper says this is for simplicity: for speech, images and video it actually extracts 1-D, 2-D and 3-D latent feature spaces. For example, it reports using a field of 32 by 32 latents for ImageNet.\n\nSo the look-up from the earlier scenes is repeated at every position. The encoder emits a grid of vectors; each one is matched to its nearest embedding; the result is a grid of indices. Replacing each index with its embedding vector gives the grid of vectors the decoder receives.\n\nThe context does not spell out what 'shared' means in 'shared embedding space'. A reasonable reading is that this single table serves every position; the paper also notes that encoder output and decoder input share the same D-dimensional space. The same index can appear at several positions, as the repeated values in the sketch suggest.\n\nA single index among K choices carries little information. A grid of them can describe an input in far more detail, while still being a finite sequence of symbols.",
+    "basis": "source",
+    "referenceIds": [
+     "pdf-1",
+     "pdf-3"
+    ],
+    "scene": {
+     "height": 320,
+     "elements": [
+      {
+       "id": "s6lab",
+       "color": "slate",
+       "detail": "One discrete latent per position. The values shown are invented for illustration; the paper mentions, for example, a 32 by 32 field for ImageNet.",
+       "type": "node",
+       "x": 14,
+       "y": 10,
+       "width": 180,
+       "height": 36,
+       "label": "Grid of indices z",
+       "shape": "box"
+      },
+      {
+       "id": "s6g11",
+       "color": "amber",
+       "detail": "At this position the nearest embedding has index 7 (illustrative value).",
+       "type": "node",
+       "x": 24,
+       "y": 60,
+       "width": 48,
+       "height": 44,
+       "label": "7",
+       "shape": "box"
+      },
+      {
+       "id": "s6g12",
+       "color": "amber",
+       "type": "node",
+       "x": 80,
+       "y": 60,
+       "width": 48,
+       "height": 44,
+       "label": "2",
+       "shape": "box"
+      },
+      {
+       "id": "s6g13",
+       "color": "amber",
+       "detail": "The same index can occur at several positions.",
+       "type": "node",
+       "x": 136,
+       "y": 60,
+       "width": 48,
+       "height": 44,
+       "label": "2",
+       "shape": "box"
+      },
+      {
+       "id": "s6g21",
+       "color": "amber",
+       "type": "node",
+       "x": 24,
+       "y": 112,
+       "width": 48,
+       "height": 44,
+       "label": "5",
+       "shape": "box"
+      },
+      {
+       "id": "s6g22",
+       "color": "amber",
+       "type": "node",
+       "x": 80,
+       "y": 112,
+       "width": 48,
+       "height": 44,
+       "label": "2",
+       "shape": "box"
+      },
+      {
+       "id": "s6g23",
+       "color": "amber",
+       "type": "node",
+       "x": 136,
+       "y": 112,
+       "width": 48,
+       "height": 44,
+       "label": "9",
+       "shape": "box"
+      },
+      {
+       "id": "s6g31",
+       "color": "amber",
+       "type": "node",
+       "x": 24,
+       "y": 164,
+       "width": 48,
+       "height": 44,
+       "label": "5",
+       "shape": "box"
+      },
+      {
+       "id": "s6g32",
+       "color": "amber",
+       "type": "node",
+       "x": 80,
+       "y": 164,
+       "width": 48,
+       "height": 44,
+       "label": "1",
+       "shape": "box"
+      },
+      {
+       "id": "s6g33",
+       "color": "amber",
+       "type": "node",
+       "x": 136,
+       "y": 164,
+       "width": 48,
+       "height": 44,
+       "label": "9",
+       "shape": "box"
+      },
+      {
+       "id": "s6a1",
+       "color": "amber",
+       "type": "arrow",
+       "x1": 188,
+       "y1": 134,
+       "x2": 230,
+       "y2": 134
+      },
+      {
+       "id": "s6code",
+       "color": "teal",
+       "detail": "The same K-by-D embedding table is consulted for every position in the grid.",
+       "type": "node",
+       "x": 232,
+       "y": 90,
+       "width": 112,
+       "height": 88,
+       "label": "One shared codebook e",
+       "shape": "box"
+      },
+      {
+       "id": "s6a2",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 288,
+       "y1": 178,
+       "x2": 288,
+       "y2": 234
+      },
+      {
+       "id": "s6vec",
+       "color": "amber",
+       "detail": "Each index is replaced by its embedding vector, giving the quantised grid z_q(x).",
+       "type": "node",
+       "x": 200,
+       "y": 236,
+       "width": 144,
+       "height": 58,
+       "label": "Grid of vectors e_k",
+       "shape": "box"
+      },
+      {
+       "id": "s6a3",
+       "color": "amber",
+       "type": "arrow",
+       "x1": 198,
+       "y1": 265,
+       "x2": 170,
+       "y2": 265
+      },
+      {
+       "id": "s6dec",
+       "color": "rose",
+       "detail": "Reconstructs the input from the grid of embedding vectors.",
+       "type": "node",
+       "x": 24,
+       "y": 244,
+       "width": 144,
+       "height": 42,
+       "label": "Decoder",
+       "shape": "box"
+      }
+     ]
+    }
+   }
+  ],
+  "takeaways": [
+   "Forward pass: x goes to the encoder, giving z_e(x); the nearest embedding e_k is found; the decoder receives e_k.",
+   "The discrete latent z is the index k of the nearest embedding. As a distribution over the K indices it is one-hot and deterministic.",
+   "The decoder never sees the encoder's exact output, only one of K learned vectors, so the look-up acts as a bottleneck.",
+   "Seen as a layer, the look-up is a step-like non-linearity between encoder and decoder. Its flat steps are why the paper needs a special gradient trick for training."
+  ]
+ }
+}

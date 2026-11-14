@@ -1,0 +1,1360 @@
+{
+ "question": "How does product quantization compress a vector and estimate distances?",
+ "references": [
+  {
+   "id": "pdf-1",
+   "label": "Product Quantization for Nearest Neighbor Search · p. 4"
+  },
+  {
+   "id": "pdf-2",
+   "label": "Product Quantization for Nearest Neighbor Search · p. 2"
+  },
+  {
+   "id": "pdf-3",
+   "label": "Product Quantization for Nearest Neighbor Search · p. 1"
+  },
+  {
+   "id": "pdf-4",
+   "label": "Product Quantization for Nearest Neighbor Search · p. 6"
+  }
+ ],
+ "definition": {
+  "version": 1,
+  "title": "Product quantization: short codes and distance estimates",
+  "summary": "Product quantization splits a vector into sub-vectors, replaces each with the index of its nearest centroid in a small codebook, and estimates distances by adding per-sub-vector table lookups. This is built from four excerpts of the Jégou, Douze and Schmid paper. The excerpts omit the definition of quantization and the exact distance formulas, so those parts are marked as background. The diagrams are simplified models, and the index values in them are invented for illustration.",
+  "steps": [
+   {
+    "title": "Why one big codebook fails",
+    "caption": "A 64-bit code from a single quantizer would need 2^64 centroids, which cannot be trained, searched or even stored.",
+    "explanation": "Background (the supplied excerpt breaks off just before the paper's own definition): quantization replaces a vector with the nearest entry of a fixed list of representative points, called centroids. The list is the codebook, and only the chosen centroid's index is stored. The paper's aim is to build short codes this way so that Euclidean distances can still be estimated from them. For those estimates to be precise, the quantization error has to stay small, which demands a very large number of centroids: 2^64 for a 64-bit code. The paper names three obstacles. The training set would have to be several times larger than the number of centroids. The learning and assignment algorithm would be prohibitively complex. And the centroids themselves, stored as floating-point values, would exceed all available computer memory. Structured alternatives exist, but the paper reports that scalar quantizers give a poor trade-off between memory and reconstruction error, and that lattice quantizers suit uniform distributions that real data rarely follow. The diagram is a schematic of this argument, not a depiction of any real system.",
+    "basis": "source",
+    "referenceIds": [
+     "pdf-2",
+     "pdf-3"
+    ],
+    "scene": {
+     "height": 420,
+     "elements": [
+      {
+       "id": "s1_vec",
+       "color": "indigo",
+       "detail": "A high-dimensional database vector, such as an image descriptor. The paper tests SIFT and GIST descriptors. Storing and comparing billions of these in full is expensive.",
+       "type": "node",
+       "x": 14,
+       "y": 16,
+       "width": 332,
+       "height": 48,
+       "label": "Database vector y: D numbers",
+       "shape": "box"
+      },
+      {
+       "id": "s1_a1",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 180,
+       "y1": 64,
+       "x2": 180,
+       "y2": 104,
+       "label": "compress"
+      },
+      {
+       "id": "s1_code",
+       "color": "teal",
+       "detail": "The target: a short code per database vector from which distances to a query can still be estimated.",
+       "type": "node",
+       "x": 90,
+       "y": 108,
+       "width": 180,
+       "height": 44,
+       "label": "64-bit code",
+       "shape": "box"
+      },
+      {
+       "id": "s1_a2",
+       "color": "rose",
+       "type": "arrow",
+       "x1": 180,
+       "y1": 152,
+       "x2": 180,
+       "y2": 192,
+       "label": "one codebook?"
+      },
+      {
+       "id": "s1_big",
+       "color": "rose",
+       "detail": "A 64-bit index can name 2^64 different centroids. The paper gives this as the number needed to keep quantization error low enough for precise distances with 64-bit codes.",
+       "type": "node",
+       "x": 14,
+       "y": 196,
+       "width": 332,
+       "height": 48,
+       "label": "Needs 2^64 centroids",
+       "shape": "box"
+      },
+      {
+       "id": "s1_p1",
+       "color": "slate",
+       "detail": "The paper states that the number of samples required to learn the quantizer is several times the number of centroids.",
+       "type": "node",
+       "x": 14,
+       "y": 262,
+       "width": 332,
+       "height": 40,
+       "label": "Training set far too large",
+       "shape": "box"
+      },
+      {
+       "id": "s1_p2",
+       "color": "slate",
+       "detail": "The paper calls the complexity of the algorithm itself prohibitive. Hierarchical k-means speeds up learning and assignment, but the memory and training-set limits remain.",
+       "type": "node",
+       "x": 14,
+       "y": 312,
+       "width": 332,
+       "height": 40,
+       "label": "Assignment far too slow",
+       "shape": "box"
+      },
+      {
+       "id": "s1_p3",
+       "color": "slate",
+       "detail": "The paper states that the computer memory available on Earth is not sufficient to store the floating-point values representing that many centroids.",
+       "type": "node",
+       "x": 14,
+       "y": 362,
+       "width": 332,
+       "height": 40,
+       "label": "Centroids exceed any memory",
+       "shape": "box"
+      }
+     ]
+    }
+   },
+   {
+    "title": "Split the vector, quantize each piece",
+    "caption": "The vector is cut into m = 8 sub-vectors, and each one gets its own small codebook of 256 centroids.",
+    "explanation": "The paper's idea is to decompose the space into a Cartesian product of low-dimensional subspaces and to quantize each subspace separately. In practice that means cutting the vector's coordinates into m consecutive groups, the sub-vectors, and giving each group its own small codebook of k* centroids. The excerpts call m = 8 with k* = 256 an often reasonable choice, and note that it yields 64-bit codes. The arithmetic in the lower boxes follows directly from those numbers and is not quoted from the excerpts: 8 codebooks of 256 entries hold 2,048 sub-centroids in total, yet every combination of one entry per codebook is a distinct reconstructed vector, giving 256^8 = 2^64 possibilities. This is how the method obtains the resolution of an enormous codebook while training and storing only small ones. Background: each sub-codebook is learned from training vectors, typically with k-means; the excerpts mention k-means only in comparisons. Only codebooks 1 and 8 are drawn; codebooks 2 to 7 work identically.",
+    "basis": "source",
+    "referenceIds": [
+     "pdf-3",
+     "pdf-1",
+     "pdf-4"
+    ],
+    "scene": {
+     "height": 420,
+     "elements": [
+      {
+       "id": "s2_vec",
+       "color": "indigo",
+       "detail": "The same database vector as before, shown as one long list of D coordinates.",
+       "type": "node",
+       "x": 14,
+       "y": 16,
+       "width": 332,
+       "height": 44,
+       "label": "Vector y (D dimensions)",
+       "shape": "box"
+      },
+      {
+       "id": "s2_split",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 180,
+       "y1": 60,
+       "x2": 180,
+       "y2": 100,
+       "label": "split into m = 8"
+      },
+      {
+       "id": "s2_u1",
+       "color": "indigo",
+       "detail": "Sub-vector 1: the first group of coordinates of y. Each sub-vector has D / 8 dimensions.",
+       "type": "node",
+       "x": 14,
+       "y": 104,
+       "width": 38,
+       "height": 40,
+       "label": "u1",
+       "shape": "box"
+      },
+      {
+       "id": "s2_u2",
+       "color": "indigo",
+       "type": "node",
+       "x": 56,
+       "y": 104,
+       "width": 38,
+       "height": 40,
+       "label": "u2",
+       "shape": "box"
+      },
+      {
+       "id": "s2_u3",
+       "color": "indigo",
+       "type": "node",
+       "x": 98,
+       "y": 104,
+       "width": 38,
+       "height": 40,
+       "label": "u3",
+       "shape": "box"
+      },
+      {
+       "id": "s2_u4",
+       "color": "indigo",
+       "type": "node",
+       "x": 140,
+       "y": 104,
+       "width": 38,
+       "height": 40,
+       "label": "u4",
+       "shape": "box"
+      },
+      {
+       "id": "s2_u5",
+       "color": "indigo",
+       "type": "node",
+       "x": 182,
+       "y": 104,
+       "width": 38,
+       "height": 40,
+       "label": "u5",
+       "shape": "box"
+      },
+      {
+       "id": "s2_u6",
+       "color": "indigo",
+       "type": "node",
+       "x": 224,
+       "y": 104,
+       "width": 38,
+       "height": 40,
+       "label": "u6",
+       "shape": "box"
+      },
+      {
+       "id": "s2_u7",
+       "color": "indigo",
+       "type": "node",
+       "x": 266,
+       "y": 104,
+       "width": 38,
+       "height": 40,
+       "label": "u7",
+       "shape": "box"
+      },
+      {
+       "id": "s2_u8",
+       "color": "indigo",
+       "detail": "Sub-vector 8: the last group of coordinates of y.",
+       "type": "node",
+       "x": 308,
+       "y": 104,
+       "width": 38,
+       "height": 40,
+       "label": "u8",
+       "shape": "box"
+      },
+      {
+       "id": "s2_a1",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 33,
+       "y1": 144,
+       "x2": 60,
+       "y2": 196
+      },
+      {
+       "id": "s2_a8",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 327,
+       "y1": 144,
+       "x2": 300,
+       "y2": 196
+      },
+      {
+       "id": "s2_cb1",
+       "color": "teal",
+       "detail": "A codebook used only for sub-vector 1. Its 256 centroids live in the low-dimensional subspace of the first coordinate group, so it is small enough to train and to keep in memory.",
+       "type": "node",
+       "x": 14,
+       "y": 200,
+       "width": 156,
+       "height": 66,
+       "label": "Codebook 1: 256 centroids",
+       "shape": "box"
+      },
+      {
+       "id": "s2_cb8",
+       "color": "teal",
+       "detail": "A separate codebook for sub-vector 8. Codebooks 2 to 7 are not drawn but work the same way.",
+       "type": "node",
+       "x": 190,
+       "y": 200,
+       "width": 156,
+       "height": 66,
+       "label": "Codebook 8: 256 centroids",
+       "shape": "box"
+      },
+      {
+       "id": "s2_stored",
+       "color": "slate",
+       "detail": "Arithmetic from the paper's parameters m = 8 and k* = 256, not a figure quoted in the excerpts. This is all that has to be learned and stored.",
+       "type": "node",
+       "x": 14,
+       "y": 282,
+       "width": 332,
+       "height": 60,
+       "label": "8 codebooks × 256 = 2,048 centroids",
+       "shape": "box"
+      },
+      {
+       "id": "s2_combos",
+       "color": "teal",
+       "detail": "Choosing one centroid from each of the 8 codebooks gives 256^8 = 2^64 distinct reconstructed vectors: the same count the single giant codebook would have needed. This is arithmetic, not a quotation.",
+       "type": "node",
+       "x": 14,
+       "y": 354,
+       "width": 332,
+       "height": 48,
+       "label": "Combinations: 256^8 = 2^64",
+       "shape": "box"
+      }
+     ]
+    }
+   },
+   {
+    "title": "Each piece becomes an 8-bit index",
+    "caption": "Worked illustration: sub-vector u1 falls in the cell of centroid 17, so only the number 17 is stored. Eight such indices form the 64-bit code.",
+    "explanation": "This scene is a worked illustration. The framed area stands for one subspace, drawn in two dimensions for readability; real subspaces have more dimensions and 256 centroids, of which four are shown. The grey lines divide the subspace into cells, one per centroid, so that every point in a cell is closer to that cell's centroid than to any other. The sub-vector u1 lands in the cell of centroid 17, so the number 17 is all that is kept for this piece. Repeating the step in every subspace produces the code. What the source establishes: a vector is represented by a short code composed of its subspace quantization indices, and with m = 8 and k* = 256 the code is 64 bits long. Each index needs 8 bits because 256 = 2^8. The specific index values (17, 203, 4, ...) are invented for the example. Background: a 128-dimensional vector of 32-bit floats would occupy 4,096 bits, so a 64-bit code would be 64 times smaller; the excerpts do not state this figure. The original coordinates are discarded, and the code can only be turned back into an approximation: the chosen centroids placed side by side.",
+    "basis": "illustration",
+    "referenceIds": [
+     "pdf-3",
+     "pdf-4"
+    ],
+    "scene": {
+     "height": 400,
+     "elements": [
+      {
+       "id": "s3_frame",
+       "color": "slate",
+       "detail": "One subspace, flattened to two dimensions for the drawing. A simplified model, not a literal depiction.",
+       "type": "path",
+       "points": [
+        {
+         "x": 20,
+         "y": 16
+        },
+        {
+         "x": 340,
+         "y": 16
+        },
+        {
+         "x": 340,
+         "y": 236
+        },
+        {
+         "x": 20,
+         "y": 236
+        }
+       ],
+       "closed": true
+      },
+      {
+       "id": "s3_vline",
+       "color": "slate",
+       "detail": "Cell boundary: points on either side are closer to different centroids.",
+       "type": "path",
+       "points": [
+        {
+         "x": 168,
+         "y": 16
+        },
+        {
+         "x": 174,
+         "y": 236
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s3_hline",
+       "color": "slate",
+       "detail": "Cell boundary: points on either side are closer to different centroids.",
+       "type": "path",
+       "points": [
+        {
+         "x": 20,
+         "y": 122
+        },
+        {
+         "x": 340,
+         "y": 128
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s3_c3",
+       "color": "teal",
+       "detail": "Centroid number 3 of codebook 1. Index values are invented for this example.",
+       "type": "node",
+       "x": 60,
+       "y": 40,
+       "width": 44,
+       "height": 34,
+       "label": "3",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s3_c17",
+       "color": "teal",
+       "detail": "Centroid number 17 of codebook 1: the closest centroid to u1, so it becomes u1's stand-in.",
+       "type": "node",
+       "x": 276,
+       "y": 24,
+       "width": 44,
+       "height": 34,
+       "label": "17",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s3_c90",
+       "color": "teal",
+       "detail": "Centroid number 90 of codebook 1.",
+       "type": "node",
+       "x": 68,
+       "y": 160,
+       "width": 44,
+       "height": 34,
+       "label": "90",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s3_c201",
+       "color": "teal",
+       "detail": "Centroid number 201 of codebook 1.",
+       "type": "node",
+       "x": 264,
+       "y": 180,
+       "width": 48,
+       "height": 34,
+       "label": "201",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s3_u1",
+       "color": "indigo",
+       "detail": "The first sub-vector of y, plotted as a point in its subspace. The gap between u1 and centroid 17 is the quantization error for this piece.",
+       "type": "node",
+       "x": 198,
+       "y": 76,
+       "width": 44,
+       "height": 34,
+       "label": "u1",
+       "shape": "ellipse"
+      },
+      {
+       "id": "s3_near",
+       "color": "slate",
+       "detail": "u1 is assigned to its nearest centroid, number 17.",
+       "type": "arrow",
+       "x1": 240,
+       "y1": 84,
+       "x2": 280,
+       "y2": 54
+      },
+      {
+       "id": "s3_down",
+       "color": "slate",
+       "type": "arrow",
+       "x1": 180,
+       "y1": 240,
+       "x2": 180,
+       "y2": 280,
+       "label": "keep the index"
+      },
+      {
+       "id": "s3_k1",
+       "color": "teal",
+       "detail": "Index of the centroid nearest to u1. Stored in 8 bits, since 256 = 2^8.",
+       "type": "node",
+       "x": 14,
+       "y": 284,
+       "width": 38,
+       "height": 40,
+       "label": "17",
+       "shape": "box"
+      },
+      {
+       "id": "s3_k2",
+       "color": "teal",
+       "type": "node",
+       "x": 56,
+       "y": 284,
+       "width": 38,
+       "height": 40,
+       "label": "203",
+       "shape": "box"
+      },
+      {
+       "id": "s3_k3",
+       "color": "teal",
+       "type": "node",
+       "x": 98,
+       "y": 284,
+       "width": 38,
+       "height": 40,
+       "label": "4",
+       "shape": "box"
+      },
+      {
+       "id": "s3_k4",
+       "color": "teal",
+       "type": "node",
+       "x": 140,
+       "y": 284,
+       "width": 38,
+       "height": 40,
+       "label": "88",
+       "shape": "box"
+      },
+      {
+       "id": "s3_k5",
+       "color": "teal",
+       "type": "node",
+       "x": 182,
+       "y": 284,
+       "width": 38,
+       "height": 40,
+       "label": "255",
+       "shape": "box"
+      },
+      {
+       "id": "s3_k6",
+       "color": "teal",
+       "type": "node",
+       "x": 224,
+       "y": 284,
+       "width": 38,
+       "height": 40,
+       "label": "0",
+       "shape": "box"
+      },
+      {
+       "id": "s3_k7",
+       "color": "teal",
+       "type": "node",
+       "x": 266,
+       "y": 284,
+       "width": 38,
+       "height": 40,
+       "label": "129",
+       "shape": "box"
+      },
+      {
+       "id": "s3_k8",
+       "color": "teal",
+       "detail": "Index of the centroid nearest to u8, found in codebook 8. All values in this row are invented for the example.",
+       "type": "node",
+       "x": 308,
+       "y": 284,
+       "width": 38,
+       "height": 40,
+       "label": "61",
+       "shape": "box"
+      },
+      {
+       "id": "s3_bits",
+       "color": "slate",
+       "detail": "The paper states that m = 8 and k* = 256 give 64-bit code vectors. This row of indices is the entire stored representation of y.",
+       "type": "node",
+       "x": 14,
+       "y": 338,
+       "width": 332,
+       "height": 44,
+       "label": "8 indices × 8 bits = 64 bits",
+       "shape": "box"
+      }
+     ]
+    }
+   },
+   {
+    "title": "Distance by table lookup",
+    "caption": "The query stays exact. It fills eight small distance tables once, and each database code then picks one value per table to add up.",
+    "explanation": "Nearest neighbour search depends on the distances between the query and the database vectors, or equivalently on the squared distances. The paper estimates them from vector-to-centroid distances: the query is not quantized, and codes are assigned to the database vectors only, which reduces quantization noise. This is the asymmetric version, which the abstract says increases precision because it compares a vector with a code. Background (the supplied excerpts stop before the formulas): the sub-vectors cover disjoint groups of coordinates, so a squared Euclidean distance equals the sum of the squared distances within each subspace. The query is therefore split in the same way as the database vectors, and for each subspace j a table Tj is filled with the squared distance from the query's j-th piece to each of the 256 centroids of codebook j. That is done once per query. Each database vector is then scored by using its eight indices to read one value from each table and adding the eight values. The paper notes that its method uses a number of table lookups similar to fast Hamming-distance computation, with comparable efficiency, while allowing many more distinct distance values than Hamming codes do. Comparing the query with every code remains prohibitive for very large datasets, so the paper also introduces an inverted file with a coarse quantizer to visit only the most relevant vectors. The index values shown are the invented ones from the previous scene.",
+    "basis": "source",
+    "referenceIds": [
+     "pdf-1",
+     "pdf-2",
+     "pdf-3"
+    ],
+    "scene": {
+     "height": 356,
+     "elements": [
+      {
+       "id": "s4_ylabel",
+       "color": "indigo",
+       "detail": "The database vector itself is no longer available at search time. Only its eight stored indices are.",
+       "type": "node",
+       "x": 14,
+       "y": 16,
+       "width": 332,
+       "height": 40,
+       "label": "Code of database vector y",
+       "shape": "box"
+      },
+      {
+       "id": "s4_k1",
+       "color": "teal",
+       "detail": "Index 17 says: read entry 17 of table T1. Invented value, carried over from the previous scene.",
+       "type": "node",
+       "x": 14,
+       "y": 62,
+       "width": 38,
+       "height": 38,
+       "label": "17",
+       "shape": "box"
+      },
+      {
+       "id": "s4_k2",
+       "color": "teal",
+       "type": "node",
+       "x": 56,
+       "y": 62,
+       "width": 38,
+       "height": 38,
+       "label": "203",
+       "shape": "box"
+      },
+      {
+       "id": "s4_k3",
+       "color": "teal",
+       "type": "node",
+       "x": 98,
+       "y": 62,
+       "width": 38,
+       "height": 38,
+       "label": "4",
+       "shape": "box"
+      },
+      {
+       "id": "s4_k4",
+       "color": "teal",
+       "type": "node",
+       "x": 140,
+       "y": 62,
+       "width": 38,
+       "height": 38,
+       "label": "88",
+       "shape": "box"
+      },
+      {
+       "id": "s4_k5",
+       "color": "teal",
+       "type": "node",
+       "x": 182,
+       "y": 62,
+       "width": 38,
+       "height": 38,
+       "label": "255",
+       "shape": "box"
+      },
+      {
+       "id": "s4_k6",
+       "color": "teal",
+       "type": "node",
+       "x": 224,
+       "y": 62,
+       "width": 38,
+       "height": 38,
+       "label": "0",
+       "shape": "box"
+      },
+      {
+       "id": "s4_k7",
+       "color": "teal",
+       "type": "node",
+       "x": 266,
+       "y": 62,
+       "width": 38,
+       "height": 38,
+       "label": "129",
+       "shape": "box"
+      },
+      {
+       "id": "s4_k8",
+       "color": "teal",
+       "type": "node",
+       "x": 308,
+       "y": 62,
+       "width": 38,
+       "height": 38,
+       "label": "61",
+       "shape": "box"
+      },
+      {
+       "id": "s4_p1",
+       "color": "teal",
+       "detail": "Each index selects one entry in the table directly below it.",
+       "type": "arrow",
+       "x1": 33,
+       "y1": 100,
+       "x2": 33,
+       "y2": 140
+      },
+      {
+       "id": "s4_p2",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 75,
+       "y1": 100,
+       "x2": 75,
+       "y2": 140
+      },
+      {
+       "id": "s4_p3",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 117,
+       "y1": 100,
+       "x2": 117,
+       "y2": 140
+      },
+      {
+       "id": "s4_p4",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 159,
+       "y1": 100,
+       "x2": 159,
+       "y2": 140
+      },
+      {
+       "id": "s4_p5",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 201,
+       "y1": 100,
+       "x2": 201,
+       "y2": 140
+      },
+      {
+       "id": "s4_p6",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 243,
+       "y1": 100,
+       "x2": 243,
+       "y2": 140
+      },
+      {
+       "id": "s4_p7",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 285,
+       "y1": 100,
+       "x2": 285,
+       "y2": 140
+      },
+      {
+       "id": "s4_p8",
+       "color": "teal",
+       "type": "arrow",
+       "x1": 327,
+       "y1": 100,
+       "x2": 327,
+       "y2": 140
+      },
+      {
+       "id": "s4_t1",
+       "color": "slate",
+       "detail": "Table T1 holds 256 numbers: the squared distance from the query's first sub-vector to each centroid of codebook 1. Background: this construction comes from the paper's method but is not spelled out in the supplied excerpts.",
+       "type": "node",
+       "x": 14,
+       "y": 144,
+       "width": 38,
+       "height": 40,
+       "label": "T1",
+       "shape": "box"
+      },
+      {
+       "id": "s4_t2",
+       "color": "slate",
+       "type": "node",
+       "x": 56,
+       "y": 144,
+       "width": 38,
+       "height": 40,
+       "label": "T2",
+       "shape": "box"
+      },
+      {
+       "id": "s4_t3",
+       "color": "slate",
+       "type": "node",
+       "x": 98,
+       "y": 144,
+       "width": 38,
+       "height": 40,
+       "label": "T3",
+       "shape": "box"
+      },
+      {
+       "id": "s4_t4",
+       "color": "slate",
+       "type": "node",
+       "x": 140,
+       "y": 144,
+       "width": 38,
+       "height": 40,
+       "label": "T4",
+       "shape": "box"
+      },
+      {
+       "id": "s4_t5",
+       "color": "slate",
+       "type": "node",
+       "x": 182,
+       "y": 144,
+       "width": 38,
+       "height": 40,
+       "label": "T5",
+       "shape": "box"
+      },
+      {
+       "id": "s4_t6",
+       "color": "slate",
+       "type": "node",
+       "x": 224,
+       "y": 144,
+       "width": 38,
+       "height": 40,
+       "label": "T6",
+       "shape": "box"
+      },
+      {
+       "id": "s4_t7",
+       "color": "slate",
+       "type": "node",
+       "x": 266,
+       "y": 144,
+       "width": 38,
+       "height": 40,
+       "label": "T7",
+       "shape": "box"
+      },
+      {
+       "id": "s4_t8",
+       "color": "slate",
+       "detail": "Table T8: squared distances from the query's eighth sub-vector to each of the 256 centroids of codebook 8.",
+       "type": "node",
+       "x": 308,
+       "y": 144,
+       "width": 38,
+       "height": 40,
+       "label": "T8",
+       "shape": "box"
+      },
+      {
+       "id": "s4_fill",
+       "color": "amber",
+       "detail": "Done once per query: 8 tables of 256 entries each, computed in low-dimensional subspaces. The same tables are reused for every database vector.",
+       "type": "arrow",
+       "x1": 90,
+       "y1": 252,
+       "x2": 90,
+       "y2": 188,
+       "label": "fills tables"
+      },
+      {
+       "id": "s4_q",
+       "color": "amber",
+       "detail": "The paper states that the query vector is not quantized; codes are assigned to the database vectors only. This reduces quantization noise and improves search quality.",
+       "type": "node",
+       "x": 14,
+       "y": 256,
+       "width": 156,
+       "height": 80,
+       "label": "Query x, kept exact",
+       "shape": "box"
+      },
+      {
+       "id": "s4_sum",
+       "color": "slate",
+       "detail": "Eight lookups and eight additions per database vector, instead of a full D-dimensional distance computation.",
+       "type": "arrow",
+       "x1": 268,
+       "y1": 184,
+       "x2": 268,
+       "y2": 252,
+       "label": "add 8 values"
+      },
+      {
+       "id": "s4_est",
+       "color": "slate",
+       "detail": "An approximation of the true squared distance between x and y: it is the exact distance from x to the reconstruction of y built from its eight centroids.",
+       "type": "node",
+       "x": 190,
+       "y": 256,
+       "width": 156,
+       "height": 80,
+       "label": "Estimated squared distance",
+       "shape": "box"
+      }
+     ]
+    }
+   },
+   {
+    "title": "How good are the estimates?",
+    "caption": "Schematic of the paper's finding: both estimators tend to fall below the true distance, and the symmetric one falls further.",
+    "explanation": "The paper describes two estimators. The asymmetric one (ADC) compares the exact query with the centroids standing in for the database vector. The symmetric one (SDC) works from codes on both sides, so the query is replaced by its centroids as well. The paper's Figure 3 plots estimates from both against true distances for a SIFT query in a set of 1,000 vectors, using m = 8 and k* = 256. The excerpt reports that both estimators underestimate the distance on average, that the bias is clearly visible, and that the symmetric version is more sensitive to it. The sketch here is a schematic of that qualitative finding: the point positions are invented and are not the paper's data. On the diagonal an estimate equals the true distance; points below it are underestimates. To cancel the bias, the paper computes the expected squared distance between the query and the cell in which the database vector lies, giving a refined estimator. The excerpt also notes that the quantization error can serve as a criterion for selecting which top-ranked vectors receive an exact distance calculation afterwards. The derivation of the corrected estimator and the error bound are not included in the supplied excerpts.",
+    "basis": "source",
+    "referenceIds": [
+     "pdf-4",
+     "pdf-3",
+     "pdf-2"
+    ],
+    "scene": {
+     "height": 436,
+     "elements": [
+      {
+       "id": "s5_axes",
+       "color": "slate",
+       "detail": "Horizontal axis: true distance between query and database vector. Vertical axis: distance estimated from codes. No numeric scale is shown because the points are schematic.",
+       "type": "path",
+       "points": [
+        {
+         "x": 50,
+         "y": 52
+        },
+        {
+         "x": 50,
+         "y": 300
+        },
+        {
+         "x": 330,
+         "y": 300
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s5_diag",
+       "color": "slate",
+       "detail": "On this line the estimate equals the true distance. Points below the line are underestimates.",
+       "type": "path",
+       "points": [
+        {
+         "x": 50,
+         "y": 300
+        },
+        {
+         "x": 290,
+         "y": 60
+        }
+       ],
+       "closed": false
+      },
+      {
+       "id": "s5_ylab",
+       "color": "slate",
+       "type": "text",
+       "x": 14,
+       "y": 22,
+       "text": "estimated distance",
+       "size": 16
+      },
+      {
+       "id": "s5_xlab",
+       "color": "slate",
+       "type": "text",
+       "x": 200,
+       "y": 326,
+       "text": "true distance",
+       "size": 16
+      },
+      {
+       "id": "s5_dlab",
+       "color": "slate",
+       "type": "text",
+       "x": 64,
+       "y": 90,
+       "text": "line = no error",
+       "size": 16
+      },
+      {
+       "id": "s5_a1",
+       "color": "teal",
+       "detail": "Schematic asymmetric estimate: slightly below the diagonal. Invented position, not data from the paper.",
+       "type": "path",
+       "points": [
+        {
+         "x": 90,
+         "y": 265
+        },
+        {
+         "x": 95,
+         "y": 270
+        },
+        {
+         "x": 90,
+         "y": 275
+        },
+        {
+         "x": 85,
+         "y": 270
+        }
+       ],
+       "closed": true
+      },
+      {
+       "id": "s5_a2",
+       "color": "teal",
+       "type": "path",
+       "points": [
+        {
+         "x": 120,
+         "y": 239
+        },
+        {
+         "x": 125,
+         "y": 244
+        },
+        {
+         "x": 120,
+         "y": 249
+        },
+        {
+         "x": 115,
+         "y": 244
+        }
+       ],
+       "closed": true
+      },
+      {
+       "id": "s5_a3",
+       "color": "teal",
+       "type": "path",
+       "points": [
+        {
+         "x": 150,
+         "y": 205
+        },
+        {
+         "x": 155,
+         "y": 210
+        },
+        {
+         "x": 150,
+         "y": 215
+        },
+        {
+         "x": 145,
+         "y": 210
+        }
+       ],
+       "closed": true
+      },
+      {
+       "id": "s5_a4",
+       "color": "teal",
+       "type": "path",
+       "points": [
+        {
+         "x": 180,
+         "y": 181
+        },
+        {
+         "x": 185,
+         "y": 186
+        },
+        {
+         "x": 180,
+         "y": 191
+        },
+        {
+         "x": 175,
+         "y": 186
+        }
+       ],
+       "closed": true
+      },
+      {
+       "id": "s5_a5",
+       "color": "teal",
+       "type": "path",
+       "points": [
+        {
+         "x": 210,
+         "y": 145
+        },
+        {
+         "x": 215,
+         "y": 150
+        },
+        {
+         "x": 210,
+         "y": 155
+        },
+        {
+         "x": 205,
+         "y": 150
+        }
+       ],
+       "closed": true
+      },
+      {
+       "id": "s5_a6",
+       "color": "teal",
+       "type": "path",
+       "points": [
+        {
+         "x": 240,
+         "y": 121
+        },
+        {
+         "x": 245,
+         "y": 126
+        },
+        {
+         "x": 240,
+         "y": 131
+        },
+        {
+         "x": 235,
+         "y": 126
+        }
+       ],
+       "closed": true
+      },
+      {
+       "id": "s5_a7",
+       "color": "teal",
+       "type": "path",
+       "points": [
+        {
+         "x": 270,
+         "y": 87
+        },
+        {
+         "x": 275,
+         "y": 92
+        },
+        {
+         "x": 270,
+         "y": 97
+        },
+        {
+         "x": 265,
+         "y": 92
+        }
+       ],
+       "closed": true
+      },
+      {
+       "id": "s5_s1",
+       "color": "rose",
+       "detail": "Schematic symmetric estimate: further below the diagonal. Invented position, not data from the paper.",
+       "type": "path",
+       "points": [
+        {
+         "x": 100,
+         "y": 273
+        },
+        {
+         "x": 105,
+         "y": 278
+        },
+        {
+         "x": 100,
+         "y": 283
+        },
+        {
+         "x": 95,
+         "y": 278
+        }
+       ],
+       "closed": true
+      },
+      {
+       "id": "s5_s2",
+       "color": "rose",
+       "type": "path",
+       "points": [
+        {
+         "x": 130,
+         "y": 255
+        },
+        {
+         "x": 135,
+         "y": 260
+        },
+        {
+         "x": 130,
+         "y": 265
+        },
+        {
+         "x": 125,
+         "y": 260
+        }
+       ],
+       "closed": true
+      },
+      {
+       "id": "s5_s3",
+       "color": "rose",
+       "type": "path",
+       "points": [
+        {
+         "x": 160,
+         "y": 215
+        },
+        {
+         "x": 165,
+         "y": 220
+        },
+        {
+         "x": 160,
+         "y": 225
+        },
+        {
+         "x": 155,
+         "y": 220
+        }
+       ],
+       "closed": true
+      },
+      {
+       "id": "s5_s4",
+       "color": "rose",
+       "type": "path",
+       "points": [
+        {
+         "x": 190,
+         "y": 201
+        },
+        {
+         "x": 195,
+         "y": 206
+        },
+        {
+         "x": 190,
+         "y": 211
+        },
+        {
+         "x": 185,
+         "y": 206
+        }
+       ],
+       "closed": true
+      },
+      {
+       "id": "s5_s5",
+       "color": "rose",
+       "type": "path",
+       "points": [
+        {
+         "x": 220,
+         "y": 159
+        },
+        {
+         "x": 225,
+         "y": 164
+        },
+        {
+         "x": 220,
+         "y": 169
+        },
+        {
+         "x": 215,
+         "y": 164
+        }
+       ],
+       "closed": true
+      },
+      {
+       "id": "s5_s6",
+       "color": "rose",
+       "type": "path",
+       "points": [
+        {
+         "x": 250,
+         "y": 145
+        },
+        {
+         "x": 255,
+         "y": 150
+        },
+        {
+         "x": 250,
+         "y": 155
+        },
+        {
+         "x": 245,
+         "y": 150
+        }
+       ],
+       "closed": true
+      },
+      {
+       "id": "s5_s7",
+       "color": "rose",
+       "type": "path",
+       "points": [
+        {
+         "x": 280,
+         "y": 103
+        },
+        {
+         "x": 285,
+         "y": 108
+        },
+        {
+         "x": 280,
+         "y": 113
+        },
+        {
+         "x": 275,
+         "y": 108
+        }
+       ],
+       "closed": true
+      },
+      {
+       "id": "s5_legA",
+       "color": "teal",
+       "detail": "ADC, asymmetric distance computation: exact query against the code of the database vector. Only one side carries quantization error, and the paper reports it is less affected by the bias.",
+       "type": "node",
+       "x": 14,
+       "y": 346,
+       "width": 160,
+       "height": 70,
+       "label": "Asymmetric: query exact",
+       "shape": "box"
+      },
+      {
+       "id": "s5_legS",
+       "color": "rose",
+       "detail": "SDC, symmetric distance computation: the distance is estimated from two codes, so both vectors are replaced by centroids. The paper reports it is more sensitive to the underestimation bias.",
+       "type": "node",
+       "x": 186,
+       "y": 346,
+       "width": 160,
+       "height": 70,
+       "label": "Symmetric: both quantized",
+       "shape": "box"
+      }
+     ]
+    }
+   }
+  ],
+  "takeaways": [
+   "Compression: cut the vector into m sub-vectors and store, for each, only the index of its nearest centroid in that piece's own codebook. With m = 8 and 256 centroids per codebook, the code is 64 bits.",
+   "Small codebooks, huge resolution: 8 × 256 = 2,048 stored centroids can be combined in 2^64 ways, which a single codebook could never be trained or stored to match.",
+   "Distance estimation: keep the query exact, fill one small distance table per sub-vector once, then score each database code with a few table lookups and additions.",
+   "The result is an approximation that underestimates distances on average. The asymmetric form is less biased than the symmetric one, and the paper derives a corrected estimator."
+  ]
+ }
+}

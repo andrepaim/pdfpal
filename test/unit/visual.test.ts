@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { visualDefinition, visualTranscript, type VisualRecord } from '../../src/shared/visual.js'
+import { visualDefinitionV1 as visualDefinition, visualTranscript, type VisualRecord } from '../../src/shared/visual.js'
 import { visualFixture } from '../fixtures/visual.js'
 import { visualHtml, wrapLabel } from '../../frontend/src/lib/visual-html.ts'
 

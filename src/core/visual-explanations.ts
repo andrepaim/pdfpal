@@ -9,7 +9,7 @@ import { RetrievalService } from './retrieval.js'
 import { ChatService } from './chat.js'
 import { NoteService } from './notes.js'
 import { digest } from './extension-auth.js'
-import { visualDefinition, visualTranscript, type VisualRecord, type VisualReference } from '../shared/visual.js'
+import { visualDefinitionV1 as visualDefinition, visualTranscript, type VisualRecord, type VisualReference } from '../shared/visual.js'
 
 export class VisualError extends Error { constructor(public readonly status: number, message: string) { super(message) } }
 export const webVisualInput = z.object({
