@@ -20,6 +20,46 @@ function s2Headers(apiKey: string): HeadersInit | undefined {
   return apiKey ? { 'x-api-key': apiKey } : undefined
 }
 
+// Semantic Scholar answers 429 when the shared unauthenticated pool is busy,
+// often for only a second or two. Retry a few times before giving up, and
+// honour Retry-After when it is sent. A key allows one request per second
+// across all endpoints, so keyed requests are spaced out instead of sent back
+// to back. Exported so tests can shorten the waits.
+export const s2RateLimit = { retryDelaysMs: [1_000, 2_000, 4_000], maxRetryAfterMs: 10_000, keyedIntervalMs: 1_100 }
+let nextKeyedRequestAt = 0
+
+const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
+
+function retryAfterMs(response: Response): number | null {
+  const header = response.headers.get('retry-after')
+  if (!header) return null
+  const seconds = Number(header)
+  const ms = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(header) - Date.now()
+  return Number.isFinite(ms) && ms >= 0 ? Math.min(ms, s2RateLimit.maxRetryAfterMs) : null
+}
+
+function waitForKeyedSlot(): Promise<void> {
+  const now = Date.now()
+  const at = Math.max(now, nextKeyedRequestAt)
+  nextKeyedRequestAt = at + s2RateLimit.keyedIntervalMs
+  return sleep(at - now)
+}
+
+/** Fetch from Semantic Scholar, retrying while it answers 429 unless `retry` is false. */
+async function s2Fetch(url: string, apiKey: string, timeoutMs: number, retry = true): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    if (apiKey) await waitForKeyedSlot()
+    const response = await fetch(url, { headers: s2Headers(apiKey), signal: AbortSignal.timeout(timeoutMs) })
+    if (response.status !== 429 || !retry || attempt >= s2RateLimit.retryDelaysMs.length) return response
+    await response.body?.cancel()
+    await sleep(retryAfterMs(response) ?? s2RateLimit.retryDelaysMs[attempt]!)
+  }
+}
+
+const RATE_LIMIT_ERROR = 'Semantic Scholar is busy (rate limit) and OpenAlex could not find this paper. Try again in a minute.'
+const RATE_LIMIT_OPENALEX_DOWN = 'Semantic Scholar is busy (rate limit) and OpenAlex could not be reached. Try again in a minute.'
+const RATE_LIMIT_REFRESH = 'Semantic Scholar is busy (rate limit). Try again in a minute.'
+
 type S2Paper = {
   paperId?: string
   title?: string
@@ -149,16 +189,19 @@ export async function titleFromUrl(url: string, apiKey = ''): Promise<string | n
   const paperId = paperIdFromUrl(url)
   if (!paperId) return null
   try {
-    const response = await fetch(`${S2_BASE}/paper/${encodeURIComponent(paperId)}?fields=title`, { headers: s2Headers(apiKey), signal: AbortSignal.timeout(10_000) })
+    // Not retried: this runs while a source is being added, and the PDF's own
+    // title is a fine fallback, so waiting out a rate limit is not worth it.
+    const response = await s2Fetch(`${S2_BASE}/paper/${encodeURIComponent(paperId)}?fields=title`, apiKey, 10_000, false)
     if (!response.ok) return null
     const data = await response.json() as { title?: string }
     return data.title?.trim() || null
   } catch { return null }
 }
 
-async function findByTitle(title: string, apiKey: string): Promise<string | null> {
+async function findByTitle(title: string, apiKey: string): Promise<string | null | { rateLimited: true }> {
   try {
-    const response = await fetch(`${S2_BASE}/paper/search?query=${encodeURIComponent(title)}&fields=title,paperId&limit=1`, { headers: s2Headers(apiKey), signal: AbortSignal.timeout(15_000) })
+    const response = await s2Fetch(`${S2_BASE}/paper/search?query=${encodeURIComponent(title)}&fields=title,paperId&limit=1`, apiKey, 15_000)
+    if (response.status === 429) return { rateLimited: true }
     if (!response.ok) return null
     const data = await response.json() as { data?: Array<{ paperId?: string }> }
     return data.data?.[0]?.paperId ?? null
@@ -196,7 +239,11 @@ function openAlexWorksUrl(params: Record<string, string>): string {
 }
 
 async function findOpenAlexWork(source: { url: string | null; title: string | null }): Promise<OpenAlexWork | null> {
-  const doi = doiFromUrl(source.url ?? '')
+  // arXiv links carry no DOI, but every arXiv paper has a DataCite DOI that
+  // OpenAlex indexes. Looking it up avoids a title search, which can pick a
+  // different work with the same title (a later article or book chapter).
+  const arxivId = paperIdFromUrl(source.url ?? '')?.match(/^arXiv:(.+)$/)?.[1]
+  const doi = doiFromUrl(source.url ?? '') ?? (arxivId ? `10.48550/arXiv.${arxivId}` : null)
   if (doi) {
     const url = new URL(`${OPENALEX_BASE}/works/doi:${encodeURIComponent(doi)}`)
     url.searchParams.set('select', OPENALEX_FOCAL_FIELDS)
@@ -258,7 +305,7 @@ async function openAlexRelated(source: { url: string | null; title: string | nul
   return { output, paperId }
 }
 
-async function semanticScholarRelated(paperId: string, apiKey: string): Promise<{ output: RelatedOutput } | null | { error: string }> {
+async function semanticScholarRelated(paperId: string, apiKey: string): Promise<{ output: RelatedOutput } | null | { rateLimited: true }> {
   const output = emptyOutput()
   try {
     for (const relation of ['references', 'citations'] as const) {
@@ -266,8 +313,10 @@ async function semanticScholarRelated(paperId: string, apiKey: string): Promise<
       const papers: S2Paper[] = []
       for (let offset = 0; offset < wanted; offset += S2_PAGE_SIZE) {
         const limit = Math.min(S2_PAGE_SIZE, wanted - offset)
-        const response = await fetch(`${S2_BASE}/paper/${encodeURIComponent(paperId)}/${relation}?fields=${encodeURIComponent(S2_FIELDS)}&offset=${offset}&limit=${limit}`, { headers: s2Headers(apiKey), signal: AbortSignal.timeout(15_000) })
-        if (response.status === 429) return { error: 'Semantic Scholar rate limit — retry in a moment' }
+        const response = await s2Fetch(`${S2_BASE}/paper/${encodeURIComponent(paperId)}/${relation}?fields=${encodeURIComponent(S2_FIELDS)}&offset=${offset}&limit=${limit}`, apiKey, 15_000)
+        // Still limited after retrying. Stop here rather than cache a partial
+        // result (say, references without citations) as if it were complete.
+        if (response.status === 429) return { rateLimited: true }
         if (!response.ok) {
           // A DOI/arXiv URL can be syntactically valid without being present in S2.
           // Let the caller try a title match and then OpenAlex in that case.
@@ -304,38 +353,60 @@ function cachedProvider(rows: Array<Record<string, unknown>>): RelatedProvider {
 export async function relatedPapers(db: Database, projectId: string, sourceId: string, apiKey = '', refresh = false) {
   const source = db.prepare('SELECT url,title FROM sources WHERE id=? AND project_id=?').get(sourceId, projectId) as { url: string | null; title: string | null } | undefined
   if (!source) throw new PdfpalError('SOURCE_NOT_FOUND', 'Source not found', 3)
-  if (!refresh) {
+  const readCache = () => {
     const cached = db.prepare('SELECT * FROM source_related WHERE source_id=? ORDER BY relation,id').all(sourceId) as Array<Record<string, unknown>>
-    if (cached.length) return { references: cached.filter(row => row.relation === 'reference'), citations: cached.filter(row => row.relation === 'citation'), cached: true, provider: cachedProvider(cached) }
+    return cached.length
+      ? { references: cached.filter(row => row.relation === 'reference'), citations: cached.filter(row => row.relation === 'citation'), cached: true, provider: cachedProvider(cached) }
+      : null
   }
+  if (!refresh) {
+    const cached = readCache()
+    if (cached) return cached
+  }
+  // A failed refresh keeps showing the papers already found, with the error
+  // alongside, instead of replacing them with an empty list.
+  const failed = (error: string, paperId?: string | null) => {
+    const cached = refresh ? readCache() : null
+    return cached ? { ...cached, error } : { ...emptyOutput(), cached: false, ...(paperId !== undefined ? { paper_id: paperId } : {}), error }
+  }
+  let rateLimited = false
   try {
     const sourcePaperId = paperIdFromUrl(source.url ?? '')
     if (sourcePaperId) {
       const result = await semanticScholarRelated(sourcePaperId, apiKey)
-      if (result && 'error' in result) return { ...emptyOutput(), cached: false, paper_id: sourcePaperId, error: result.error }
-      if (result) {
+      if (result && 'rateLimited' in result) rateLimited = true
+      else if (result) {
         cacheRelated(db, sourceId, result.output)
         return { ...result.output, cached: false, paper_id: sourcePaperId, provider: 'semantic_scholar' as const }
       }
     }
 
-    const titlePaperId = source.title ? await findByTitle(source.title, apiKey) : null
-    if (titlePaperId && titlePaperId !== sourcePaperId) {
-      const result = await semanticScholarRelated(titlePaperId, apiKey)
-      if (result && 'error' in result) return { ...emptyOutput(), cached: false, paper_id: titlePaperId, error: result.error }
-      if (result) {
+    // When Semantic Scholar is rate limiting, a title search there would only
+    // be limited too, so go straight to OpenAlex.
+    const titleMatch = !rateLimited && source.title ? await findByTitle(source.title, apiKey) : null
+    if (titleMatch && typeof titleMatch === 'object') rateLimited = true
+    else if (titleMatch && titleMatch !== sourcePaperId) {
+      const result = await semanticScholarRelated(titleMatch, apiKey)
+      if (result && 'rateLimited' in result) rateLimited = true
+      else if (result) {
         cacheRelated(db, sourceId, result.output)
-        return { ...result.output, cached: false, paper_id: titlePaperId, provider: 'semantic_scholar' as const }
+        return { ...result.output, cached: false, paper_id: titleMatch, provider: 'semantic_scholar' as const }
       }
     }
+
+    // A refresh while Semantic Scholar is busy keeps its saved results rather
+    // than replacing them with OpenAlex's, which usually list fewer references.
+    if (rateLimited && refresh && readCache()?.provider === 'semantic_scholar') return failed(RATE_LIMIT_REFRESH)
 
     const fallback = await openAlexRelated(source)
     if (fallback) {
       cacheRelated(db, sourceId, fallback.output)
       return { ...fallback.output, cached: false, paper_id: `openalex:${fallback.paperId}`, provider: 'openalex' as const }
     }
-    return { ...emptyOutput(), cached: false, paper_id: null, error: 'Paper not found in Semantic Scholar or OpenAlex' }
+    return rateLimited ? failed(RATE_LIMIT_ERROR, sourcePaperId) : failed('Paper not found in Semantic Scholar or OpenAlex', null)
   } catch (error) {
-    return { ...emptyOutput(), cached: false, error: error instanceof Error ? error.message : String(error) }
+    // Semantic Scholar errors are handled above, so an exception here means
+    // OpenAlex (or the network) failed.
+    return failed(rateLimited ? RATE_LIMIT_OPENALEX_DOWN : error instanceof Error ? error.message : String(error))
   }
 }

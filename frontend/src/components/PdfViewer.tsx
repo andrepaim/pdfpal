@@ -45,35 +45,65 @@ const COLOR_MAP: Record<string, string> = {
 // of the next made the highlight cover all of the second line too. Returning
 // one rect per line (plus the union, kept for sorting/back-compat) lets the
 // caller draw a highlight that hugs the actual selected text on each line.
-function getSelectionPageRects(selection: Selection): { page: number; bbox: PageRect; rects: PageRect[] } | null {
-  if (selection.rangeCount === 0) return null
+//
+// The rects are measured per text node, not with range.getClientRects() on
+// the whole selection. That call also returns the border box of every
+// element the range fully contains. Within one page that only added a
+// zero-area box for the <br> pdf.js puts between lines. Across a page break
+// it adds whole elements, such as the first page's annotation layer, so the
+// highlight covered the entire first page. Measuring text nodes inside text
+// layers, grouped by the page they belong to, keeps only the selected text.
+// A selection that crosses pages gives one entry per page, in document order.
+type PageSelection = { page: number; bbox: PageRect; rects: PageRect[]; text: string }
+
+function getSelectionPages(selection: Selection): PageSelection[] {
+  if (selection.rangeCount === 0) return []
   const range = selection.getRangeAt(0)
-  // getClientRects() includes a zero-area rect for the <br> pdf.js inserts
-  // between lines: since every text span is position:absolute (out of flow),
-  // the <br> has no explicit left/top and collapses to the page's top-left
-  // corner. Left in, that phantom rect drags the bounding box up to (0,0)
-  // whenever a selection crosses a line break, ballooning the highlight to
-  // cover the whole top-left of the page.
-  const clientRects = Array.from(range.getClientRects()).filter(r => r.width > 0 && r.height > 0)
-  if (clientRects.length === 0) return null
-  const anchor = selection.anchorNode?.parentElement
-  const pageEl = anchor?.closest('[data-page-number]') as HTMLElement | null
-  if (!pageEl) return null
-  const pageNum = parseInt(pageEl.getAttribute('data-page-number') || '0', 10)
-  if (!pageNum) return null
-  const pageRect = pageEl.getBoundingClientRect()
-  if (pageRect.width === 0 || pageRect.height === 0) return null
-  const rects = clientRects.map(r => ({
-    x1: Math.max(0, (r.left   - pageRect.left) / pageRect.width),
-    y1: Math.max(0, (r.top    - pageRect.top)  / pageRect.height),
-    x2: Math.min(1, (r.right  - pageRect.left) / pageRect.width),
-    y2: Math.min(1, (r.bottom - pageRect.top)  / pageRect.height),
-  }))
-  const bbox = {
-    x1: Math.min(...rects.map(r => r.x1)), y1: Math.min(...rects.map(r => r.y1)),
-    x2: Math.max(...rects.map(r => r.x2)), y2: Math.max(...rects.map(r => r.y2)),
+  const common = range.commonAncestorContainer
+  const root = common.nodeType === Node.TEXT_NODE ? common.parentNode : common
+  if (!root) return []
+  const byPage = new Map<HTMLElement, { rects: DOMRect[]; text: string }>()
+  // Rejecting a node outside the range skips its whole subtree, so pages the
+  // selection does not touch are not walked.
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+    acceptNode: node => range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
+  })
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const element = node.nodeType === Node.TEXT_NODE ? node.parentElement : node as HTMLElement
+    if (!element?.closest('.textLayer')) continue
+    const pageEl = element.closest<HTMLElement>('[data-page-number]')
+    if (!pageEl) continue
+    const entry = byPage.get(pageEl) ?? { rects: [], text: '' }
+    byPage.set(pageEl, entry)
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      if (element.tagName === 'BR') entry.text += '\n'
+      continue
+    }
+    const part = document.createRange()
+    part.selectNodeContents(node)
+    if (node === range.startContainer) part.setStart(node, range.startOffset)
+    if (node === range.endContainer) part.setEnd(node, range.endOffset)
+    entry.text += part.toString()
+    entry.rects.push(...Array.from(part.getClientRects()).filter(r => r.width > 0 && r.height > 0))
   }
-  return { page: pageNum, bbox, rects }
+  const pages: PageSelection[] = []
+  for (const [pageEl, { rects: clientRects, text }] of byPage) {
+    const page = parseInt(pageEl.getAttribute('data-page-number') || '0', 10)
+    const pageRect = pageEl.getBoundingClientRect()
+    if (!page || clientRects.length === 0 || pageRect.width === 0 || pageRect.height === 0) continue
+    const rects = clientRects.map(r => ({
+      x1: Math.max(0, (r.left   - pageRect.left) / pageRect.width),
+      y1: Math.max(0, (r.top    - pageRect.top)  / pageRect.height),
+      x2: Math.min(1, (r.right  - pageRect.left) / pageRect.width),
+      y2: Math.min(1, (r.bottom - pageRect.top)  / pageRect.height),
+    }))
+    const bbox = {
+      x1: Math.min(...rects.map(r => r.x1)), y1: Math.min(...rects.map(r => r.y1)),
+      x2: Math.max(...rects.map(r => r.x2)), y2: Math.max(...rects.map(r => r.y2)),
+    }
+    pages.push({ page, bbox, rects, text: text.replace(/[ \t]*\n[ \t]*/g, '\n').trim() })
+  }
+  return pages
 }
 
 const ZOOM_LEVELS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
@@ -121,7 +151,7 @@ export default function PdfViewer({
   const [containerWidth, setContainerWidth] = useState(800)
   const [linkHistory, setLinkHistory] = useState<ReadingPosition[]>([])
   const [returnPosition, setReturnPosition] = useState<ReadingPosition | null>(null)
-  const [bubble, setBubble] = useState<{ x: number; y: number; text: string; coords: ReturnType<typeof getSelectionPageRects> } | null>(null)
+  const [bubble, setBubble] = useState<{ x: number; y: number; text: string; pages: PageSelection[] } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const currentPageRef = useRef(requestedPage)
@@ -194,8 +224,8 @@ export default function PdfViewer({
         const anchor = selection.anchorNode
         if (!anchor || !container.contains(anchor)) return
         const rect = container.getBoundingClientRect()
-        const coords = getSelectionPageRects(selection)
-        setBubble({ x: e.clientX - rect.left, y: e.clientY - rect.top, text, coords })
+        const pages = getSelectionPages(selection)
+        setBubble({ x: e.clientX - rect.left, y: e.clientY - rect.top, text, pages })
       }, 80)
     }
     const handleMouseDown = (e: MouseEvent) => {
@@ -211,22 +241,26 @@ export default function PdfViewer({
 
   const handleAsk = () => {
     if (!bubble) return
-    onTextSelected?.(bubble.text, bubble.coords?.page)
+    onTextSelected?.(bubble.text, bubble.pages[0]?.page)
     setBubble(null)
     window.getSelection()?.removeAllRanges()
   }
 
   const handleVisual = () => {
     if (!bubble) return
-    onExplainVisually?.(bubble.text, bubble.coords?.page)
+    onExplainVisually?.(bubble.text, bubble.pages[0]?.page)
     setBubble(null)
     window.getSelection()?.removeAllRanges()
   }
 
+  // An annotation belongs to one page, so a selection that crosses a page
+  // break is saved as one highlight per page, each holding that page's text.
   const handleHighlight = () => {
-    if (!bubble?.coords) return
-    const { page, bbox, rects } = bubble.coords
-    onHighlightCreate?.({ page_number: page, x1: bbox.x1, y1: bbox.y1, x2: bbox.x2, y2: bbox.y2, rects, text: bubble.text, color: 'yellow' })
+    if (!bubble?.pages.length) return
+    const single = bubble.pages.length === 1
+    for (const { page, bbox, rects, text } of bubble.pages) {
+      onHighlightCreate?.({ page_number: page, x1: bbox.x1, y1: bbox.y1, x2: bbox.x2, y2: bbox.y2, rects, text: single ? bubble.text : text, color: 'yellow' })
+    }
     setBubble(null)
     window.getSelection()?.removeAllRanges()
   }
@@ -492,7 +526,7 @@ export default function PdfViewer({
             display: 'flex', flexWrap: 'wrap', maxWidth: 'calc(100% - 16px)', gap: 6, zIndex: 9999, userSelect: 'none',
           }}
         >
-          {bubble.coords && (
+          {bubble.pages.length > 0 && (
             <button
               onClick={handleHighlight}
               style={{
