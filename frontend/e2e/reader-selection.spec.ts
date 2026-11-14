@@ -71,3 +71,55 @@ test.describe('reader selection context', () => {
     expect(body!.selection).toBeTruthy();
   });
 });
+
+test.describe('highlights across a page break', () => {
+  test.beforeEach(async ({ page }) => { await mockAuth(page); });
+
+  test('highlight only the selected text on each page, not the whole first page', async ({ page }) => {
+    const { project, source } = await openReader(page);
+    const secondPageText = page.locator('[data-pdf-page="2"] .textLayer span');
+    await page.locator('[data-pdf-page="2"]').scrollIntoViewIfNeeded();
+    await expect(secondPageText.first()).toBeVisible();
+
+    // Select from the start of the last line of page 1 to the end of the first
+    // line of page 2, the way dragging the mouse across the page gap does.
+    const expected = await page.evaluate(() => {
+      const spansOf = (n: number) => Array.from(document.querySelectorAll(`[data-pdf-page="${n}"] .textLayer span`))
+        .filter(el => !el.children.length && (el.textContent?.trim().length ?? 0) > 2);
+      const first = spansOf(1).at(-1)!;
+      const last = spansOf(2)[0]!;
+      const range = document.createRange();
+      range.setStart(first.firstChild!, 0);
+      range.setEnd(last.firstChild!, last.firstChild!.textContent!.length);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      const rect = last.getBoundingClientRect();
+      last.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: rect.right, clientY: rect.bottom }));
+      return { first: first.textContent!.trim(), last: last.textContent!.trim() };
+    });
+
+    await page.getByRole('button', { name: /Highlight/ }).click();
+    await expect.poll(async () =>
+      (await (await page.request.get(`/api/projects/${project.id}/sources/${source.id}/annotations`)).json()).length,
+    ).toBe(2);
+    const annotations = (await (await page.request.get(`/api/projects/${project.id}/sources/${source.id}/annotations`)).json())
+      .sort((a: { page_number: number }, b: { page_number: number }) => a.page_number - b.page_number);
+
+    expect(annotations.map((a: { page_number: number }) => a.page_number)).toEqual([1, 2]);
+    expect(annotations[0].text).toContain(expected.first);
+    expect(annotations[0].text).not.toContain(expected.last);
+    expect(annotations[1].text).toContain(expected.last);
+    expect(annotations[1].text).not.toContain(expected.first);
+    for (const annotation of annotations) {
+      // A line of text is a small fraction of a page; a whole-page box is not.
+      expect(annotation.y2 - annotation.y1).toBeLessThan(0.2);
+      for (const r of annotation.rects ?? [annotation]) {
+        expect(r.y2).toBeGreaterThan(r.y1);
+        expect(r.x2).toBeGreaterThan(r.x1);
+      }
+    }
+    await expect(page.locator('[data-pdf-page="1"] .pdf-highlight').first()).toBeVisible();
+    await expect(page.locator('[data-pdf-page="2"] .pdf-highlight').first()).toBeVisible();
+  });
+});
