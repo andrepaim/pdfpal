@@ -127,29 +127,44 @@ export function drawPlot(ctx: Ctx, spec: PlotScene): { width: number; height: nu
     }
   }
   // Label placement: try the preferred sides in order and keep the first spot that is free and on the canvas.
+  const placed: Box[] = []
+  // Points along the leader a label at `box` would need (null when it sits close enough to its anchor not to need one).
+  const leaderOf = (q: { x: number; y: number; gap?: number }, box: Box): Pt[] | null => {
+    const nx = Math.max(box.x, Math.min(box.x + box.w, q.x)), ny = Math.max(box.y, Math.min(box.y + box.h, q.y)), away = Math.hypot(nx - q.x, ny - q.y)
+    if (away <= 15 || !q.gap) return null
+    const ux = (nx - q.x) / away, uy = (ny - q.y) / away, from: Pt = [q.x + ux * 7, q.y + uy * 7], to: Pt = [nx - ux, ny - uy], n = Math.max(1, Math.ceil((away - 8) / 3))
+    return Array.from({ length: n + 1 }, (_, k) => [from[0] + (to[0] - from[0]) * k / n, from[1] + (to[1] - from[1]) * k / n] as Pt)
+  }
   for (const q of requests) {
     const style = q.note ? TEXT.note : TEXT.direct
     const rows = kit.wrap(q.text, Math.min(150, iw * 0.55), style), w = kit.widest(rows, style), hh = rows.length * 15
     let best: { cost: number; cx: number; cy: number; box: Box } | null = null
     const order = q.order.concat((['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as Dir[]).filter(key => !q.order.includes(key)))
     // Each side is tried centred first, then slid along its edge (so a label can sit beside a crowded spot).
-    search: for (const [ring, reach] of [1, 2.4, 4, 5.6].entries()) for (const [rank, key] of order.entries()) for (const slide of key.length === 1 && key !== 'c' ? [0, -0.5, 0.5, -1, 1] : [0]) {
+    search: for (const [ring, reach] of [1, 2.4, 4, 5.6, 7.5, 10].entries()) for (const [rank, key] of order.entries()) for (const slide of key.length === 1 && key !== 'c' ? [0, -0.5, 0.5, -1, 1] : [0]) {
       const [dx, dy] = DIRS[key], diagonal = dx && dy ? 0.72 : 1, gap = (q.gap || 8) * reach
       const cx = q.x + dx * (gap * diagonal + w / 2 + (dx ? 2 : 0)) + (dy ? slide * w / 2 : 0)
       const cy = q.y + dy * (gap * diagonal + hh / 2 + (dy && !dx ? 2 : 0)) + (dx ? slide * (hh / 2 + 4) : 0)
       const box = { x: cx - w / 2 - 3, y: cy - hh / 2 - 2, w: w + 6, h: hh + 4 }
       const outside = Math.max(0, 4 - box.x) + Math.max(0, box.x + box.w - (W - 4)) + Math.max(0, 4 - box.y) + Math.max(0, box.y + box.h - (H - 4))
       const penalty = rank * 0.5 + ring * 3 + Math.abs(slide) * 1.5
-      const cost = obstacles.reduce((s, o) => s + overlapArea(box, o), 0) + outside * 60 + penalty
+      // A label far from its anchor gets a leader line; that line must not cross a label already placed.
+      // It must not cross a label already placed, and should not run along other lines, where it would read as theirs.
+      const inside = (p: Pt, b: Box) => p[0] > b.x && p[0] < b.x + b.w && p[1] > b.y && p[1] < b.y + b.h
+      const leader = leaderOf(q, box)
+      const crossed = leader?.reduce((n, p) => n + placed.filter(b => inside(p, b)).length, 0) ?? 0
+      const alongInk = leader?.slice(3).filter(p => obstacles.some(o => o.w < 10 && inside(p, o))).length ?? 0
+      const cost = obstacles.reduce((s, o) => s + overlapArea(box, o), 0) + outside * 60 + penalty + crossed * 400 + Math.max(0, alongInk - 3) * 40
       if (!best || cost < best.cost) best = { cost, cx, cy, box }
       if (cost < 1 + penalty) break search
     }
     if (!best) continue
-    obstacles.push(best.box)
-    const nx = Math.max(best.box.x, Math.min(best.box.x + best.box.w, q.x)), ny = Math.max(best.box.y, Math.min(best.box.y + best.box.h, q.y)), away = Math.hypot(nx - q.x, ny - q.y)
-    if (away > 15 && q.gap) {
-      const ux = (nx - q.x) / away, uy = (ny - q.y) / away
-      append(q.g, h('line', { class: 'leader', x1: r1(q.x + ux * 7), y1: r1(q.y + uy * 7), x2: r1(nx - ux), y2: r1(ny - uy) }))
+    obstacles.push(best.box); placed.push(best.box)
+    const leader = leaderOf(q, best.box)
+    if (leader) {
+      const [[x1, y1], [x2, y2]] = [leader[0]!, leader[leader.length - 1]!]
+      append(q.g, h('line', { class: 'leader', x1: r1(x1), y1: r1(y1), x2: r1(x2), y2: r1(y2) }))
+      block([[x1, y1], [x2, y2]], 5)
     }
     append(q.g, lines(rows, best.cx, best.cy, q.note ? 'direct note' : 'direct', 15))
   }
