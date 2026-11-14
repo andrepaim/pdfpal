@@ -11,8 +11,8 @@ body{font:16px/1.5 system-ui,sans-serif;background:#111318;color:#e8eaf0;max-wid
 <details><summary>Check installer file against the supplied manifest (optional)</summary><label>Choose the supplied installer <input id="verify" type="file" accept=".exe"></label><p id="verification" role="status" aria-label="Installer verification"></p><p class="muted">This checks file identity, not publisher trust. Windows shows the publisher when you run the installer.</p></details>
 <fieldset><legend>Session</legend>
 <label>Anonymous participant ID <input id="participant" placeholder="P01" pattern="P[0-9]{2,4}" maxlength="5" required></label>
-<label>Starting point <select id="cohort"><option value="">Choose…</option><option value="existing-agent">Assistant already installed and signed in</option><option value="missing-agent">Assistant installation or sign-in needed</option></select></label>
-<label>Assistant <select id="provider"><option value="claude">Claude Code</option><option value="codex">Codex</option><option value="none">Reading without AI</option></select></label>
+<label>Starting point <select id="cohort"><option value="">Choose…</option><option value="chatgpt-sign-in">ChatGPT sign-in (no assistant installation)</option><option value="existing-agent">Assistant already installed and signed in</option><option value="missing-agent">Assistant installation or sign-in needed</option></select></label>
+<label>Assistant <select id="provider"><option value="claude">Claude Code</option><option value="codex">Codex</option><option value="chatgpt">ChatGPT</option><option value="none">Reading without AI</option></select></label>
 <label><input id="eligible" type="checkbox">Participant confirms an eligible provider account</label>
 <label><input id="nontechnical" type="checkbox">Participant does not routinely use developer tools</label>
 <label>Windows environment <select id="environment"><option value="existing-account">Existing Windows account</option><option value="fresh-windows-account">Fresh Windows account (observer verified)</option><option value="sandbox">Windows Sandbox</option></select></label>
@@ -56,6 +56,7 @@ function draw(){
   $('milestones').append(button);
  });
 }
+$('cohort').onchange=()=>{if($('cohort').value==='chatgpt-sign-in'&&['claude','codex'].includes($('provider').value))$('provider').value='chatgpt'};
 $('begin').onclick=()=>{if(!startedAt){startedAt=new Date().toISOString();draw();$('status').textContent='Timer started. Run the supplied installer from this folder.'}};
 let verificationGeneration=0;
 $('verify').onchange=async()=>{
@@ -71,8 +72,11 @@ $('verify').onchange=async()=>{
 };
 $('save').onclick=()=>{
  if(!startedAt){$('status').textContent='Begin the installation timer before recording a new session.';return}
+ if(!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version??'')){$('status').textContent='This recorder has no app build version. Use the Session recorder.html supplied in the beta kit.';return}
  if(!/^P\d{2,4}$/.test($('participant').value)||!$('cohort').value){$('status').textContent='Use an anonymous ID such as P01 and choose the starting point.';return}
  if($('followup').value!=='pending'&&events.answerReceivedMs===null){$('status').textContent='Return-use follow-up applies to participants who received an answer.';return}
+ if(($('cohort').value==='chatgpt-sign-in')!==($('provider').value==='chatgpt')&&$('provider').value!=='none'){$('status').textContent='ChatGPT sessions use the ChatGPT sign-in starting point; Claude Code and Codex sessions use an assistant starting point.';return}
+ if($('cohort').value==='chatgpt-sign-in'&&$('barrier').value==='provider-install'){$('status').textContent='ChatGPT sign-in needs no assistant installation. Choose the account sign-in, connection or other barrier.';return}
  if(events.answerReceivedMs!==null&&$('provider').value==='none'){$('status').textContent='Choose the assistant used for the answer, or leave the answer milestone unrecorded.';return}
  if($('rating').value&&events.answerReceivedMs===null){$('status').textContent='Usefulness can be rated after an answer was received.';return}
  if(['not-returned','no-response'].includes($('followup').value)&&Date.now()-Date.parse(startedAt)<14*86400000){$('status').textContent='Wait for the 14-day follow-up window before finalizing non-return or no response.';return}

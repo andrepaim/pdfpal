@@ -70,6 +70,51 @@ test('read-only, ineligible, invalid milestone and premature follow-up reports c
   assert.throws(()=>validateSession(session(1,{followup:'no-response',updatedAt:'2026-10-02T12:00:00Z'})))
   assert.throws(()=>validateSession(session(1,{followup:'returned',updatedAt:'2026-10-01T12:10:00Z'})))
 })
+test('ChatGPT sign-in is a third starting point reported with raw counts and no invented target',()=>{
+  const chatgpt=(number,patch={})=>session(number,{cohort:'chatgpt-sign-in',provider:'chatgpt',desktopVersion:'2.8.0-beta.1',...patch})
+  const rows=[...Array.from({length:10},(_,i)=>session(i+1)),...Array.from({length:10},(_,i)=>session(i+11)),
+    ...Array.from({length:12},(_,i)=>chatgpt(i+21,{neededHelp:i===0,events:i<2?{setupShownMs:10000,pdfOpenedMs:30000,answerReceivedMs:null}:{setupShownMs:10000,pdfOpenedMs:30000,answerReceivedMs:60000+i*1000},usefulness:i<2?null:i<4?3:5}))]
+  const report=summarizeSessions(rows)
+  assert.deepEqual(Object.keys(report.cohorts),['chatgpt-sign-in','existing-agent','missing-agent'])
+  const cohort=report.cohorts['chatgpt-sign-in']
+  assert.deepEqual(cohort.activation,{numerator:10,denominator:12,percent:83.3})
+  assert.equal(cohort.firstAttempts,12);assert.equal(cohort.support.numerator,1)
+  assert.equal(cohort.targetPercent,null);assert.equal(cohort.targetMedianSeconds,null);assert.equal(cohort.status,'target-not-defined')
+  assert.equal(report.cohorts['existing-agent'].status,'met');assert.equal(report.cohorts['missing-agent'].status,'met')
+  assert.deepEqual(report.builds.map(build=>build.version),['2.1.0-preview.3','2.8.0-beta.1'])
+  assert.deepEqual(report.builds[1],{version:'2.8.0-beta.1',sessions:12,participants:12,activatedSessions:10,usefulness:{numerator:8,denominator:10,percent:80}})
+  assert.equal(summarizeSessions([chatgpt(1)]).cohorts['chatgpt-sign-in'].status,'target-not-defined')
+  // Signing in to ChatGPT and then reading without AI is a recorded, non-activated attempt.
+  const reading=summarizeSessions([chatgpt(1,{provider:'none',events:{setupShownMs:10000,pdfOpenedMs:30000,answerReceivedMs:null},usefulness:null,barrier:'sign-in'})])
+  assert.deepEqual(reading.cohorts['chatgpt-sign-in'].activation,{numerator:0,denominator:1,percent:0})
+  assert.throws(()=>validateSession(chatgpt(1,{provider:'codex'})),/ChatGPT/)
+  assert.throws(()=>validateSession(session(1,{provider:'chatgpt'})),/ChatGPT/)
+  assert.throws(()=>validateSession(chatgpt(1,{barrier:'provider-install'})),/installation/)
+  assert.throws(()=>validateSession(chatgpt(1,{cohort:'chatgpt'})))
+  assert.throws(()=>validateSession(chatgpt(1,{desktopVersion:undefined})))
+})
+test('a ChatGPT session and its follow-up deduplicate into one activated, returning participant',()=>{
+  const saved=session(1,{cohort:'chatgpt-sign-in',provider:'chatgpt',desktopVersion:'2.8.0-beta.1',updatedAt:'2026-10-01T12:20:00Z'})
+  const followup={...saved,updatedAt:'2026-10-03T09:00:00Z',followup:'returned'}
+  const report=summarizeSessions([saved,followup])
+  assert.equal(report.observations.duplicateReports,1)
+  assert.deepEqual(report.cohorts['chatgpt-sign-in'].activation,{numerator:1,denominator:1,percent:100})
+  assert.equal(report.returnUse.numerator,1);assert.equal(report.returnUse.pending,0)
+  assert.deepEqual(report.versions,['2.8.0-beta.1'])
+})
+test('reports saved before the ChatGPT cohort aggregate exactly as before',()=>{
+  // Literal copy of a format-1 report written by the earlier recorder.
+  const old={format:1,sessionId:'12345678-1234-1234-1234-123456789abc',participantId:'P02',cohort:'missing-agent',provider:'claude',eligibleAccount:true,nonTechnical:true,environment:'existing-account',desktopVersion:'2.1.0-preview.3',
+    startedAt:'2026-10-01T12:00:00.000Z',updatedAt:'2026-10-16T12:00:00.000Z',preflight:{windowsBuild:26300,nodeOnPath:false},events:{setupShownMs:1000,pdfOpenedMs:2000,answerReceivedMs:300000},neededHelp:false,barrier:'none',trayPassed:true,usefulness:4,followup:'returned'}
+  const report=summarizeSessions([old])
+  assert.deepEqual(report.cohorts['missing-agent'],{activation:{numerator:1,denominator:1,percent:100},medianSecondsToFirstAnswer:300,targetPercent:80,targetMedianSeconds:900,firstAttempts:1,support:{numerator:0,denominator:1,percent:0},status:'insufficient-sample'})
+  assert.deepEqual(report.cohorts['existing-agent'].activation,{numerator:0,denominator:0,percent:null})
+  assert.deepEqual(report.cohorts['chatgpt-sign-in'].activation,{numerator:0,denominator:0,percent:null})
+  assert.deepEqual(report.observations,{files:1,sessions:1,duplicateReports:0,participants:1,eligibleParticipants:1,nonTechnicalEligible:1})
+  assert.equal(report.usefulness.numerator,1);assert.equal(report.returnUse.numerator,1)
+  assert.deepEqual(report.versions,['2.1.0-preview.3'])
+  assert.deepEqual(report.builds,[{version:'2.1.0-preview.3',sessions:1,participants:1,activatedSessions:1,usefulness:{numerator:1,denominator:1,percent:100}}])
+})
 test('Sandbox maps only payload/results, escapes host paths, and rejects unsupported host locations',()=>{
   const config=sandboxConfiguration('C:\\Beta & Books')
   assert.match(config,/C:\\Beta &amp; Books\\payload/)
@@ -91,6 +136,11 @@ test('beta kit verifies production installer identity and bytes before distribut
     assert.equal((await createBetaKit(temporary,output)).version,manifest.version)
     const html=await fs.readFile(path.join(output,'payload/Session recorder.html'),'utf8')
     assert.ok(html.includes(manifest.sha256));assert.ok(!html.includes('@@PDFPAL_SESSION@@'))
+    // Every recorded report takes its desktopVersion from this seed.
+    assert.equal(JSON.parse(html.match(/<script id="session" type="application\/json">(.*?)<\/script>/)[1]).version,manifest.version)
+    assert.ok(html.includes('value="chatgpt-sign-in"'))
+    assert.match(await fs.readFile(path.join(output,'payload/Windows quickstart.txt'),'utf8'),/Continue with ChatGPT/)
+    assert.match(await fs.readFile(path.join(output,'Read me first.txt'),'utf8'),/ChatGPT sign-in/)
     await assert.rejects(fs.stat(path.join(output,'payload/Start-Test.ps1')))
     await fs.writeFile(path.join(temporary,installer),'changed bytes')
     await assert.rejects(createBetaKit(temporary,output),/bytes/)

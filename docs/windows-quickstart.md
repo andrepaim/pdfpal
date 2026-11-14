@@ -69,7 +69,7 @@ Include:
 
 - Your pdfpal desktop version and Windows version.
 - What you clicked and what happened.
-- Whether you use Claude Code or Codex and whether sign-in/connection testing succeeds.
+- Whether you use ChatGPT, Claude Code or Codex and whether sign-in/connection testing succeeds.
 - The diagnostic report, after reviewing it.
 
 Do not attach private PDFs, passwords, API keys, or authentication files. A useful short demonstration is: install → choose assistant → import a PDF → select a passage → ask → close to tray → reopen the completed answer.

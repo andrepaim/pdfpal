@@ -1,18 +1,23 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { versionParts } from '../src/updates.mjs'
+import { compareVersions, versionParts } from '../src/updates.mjs'
 const day = 86400000
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
+// Starting points. The desktop plan defines targets for the two assistant
+// cohorts only; ChatGPT sign-in is reported without a target until one is set.
+const cohortTargets = { 'chatgpt-sign-in':null, 'existing-agent':{ percent:90, medianSeconds:300 }, 'missing-agent':{ percent:80, medianSeconds:900 } }
 export function validateSession(value) {
   if (!value || value.format !== 1 || !uuid.test(value.sessionId ?? '') || !/^P\d{2,4}$/.test(value.participantId ?? '') ||
-      !['existing-agent','missing-agent'].includes(value.cohort) || !['claude','codex','none'].includes(value.provider) ||
+      !Object.hasOwn(cohortTargets,value.cohort) || !['chatgpt','claude','codex','none'].includes(value.provider) ||
       !['fresh-windows-account','existing-account','sandbox'].includes(value.environment) ||
       !['pending','returned','not-returned','no-response'].includes(value.followup) ||
       !['none','installer','provider-install','sign-in','connection','reading','other'].includes(value.barrier) ||
       !['eligibleAccount','nonTechnical','neededHelp','trayPassed'].every(key => typeof value[key] === 'boolean') ||
       !Number.isFinite(Date.parse(value.startedAt)) || !Number.isFinite(Date.parse(value.updatedAt)) || Date.parse(value.updatedAt) < Date.parse(value.startedAt)) throw new Error('Invalid anonymous beta session')
   versionParts(value.desktopVersion)
+  if (value.provider !== 'none' && (value.cohort === 'chatgpt-sign-in') !== (value.provider === 'chatgpt')) throw new Error('ChatGPT sessions must use the ChatGPT sign-in starting point')
+  if (value.cohort === 'chatgpt-sign-in' && value.barrier === 'provider-install') throw new Error('ChatGPT sign-in has no assistant installation barrier')
   let previous = 0, missing = false
   for (const key of ['setupShownMs','pdfOpenedMs','answerReceivedMs']) {
     const elapsed = value.events?.[key]
@@ -40,13 +45,13 @@ export function summarizeSessions(input) {
   const first = new Map()
   for (const item of sessions) if (!first.has(item.participantId)) first.set(item.participantId,item)
   const people=[...first.values()], eligible=people.filter(item=>item.eligibleAccount)
-  const cohorts = Object.fromEntries(['existing-agent','missing-agent'].map(cohort=>{
+  const cohorts = Object.fromEntries(Object.entries(cohortTargets).map(([cohort,target])=>{
     const group=eligible.filter(item=>item.cohort===cohort), activated=group.filter(item=>item.events.answerReceivedMs!==null)
     const timing=median(activated.map(item=>item.events.answerReceivedMs/1000))
-    const target=cohort==='existing-agent'?90:80, timeTarget=cohort==='existing-agent'?300:900
     const success=fraction(activated.length,group.length)
-    return [cohort,{ activation:success,medianSecondsToFirstAnswer:timing,targetPercent:target,targetMedianSeconds:timeTarget,
-      status:group.length<10?'insufficient-sample':success.percent>=target&&timing<=timeTarget?'met':'missed' }]
+    return [cohort,{ activation:success,medianSecondsToFirstAnswer:timing,targetPercent:target?.percent??null,targetMedianSeconds:target?.medianSeconds??null,
+      firstAttempts:people.filter(item=>item.cohort===cohort).length,support:fraction(group.filter(item=>item.neededHelp).length,group.length),
+      status:!target?'target-not-defined':group.length<10?'insufficient-sample':success.percent>=target.percent&&timing<=target.medianSeconds?'met':'missed' }]
   }))
   const activated = new Map()
   const rated = new Map()
@@ -66,8 +71,15 @@ export function summarizeSessions(input) {
   const support=fraction(eligible.filter(item=>item.neededHelp).length,eligible.length)
   const ratings=[...rated.values()]
   const usefulness=fraction(ratings.filter(item=>item.usefulness>=4).length,ratings.length)
+  // Answer quality changes between builds, so ratings are only comparable within one.
+  const builds=[...new Set(sessions.map(item=>item.desktopVersion))].sort(compareVersions).map(version=>{
+    const group=sessions.filter(item=>item.desktopVersion===version), scored=group.filter(item=>item.eligibleAccount&&item.usefulness!==null)
+    return { version,sessions:group.length,participants:new Set(group.map(item=>item.participantId)).size,
+      activatedSessions:group.filter(item=>item.eligibleAccount&&item.events.answerReceivedMs!==null).length,
+      usefulness:fraction(scored.filter(item=>item.usefulness>=4).length,scored.length) }
+  })
   return { format:1,observations:{files:input.length,sessions:sessions.length,duplicateReports:input.length-sessions.length,participants:people.length,eligibleParticipants:eligible.length,nonTechnicalEligible:eligible.filter(item=>item.nonTechnical).length},
-    versions:[...new Set(sessions.map(item=>item.desktopVersion))],environments:Object.fromEntries(['fresh-windows-account','existing-account','sandbox'].map(environment=>[environment,sessions.filter(item=>item.environment===environment).length])),
+    versions:[...new Set(sessions.map(item=>item.desktopVersion))],builds,environments:Object.fromEntries(['fresh-windows-account','existing-account','sandbox'].map(environment=>[environment,sessions.filter(item=>item.environment===environment).length])),
     installation:{...installation,targetPercent:90,status:sessions.length<10?'insufficient-sample':installation.percent>=90?'met':'missed'},cohorts,
     support:{...support,targetMaximumPercent:20,status:eligible.length<20?'insufficient-sample':support.percent<=20?'met':'missed'},
     usefulness:{...usefulness,definition:'Latest rated activated session per participant; rating 4 or 5 is useful',status:ratings.length<10?'insufficient-sample':usefulness.percent>=80?'met':'missed'},
