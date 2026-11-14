@@ -1,0 +1,54 @@
+name: Mac desktop build
+
+# Builds and smoke-tests an ad-hoc signed, non-notarized pdfpal.app and disk image.
+# It uploads workflow artifacts only and publishes nothing.
+on:
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'src/**'
+      - 'frontend/**'
+      - '.github/workflows/mac-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: node desktop/scripts/stage.mjs
+      - name: Build, sign ad-hoc, smoke-test and make the disk image
+        run: node desktop/scripts/mac-build.mjs --source="$GITHUB_WORKSPACE" --work="$RUNNER_TEMP/pdfpal-mac-build" --arch=arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pdfpal-mac-arm64-unsigned
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            ${{ runner.temp }}/pdfpal-mac-build/artifacts/pdfpal-*-arm64.dmg
+            ${{ runner.temp }}/pdfpal-mac-build/artifacts/pdfpal-desktop-release-darwin-arm64.json
+            ${{ runner.temp }}/pdfpal-mac-build/packaged-receipt.json
+      - name: Keep the smoke receipts when the build fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdfpal-mac-arm64-diagnostics
+          if-no-files-found: ignore
+          path: |
+            ${{ runner.temp }}/pdfpal-mac-build/*receipt.json
+            ${{ runner.temp }}/pdfpal-mac-build/*.png

@@ -16,9 +16,6 @@ files:
   - '!test/**'
   - '!discovery.test.mjs'
   - '!cli-bin/**'
-extraFiles:
-  - from: stage/cli-bin
-    to: bin
 extraResources:
   - from: stage/THIRD_PARTY_NOTICES.txt
     to: THIRD_PARTY_NOTICES.txt
@@ -27,6 +24,10 @@ extraResources:
 win:
   target: nsis
   icon: build/icon.ico
+  # build/prepare-cli.cjs compiles the console launcher into stage/cli-bin before packaging.
+  extraFiles:
+    - from: stage/cli-bin
+      to: bin
   signAndEditExecutable: true
   signExecutable: false
   requestedExecutionLevel: asInvoker
@@ -49,6 +50,34 @@ nsis:
   license: build/LICENSE.txt
   installerLanguages:
     - en_US
+mac:
+  target: dmg
+  category: public.app-category.productivity
+  icon: build/icon.icns
+  # Previews are ad-hoc signed ("-"), which Apple Silicon requires before any code runs.
+  # They are not notarized. Hardened runtime would reject the Electron framework under an
+  # ad-hoc identity, so it stays off until Developer ID signing exists (MAC-41).
+  identity: '-'
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  notarize: false
+  # better-sqlite3 ships prebuilds for every platform; keep only the macOS ones so codesign never
+  # sees foreign binaries. With only that exclusion here, electron-builder 26.18 packed cli-bin into
+  # app.asar, so this list repeats the top-level one in full.
+  files:
+    - '**/*'
+    - '!test/**'
+    - '!discovery.test.mjs'
+    - '!cli-bin/**'
+    - '!node_modules/better-sqlite3/prebuilds/{linux,linuxmusl,win32}-*'
+  # build/prepare-cli.cjs writes the shell launcher into stage/cli-bin before packaging;
+  # it is served as pdfpal.app/Contents/Resources/bin/pdfpal.
+  extraResources:
+    - from: stage/cli-bin
+      to: bin
+dmg:
+  artifactName: pdfpal-${version}-${arch}.dmg
+  writeUpdateInfo: false
 linux:
   target: dir
 # Native dependencies are installed only inside the isolated desktop stage.
