@@ -26,7 +26,7 @@ The current desktop targets are Windows x64 and a Linux x86-64 engineering previ
 | --- | --- |
 | Understand services, storage, commands and constraints | [Developer guide](../CLAUDE.md), [architecture](../README.md#architecture) |
 | Build and validate desktop packages | [Desktop guide](../desktop/README.md) |
-| Publish a Windows desktop version | [Windows release pipeline](windows-release-pipeline.md) |
+| Publish Windows and Linux together | [Coordinated desktop release pipeline](windows-release-pipeline.md) |
 | Run the Windows beta field-test kit | [Observer guide](windows-beta-guide.md), [M4 measurements](windows-m4-results.md) |
 | Reproduce the retrieval evaluation | [Retrieval baseline](retrieval-baseline.md) |
 | Refresh README media | [Capture provenance and instructions](../screenshots/CAPTURE.md) |

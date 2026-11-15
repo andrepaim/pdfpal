@@ -6,7 +6,7 @@ The Windows desktop includes a per-user installer, integrated app menu, direct C
 
 M4 adds repeatable engineering measurements and an offline beta field-test kit. See [M4 results](../docs/windows-m4-results.md) and the [observer guide](../docs/windows-beta-guide.md). Actual participant results, clean-account provider login, reference-machine validation and publisher signing remain release gates.
 
-Windows downloads are published through the [GitHub Actions release pipeline](../docs/windows-release-pipeline.md): a desktop version bump merged into `master` creates a tested installer on GitHub Releases. Suffixed versions are engineering prereleases; stable releases require publisher signing. The npm CLI version remains independent.
+Windows and Linux downloads are published together through the [GitHub Actions release pipeline](../docs/windows-release-pipeline.md): a desktop version bump merged into `master` builds both installers from one clean source SHA and publishes only after their native checks and all six release assets pass. Suffixed versions are engineering prereleases; stable releases require publisher signing. The npm CLI version remains independent.
 
 ## Install the preview
 

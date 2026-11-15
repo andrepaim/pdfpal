@@ -33,6 +33,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const [directory, commit, arch] = process.argv.slice(2)
   if (!directory || !commit) throw new Error('Usage: node linux-release.mjs <artifact-directory> <source-commit> [x64|arm64]')
   const version = JSON.parse(await fs.readFile(new URL('../version.json', import.meta.url), 'utf8')).version
+  const sourceRoot = fileURLToPath(new URL('../../', import.meta.url))
+  if (execFileSync('git', ['rev-parse', 'HEAD'], { cwd: sourceRoot, encoding: 'utf8' }).trim() !== commit) throw new Error('Linux source commit does not match the actual checkout')
   const sourceDirty = Boolean(execFileSync('git', ['status', '--porcelain'], { cwd: fileURLToPath(new URL('../../', import.meta.url)), encoding: 'utf8' }).trim())
   console.log(JSON.stringify(await prepareLinuxRelease(directory, { version, commit, arch, sourceDirty }), null, 2))
 }
