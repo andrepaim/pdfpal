@@ -143,7 +143,7 @@ test('a second failed check fails the post with the fixed message and keeps the 
     assert.equal(record.status, 'failed'); assert.equal(record.error, CHECK_FAILED); assert.equal(record.card, null)
     assert.equal(s.callCount(), 2)
     assert.match(s.input(2).repairReason, /^The answer must be one JSON object/)
-    assert.equal((s.db.prepare('SELECT error_detail FROM share_cards WHERE id=?').get(record.id) as { error_detail: string }).error_detail, 'headline has 61 characters; allowed 1–60.')
+    assert.equal((s.db.prepare('SELECT error_detail FROM share_cards WHERE id=?').get(record.id) as { error_detail: string }).error_detail, 'headline has 81 characters; allowed 1–80.')
     assert.equal(JSON.stringify(record).includes('headline has 61'), false)
   } finally { await s.close() }
 })
