@@ -8,6 +8,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/windows-release.yml'
+      - 'desktop/version.json'
       - 'desktop/scripts/desktop-release.mjs'
       - 'desktop/test/release.test.mjs'
       - 'desktop/scripts/linux-release.mjs'
