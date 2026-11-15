@@ -10,11 +10,21 @@ const lines = [{ x1: 0.12, y1: 0.10, x2: 0.88, y2: 0.12 }, { x1: 0.12, y1: 0.12,
 test('the crop widens the highlight by 4% a side and adds lines of context above and below', () => {
   const box = cropBox(lines, 3)
   near(box.x1, 0.08); near(box.x2, 0.92)
-  // A line is 1.35 × the median box height (0.02).
-  near(box.y1, 0.10 - 3 * 0.027); near(box.y2, 0.16 + 3 * 0.027)
+  // A line is the distance between the highlight's lines (0.02).
+  near(box.y1, 0.10 - 3 * 0.02); near(box.y2, 0.16 + 3 * 0.02)
   const none = cropBox(lines, 0)
   near(none.y1, 0.10); near(none.y2, 0.16)
   assert.deepEqual(boundingBox(lines), { x1: 0.12, y1: 0.10, x2: 0.88, y2: 0.16 })
+})
+
+test('a highlight over several lines measures a line of context by the distance between its lines', () => {
+  // Boxes 0.012 tall on lines 0.016 apart: context lands on line boundaries, not mid-line.
+  const spaced = [{ x1: 0.12, y1: 0.300, x2: 0.88, y2: 0.312 }, { x1: 0.12, y1: 0.316, x2: 0.88, y2: 0.328 }, { x1: 0.12, y1: 0.332, x2: 0.4, y2: 0.344 }]
+  const box = cropBox(spaced, 3)
+  near(box.y1, 0.300 - 3 * 0.016); near(box.y2, 0.344 + 3 * 0.016)
+  // Several boxes on one line count as one line; a single line falls back to 1.35 × its height.
+  const oneLine = [{ x1: 0.12, y1: 0.3, x2: 0.3, y2: 0.312 }, { x1: 0.35, y1: 0.3005, x2: 0.6, y2: 0.312 }]
+  near(cropBox(oneLine, 1).y1, 0.3 - 1.35 * (0.012 + 0.0115) / 2)
 })
 
 test('a narrow highlight is widened to 55% of the page around its centre, inside the page', () => {
@@ -31,7 +41,7 @@ test('a narrow highlight is widened to 55% of the page around its centre, inside
 test('an automatic crop too tall for the sheet steps down through fewer lines of context, then is unavailable', () => {
   const sheet = { width: 896, height: 600 }
   assert.deepEqual(autoCrop(lines, A4, sheet, 3), cropBox(lines, 3))
-  // Each crop's sheet height at full width: 3 lines ≈ 338 px, 1 line ≈ 239 px, none ≈ 190 px on this page.
+  // Each crop's sheet height at full width: 3 lines ≈ 272 px, 1 line ≈ 151 px, none ≈ 91 px on this page.
   const height = (extra: number) => { const box = cropBox(lines, extra); return sheet.width * (box.y2 - box.y1) * A4.height / ((box.x2 - box.x1) * A4.width) }
   assert.deepEqual(autoCrop(lines, A4, { width: 896, height: Math.floor(height(3)) }, 3), cropBox(lines, 1))
   assert.deepEqual(autoCrop(lines, A4, { width: 896, height: Math.floor(height(1)) }, 3), cropBox(lines, 0))

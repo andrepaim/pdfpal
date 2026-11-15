@@ -4,8 +4,12 @@ import type { PageMark, PageRect } from '../../../../src/shared/share-card'
 /** Each side's margin around the highlight, and the narrowest crop, as fractions of the page width. */
 const SIDE_MARGIN = 0.04
 const MIN_WIDTH = 0.55
-/** A line of context is this many times the median height of the highlight's line boxes. */
+/**
+ * A line of context is the median distance between the highlight's lines; for a single line, or lines further apart
+ * than a paragraph's (a highlight across columns), this many times the median height of its boxes.
+ */
 const LINE = 1.35
+const MAX_LINE = 2.5
 /** Lines of context above and below, most first: an automatic crop that is too tall for the card tries the next. */
 export const EXTRA_LINES = [3, 1, 0] as const
 
@@ -31,13 +35,23 @@ function span(start: number, end: number, min: number): [number, number] {
   return [a, b]
 }
 
+/** The height of one line of text around the highlight, as a page fraction. */
+function lineStep(rects: PageRect[]): number {
+  const height = median(rects.map(r => Math.max(0, r.y2 - r.y1)))
+  // Boxes whose tops are within half a line are on the same line.
+  const tops: number[] = []
+  for (const top of rects.map(r => r.y1).sort((a, b) => a - b)) if (!tops.length || top - tops.at(-1)! > height / 2) tops.push(top)
+  const step = tops.length > 1 ? median(tops.slice(1).map((top, index) => top - tops[index]!)) : 0
+  return step >= height * 0.9 && step <= MAX_LINE * height ? step : LINE * height
+}
+
 /**
  * The crop around a highlight: its bounding box widened by 4% of the page on each side and to at least 55% of the
  * page, and `extraLines` lines of context above and below. Clamped to the page.
  */
 export function cropBox(rects: PageRect[], extraLines: number): PageRect {
   const box = boundingBox(rects)
-  const line = LINE * median(rects.map(r => Math.max(0, r.y2 - r.y1)))
+  const line = lineStep(rects)
   const [x1, x2] = span(box.x1 - SIDE_MARGIN, box.x2 + SIDE_MARGIN, MIN_WIDTH)
   return { x1, x2, y1: Math.max(0, box.y1 - extraLines * line), y2: Math.min(1, box.y2 + extraLines * line) }
 }
