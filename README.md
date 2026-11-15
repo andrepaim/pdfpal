@@ -120,9 +120,10 @@ Run these commands in your Linux or WSL terminal:
 git clone https://github.com/andrepaim/pdfpal.git
 cd pdfpal
 npm ci
-npm run build
 npm start
 ```
+
+`npm ci` runs the build automatically through its prepare hook. After changing source code, rebuild with `npm run build`.
 
 `npm start` starts the local server at `http://localhost:8200` and opens the reader in your browser. To run without opening a browser, use `npm start -- serve --no-open`.
 
@@ -327,6 +328,7 @@ npm run build
 npm exec --workspace frontend -- playwright install --with-deps chromium
 npm exec --workspace extension -- playwright install --with-deps chromium
 npm exec --workspace frontend -- playwright test
+npm --prefix desktop test
 npm run test:extension
 npm run test:archive
 npm run test:package

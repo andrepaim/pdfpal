@@ -10,7 +10,6 @@ The companion is bundled with desktop builds and the repository source build. In
 
 ```sh
 npm ci
-npm run build
 npm start
 ```
 
@@ -20,7 +19,7 @@ npm start
 4. Pin **pdfpal Kindle Companion** to the toolbar. Open Kindle for Web and refresh an already-open book tab.
 5. Click the toolbar icon to open the panel. This action also grants screenshot permission for region capture.
 
-Contributors can load `extension/dist` directly after the root build. The archive is generated at `extension/package/companion.zip`; no manual packaging step is needed.
+`npm ci` builds the reader and matching companion through the prepare hook. After editing source, run `npm run build`. Contributors can load `extension/dist` directly after the root build. The archive is generated at `extension/package/companion.zip`; no manual packaging step is needed.
 
 Supported readers: `read.amazon.com`, `ler.amazon.com.br`, and `read.amazon.co.uk`. English prose is the initial OCR target. The native Kindle PC application is not supported.
 
