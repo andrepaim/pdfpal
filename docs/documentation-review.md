@@ -1,6 +1,6 @@
 # Documentation review — November 15, 2026
 
-Reviewed the default branch, `master`, starting at `a402cec` (PRs through #20). Checked the README, desktop/extension guides, CLI skill, contributor guide, current runbooks, plans/evidence, version/build scripts and the reader implementation. Historical milestone receipts keep their dates and measured results; unmerged Mac/mobile/share-card work is not presented as shipped.
+Reviewed the default branch, `master`, starting at `a402cec` (PRs through #20), then incorporating `7473cff` (PR #22, shared Linux app menu). Checked the README, desktop/extension guides, CLI skill, contributor guide, current runbooks, plans/evidence, version/build scripts and the reader implementation. Historical milestone receipts keep their dates and measured results; unmerged Mac/mobile/share-card work is not presented as shipped.
 
 | Finding | Improvement |
 | --- | --- |
@@ -8,7 +8,7 @@ Reviewed the default branch, `master`, starting at `a402cec` (PRs through #20). 
 | The README still showed the original visual format and its old export | Captured the current figure renderer, progressive token grids and expanded query/key plot; replaced the downloadable HTML using the app's own exporter. |
 | New visual controls and persistence limits were hard to discover | Added a [visual guide](visual-explanations.md), covering progress segments, arrow keys, named details, expansion, transcripts, offline export, retry and local-only assets. Updated the companion guide's obsolete control names. |
 | The dictionary had only a feature-list mention | Added a [reader guide](reader-guide.md) and a dictionary screenshot, including English-only scope, compound/base-form behavior and no-provider lookup. |
-| Windows instructions named old installer versions; Linux installation was buried | Replaced stale “current” version examples, documented Linux preview release downloads and CI artifacts, runtime/CLI/lifecycle/keyring differences, and corrected the platform architecture. Kept experimental/manual gates explicit. |
+| Windows instructions named old installer versions; Linux installation was buried | Replaced stale “current” version examples, documented Linux preview release downloads and CI artifacts, runtime/CLI/lifecycle/keyring differences, and corrected the platform architecture. Included the newly merged Linux shared menu, keyboard navigation and native-frame/recovery-menu behavior. Kept experimental/manual gates explicit. |
 | The README omitted the new account-library choice and mismatch recovery | Documented one library per Google account, explicit legacy selection and separate restore without merging or deleting original local work. Updated recovery/privacy entry points for desktop/browser. |
 | The shipped automation skill assumed every desktop was Windows | Added a Linux reference and routing to `pdfpal-desktop-cli`, retaining fingerprint guards, operation receipts and note concurrency checks. |
 | Contributor guidance omitted merged work and understated CI | Updated the developer guide for Linux transport, current feature scope and Firebase/extension/package/platform checks. Removed the README's inaccurate claim that reading subprocesses can browse the web. |

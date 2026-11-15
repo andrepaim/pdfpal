@@ -1,5 +1,6 @@
 {
-  "capturedAt": "2026-11-15T13:40:44.421Z",
+  "capturedAt": "2026-11-15T13:59:57.609Z",
+  "applicationCommit": "7473cffe3e1cf5a1ab5d0421c1357834f724d306",
   "surface": "browser reader",
   "viewport": {
     "width": 1600,
@@ -8,6 +9,5 @@
   "visualFixture": "test/fixtures/visual-v2/attention.claude.json",
   "visualSteps": 9,
   "decoderFixture": "screenshots/paper-reading-example.json",
-  "providerCalls": 0,
-  "applicationCommit": "a402cec44c86a4e2d2976aacf8655962bc914f45"
+  "providerCalls": 0
 }

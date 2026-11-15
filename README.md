@@ -120,7 +120,7 @@ The Windows installer is currently an **unsigned engineering preview**, so Windo
 
 The x86-64 Debian package targets Mint 22/Ubuntu 24.04, with X11 as the initial validation environment. Download the `.deb`, `pdfpal-linux-release.json` and `SHA256SUMS-linux.txt` from the [Linux preview release](https://github.com/andrepaim/pdfpal/releases/tag/linux-desktop-v2.8.0-beta.5.linux.1), then check `sha256sum -c SHA256SUMS-linux.txt` in the download directory. Newer engineering artifacts are available from [CI](https://github.com/andrepaim/pdfpal/actions/workflows/ci.yml), or build from source using the [Linux quickstart](docs/linux-quickstart.md). Linux publication is separate from the automatic Windows release pipeline.
 
-Install with `sudo apt install ./pdfpal-<version>-amd64.deb`, then open **pdfpal** from the application menu. The app includes its runtime and a separate `pdfpal-desktop-cli`; a system Node installation is unnecessary for those bundled tools. Node-based assistant CLIs may need their own runtime. Closing the Linux window quits the app. Account persistence requires a supported, unlocked OS keyring; local reading works without sign-in. Wayland, live account flows and clean-machine installation remain manual acceptance checks.
+Install with `sudo apt install ./pdfpal-<version>-amd64.deb`, then open **pdfpal** from the application menu. The app includes its runtime and a separate `pdfpal-desktop-cli`; a system Node installation is unnecessary for those bundled tools. Node-based assistant CLIs may need their own runtime. The shared **pdfpal menu** offers settings, backups, CLI setup, licenses and updates inside the native Linux window frame. **F10** opens it; **Ctrl+K** finds a project. Closing the Linux window quits the app. Account persistence requires a supported, unlocked OS keyring; local reading works without sign-in. Wayland, live account flows and clean-machine installation remain manual acceptance checks.
 
 ### Linux and WSL
 
@@ -174,7 +174,7 @@ After following a reference link within a PDF, click **Back to citation** in the
 
 ### Read a Kindle book
 
-1. Start pdfpal. On Windows, choose **pdfpal menu → Kindle extension**. In the browser reader, choose **Extension** on the projects home page (or **Kindle extension** in a project).
+1. Start pdfpal. In the Windows or Linux desktop app, choose **pdfpal menu → Kindle extension**. In the browser reader, choose **Extension** on the projects home page (or **Kindle extension** in a project).
 2. **Download Chrome extension**, extract it to a folder you will keep, and open `chrome://extensions`. Enable **Developer mode**, choose **Load unpacked**, and select the extracted folder containing `manifest.json`.
 3. Pin pdfpal to Chrome's toolbar. Open your book in [Kindle for Web](https://read.amazon.com/), refresh the tab, and click the pdfpal toolbar icon.
 4. Click **Connect to pdfpal**. In the local tab that opens, click **Allow connection**, then return to Kindle. Choose or create a project.
@@ -216,11 +216,11 @@ Select text in the PDF reader and choose **Explain visually** from its popup, or
 
 ### Backups, recovery & privacy
 
-Open **pdfpal menu → Backups & recovery** on Windows, or **Backups** at the lower left in the browser reader. Save a complete local library copy, including managed PDFs, notes, highlights, saved conversations and visual explanations. Automatic backups run daily by default while the app is open; choose every six hours, daily or weekly. Verify a backup or open a separate recovery copy while keeping your current library. **Recently deleted** retains up to 100 deletion entries for 30 days. See [backup and recovery](docs/backup-recovery.md).
+Open **pdfpal menu → Backups & recovery** in the Windows or Linux desktop app, or **Backups** at the lower left in the browser reader. Save a complete local library copy, including managed PDFs, notes, highlights, saved conversations and visual explanations. Automatic backups run daily by default while the app is open; choose every six hours, daily or weekly. Verify a backup or open a separate recovery copy while keeping your current library. **Recently deleted** retains up to 100 deletion entries for 30 days. See [backup and recovery](docs/backup-recovery.md).
 
 ![Current browser backup settings showing a verified local library copy and recovery controls](screenshots/backups-recovery.png)
 
-**Privacy & diagnostics** in the Windows app menu (or **Privacy** in the browser) separates local diagnostics, optional usage analytics and default-off error sharing. Shared error reports exclude documents, conversations, titles, filenames and raw error messages. See [error reporting](docs/error-reports.md).
+**Privacy & diagnostics** in the desktop app menu (or **Privacy** in the browser) separates local diagnostics, optional usage analytics and default-off error sharing. Shared error reports exclude documents, conversations, titles, filenames and raw error messages. See [error reporting](docs/error-reports.md).
 
 ### Sources & Discovery
 

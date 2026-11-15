@@ -36,7 +36,7 @@ The current desktop targets are Windows x64 and a Linux x86-64 engineering previ
 
 Plans mix completed milestones with future work; use the guides above for current behavior. Results and evidence are dated receipts, not statements that the current build has passed every manual acceptance gate.
 
-- Desktop: [Windows plan](windows-desktop-plan.md), [M0](windows-m0-results.md), [M1](windows-m1-results.md), [M2](windows-m2-results.md), [M3](windows-m3-results.md), [M4](windows-m4-results.md); [Linux plan](linux-desktop-plan.md) and [results](linux-desktop-results.md).
+- Desktop: [Windows plan](windows-desktop-plan.md), [M0](windows-m0-results.md), [M1](windows-m1-results.md), [M2](windows-m2-results.md), [M3](windows-m3-results.md), [M4](windows-m4-results.md); [Linux plan](linux-desktop-plan.md), [results](linux-desktop-results.md) and [shared app-menu implementation/evidence](linux-menu-plan.md).
 - Desktop integration: [ChatGPT plan](windows-chatgpt-plan.md) and [results](windows-chatgpt-results.md); [CLI/skill plan](windows-cli-skill-plan.md).
 - Reader: [beta and retrieval plan](reader-beta-and-retrieval-plan.md), [retrieval baseline](retrieval-baseline.md).
 - Kindle: [original companion plan](kindle-browser-extension-plan.md), [first-class book tasks](extension-first-class-tasks.md).

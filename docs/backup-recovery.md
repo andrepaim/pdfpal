@@ -1,6 +1,6 @@
 # Library backups and recovery
 
-Open **pdfpal menu → Backups & recovery** on Windows, the native app menu on Linux, or **Backups** at the lower left of the browser reader. Backups are local and work without Google sign-in, a server account, or Firebase billing.
+Open **pdfpal menu → Backups & recovery** in the Windows or Linux desktop app, or **Backups** at the lower left of the browser reader. Backups are local and work without Google sign-in, a server account, or Firebase billing.
 
 ## Save and move a full library
 

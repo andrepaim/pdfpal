@@ -1,6 +1,6 @@
 # pdfpal desktop preview
 
-The Linux engineering preview now builds an unpacked application and Debian installer, with native menus, XDG preferences and opt-in autostart, secure keyring checks and an independent bundled CLI. See the [Linux quickstart](../docs/linux-quickstart.md), [milestone plan](../docs/linux-desktop-plan.md), and [acceptance results](../docs/linux-desktop-results.md). The Windows build and release procedures below remain in place.
+The Linux engineering preview now builds an unpacked application and Debian installer, with a compact shared app menu inside its native window frame, XDG preferences and opt-in autostart, secure keyring checks and an independent bundled CLI. See the [Linux quickstart](../docs/linux-quickstart.md), [milestone plan](../docs/linux-desktop-plan.md), and [acceptance results](../docs/linux-desktop-results.md). The Windows build and release procedures below remain in place.
 
 The Windows desktop includes a per-user installer, integrated app menu, direct ChatGPT sign-in, assistant discovery, bundled CLI/skill setup, local recovery and optional cloud sync. The milestone results below record how its installer and lifecycle were validated. See the [Windows quickstart](../docs/windows-quickstart.md), [M3 results](../docs/windows-m3-results.md), and [implementation plan](../docs/windows-desktop-plan.md).
 
