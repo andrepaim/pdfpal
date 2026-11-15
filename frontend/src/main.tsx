@@ -1,4 +1,4 @@
-import { StrictMode, useState, useEffect, Component, type ReactNode } from 'react'
+import { StrictMode, useState, useEffect, Component, lazy, Suspense, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import './index.css'
@@ -22,6 +22,8 @@ import RecoverySettings from './components/RecoverySettings'
 import DesktopChrome from './components/DesktopChrome'
 import CommandLineSettings from './components/CommandLineSettings'
 import LibraryChanges from './components/LibraryChanges'
+// Hidden review page for share cards; linked from nowhere.
+const ShareCardSamples = lazy(() => import('./pages/ShareCardSamples'))
 
 if(window.pdfpalDesktop?.chrome)document.documentElement.classList.add('desktop-shell')
 
@@ -98,6 +100,7 @@ function Root() {
         {/* Note editor */}
         <Route path="/projects/:projectId/notes/:noteId" element={<NoteEditor />} />
         <Route path="/projects/:projectId/visuals/:id" element={<VisualPage />} />
+        <Route path="/dev/share-cards" element={<Suspense fallback={null}><ShareCardSamples /></Suspense>} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
