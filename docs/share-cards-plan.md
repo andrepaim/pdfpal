@@ -525,9 +525,26 @@ New tests: `test/unit/share-card.test.ts` (14), `test/unit/share-card-layout.tes
 11. **`apiFetch`** in `frontend/src/lib/api.ts` now accepts a 204 with no body; `annotationsApi.delete` failed on it before, which is why no screen used it.
 12. **Lint**: the lazily loaded sample page adds one `react-refresh/only-export-components` error in `frontend/src/main.tsx`, the same rule that already fires there. Lint is not part of CI.
 
+### Live check, round 1
+
+On 15 November 2026, with the owner's go-ahead, Codex (the owner's configured assistant) wrote seven posts in a temporary library, never the owner's `~/.pdfpal`. They came from highlights in two CC BY 4.0 papers from the retrieval corpus, *Mistral 7B* (p. 2 twice, p. 5, p. 6) and *QLoRA* (p. 2, p. 14, p. 16), with credits "Jiang et al., 2023" and "Dettmers et al., 2023".
+
+- All seven completed, in 12–28 seconds each, and none failed its check. Whether any needed the repair request is not recorded.
+- Every quote is an exact copy, and the 78-character highlight became its quote unchanged. The `appli-` / `cations` line break was joined.
+- Hedges survived: "may compress knowledge", "We believe QLORA might…", "suggests… may not always align". One caption added "That is a projection, not a demonstrated phone deployment."
+- Claims were attributed by name from the credit. No caption mentions the supplied text, uses the first person, or instructs the reader.
+- Cards in every style, including Page crops of the two-column QLoRA page, rendered without problems.
+
+Observations for the owner's read, with no prompt change made yet:
+
+- Six of seven captions end on the same move: "For teams building…" or "For people building…". The voice is accurate but formulaic.
+- Some quotes are weak openers. One is "In our analysis, we also find that automated evaluation systems have noticeable biases."; another starts mid-sentence, so the card capitalises it.
+- One takeaway in the sliding-window post came from the page around the highlight (the rolling buffer), not from the highlight itself.
+- Some takeaway titles read awkwardly ("Inference cost belongs").
+
 ### Still unchecked
 
-- **No live generation yet.** The prompt has never been answered by a real assistant. Stage 4 needs your go-ahead, then a read of real captions from at least four highlights across two papers.
+- **The owner's read of the round-1 captions**, and any prompt revision it leads to.
 - **Copy image** in the installed Windows app (the bridge), and in the Mac build. In Playwright's Chromium, the browser clipboard path copies a PNG and the caption.
 - **LinkedIn and Instagram**: how a pasted or uploaded card and caption look there.
 - The **Page style on real papers**: scanned pages, two-column layouts and rotated pages have not been tried.
