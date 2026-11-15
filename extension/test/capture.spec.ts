@@ -151,6 +151,12 @@ for (const dark of [false, true]) test(`recognizes an image-only selection local
 test('rejects OCR completion from a changed page', async () => {
   await imagePage(false);
   await panel.getByRole('button', { name: 'Capture selection', exact: true }).click();
+  // The click starts asynchronous frame discovery. Change pages only after the
+  // original page was captured, while its OCR draft is still being recognized.
+  await expect.poll(() => worker.evaluate(async tabId => {
+    const draft = (await chrome.storage.session.get(`draft:${tabId}`))[`draft:${tabId}`];
+    return draft && { status: draft.status, location: draft.metadata.location };
+  }, tabId)).toEqual({ status: 'recognizing', location: 'Location 420' });
   await reader.evaluate(() => { document.querySelector('[data-testid="reader-location"]')!.textContent = 'Location 900'; });
   await expect(panel.locator('#status')).toContainText('page changed');
   await expect(panel.locator('#export')).toBeDisabled();
