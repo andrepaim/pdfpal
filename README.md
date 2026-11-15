@@ -118,7 +118,7 @@ The Windows installer is currently an **unsigned engineering preview**, so Windo
 
 ### Linux desktop engineering preview
 
-The x86-64 Debian package targets Mint 22/Ubuntu 24.04, with X11 as the initial validation environment. Download the `pdfpal-linux-x64-preview` artifact from a successful [CI run](https://github.com/andrepaim/pdfpal/actions/workflows/ci.yml), or build it from source using the [Linux quickstart](docs/linux-quickstart.md). It is not part of the automatic Windows GitHub Release pipeline.
+The x86-64 Debian package targets Mint 22/Ubuntu 24.04, with X11 as the initial validation environment. Download the `.deb`, `pdfpal-linux-release.json` and `SHA256SUMS-linux.txt` from the [Linux preview release](https://github.com/andrepaim/pdfpal/releases/tag/linux-desktop-v2.8.0-beta.5.linux.1), then check `sha256sum -c SHA256SUMS-linux.txt` in the download directory. Newer engineering artifacts are available from [CI](https://github.com/andrepaim/pdfpal/actions/workflows/ci.yml), or build from source using the [Linux quickstart](docs/linux-quickstart.md). Linux publication is separate from the automatic Windows release pipeline.
 
 Install with `sudo apt install ./pdfpal-<version>-amd64.deb`, then open **pdfpal** from the application menu. The app includes its runtime and a separate `pdfpal-desktop-cli`; a system Node installation is unnecessary for those bundled tools. Node-based assistant CLIs may need their own runtime. Closing the Linux window quits the app. Account persistence requires a supported, unlocked OS keyring; local reading works without sign-in. Wayland, live account flows and clean-machine installation remain manual acceptance checks.
 

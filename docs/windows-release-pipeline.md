@@ -8,7 +8,7 @@ The version is read from [`desktop/version.json`](../desktop/version.json). A su
 - `pdfpal-desktop-release.json` — application/version/signing and SHA-256 metadata.
 - `SHA256SUMS.txt` — checksums for the installer and manifest.
 
-The source/npm package version is independent. The Linux Debian engineering preview is built and uploaded as `pdfpal-linux-x64-preview` by [CI](../.github/workflows/ci.yml); this Windows publisher does not publish a Linux installer. No Mac release target is merged into this branch.
+The source/npm package version is independent. The Linux Debian engineering preview is built and uploaded as `pdfpal-linux-x64-preview` by [CI](../.github/workflows/ci.yml). A [Linux preview download](https://github.com/andrepaim/pdfpal/releases/tag/linux-desktop-v2.8.0-beta.5.linux.1) has also been published separately; this Windows workflow does not publish or update Linux releases. No Mac release target is merged into this branch.
 
 Testers open the [GitHub Releases page](https://github.com/andrepaim/pdfpal/releases), select the version, and download the `.exe`. They do not need Node.js or GitHub Actions artifact access. Preview notes explicitly state when the installer is unsigned and Windows may show an unknown publisher. The desktop's in-app update checker continues to offer stable signed releases only.
 

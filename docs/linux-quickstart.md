@@ -4,7 +4,9 @@ The Linux desktop uses the same local-first reader, SQLite library, PDF extracti
 
 ## Download or build
 
-For a prebuilt preview, open a successful [CI run](https://github.com/andrepaim/pdfpal/actions/workflows/ci.yml) for the intended `master` commit and download the **pdfpal-linux-x64-preview** artifact (GitHub sign-in may be required). Extract it and verify `SHA256SUMS-linux.txt` with `sha256sum -c SHA256SUMS-linux.txt` from that directory. The artifact includes the Debian package, integrity manifest and acceptance receipts. The automatic Windows Releases publisher does not publish this package.
+Download the `.deb`, `pdfpal-linux-release.json` and `SHA256SUMS-linux.txt` from the [published Linux engineering preview](https://github.com/andrepaim/pdfpal/releases/tag/linux-desktop-v2.8.0-beta.5.linux.1). Keep all three in the same directory and run `sha256sum -c SHA256SUMS-linux.txt` there before installation. This preview was published separately from the Windows release pipeline; its Linux version can differ from the Windows version in `desktop/version.json`.
+
+For newer engineering artifacts, open a successful [CI run](https://github.com/andrepaim/pdfpal/actions/workflows/ci.yml) for the intended `master` commit and download **pdfpal-linux-x64-preview** (GitHub sign-in may be required). The ZIP contains the Debian package, integrity manifest, checksums and acceptance receipts. Extract it and verify its checksums the same way. CI artifact creation does not automatically publish a Linux GitHub Release.
 
 To build from a source checkout, use Node.js 22 or newer for development. The installed app and its bundled CLI do not need system Node.
 
