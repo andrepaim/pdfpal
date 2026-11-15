@@ -185,12 +185,18 @@ Book questions use title/author, previous discussion, and captured or saved exce
 
 Select text in the PDF reader and choose **Explain visually** from its popup, or type `/visual <concept>` in the reader or project chat. Type `/` for a command suggestion; Tab completes `/visual`. With a passage attached, `/visual` alone explains that selection. The same command works in the [Kindle companion](extension/README.md#explain-visually). Your configured agent creates progressive diagrams with clickable details, captions, a text transcript and source labels. Expand the viewer, ask follow-ups, save the explanation to a project note, or export a self-contained HTML file for offline reading. Saved explanations reopen without another model call. Project chat also supports general-concept visual questions without PDFs using `/visual <concept>`.
 
+### Share a highlight as a post
+
+Click a highlight in a PDF and choose **Create post**. Your configured assistant writes the words for one card and a short caption for LinkedIn or Instagram in a single request, while you keep reading. The quote on the card is copied exactly from your highlight; the assistant may not change it, but you can fix PDF text artefacts with **Edit quote**. The card itself is drawn on your computer, so switching between the **Quote**, **Page**, **Big idea** and **Takeaways** styles and the **Ink**, **Paper** and **Marker** looks is instant and makes no request. **Page** shows the PDF's own lines with your highlight on them, which keeps formulas and figures intact.
+
+Use **Copy image** and **Copy caption** to paste into a post, or save a feed (4:5) or Story (9:16) image. **Change** asks for a revision in your own words, and **Undo** returns to the previous version. Each highlight has at most one post; highlights with a post are marked in the reader and in the project's **Highlights** tab, which lists every post. Posts stay on this device: they are not part of cloud sync. A post keeps its own copy of the passage, so deleting the highlight or the PDF does not delete it.
+
 ### Organization
 
 - **Projects**: workspaces for a research topic: sources, notes, chat history.
 - **Collections**: nested folders for organizing sources within a project; drag-and-drop, Expand/Collapse All.
 - **Notes**: markdown notes at the project or source level, rendered by default, edit in place.
-- **Highlights**: every annotation across a project, grouped by source, one click back to context.
+- **Highlights**: every annotation across a project, grouped by source, one click back to context, with **Create post** or **Open post** on each one.
 
 ### Backups, recovery & privacy
 

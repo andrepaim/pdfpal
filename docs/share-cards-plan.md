@@ -1,6 +1,6 @@
 # Share cards: a post from a highlight
 
-Plan dated 15 November 2026. Status: approved by the owner, not started. This document is the full brief for the agent that implements it.
+Plan dated 15 November 2026. Status: approved by the owner; stages 0 to 3 and package E implemented on `feat/share-cards` the same day, stage 4's live check pending. See [Implementation result](#implementation-result). This document is the full brief for the agent that implements it.
 
 ## Goal
 
@@ -485,4 +485,50 @@ Recorded on 15 November 2026 with a throwaway Playwright probe against the built
 
 ## Implementation result
 
-_To be filled in at the end: what was built, the gate output, differences from this plan, and what is still unchecked._
+Stages 0 to 3, package E and the documents of stage 4 were built on 15 November 2026 on `feat/share-cards`, in seven commits from `d89fddc` to the documentation commit. Nothing was pushed, `desktop/version.json` was not touched, and no assistant was run: every generation in the tests is a fixture.
+
+### What was built
+
+- **Contract** (`src/shared/share-card.ts`, `src/shared/share-card-schema.ts`), as specified, plus `STYLE_NAMES`, `LOOK_NAMES`, `isActive`, `collapse`, `creditLine`, `highlightColor` and `publicUrl`.
+- **Pipeline** (`src/core/share-cards.ts`, `src/server/share-cards.ts`, schema 16): one request and one repair, attempt tokens on every write, restart detection, change, retry, cancel, undo, restyle and the three edits; the trash reconnects a post when its highlight, source or project is restored; backups count posts.
+- **Renderer** (`frontend/src/lib/share-card/`): pure layout with DistillPod's measurements and fitting, three looks with a contrast test, the five bundled fonts, canvas drawing, and the Page crop through pdf.js. `/dev/share-cards` draws 126 samples (7 contents × 3 styles × 3 looks × 2 sizes).
+- **Reader**: the highlight menu (Ask, Create post or Open post, four colours, Delete), reachable from the keyboard; the Post tab (`SharePostPanel.tsx`); marks on highlights with a post; `?post=<id>`; Create post, Open post and a list of every post in the Highlights tab. A post whose PDF was removed opens beside the list there, since it cannot open in the reader.
+- **Desktop bridge**: `copy-image` with the PNG and size check in `desktop/src/clipboard.mjs`; the font licences in the third-party notices.
+
+### Gate
+
+All six commands passed on the final tree:
+
+| Command | Result |
+| --- | --- |
+| `npm run typecheck` | passed |
+| `npm test` | 271 tests: 270 passed, 1 skipped (the Firebase rules test, which needs the emulator). Coverage over `src/core`, `src/server` and `src/cli`: lines 86.56%, branches 83.36%, functions 94.16%. `src/core/share-cards.ts` 98.84% of lines, `src/server/share-cards.ts` 100% |
+| `npm run build` | passed |
+| `npm exec --workspace frontend -- playwright test` | 108 passed |
+| `npm --prefix desktop test` | 48 passed |
+| `node scripts/check-secrets.mjs` | passed for 463 tracked files |
+
+New tests: `test/unit/share-card.test.ts` (14), `test/unit/share-card-layout.test.ts` (13), `test/unit/share-card-crop.test.ts` (4), `test/integration/share-cards.test.ts` (12), one migration test, `desktop/test/clipboard.test.mjs` (2) and `frontend/e2e/share-cards.spec.ts` (6). The browser tests write the 126 samples and 12 Page cards (one-line and multi-line, every look, both sizes) to `frontend/test-results/share-card-samples/`.
+
+### Differences from this plan
+
+1. **Branch base**: `origin/master` (`51b60d5`), not the stale local `master`. See Stage 0 results.
+2. **Contract in two files**: zod schemas live in `share-card-schema.ts` so the reader's bundle stays free of zod; the types are written out in `share-card.ts` and checked against the schemas at compile time.
+3. **Fixture**: `test/fixtures/share-cards.pdf` was added because `sample.pdf` has one line per page. The one-line Page card still comes from `sample.pdf`; its highlight ("Test page 1") is shorter than the 20-character minimum, which the mocked routes in that browser test do not enforce.
+4. **An edited quote survives Change**: when the reader has edited the quote (`quoteEdited`), a change sends it as `fixedQuote` and keeps it, so a fix to PDF text is not undone by the assistant. The plan only fixes the quote for passages of 120 characters or fewer.
+5. **Page context budget**: the highlight's own page is kept first; what remains of the 12,000 characters goes to the end of the page before and the start of the page after, rather than a straight cut in page order. Without indexed chunks, the source's extracted text is used.
+6. **An answer over 20,000 characters** counts as a failed check and gets the one repair, with the length as the reason.
+7. **Status codes**: a repeated `request_id` or a highlight that already has a post answers 200; only a new generation answers 202. Retrying a complete post, or undoing with nothing to undo, is a 409.
+8. **Marker blue and pink grounds** are a shade lighter (`#6aaafb`, `#f580bd`) so the credit line at 72% reaches 4.5:1; emphasis boxes and Page highlights keep the reader's exact colours. The `PDFPAL` wordmark is not held to 4.5:1, since it is meant to be low-contrast.
+9. **Quote style opening**: Ink and Paper open with a large accent quotation mark (DistillPod's Ember); Marker opens with the topic, as Signal does.
+10. **Desktop**: the pure check is a new module, `desktop/src/clipboard.mjs`, so `desktop/scripts/stage.mjs` (one line) and the `desktop/package.json` test list (one line) also changed. The `feat/mac-desktop` branch changes that `package.json` line too, so the merge will need that one line resolved by hand.
+11. **`apiFetch`** in `frontend/src/lib/api.ts` now accepts a 204 with no body; `annotationsApi.delete` failed on it before, which is why no screen used it.
+12. **Lint**: the lazily loaded sample page adds one `react-refresh/only-export-components` error in `frontend/src/main.tsx`, the same rule that already fires there. Lint is not part of CI.
+
+### Still unchecked
+
+- **No live generation yet.** The prompt has never been answered by a real assistant. Stage 4 needs your go-ahead, then a read of real captions from at least four highlights across two papers.
+- **Copy image** in the installed Windows app (the bridge), and in the Mac build. In Playwright's Chromium, the browser clipboard path copies a PNG and the caption.
+- **LinkedIn and Instagram**: how a pasted or uploaded card and caption look there.
+- The **Page style on real papers**: scanned pages, two-column layouts and rotated pages have not been tried.
+- The `CLAUDE.md` "new features are parked" rule is still in this branch's copy, as agreed: it is your edit.
