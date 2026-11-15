@@ -6,7 +6,7 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { agentCandidates, agentEnvironment, discoverAgent, parseAuth, runProbe } from '../../src/core/agent-discovery.js'
 
-test('Linux GUI discovery includes native, npm, OpenCode and Node-manager installs without relative PATH entries', () => {
+test('Linux GUI discovery includes native, npm, OpenCode and Node-manager installs without relative PATH entries', { skip: process.platform === 'win32' }, () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pdfpal-discovery-home-'))
   try {
     fs.mkdirSync(path.join(home, '.nvm/versions/node/v22.1.0/bin'), { recursive: true })
@@ -18,7 +18,7 @@ test('Linux GUI discovery includes native, npm, OpenCode and Node-manager instal
   } finally { fs.rmSync(home, { recursive: true, force: true }) }
 })
 
-test('Linux probes and invocation find the Node runtime beside a symlinked npm provider with a GUI PATH', async () => {
+test('Linux probes and invocation find the Node runtime beside a symlinked npm provider with a GUI PATH', { skip: process.platform === 'win32' }, async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "pdfpal-provider's $()-"))
   try {
     const bin = path.join(home, '.nvm/versions/node/v22.1.0/bin'), local = path.join(home, '.local/bin')
@@ -39,7 +39,7 @@ test('Linux probes and invocation find the Node runtime beside a symlinked npm p
   } finally { fs.rmSync(home, { recursive: true, force: true }) }
 })
 
-test('Linux discovery distinguishes non-executable, incompatible and broken explicit providers', async () => {
+test('Linux discovery distinguishes non-executable, incompatible and broken explicit providers', { skip: process.platform === 'win32' }, async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pdfpal-provider-state-'))
   try {
     const file = path.join(home, 'claude')
