@@ -6,7 +6,25 @@ on:
   pull_request:
 
 jobs:
+  changes:
+    uses: ./.github/workflows/change-scope.yml
+
+  documentation:
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check documentation links
+        run: npm run check:docs
+      - name: Check tracked files for credentials
+        run: node scripts/check-secrets.mjs
+
   typescript-tests:
+    needs: changes
+    if: needs.changes.outputs.run_full == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -14,10 +32,6 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - name: Check documentation links
-        run: npm run check:docs
-      - name: Check tracked files for credentials
-        run: node scripts/check-secrets.mjs
       - name: Install dependencies
         run: npm ci
       - name: Typecheck
@@ -92,6 +106,8 @@ jobs:
           path: extension/package/
 
   firebase-contract:
+    needs: changes
+    if: needs.changes.outputs.run_full == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

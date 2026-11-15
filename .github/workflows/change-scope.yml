@@ -1,0 +1,30 @@
+name: Decide CI scope
+
+on:
+  workflow_call:
+    outputs:
+      run_full:
+        description: Whether application and package checks are needed
+        value: ${{ jobs.classify.outputs.run_full }}
+
+permissions:
+  contents: read
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    outputs:
+      run_full: ${{ steps.scope.outputs.run_full }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify change classification
+        run: node --test scripts/ci-changes.test.mjs
+      - id: scope
+        name: Compare the complete change
+        run: node scripts/ci-changes.mjs

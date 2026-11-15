@@ -34,6 +34,7 @@ pdfpal is a local-first reading assistant for PDFs and Kindle books. It has four
 npm ci
 npm run typecheck
 npm run check:docs        # tracked Markdown paths and local heading links
+node --test scripts/ci-changes.test.mjs # CI path selection with real temporary Git histories
 npm test                  # builds the server, runs test/**/*.test.ts, enforces c8 coverage thresholds
 npm run build             # server, frontend, extension and its ZIP
 npm run dev               # tsx server without opening a browser
@@ -79,7 +80,7 @@ Install Playwright browsers with `npm exec --workspace <frontend|extension> -- p
 - Windows: a version change in `desktop/version.json` pushed to `master` triggers `.github/workflows/windows-release.yml`. The workflow runs Linux regression and Windows installer acceptance, then publishes a GitHub release `desktop-v<version>`. Versions must increase. Suffixed versions (`-preview.N`) ship as unsigned prereleases, and stable versions require signing secrets. Do not edit that file unless you intend to release. See `docs/windows-release-pipeline.md`.
 - Linux: `ci.yml` builds the x86-64 Debian engineering preview, validates the sandbox/keyring/CLI with isolated data, and uploads `pdfpal-linux-x64-preview`. It is not published by the Windows release workflow. Live account flows and interactive desktop acceptance remain separate gates.
 - The desktop and npm versions are independent: changing `package.json` publishes nothing.
-- `ci.yml` runs on pushes to `master` and on PRs: secret scan, typecheck, desktop tests, `npm test`, build, frontend/extension Playwright, archive/package checks, Firebase emulator contracts and Linux packaged acceptance.
+- `ci.yml` runs on pushes to `master` and on PRs. A reusable change-scope job always tests its classifier. Documentation links and credential checks always run. Changes limited to root Markdown, platform READMEs, and documentation/screenshots media skip application suites. Code, tooling, workflows, dependency inputs, shipped skills, unknown paths and unavailable comparisons run the full suite: typecheck, desktop tests, `npm test`, build, frontend/extension Playwright, archive/package checks, Firebase emulator contracts and Linux packaged acceptance. The Windows installer workflow uses the same gate; manual runs always build. See `scripts/ci-changes.mjs` for the exact allowlist.
 
 ## Current focus
 

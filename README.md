@@ -352,6 +352,8 @@ npm run test:package
 
 `npm test` runs Node's test runner through `tsx`, fails when no tests are found, and enforces the configured c8 coverage thresholds. Playwright starts the compiled Fastify server using an isolated temporary data directory. Set `PLAYWRIGHT_EXECUTABLE_PATH` to use a system Chromium installation.
 
+Documentation-only CI runs link checks, credential scanning and tests of the change classifier. Application builds, browser suites, Firebase contracts and native packaging are skipped when the entire change is limited to documentation/media. Code, tooling, workflows, dependency inputs and shipped agent skills keep full validation; manual Windows checks always run.
+
 ### Project loops
 
 Reusable agent workflows for this repository live in [`LOOPS.md`](LOOPS.md). [Loopy](https://signals.forwardfuture.com/loop-library/) is optional contributor tooling and is not required to build or run pdfpal.
