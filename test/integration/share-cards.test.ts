@@ -138,7 +138,7 @@ test('a long quote opens on Big idea and an invented one is repaired once with i
 test('a second failed check fails the post with the fixed message and keeps the reason locally', async () => {
   const s = await setup()
   try {
-    s.respond(1, 'not json'); s.respond(2, answer({ headline: 'H'.repeat(61) }))
+    s.respond(1, 'not json'); s.respond(2, answer({ headline: 'H'.repeat(81) }))
     const record = await s.post()
     assert.equal(record.status, 'failed'); assert.equal(record.error, CHECK_FAILED); assert.equal(record.card, null)
     assert.equal(s.callCount(), 2)
@@ -170,7 +170,7 @@ test('every invalid answer is named so the repair can fix it', () => {
   const cases: Array<[string, RegExp]> = [
     [answer({ quote: 'Attention lets every token look' }), /quote must be copied exactly/],
     [answer({ emphasis: 'tiny steps' }), /emphasis must be an exact part of quote/],
-    [answer({ headline: 'H'.repeat(61) }), /headline has 61 characters/],
+    [answer({ headline: 'H'.repeat(81) }), /headline has 81 characters/],
     [answer({ pull: 'An invented pull quote.' }), /pull must be copied exactly/],
     [answer({ takeaways: CARD.takeaways.slice(0, 2) }), /exactly three/],
     [answer({ takeaways: 'none' }), /takeaways must be a list/],

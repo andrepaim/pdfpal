@@ -4,7 +4,7 @@
 // (test/unit/visual-bundle.test.ts). The zod schemas for these shapes are in ./share-card-schema.ts.
 
 export const CARD = {
-  quoteMax: 240, quoteLeadsMax: 120, emphasisMax: 40, headlineMax: 60, pullMax: 140,
+  quoteMax: 240, quoteLeadsMax: 120, emphasisMax: 40, headlineMax: 80, pullMax: 140,
   topicMax: 24, takeawaysTitleMax: 48, takeawayTitleMax: 32, takeawayDetailMax: 72,
   captionMinWords: 40, captionMinWordsChanged: 10, captionMaxWords: 120, hookMax: 110,
   passageMin: 20, passageMax: 6000, contextMax: 12000, creditMax: 200,
