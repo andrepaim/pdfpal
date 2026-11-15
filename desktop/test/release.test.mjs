@@ -278,7 +278,7 @@ test('native metadata CLIs reject a claimed source SHA different from the checko
   const windows = fileURLToPath(new URL('../scripts/desktop-release.mjs', import.meta.url))
   const linux = fileURLToPath(new URL('../scripts/linux-release.mjs', import.meta.url))
   for (const [script, args] of [[windows, ['prepare', os.tmpdir()]], [linux, [os.tmpdir(), 'b'.repeat(40)]]]) {
-    const result = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', env: { ...process.env, RELEASE_COMMIT: 'b'.repeat(40) } })
+    const result = spawnSync(process.execPath, [script, ...args], { cwd: fileURLToPath(new URL('../../', import.meta.url)), encoding: 'utf8', env: { ...process.env, RELEASE_COMMIT: 'b'.repeat(40) } })
     assert.notEqual(result.status, 0)
     assert.match(result.stderr, /source commit does not match the actual checkout/)
   }
