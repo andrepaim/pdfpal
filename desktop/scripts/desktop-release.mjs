@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { compareVersions, versionParts } from '../src/updates.mjs'
+import { verifyDebianIdentity } from './linux-release.mjs'
 
 export function releasePlan(version, previous, manual = false) {
   const parsed = versionParts(version)
@@ -31,7 +32,7 @@ async function digest(filename) {
 const validCommit = value => typeof value === 'string' && /^[a-f0-9]{40}$/i.test(value)
 const validRepo = value => typeof value === 'string' && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value) && !value.split('/').some(part => part === '.' || part === '..')
 
-export async function prepareRelease(directory, { version, commit, repository }) {
+export async function prepareRelease(directory, { version, commit, repository, sourceDirty = true }) {
   if (!validCommit(commit) || !validRepo(repository)) throw new Error('A source commit SHA and repository are required')
   const plan = releasePlan(version)
   const manifestFile = path.join(directory, 'pdfpal-desktop-release.json')
@@ -78,12 +79,74 @@ export async function prepareRelease(directory, { version, commit, repository })
     : ''
   const notes = `Windows x64 desktop installer for pdfpal ${version}.\n\nDownload **${filename}** below, run it, and open **pdfpal** from Start. No separate Node.js installation is needed. ${aiSetup}${cloudSetup}${conversationSetup}${recoverySetup}${shellSetup}${cliSetup}${readingSetup}${highlightFix}${visualSetup}${dictionarySetup}\n\n${manifest.signed ? `Publisher: ${manifest.publisher}.` : '**Unsigned engineering preview:** Windows may show an unknown-publisher or reputation prompt. Intended for testing; fresh-account onboarding and public-beta acceptance remain in progress.'}\n\n[Windows installation guide](https://github.com/${repository}/blob/${plan.tag}/docs/windows-quickstart.md)\n\nThe CLI remains available independently. Quit pdfpal from its tray before upgrading; the installer retains your library.\n\nSource commit: ${commit}\n`
   await fs.writeFile(path.join(directory, 'release-notes.md'), notes)
-  const result = { format: 1, ...plan, commit, repository, assets }
+  const result = { format: 1, ...plan, commit, repository, sourceDirty: Boolean(sourceDirty), assets }
   await fs.writeFile(path.join(directory, 'release-plan.json'), JSON.stringify(result, null, 2))
   return result
 }
 
+async function assetDetails(directory, name) {
+  const filename = path.join(directory, name)
+  return { name, size: (await fs.stat(filename)).size, sha256: await digest(filename) }
+}
+function sameAssets(actual, expected) {
+  return Array.isArray(actual) && actual.length === expected.length && expected.every(asset =>
+    actual.filter(item => item.name === asset.name && item.size === asset.size && item.sha256 === asset.sha256).length === 1)
+}
+
+/** Read-only validation of both native builds; never regenerate integrity metadata here. */
+export async function prepareCombinedRelease(directory, expected) {
+  const windows = JSON.parse(await fs.readFile(path.join(directory, 'release-plan.json'), 'utf8'))
+  const { version, commit, repository } = windows
+  if (!validCommit(commit) || !validRepo(repository) || windows.format !== 1 || windows.sourceDirty !== false) throw new Error('Windows build provenance requires a clean full source commit')
+  if (expected && (commit !== expected.commit || repository !== expected.repository || version !== expected.version)) throw new Error('Publication metadata does not match this workflow run')
+  const plan = releasePlan(version)
+  if (windows.tag !== plan.tag || windows.channel !== plan.channel) throw new Error('Windows build version/channel provenance mismatch')
+  const windowsName = `pdfpal-Setup-${version}-x64.exe`
+  const windowsManifestName = 'pdfpal-desktop-release.json'
+  const windowsManifestFile = path.join(directory, windowsManifestName)
+  const win = JSON.parse(await fs.readFile(windowsManifestFile, 'utf8'))
+  if (win.format !== 1 || win.appId !== 'io.pdfpal.desktop' || win.version !== version || win.platform !== 'win32' || win.arch !== 'x64' ||
+      win.installer !== windowsName || typeof win.signed !== 'boolean' || !Number.isSafeInteger(win.size) || win.size <= 0 || !/^[a-f0-9]{64}$/.test(win.sha256 ?? '')) throw new Error('Invalid production installer manifest')
+  if (plan.channel === 'stable' && (!win.signed || typeof win.publisher !== 'string' || !win.publisher.trim() || win.publisher.length > 256 || /[\r\n]/.test(win.publisher))) throw new Error('Stable desktop releases require a verified signed build')
+  const windowsAssets = await Promise.all([windowsName, windowsManifestName, 'SHA256SUMS.txt'].map(name => assetDetails(directory, name)))
+  if (windowsAssets[0].size !== win.size || windowsAssets[0].sha256 !== win.sha256 || !sameAssets(windows.assets, windowsAssets)) throw new Error('Windows build provenance assets do not match the tested native build')
+  if (await fs.readFile(path.join(directory, 'SHA256SUMS.txt'), 'utf8') !== `${win.sha256}  ${windowsName}\n${windowsAssets[1].sha256}  ${windowsManifestName}\n`) throw new Error('Windows checksums do not match the tested native build')
+
+  const linuxName = `pdfpal-${version}-amd64.deb`, linuxManifestName = 'pdfpal-linux-release.json'
+  let linux
+  try { linux = JSON.parse(await fs.readFile(path.join(directory, linuxManifestName), 'utf8')) }
+  catch { throw new Error('A complete Linux build is required for a coordinated desktop release') }
+  if (linux.format !== 1 || linux.appId !== 'io.pdfpal.desktop' || linux.version !== version || linux.platform !== 'linux' || linux.arch !== 'x64' ||
+      linux.installer !== linuxName || linux.sourceCommit !== commit || linux.sourceDirty !== false || linux.signed !== false || linux.upgrade !== 'manual' ||
+      !Number.isSafeInteger(linux.size) || linux.size <= 0 || !/^[a-f0-9]{64}$/.test(linux.sha256 ?? '')) throw new Error('Linux manifest version, source provenance, or package identity mismatch')
+  verifyDebianIdentity(command('dpkg-deb', ['--show', '--showformat=${Package}\n${Version}\n${Architecture}', path.join(directory, linuxName)]).split('\n'), version, 'x64')
+  const linuxAssets = await Promise.all([linuxName, linuxManifestName, 'SHA256SUMS-linux.txt'].map(name => assetDetails(directory, name)))
+  if (linuxAssets[0].size !== linux.size || linuxAssets[0].sha256 !== linux.sha256) throw new Error('Linux installer size or SHA-256 mismatch')
+  if (await fs.readFile(path.join(directory, 'SHA256SUMS-linux.txt'), 'utf8') !== `${linux.sha256}  ${linuxName}\n${linuxAssets[1].sha256}  ${linuxManifestName}\n`) throw new Error('Linux checksums do not match the tested native build')
+  const notes = `Windows x64 and Linux x64 desktop packages for pdfpal ${version}.
+
+**Changes since Windows 2.8.0-beta.4:** Linux now has a Debian engineering preview with its bundled authenticated CLI, secure OS-keyring storage and native window frame. Windows and Linux share the compact app menu, settings shortcuts and library controls. Cloud sync preserves one library per Google account and safely restores devices using a legacy library; signing in alone still uploads nothing. Reader/visual explanation documentation, screenshots, privacy, recovery and CLI guidance have been refreshed. This release packages both platforms from the same source revision.
+
+**Windows:** download **${windowsName}**, quit pdfpal from its tray, then run the installer. The local library is retained; no separate Node.js installation is needed. ${win.signed ? `Verified Windows publisher: ${win.publisher}.` : '**Unsigned engineering preview:** Windows may show an unknown-publisher or reputation prompt. Intended for testing; fresh-account onboarding and public-beta acceptance remain in progress.'}
+
+**Linux:** download **${linuxName}**, **pdfpal-linux-release.json** and **SHA256SUMS-linux.txt** into one directory. Run \`sha256sum -c SHA256SUMS-linux.txt\`, quit pdfpal, then install with \`sudo apt install ./${linuxName}\`. The app and bundled CLI need no system Node.js. This is an unsigned, manually updated Debian engineering preview; checksums establish integrity, not publisher trust. AppImage, automatic Linux updates, broad desktop-environment acceptance and fresh-account OAuth/keyring recovery remain outside completed preview acceptance. Back up your library before upgrading.
+
+Both platforms retain the offline reader dictionary, page-context questions, cross-page highlight correction, visual explanations and related-paper fallback shipped in the preceding Windows betas. Optional Google sync, saved-conversation sync and PDF transfers retain their separate opt-ins. Provider eligibility and usage limits apply.
+
+[Windows installation](https://github.com/${repository}/blob/${plan.tag}/docs/windows-quickstart.md) · [Linux installation and limitations](https://github.com/${repository}/blob/${plan.tag}/docs/linux-quickstart.md) · [Cloud setup and recovery](https://github.com/${repository}/blob/${plan.tag}/docs/firebase-setup.md)
+
+The standalone npm CLI version is independent. This desktop release does not change the repository-wide Latest pointer. Engineering prereleases are excluded from the signed stable Windows updater channel.
+
+Source commit: ${commit}
+`
+  await fs.writeFile(path.join(directory, 'release-notes.md'), notes)
+  const result = { format: 1, scope: 'windows-linux', ...plan, commit, repository, sourceDirty: false, assets: [...windowsAssets, ...linuxAssets] }
+  await fs.writeFile(path.join(directory, 'coordinated-release-plan.json'), JSON.stringify(result, null, 2) + '\n')
+  return result
+}
+
 export function verifyRemoteAssets(release, plan) {
+  if (!Array.isArray(release.assets) || release.assets.length !== plan.assets.length || new Set(release.assets.map(asset => asset.name)).size !== plan.assets.length) throw new Error('Existing release assets do not match the tested build; refusing to replace them')
   for (const expected of plan.assets) {
     const asset = release.assets?.find(item => item.name === expected.name)
     if (!asset || asset.state !== 'uploaded' || asset.size !== expected.size || asset.digest?.toLowerCase() !== `sha256:${expected.sha256}`) throw new Error('Existing release assets do not match the tested build; refusing to replace them')
@@ -93,9 +156,7 @@ export function verifyRemoteAssets(release, plan) {
 
 /** Publish a complete draft, or verify an already-published release without mutations. */
 export async function publishRelease(directory, run = command, expected) {
-  const saved = JSON.parse(await fs.readFile(path.join(directory, 'release-plan.json'), 'utf8'))
-  if (expected && (saved.commit !== expected.commit || saved.repository !== expected.repository || saved.version !== expected.version)) throw new Error('Publication metadata does not match this workflow run')
-  const plan = await prepareRelease(directory, saved)
+  const plan = await prepareCombinedRelease(directory, expected)
   const api = endpoint => {
     const value = run('gh', ['api', `repos/${plan.repository}/${endpoint}`], true)
     return value === undefined ? undefined : JSON.parse(value)
@@ -113,8 +174,12 @@ export async function publishRelease(directory, run = command, expected) {
     return api(`releases/${id}`)
   }
   const existing = findRelease()
-  let ref = api(`git/ref/tags/${plan.tag}`)?.object
-  for (let depth = 0; ref?.type === 'tag' && depth < 5; depth++) ref = api(`git/tags/${ref.sha}`)?.object
+  const sourceRef = () => {
+    let ref = api(`git/ref/tags/${plan.tag}`)?.object
+    for (let depth = 0; ref?.type === 'tag' && depth < 5; depth++) ref = api(`git/tags/${ref.sha}`)?.object
+    return ref
+  }
+  const ref = sourceRef()
   if (ref && (ref.type !== 'commit' || ref.sha !== plan.commit)) throw new Error('Release tag points to another source commit')
   if (existing) {
     if (!ref && existing.target_commitish !== plan.commit) throw new Error('Draft release targets another source commit')
@@ -124,14 +189,18 @@ export async function publishRelease(directory, run = command, expected) {
       return { state: 'already-published', url: existing.html_url }
     }
   } else {
-    run('gh', ['release', 'create', plan.tag, '--repo', plan.repository, '--target', plan.commit, '--draft', '--title', `pdfpal for Windows ${plan.version}`, '--notes-file', path.join(directory, 'release-notes.md'), '--latest=false', ...(plan.channel === 'preview' ? ['--prerelease'] : [])])
+    run('gh', ['release', 'create', plan.tag, '--repo', plan.repository, '--target', plan.commit, '--draft', '--title', `pdfpal for Windows and Linux ${plan.version}`, '--notes-file', path.join(directory, 'release-notes.md'), '--latest=false', ...(plan.channel === 'preview' ? ['--prerelease'] : [])])
   }
   // Replacing partial assets is allowed only while the release is still a draft.
   const draft = findRelease()
   if (!draft?.draft || draft.target_commitish !== plan.commit) throw new Error('Expected an unpublished draft for this source commit')
+  run('gh', ['release', 'edit', plan.tag, '--repo', plan.repository, '--title', `pdfpal for Windows and Linux ${plan.version}`, '--notes-file', path.join(directory, 'release-notes.md')])
   run('gh', ['release', 'upload', plan.tag, '--repo', plan.repository, ...plan.assets.map(asset => path.join(directory, asset.name)), '--clobber'])
   verifyRemoteAssets(findRelease(), plan)
   run('gh', ['release', 'edit', plan.tag, '--repo', plan.repository, '--draft=false', '--latest=false', `--prerelease=${plan.channel === 'preview'}`])
+  const published = findRelease(), publishedRef = sourceRef()
+  if (!published || published.draft || publishedRef?.type !== 'commit' || publishedRef.sha !== plan.commit) throw new Error('Published release source tag verification failed')
+  verifyRemoteAssets(published, plan)
   return { state: 'published', url: `https://github.com/${plan.repository}/releases/tag/${plan.tag}` }
 }
 
@@ -154,10 +223,16 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const version = process.env.RELEASE_VERSION ?? JSON.parse(await fs.readFile('desktop/version.json', 'utf8')).version
     const commit = process.env.RELEASE_COMMIT ?? process.env.GITHUB_SHA ?? command('git', ['rev-parse', 'HEAD'])
     const repository = process.env.GITHUB_REPOSITORY ?? 'andrepaim/pdfpal'
-    console.log(JSON.stringify(await prepareRelease(path.resolve(target), { version, commit, repository }), null, 2))
+    if (command('git', ['rev-parse', 'HEAD']) !== commit) throw new Error('Windows source commit does not match the actual checkout')
+    const sourceDirty = Boolean(command('git', ['status', '--porcelain']))
+    if (sourceDirty) throw new Error('Windows release requires a clean source checkout')
+    console.log(JSON.stringify(await prepareRelease(path.resolve(target), { version, commit, repository, sourceDirty }), null, 2))
+  } else if (mode === 'combine') {
+    const expected = { commit: process.env.RELEASE_COMMIT ?? process.env.GITHUB_SHA ?? command('git', ['rev-parse', 'HEAD']), repository: process.env.GITHUB_REPOSITORY ?? 'andrepaim/pdfpal', version: process.env.RELEASE_VERSION ?? JSON.parse(await fs.readFile('desktop/version.json', 'utf8')).version }
+    console.log(JSON.stringify(await prepareCombinedRelease(path.resolve(target), expected), null, 2))
   } else if (mode === 'publish') {
     const expected = process.env.GITHUB_ACTIONS === 'true' ? { commit: process.env.GITHUB_SHA, repository: process.env.GITHUB_REPOSITORY, version: process.env.RELEASE_VERSION } : undefined
     console.log(JSON.stringify(await publishRelease(path.resolve(target), command, expected), null, 2))
   }
-  else throw new Error('Usage: node desktop-release.mjs plan | prepare <artifacts> | publish <artifacts>')
+  else throw new Error('Usage: node desktop-release.mjs plan | prepare <artifacts> | combine <artifacts> | publish <artifacts>')
 }
