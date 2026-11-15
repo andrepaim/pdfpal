@@ -16,7 +16,7 @@ Status: in progress as of 2026-11-14. The engineering tasks that need no Windows
 | RET-07 | Kept: merging overlapping chunks and a deterministic tie-breaker. Rejected: per-source cap (this corpus cannot show its effect). |
 | RET-08 | Open. Paraphrase is still the weakest category: across the whole library the right page is in the top 16 for 67% of questions. |
 | RET-09 | Not run. It needs a real assistant. |
-| BETA-04 | Started. `2.8.0-beta.1` is cut as the beta baseline. `2.8.0-beta.2` adds only the fix for highlights across a page break. The M4 measurements have not been re-run on either. |
+| BETA-04 | Started. `2.8.0-beta.1` is cut as the beta baseline. `2.8.0-beta.2` adds only the fix for highlights across a page break. `2.8.0-beta.3` adds the rebuilt visual explanations (PR #17), the related-papers rate-limit fix and a fix for a shutdown stall at quit. The M4 measurements have not been re-run on any of them. |
 | BETA-01, BETA-05 to BETA-10 | Not started. |
 
 Whole-library results moved from 83.6% to 85.5% (right page in the top 6) and from 0.711 to 0.724 (mean reciprocal rank). That is one more question out of 55; treat it as a small, safe step. Every variant, kept or rejected, is recorded in [the retrieval baseline](retrieval-baseline.md).

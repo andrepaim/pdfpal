@@ -153,6 +153,19 @@ test('beta.2 release notes describe the cross-page highlight fix, and beta.1 omi
   } finally { await f.cleanup(); await earlier.cleanup() }
 })
 
+test('beta.3 release notes describe the new visual explanations and related papers, and beta.2 omits them', async () => {
+  const f = await fixture('2.8.0-beta.3'), earlier = await fixture('2.8.0-beta.2')
+  try {
+    await prepareRelease(f.directory, f.options)
+    const notes = await fs.readFile(path.join(f.directory, 'release-notes.md'), 'utf8')
+    assert.match(notes, /Clearer visual explanations/)
+    assert.match(notes, /Related papers load more reliably/)
+    assert.match(notes, /highlights across a page break/)
+    await prepareRelease(earlier.directory, earlier.options)
+    assert.doesNotMatch(await fs.readFile(path.join(earlier.directory, 'release-notes.md'), 'utf8'), /Clearer visual explanations/)
+  } finally { await f.cleanup(); await earlier.cleanup() }
+})
+
 test('ChatGPT preview release notes explain direct plan access', async () => {
   const f = await fixture('2.2.0-preview.1')
   try {
