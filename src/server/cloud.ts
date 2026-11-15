@@ -8,6 +8,8 @@ import { z } from "zod";
 import { Telemetry } from "../core/telemetry.js";
 import {errorReportsFor} from '../core/error-reports.js'
 import {FirebaseTransport} from '../sync/firebase.js'
+import {restoreAccountLibrary} from '../sync/recovery.js'
+import type {BackupService} from '../core/backups.js'
 export async function registerCloudRoutes(
   app: FastifyInstance,
   db: Database,
@@ -38,6 +40,7 @@ export async function registerCloudRoutes(
     vaultError = "Cloud credentials could not be unlocked; sign in again";
   }
   const worker = new SyncWorker(db, config, auth);
+  const accountController = new AbortController();
   const reports=errorReportsFor(db)
   reports.bind(()=>auth.credentials?.uid??'',()=>{const transport=new FirebaseTransport(auth,reports.signal);return {write:(id,event)=>transport.writeDiagnostic(id,event),list:()=>transport.diagnostics(),delete:id=>transport.deleteDiagnostic(id)}})
   app.get('/api/telemetry/reports',async()=>reports.overview())
@@ -49,12 +52,19 @@ export async function registerCloudRoutes(
   app.post('/api/telemetry/reports/renderer',async req=>{z.object({code:z.literal('RENDERER_CRASH')}).strict().parse(req.body);reports.record('RENDERER_CRASH');return {ok:true}})
   app.decorate('errorReports',reports)
   worker.error = vaultError;
+  let accountAction = false;
   const requireIdle = () => {
-    if (worker.running) throw Error("Wait for synchronization to finish");
+    if (worker.running || accountAction) throw Error("Wait for synchronization to finish");
   };
-  const timer = setInterval(() => {void worker.run();void reports.flush()}, 30_000);
+  const withAccountAction = async <T>(action: () => Promise<T>) => {
+    requireIdle();
+    accountAction = true;
+    try { return await action(); }
+    finally { accountAction = false; }
+  };
+  const timer = setInterval(() => {if (!accountAction) void worker.run();void reports.flush()}, 30_000);
   timer.unref();
-  app.addHook('preClose',async()=>{worker.stop();reports.stop()});
+  app.addHook('preClose',async()=>{accountController.abort();worker.stop();reports.stop()});
   const close = async () => {
     clearInterval(timer);
     worker.stop();
@@ -74,8 +84,7 @@ export async function registerCloudRoutes(
       throw Error("Local server is not listening");
     return { url: auth.start(`http://127.0.0.1:${address.port}`) };
   });
-  app.get("/api/cloud/auth/callback", async (req, reply) => {
-    requireIdle();
+  app.get("/api/cloud/auth/callback", async (req, reply) => withAccountAction(async () => {
     reply
       .header("Cache-Control", "no-store")
       .header("Referrer-Policy", "no-referrer");
@@ -97,7 +106,7 @@ export async function registerCloudRoutes(
           "Sign-in could not be completed. Return to pdfpal and try again.",
         );
     }
-  });
+  }));
   app.addContentTypeParser(
     "application/x-www-form-urlencoded",
     { parseAs: "string", bodyLimit: 20000 },
@@ -108,8 +117,7 @@ export async function registerCloudRoutes(
   app.post(
     "/api/cloud/auth/browser",
     { bodyLimit: 20000 },
-    async (req, reply) => {
-      requireIdle();
+    async (req, reply) => withAccountAction(async () => {
       reply
         .header("Cache-Control", "no-store")
         .header("Referrer-Policy", "no-referrer");
@@ -141,17 +149,27 @@ export async function registerCloudRoutes(
             "Sign-in could not be completed. Return to pdfpal and try again.",
           );
       }
-    },
+    }),
   );
-  app.post("/api/cloud/logout", async () => {
-    requireIdle();
+  app.post("/api/cloud/logout", async () => withAccountAction(async () => {
     reports.cancel();
     await auth.logout();
     return { ok: true };
-  });
+  }));
   app.get("/api/cloud/libraries", async () => worker.request("/libraries"));
-  app.post("/api/cloud/connect", async (req) => {
-    requireIdle();
+  app.get('/api/cloud/canonical', async () => ({ libraryId: await worker.transport.canonicalLibrary() }));
+  app.post('/api/cloud/canonical', async req => withAccountAction(async () => {
+    if (!auth.credentials) throw Error('Sign in first');
+    if (setting(db, 'owner') && setting(db, 'owner') !== auth.credentials.uid) throw Error('Sign in with the library owner');
+    const { libraryId } = z.object({ libraryId: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/) }).strict().parse(req.body);
+    return { libraryId: await worker.transport.claimCanonical(libraryId) };
+  }));
+  app.post('/api/cloud/restore-account', async req => withAccountAction(async () => {
+    z.object({}).strict().parse(req.body ?? {});
+    const backups = app.getDecorator<BackupService>('libraryBackups');
+    return restoreAccountLibrary(db, config, auth, () => backups.create('before-restore'), { signal: accountController.signal });
+  }));
+  app.post("/api/cloud/connect", async (req) => withAccountAction(async () => {
     const body = z
       .object({
         title: z.string().trim().min(1).max(200),
@@ -163,7 +181,7 @@ export async function registerCloudRoutes(
       .strict()
       .parse(req.body);
     return worker.connect(body.title, body.libraryId);
-  });
+  }));
   app.post("/api/cloud/pause", async (req) => {
     requireIdle();
     const { paused } = z
@@ -174,14 +192,14 @@ export async function registerCloudRoutes(
     return worker.status();
   });
   app.post("/api/cloud/sync", async () => {
+    requireIdle();
     await worker.run();
     return worker.status();
   });
-  app.post("/api/cloud/conversations", async (req) => {
-    requireIdle();
+  app.post("/api/cloud/conversations", async (req) => withAccountAction(async () => {
     z.object({ enabled: z.literal(true) }).strict().parse(req.body);
     return worker.enableConversations();
-  });
+  }));
   app.get('/api/cloud/files',async()=>({files:await worker.fileStatus(),...worker.status().pdfFiles}))
   app.post('/api/cloud/files',async req=>{requireIdle();return worker.setPdfFiles(z.object({enabled:z.boolean()}).strict().parse(req.body).enabled)})
   app.post<{Params:{id:string}}>('/api/cloud/files/:id/retry',async req=>{
@@ -197,9 +215,9 @@ export async function registerCloudRoutes(
       )
       .all(),
   );
-  app.post("/api/cloud/conflicts/:id/resolve", async (req) => {
+  app.post("/api/cloud/conflicts/:id/resolve", async (req) => withAccountAction(async () => {
     const choice = z.enum(["local", "remote"]).parse((req.body as any)?.choice);
     return worker.resolveNote((req.params as any).id, choice);
-  });
+  }));
   return close;
 }

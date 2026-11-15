@@ -163,29 +163,90 @@ export class FirebaseTransport {
     }
   }
   async libraries() {
-    const result = await this.http(`/users/${this.uid}/libraries?pageSize=100`);
-    return (result?.documents ?? []).map((d: any) => ({
-      id: d.name.split("/").at(-1),
-      ...decode({ mapValue: { fields: d.fields } }),
-    }));
+    const libraries: any[] = [];
+    let pageToken = '';
+    do {
+      const result = await this.http(`/users/${this.uid}/libraries?pageSize=100${pageToken ? '&pageToken=' + encodeURIComponent(pageToken) : ''}`);
+      libraries.push(...(result?.documents ?? []).map((d: any) => ({
+        id: d.name.split('/').at(-1),
+        ...decode({ mapValue: { fields: d.fields } }),
+      })));
+      pageToken = result?.nextPageToken ?? '';
+    } while (pageToken);
+    return libraries;
+  }
+  async canonicalLibrary(): Promise<string | null> {
+    const doc = await this.http(`/users/${this.uid}/settings/cloudLibrary`);
+    return doc ? identifier.parse(decode({ mapValue: { fields: doc.fields } }).libraryId) : null;
+  }
+  private pointerWrite(id: string) {
+    return {
+      update: { name: `${this.prefix}/users/${this.uid}/settings/cloudLibrary`, fields: encode({ libraryId: id }).mapValue.fields },
+      currentDocument: { exists: false },
+    };
+  }
+  async claimCanonical(id: string): Promise<string> {
+    identifier.parse(id);
+    const existing = await this.canonicalLibrary();
+    if (existing) {
+      if (existing !== id) throw Error('This Google account already has a different account library. Open that library separately to keep your local data.');
+      return existing;
+    }
+    const head = await this.head(id);
+    if (!head.active || ![1, 2].includes(head.protocol)) throw Error('Update pdfpal before connecting this cloud library');
+    try {
+      await this.http(':commit', { writes: [this.pointerWrite(id)] });
+      return id;
+    } catch (error) {
+      // A competing device may have selected the account library first. Never
+      // overwrite that choice, and never fall back to creating another library.
+      if (![400, 403, 409].includes((error as any).status)) throw error;
+      const winner = await this.canonicalLibrary();
+      if (winner === id) return id;
+      if (winner) throw Error('Another device selected a different account library. Reload Cloud Sync before continuing.');
+      throw error;
+    }
+  }
+  async resolveLibrary(title: string, selected?: string): Promise<{ id: string; created: boolean }> {
+    const canonical = await this.canonicalLibrary();
+    if (canonical) {
+      if (selected && selected !== canonical) throw Error('Connect the account library selected for this Google account.');
+      return { id: canonical, created: false };
+    }
+    const libraries = await this.libraries();
+    if (selected) {
+      if (!libraries.some(library => library.id === selected)) throw Error('Library not found');
+      return { id: await this.claimCanonical(selected), created: false };
+    }
+    if (libraries.length === 1) return { id: await this.claimCanonical(libraries[0]!.id), created: false };
+    if (libraries.length > 1) throw Error('Older versions created multiple cloud libraries. Choose the account library in Cloud Sync before connecting. All library data has been preserved.');
+    return this.createFirstLibrary(title);
   }
   async create(title: string) {
+    const resolved = await this.resolveLibrary(title);
+    return { ...(await this.head(resolved.id)), ...resolved };
+  }
+  private async createFirstLibrary(title: string) {
     const id = randomUUID(),
       generation = randomUUID();
-    await this.http(
-      "/" + this.root(id),
-      {
-        fields: encode({
+    try {
+      await this.http(':commit', { writes: [
+        this.pointerWrite(id),
+        { update: { name: `${this.prefix}/${this.root(id)}`, fields: encode({
           title,
           generation,
           sequence: 0,
           active: true,
           protocol: 1,
-        }).mapValue.fields,
-      },
-      "PATCH",
-    );
-    return { id, generation, title };
+        }).mapValue.fields }, currentDocument: { exists: false } },
+      ] });
+      return { id, generation, title, created: true };
+    } catch (error) {
+      if (![400, 403, 409].includes((error as any).status)) throw error;
+      const winner = await this.canonicalLibrary();
+      if (winner) return { id: winner, ...(await this.head(winner)), created: false };
+      throw error;
+    }
   }
   async changes(id: string, cursor: number) {
     const result = await this.http("/" + this.root(id) + ":runQuery", {

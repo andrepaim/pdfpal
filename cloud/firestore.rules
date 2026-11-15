@@ -16,6 +16,17 @@ service cloud.firestore { match /databases/{database}/documents {
   allow update: if owner(uid) && request.resource.data == resource.data;
  }
  function id(v) { return v is string && v.matches('[A-Za-z0-9_-]{1,128}'); }
+ match /users/{uid}/settings/cloudLibrary {
+  function selectedLibrary() {
+   return getAfter(/databases/$(database)/documents/users/$(uid)/libraries/$(request.resource.data.libraryId)).data;
+  }
+  allow read: if owner(uid);
+  // A legacy library may be selected without changing any of its contents.
+  // Once selected, the account's library cannot be replaced or removed.
+  allow create: if owner(uid) && request.resource.data.keys().hasAll(['libraryId'])
+   && request.resource.data.keys().hasOnly(['libraryId']) && id(request.resource.data.libraryId)
+   && selectedLibrary().active == true && selectedLibrary().protocol in [1, 2];
+ }
  function validChat(type,p) {
   return p is map && id(p.id) && p.created_at is string && p.created_at.size() <= 40 && (
    (type == 'chat_sessions' && p.keys().hasAll(['id','created_at','project_id','source_id','title'])
@@ -55,7 +66,10 @@ service cloud.firestore { match /databases/{database}/documents {
     && (d.payload == null || ((validPayload(d.entityType,d.payload) || validChat(d.entityType,d.payload)) && d.payload.id == d.entityId));
   }
   allow read: if owner(uid);
-  allow create: if owner(uid) && id(library) && request.resource.data.keys().hasOnly(['title','generation','sequence','active','protocol'])
+  allow create: if owner(uid) && id(library)
+    && !exists(/databases/$(database)/documents/users/$(uid)/settings/cloudLibrary)
+    && getAfter(/databases/$(database)/documents/users/$(uid)/settings/cloudLibrary).data.libraryId == library
+    && request.resource.data.keys().hasOnly(['title','generation','sequence','active','protocol'])
     && request.resource.data.title is string && request.resource.data.title.size() <= 200
     && id(request.resource.data.generation) && request.resource.data.sequence == 0 && request.resource.data.active == true && request.resource.data.protocol == 1;
   allow update: if owner(uid) && resource.data.active == true

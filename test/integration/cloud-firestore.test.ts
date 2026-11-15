@@ -44,6 +44,7 @@ test(
         rules: await fs.readFile("cloud/firestore.rules", "utf8"),
       },
     });
+    t.beforeEach(async () => { await env.clearFirestore(); });
     const client = (uid: string) => {
       const auth = new CloudAuth({} as any);
       auth.credentials = {
@@ -93,6 +94,68 @@ test(
       },
     });
     try {
+      await t.test('one account library is created atomically and its selection is immutable', async () => {
+        const database = env.authenticatedContext('singleton').firestore();
+        const pointer = doc(database, 'users/singleton/settings/cloudLibrary');
+        const head = { title: 'Synthetic', generation: randomUUID(), sequence: 0, active: true, protocol: 1 };
+        const create = (id: string) => {
+          const batch = writeBatch(database);
+          batch.set(doc(database, `users/singleton/libraries/${id}`), head);
+          batch.set(pointer, { libraryId: id });
+          return batch.commit();
+        };
+        await assertFails(setDoc(doc(database, 'users/singleton/libraries/unclaimed'), head));
+        const results = await Promise.allSettled([create('first'), create('second')]);
+        assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
+        assert.equal(results.filter(result => result.status === 'rejected').length, 1);
+        const selected = (await getDoc(pointer)).data()!.libraryId;
+        const other = selected === 'first' ? 'second' : 'first';
+        assert.equal((await getDoc(doc(database, `users/singleton/libraries/${selected}`))).exists(), true);
+        assert.equal((await getDoc(doc(database, `users/singleton/libraries/${other}`))).exists(), false);
+        await assertFails(setDoc(doc(database, 'users/singleton/libraries/third'), head));
+        await assertFails(create('third'));
+        await assertFails(setDoc(pointer, { libraryId: other }));
+        await assertFails(setDoc(pointer, { libraryId: selected }));
+        await assertFails(deleteDoc(pointer));
+        await assertFails(getDoc(doc(env.authenticatedContext('stranger').firestore(), pointer.path)));
+        await assertFails(deleteDoc(doc(env.authenticatedContext('stranger').firestore(), pointer.path)));
+      });
+      await t.test('legacy selection preserves all libraries and rejects invalid targets', async () => {
+        const database = env.authenticatedContext('legacy').firestore();
+        const head = { title: 'Synthetic', generation: randomUUID(), sequence: 37, active: true, protocol: 2 };
+        await env.withSecurityRulesDisabled(async context => {
+          const admin = context.firestore();
+          await setDoc(doc(admin, 'users/legacy/libraries/windows'), head);
+          await setDoc(doc(admin, 'users/legacy/libraries/linux'), { ...head, sequence: 9, protocol: 1 });
+          await setDoc(doc(admin, 'users/legacy/libraries/inactive'), { ...head, active: false });
+          await setDoc(doc(admin, 'users/legacy/libraries/unsupported'), { ...head, protocol: 3 });
+          await setDoc(doc(admin, 'users/another/libraries/private'), head);
+        });
+        const pointer = doc(database, 'users/legacy/settings/cloudLibrary');
+        await assertFails(setDoc(pointer, { libraryId: 'missing' }));
+        await assertFails(setDoc(pointer, { libraryId: 'inactive' }));
+        await assertFails(setDoc(pointer, { libraryId: 'unsupported' }));
+        await assertFails(setDoc(pointer, { libraryId: 'private' }));
+        await assertFails(setDoc(pointer, { libraryId: '../windows' }));
+        await assertFails(setDoc(pointer, { libraryId: 'windows', extra: true }));
+        await assertFails(setDoc(doc(env.authenticatedContext('stranger').firestore(), pointer.path), { libraryId: 'windows' }));
+        await setDoc(pointer, { libraryId: 'windows' });
+        assert.deepEqual((await getDoc(doc(database, 'users/legacy/libraries/windows'))).data(), head);
+        assert.equal((await getDoc(doc(database, 'users/legacy/libraries/linux'))).data()!.sequence, 9);
+        await assertFails(setDoc(pointer, { libraryId: 'linux' }));
+        await assertFails(deleteDoc(doc(database, 'users/legacy/libraries/linux')));
+        // Existing clients can still write their existing library while recovery is planned.
+        await updateDoc(doc(database, 'users/legacy/libraries/linux'), { protocol: 2 });
+        assert.equal((await getDoc(doc(database, 'users/legacy/libraries/linux'))).data()!.protocol, 2);
+      });
+      await t.test('simultaneous first connections through production transport return the same library', async () => {
+        const first = client('new-account'), second = client('new-account');
+        const [a, b] = await Promise.all([first.resolveLibrary('First device'), second.resolveLibrary('Second device')]);
+        assert.equal(a.id, b.id);
+        assert.equal([a, b].filter(library => library.created).length, 1);
+        assert.equal((await first.libraries()).length, 1);
+        assert.equal(await first.canonicalLibrary(), a.id);
+      });
       await t.test(
         "owner commits, retries, and paginates production REST transport",
         async () => {
