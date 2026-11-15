@@ -5,7 +5,7 @@
  */
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { registerPendingSave } from './lib/persistence'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import PdfViewer from './components/PdfViewer'
 import ChatPanel from './components/ChatPanel'
 import { sourcesApi, notesApi, annotationsApi, type Source, type Note, type Annotation } from './lib/api'
@@ -15,10 +15,14 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import RelatedPanel from './components/RelatedPanel'
 import { kindleLaunchUrl } from '../../src/shared/kindle-book'
+import SharePostPanel from './components/SharePostPanel'
+import HighlightMenu, { type HighlightMenuState } from './components/HighlightMenu'
+import { shareCardApi } from './lib/share-card-api'
+import type { ShareCardSummary } from '../../src/shared/share-card'
 
 interface User { email: string; name: string; picture: string }
 
-type RightPanel = 'chat' | 'notes' | 'related'
+type RightPanel = 'chat' | 'notes' | 'related' | 'post'
 
 // ── Inline source note editor ─────────────────────────────────────────────────
 function SourceNotePanel({ projectId, sourceId }: { projectId: string; sourceId: string }) {
@@ -150,6 +154,8 @@ function SourceNotePanel({ projectId, sourceId }: { projectId: string; sourceId:
 export default function App({ user }: { user: User }) {
   const { projectId, sourceId } = useParams<{ projectId: string; sourceId: string }>()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const postParam = searchParams.get('post')
 
   const [source, setSource] = useState<Source | null>(null)
   const [pdfText, setPdfText] = useState('')
@@ -167,6 +173,13 @@ export default function App({ user }: { user: User }) {
   const [error, setError] = useState('')
   const [rightPanel, setRightPanel] = useState<RightPanel>('chat')
   const [isResizing, setIsResizing] = useState(false)
+  // Share posts: the open post, this source's posts (for marks and Open post), and a start that did not begin.
+  const [postId, setPostId] = useState<string | null>(null)
+  const [posts, setPosts] = useState<ShareCardSummary[]>([])
+  const [postNotice, setPostNotice] = useState<string | null>(null)
+  const [postPage, setPostPage] = useState<number | null>(null)
+  const [highlightMenu, setHighlightMenu] = useState<HighlightMenuState | null>(null)
+  const [jumpTo, setJumpTo] = useState<{ page: number; key: string } | null>(null)
 
   const splitRef = useRef<HTMLDivElement>(null)
   const dragging = useRef(false)
@@ -180,11 +193,14 @@ export default function App({ user }: { user: User }) {
     if (!projectId || !sourceId) return
     setLoading(true)
     setError('')
+    // A link to a post opens it beside its page.
+    const linked = new URLSearchParams(window.location.search).get('post')
     Promise.all([
       sourcesApi.get(projectId, sourceId),
       annotationsApi.list(projectId, sourceId),
+      linked ? shareCardApi.get(projectId, linked).catch(() => null) : Promise.resolve(null),
     ])
-      .then(([s, anns]) => {
+      .then(([s, anns, post]) => {
         if (progressTimer.current) clearTimeout(progressTimer.current)
         progressTimer.current = null
         pendingProgress.current = null
@@ -195,12 +211,51 @@ export default function App({ user }: { user: User }) {
         setPdfPages(s.pages || 0)
         setPdfLabel(s.title || s.url || 'PDF')
         setAnnotations(anns)
+        if (post) { setPostId(post.id); setPostPage(post.source.page); setRightPanel('post') }
+        else setPostPage(null)
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
   }, [projectId, sourceId])
 
   useEffect(() => { loadSource() }, [loadSource])
+
+  const loadPosts = useCallback(() => {
+    if (!projectId || !sourceId) return
+    shareCardApi.list(projectId, sourceId).then(setPosts).catch(() => { /* Marks are an extra; reading still works. */ })
+  }, [projectId, sourceId])
+  useEffect(() => { loadPosts() }, [loadPosts])
+  useEffect(() => { setPostId(null); setPostNotice(null); setHighlightMenu(null) }, [projectId, sourceId])
+
+  /** Opens a post in the Post tab, keeps it in the address, and brings its page into view when asked. */
+  const openPost = useCallback((id: string | null, page?: number) => {
+    setPostId(id)
+    setPostNotice(null)
+    setRightPanel('post')
+    setSearchParams(params => { const next = new URLSearchParams(params); if (id) next.set('post', id); else next.delete('post'); return next }, { replace: true })
+    if (id && page) setJumpTo({ page, key: `${id}:${Date.now()}` })
+  }, [setSearchParams])
+  // Follow a post link opened while this source is already showing; loadSource handles the one it opened with.
+  const seenPostParam = useRef(postParam)
+  useEffect(() => {
+    if (postParam === seenPostParam.current) return
+    seenPostParam.current = postParam
+    if (!postParam || postParam === postId || !projectId) return
+    shareCardApi.get(projectId, postParam).then(post => openPost(post.id, post.source.page)).catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [postParam])
+
+  const postsByAnnotation = new Map(posts.filter(post => post.annotation_id).map(post => [post.annotation_id!, post]))
+
+  const createPost = async (annotation: Annotation) => {
+    if (!projectId) return
+    setRightPanel('post'); setPostId(null); setPostNotice(null)
+    try {
+      const record = await shareCardApi.start(projectId, annotation.id)
+      openPost(record.id)
+      loadPosts()
+    } catch (error) { setPostNotice((error as Error).message) }
+  }
   useEffect(() => { setSelectedText(''); setSelectedPage(null); setVisualSelectionRequest(null) }, [projectId, sourceId])
 
   const flushReadingProgress = useCallback(() => {
@@ -294,10 +349,26 @@ export default function App({ user }: { user: User }) {
     setAnnotations(prev => [...prev, ann])
   }
 
-  const handleHighlightClick = (ann: Annotation) => {
+  const askAboutHighlight = (ann: Annotation) => {
     setSelectedText(ann.text)
     setSelectedPage(ann.page_number)
     setRightPanel('chat')
+  }
+
+  const handleHighlightClick = (annotation: Annotation, point: { x: number; y: number }) => setHighlightMenu({ annotation, x: point.x, y: point.y })
+
+  const recolorHighlight = async (annotation: Annotation, color: string) => {
+    if (!projectId || !sourceId) return
+    const updated = await annotationsApi.updateColor(projectId, sourceId, annotation.id, color)
+    setAnnotations(prev => prev.map(item => item.id === annotation.id ? { ...item, ...updated } : item))
+  }
+
+  // Deleted highlights go to Recovery; a post made from one keeps its own copy of the passage.
+  const deleteHighlight = async (annotation: Annotation) => {
+    if (!projectId || !sourceId) return
+    await annotationsApi.delete(projectId, sourceId, annotation.id)
+    setAnnotations(prev => prev.filter(item => item.id !== annotation.id))
+    loadPosts()
   }
 
   // New sources are stored under ~/.pdfpal/files and served by source ID.
@@ -417,7 +488,9 @@ export default function App({ user }: { user: User }) {
             key={viewerUrl}
             url={viewerUrl}
             pages={pdfPages}
-            initialPage={source?.last_page_read ?? 1}
+            initialPage={postPage ?? source?.last_page_read ?? 1}
+            jumpTo={jumpTo}
+            postAnnotationIds={postsByAnnotation}
             isResizing={isResizing}
             onPageChange={handlePageChange}
             onTextSelected={(text, page) => { setSelectedText(text); setSelectedPage(page ?? null); setRightPanel('chat') }}
@@ -446,6 +519,7 @@ export default function App({ user }: { user: User }) {
             {tabBtn('chat', '💬 Chat')}
             {tabBtn('notes', '📝 Notes')}
             {tabBtn('related', '🔗 Related')}
+            {tabBtn('post', '✦ Post')}
           </div>
 
           {rightPanel === 'chat' && (
@@ -468,8 +542,24 @@ export default function App({ user }: { user: User }) {
           {rightPanel === 'related' && projectId && sourceId && source && (
             <RelatedPanel projectId={projectId} sourceId={sourceId} sourceUrl={source.url || ''} />
           )}
+          {rightPanel === 'post' && projectId && sourceId && (
+            <SharePostPanel projectId={projectId} sourceId={sourceId} postId={postId} notice={postNotice}
+              onOpen={id => openPost(id, id ? posts.find(post => post.id === id)?.page : undefined)} onChanged={loadPosts} />
+          )}
         </div>
       </div>
+      {highlightMenu && (
+        <HighlightMenu menu={highlightMenu} hasPost={postsByAnnotation.has(highlightMenu.annotation.id)}
+          onClose={() => setHighlightMenu(null)}
+          onAsk={() => askAboutHighlight(highlightMenu.annotation)}
+          onPost={() => {
+            const existing = postsByAnnotation.get(highlightMenu.annotation.id)
+            if (existing) openPost(existing.id)
+            else void createPost(highlightMenu.annotation)
+          }}
+          onColor={color => void recolorHighlight(highlightMenu.annotation, color)}
+          onDelete={() => void deleteHighlight(highlightMenu.annotation)} />
+      )}
     </div>
   )
 }

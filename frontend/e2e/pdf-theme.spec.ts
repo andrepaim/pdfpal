@@ -124,6 +124,8 @@ test.describe('PDF page appearance', () => {
     await expect(highlight).toHaveCSS('mix-blend-mode', 'screen');
     await page.getByRole('textbox').fill('My question about this passage');
     await highlight.click();
+    // A click on a highlight opens its menu; Ask attaches the passage to chat as before.
+    await page.getByRole('menuitem', { name: /Ask/ }).click();
     await expect(page.getByRole('textbox')).toHaveValue('My question about this passage');
     await expect(page.getByText('Selection attached — ask a question or type /visual')).toBeVisible();
     await expect(page.getByTitle(selected, { exact: true }).filter({ hasText: selected })).toBeVisible();

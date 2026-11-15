@@ -175,10 +175,12 @@ test('every text and ground pair reaches 4.5:1 in every look and Marker colour',
   }
 })
 
-test('the renderer\'s browser modules keep zod and the schema module out of the bundle', () => {
-  const directory = path.resolve(import.meta.dirname, '../../frontend/src/lib/share-card')
-  for (const file of fs.readdirSync(directory).filter(name => /\.tsx?$/.test(name))) {
-    const source = fs.readFileSync(path.join(directory, file), 'utf8')
+test('the share-card browser modules keep zod and the schema module out of the bundle', () => {
+  const root = path.resolve(import.meta.dirname, '../..'), directory = path.join(root, 'frontend/src/lib/share-card')
+  const files = [...fs.readdirSync(directory).filter(name => /\.tsx?$/.test(name)).map(name => path.join(directory, name)),
+    ...['src/shared/share-card.ts', 'frontend/src/lib/share-card-api.ts', 'frontend/src/components/SharePostPanel.tsx', 'frontend/src/components/HighlightMenu.tsx'].map(file => path.join(root, file))]
+  for (const file of files) {
+    const source = fs.readFileSync(file, 'utf8')
     for (const [, specifier] of source.matchAll(/^(?:import|export)\s+(?!type\b)[^;]*?from\s+'([^']+)'/gm))
       assert.ok(specifier !== 'zod' && !/share-card-schema/.test(specifier!), `${file} imports ${specifier} at runtime`)
   }

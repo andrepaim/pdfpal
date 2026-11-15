@@ -1,11 +1,14 @@
 import { useLibraryChanges } from '../lib/library-changes'
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { projectsApi, sourcesApi, collectionsApi, notesApi, chatApi, searchApi, highlightsApi, type Project, type Source, type Collection, type Note, type ChatSession, type SearchPassage, type Highlight } from '../lib/api'
 import SearchPaperModal from '../components/SearchPaperModal'
 import CollectionDialog from '../components/CollectionDialog'
 import { timeAgo } from '../lib/time'
 import { kindleLaunchUrl } from '../../../src/shared/kindle-book'
+import SharePostPanel from '../components/SharePostPanel'
+import { shareCardApi } from '../lib/share-card-api'
+import type { ShareCardSummary } from '../../../src/shared/share-card'
 
 type Tab = 'sources' | 'search' | 'notes' | 'chats' | 'highlights'
 
@@ -420,9 +423,17 @@ function SearchTab({ projectId }: { projectId: string }) {
 function HighlightsTab({ projectId }: { projectId: string }) {
   const navigate = useNavigate()
   const [highlights, setHighlights] = useState<Highlight[]>([])
+  const [posts, setPosts] = useState<ShareCardSummary[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [starting, setStarting] = useState<string | null>(null)
+  // A post whose PDF was removed cannot open in the reader, so it opens here.
+  const [openPost, setOpenPost] = useState<string | null>(null)
 
-  useEffect(() => { highlightsApi.list(projectId).then(setHighlights).finally(() => setLoading(false)) }, [projectId])
+  const loadPosts = useCallback(() => shareCardApi.list(projectId).then(setPosts).catch(() => { /* The highlights still show. */ }), [projectId])
+  useEffect(() => {
+    Promise.all([highlightsApi.list(projectId).then(setHighlights), loadPosts()]).finally(() => setLoading(false))
+  }, [projectId, loadPosts])
 
   const colors: Record<string, string> = { yellow: '#fde047', green: '#4ade80', blue: '#60a5fa', pink: '#f472b6' }
   const bySource = useMemo(() => {
@@ -430,32 +441,78 @@ function HighlightsTab({ projectId }: { projectId: string }) {
     for (const h of highlights) (map.get(h.source_id) ?? map.set(h.source_id, { title: h.source_title, items: [] }).get(h.source_id)!).items.push(h)
     return [...map.entries()]
   }, [highlights])
+  const postFor = useMemo(() => new Map(posts.filter(post => post.annotation_id).map(post => [post.annotation_id!, post])), [posts])
+  const sourceTitle = (sourceId: string | null) => sourceId ? highlights.find(h => h.source_id === sourceId)?.source_title : undefined
+  const reader = (sourceId: string, postId?: string) => navigate(`/projects/${projectId}/sources/${sourceId}${postId ? `?post=${encodeURIComponent(postId)}` : ''}`)
+  const showPost = (post: ShareCardSummary) => post.source_id ? reader(post.source_id, post.id) : setOpenPost(post.id)
+  const createPost = async (highlight: Highlight) => {
+    setStarting(highlight.id); setError('')
+    try { reader(highlight.source_id, (await shareCardApi.start(projectId, highlight.id)).id) }
+    catch (e) { setError((e as Error).message) }
+    finally { setStarting(null) }
+  }
+  const small: React.CSSProperties = { background: 'none', border: '1px solid var(--border)', color: '#c7d2fe', borderRadius: 6, padding: '2px 8px', fontSize: 11, cursor: 'pointer', flexShrink: 0, alignSelf: 'flex-start' }
 
   return (
+    <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--panel)', flexShrink: 0 }}>
         <span style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>Highlights</span>
       </div>
       <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+        {error && <p role="alert" style={{ color: '#f87171', fontSize: 12, marginTop: 0 }}>{error}</p>}
+        {!loading && posts.length > 0 && (
+          <section aria-label="Posts" style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#e5e7eb', marginBottom: 8 }}>✦ Posts</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {posts.map(post => (
+                <button key={post.id} onClick={() => showPost(post)} data-post-id={post.id}
+                  style={{ textAlign: 'left', background: openPost === post.id ? '#1e1b4b' : 'var(--panel)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span style={{ fontSize: 12, color: '#e5e7eb', fontWeight: 600 }}>{post.title}</span>
+                  <span style={{ fontSize: 10, color: '#6b7280' }}>
+                    {[sourceTitle(post.source_id), `p. ${post.page}`, post.status === 'complete' ? '' : post.status === 'failed' ? 'Couldn’t finish' : post.status === 'cancelled' ? 'Paused' : 'Writing…',
+                      !post.source_id ? 'PDF removed' : !post.annotation_id ? 'Highlight deleted' : ''].filter(Boolean).join(' · ')}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
         {loading ? <div style={{ textAlign: 'center', paddingTop: 40, color: '#4b5563' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
-          : highlights.length === 0 ? <div style={{ textAlign: 'center', paddingTop: 60, color: '#4b5563' }}><div style={{ fontSize: 36, marginBottom: 12 }}>🖊</div>No highlights yet. Select text in a PDF and choose Highlight.</div>
+          : highlights.length === 0 ? (posts.length ? null : <div style={{ textAlign: 'center', paddingTop: 60, color: '#4b5563' }}><div style={{ fontSize: 36, marginBottom: 12 }}>🖊</div>No highlights yet. Select text in a PDF and choose Highlight.</div>)
           : bySource.map(([sourceId, group]) => (
             <div key={sourceId} style={{ marginBottom: 18 }}>
               <div onClick={() => navigate(`/projects/${projectId}/sources/${sourceId}`)}
                 style={{ fontSize: 13, fontWeight: 700, color: '#e5e7eb', marginBottom: 8, cursor: 'pointer' }}>📄 {group.title}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {group.items.map(h => (
-                  <div key={h.id} onClick={() => navigate(`/projects/${projectId}/sources/${sourceId}`)}
-                    style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderLeft: `3px solid ${colors[h.color] ?? colors.yellow}`, borderRadius: 8, padding: '8px 12px', cursor: 'pointer', display: 'flex', gap: 10 }}>
-                    <span style={{ fontSize: 10, color: '#6b7280', flexShrink: 0, marginTop: 2 }}>p{h.page_number}</span>
-                    <span style={{ fontSize: 12, color: '#d1d5db', lineHeight: 1.5 }}>{h.text}</span>
-                  </div>
-                ))}
+                {group.items.map(h => {
+                  const post = postFor.get(h.id)
+                  return (
+                    <div key={h.id} data-highlight-id={h.id} onClick={() => navigate(`/projects/${projectId}/sources/${sourceId}`)}
+                      style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderLeft: `3px solid ${colors[h.color] ?? colors.yellow}`, borderRadius: 8, padding: '8px 12px', cursor: 'pointer', display: 'flex', gap: 10 }}>
+                      <span style={{ fontSize: 10, color: '#6b7280', flexShrink: 0, marginTop: 2 }}>p{h.page_number}</span>
+                      <span style={{ fontSize: 12, color: '#d1d5db', lineHeight: 1.5, flex: 1 }}>
+                        {post && <span title="This highlight has a post" aria-label="Has a post" style={{ color: '#a5b4fc', marginRight: 6 }}>✦</span>}
+                        {h.text}
+                      </span>
+                      <button style={small} disabled={starting === h.id}
+                        onClick={event => { event.stopPropagation(); if (post) showPost(post); else void createPost(h) }}>
+                        {post ? 'Open post' : starting === h.id ? 'Starting…' : 'Create post'}
+                      </button>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           ))
         }
       </div>
+    </div>
+    {openPost && (
+      <div style={{ width: 'min(460px, 45%)', borderLeft: '1px solid var(--border)', background: 'var(--panel)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <SharePostPanel projectId={projectId} postId={openPost} onOpen={id => setOpenPost(id)} onChanged={() => void loadPosts()} />
+      </div>
+    )}
     </div>
   )
 }
