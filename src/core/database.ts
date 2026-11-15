@@ -262,6 +262,9 @@ function migrate(db: DatabaseType): void {
   installCliOperations(db)
   db.exec("INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES (15,datetime('now'))")
   // Share cards: one post per highlight, drawn on demand from stored words. Local only, never synced.
+  // Version 16 never shipped in a published build. The first build's table (without destination and take) is only
+  // in test libraries, so it is dropped rather than migrated. See docs/share-posts-plan.md.
+  if (tableExists(db, 'share_cards') && !columnExists(db, 'share_cards', 'destination')) db.exec('DROP TABLE share_cards')
   db.exec(`CREATE TABLE IF NOT EXISTS share_cards (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -273,6 +276,7 @@ function migrate(db: DatabaseType): void {
       source_json TEXT NOT NULL,
       card_json TEXT, caption_json TEXT, previous_json TEXT,
       instruction TEXT NOT NULL DEFAULT '',
+      destination TEXT NOT NULL DEFAULT 'linkedin', take TEXT NOT NULL DEFAULT '',
       error TEXT, error_detail TEXT, agent TEXT, model TEXT,
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     );

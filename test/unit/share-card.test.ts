@@ -1,10 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  CARD, captionText, cardDescription, cleanPassage, creditLine, defaultLook, defaultStyle, highlightColor, publicUrl, quoteMatches, validateCard,
-  type CardContent, type ShareCardSource,
+  CARD, DESTINATION_DEFAULTS, DRAFT, TAKE_MAX, captionText, cardDescription, cleanPassage, creditLine, defaultLook, draftLimits, firstCommentText,
+  highlightColor, numbersIn, publicUrl, quoteMatches, sourceLine, unsupportedNumbers, validateCard,
+  type Caption, type CardContent, type ShareCardSource,
 } from '../../src/shared/share-card.js'
-import { cardContentSchema, shareCardSourceSchema } from '../../src/shared/share-card-schema.js'
+import { captionSchema, cardContentSchema, previousVersionSchema, shareCardSourceSchema } from '../../src/shared/share-card-schema.js'
 
 const passage = 'Attention lets every position look at every other one. However, the cost grows with the square of the sequence length.'
 const source: ShareCardSource = {
@@ -99,22 +100,64 @@ test('cleanPassage collapses every whitespace run and trims', () => {
   assert.equal(cleanPassage('\n\n'), '')
 })
 
-test('captionText composes the body, source, link and hashtags', () => {
-  const caption = { body: 'Hook line.\n\nBody text.', hashtags: ['attention', 'ml', 'research'], edited: null }
-  assert.equal(captionText(source, caption),
-    'Hook line.\n\nBody text.\n\n📄 Attention Is All You Need · Vaswani et al., 2017 · p. 4\n\n#attention #ml #research')
-  assert.equal(captionText({ ...source, credit: '', url: 'https://arxiv.org/abs/1706.03762' }, caption),
-    'Hook line.\n\nBody text.\n\n📄 Attention Is All You Need · p. 4\nhttps://arxiv.org/abs/1706.03762\n\n#attention #ml #research')
-  assert.equal(captionText({ ...source, title: ' ', credit: '' }, { ...caption, hashtags: [] }), 'Hook line.\n\nBody text.\n\n📄 p. 4')
-  assert.equal(captionText(source, { ...caption, edited: 'My own words.' }), 'My own words.')
+const caption: Caption = {
+  destination: 'linkedin', take: '', angle: 'finding', hashtags: ['attention', 'ml', 'research'], showTags: false, link: 'post', edited: null,
+  drafts: { finding: 'Hook line.\n\nBody text.', contrast: 'Belief line.\n\nBut the paper.', caveat: '' },
+}
+const linked = { ...source, url: 'https://arxiv.org/abs/1706.03762' }
+const SOURCE_LINE = '📄 Attention Is All You Need · Vaswani et al., 2017 · p. 4'
+
+test('captionText composes the chosen draft, source line, link and hashtags for LinkedIn', () => {
+  assert.equal(sourceLine(source), SOURCE_LINE)
+  assert.equal(sourceLine({ ...source, title: ' ', credit: '' }), '📄 p. 4')
+  assert.equal(captionText(linked, caption), `Hook line.\n\nBody text.\n\n${SOURCE_LINE}\nhttps://arxiv.org/abs/1706.03762`)
+  assert.equal(captionText(linked, { ...caption, angle: 'contrast' }), `Belief line.\n\nBut the paper.\n\n${SOURCE_LINE}\nhttps://arxiv.org/abs/1706.03762`)
+  // The link held back for the first comment; hashtags only when shown.
+  assert.equal(captionText(linked, { ...caption, link: 'comment', showTags: true }), `Hook line.\n\nBody text.\n\n${SOURCE_LINE}\n\n#attention #ml #research`)
+  assert.equal(captionText(source, { ...caption, showTags: true, hashtags: [] }), `Hook line.\n\nBody text.\n\n${SOURCE_LINE}`)
+  // An empty angle falls back to the finding; edited text replaces everything.
+  assert.equal(captionText(source, { ...caption, angle: 'caveat' }), `Hook line.\n\nBody text.\n\n${SOURCE_LINE}`)
+  assert.equal(captionText(linked, { ...caption, edited: 'My own words.' }), 'My own words.')
+  assert.equal(firstCommentText(linked), `${SOURCE_LINE}\nhttps://arxiv.org/abs/1706.03762`)
+  assert.equal(firstCommentText(source), '')
   assert.equal(creditLine(source), 'Vaswani et al., 2017 · p. 4')
   assert.equal(creditLine({ credit: '', page: 9 }), 'p. 9')
 })
 
-test('defaultStyle leads with the quote up to 120 characters', () => {
-  assert.equal(defaultStyle('q'.repeat(CARD.quoteLeadsMax)), 'quote')
-  assert.equal(defaultStyle('q'.repeat(121)), 'idea')
-  assert.equal(defaultLook(), 'ink')
+test('captionText gives X the draft and the link only, and Instagram the source line, link and hashtags', () => {
+  const x: Caption = { ...caption, destination: 'x', showTags: true, link: 'comment' }
+  assert.equal(captionText(linked, x), 'Hook line.\n\nBody text.\n\nhttps://arxiv.org/abs/1706.03762')
+  assert.equal(captionText(source, x), 'Hook line.\n\nBody text.')
+  const instagram: Caption = { ...caption, destination: 'instagram', showTags: true, link: 'comment' }
+  assert.equal(captionText(linked, instagram), `Hook line.\n\nBody text.\n\n${SOURCE_LINE}\nhttps://arxiv.org/abs/1706.03762\n\n#attention #ml #research`)
+  assert.equal(captionText(source, { ...instagram, showTags: false }), `Hook line.\n\nBody text.\n\n${SOURCE_LINE}`)
+})
+
+test('the caption schema matches the contract and refuses an unknown destination or angle', () => {
+  assert.deepEqual(captionSchema.parse(caption), caption)
+  assert.deepEqual(previousVersionSchema.parse({ card, caption }), { card, caption })
+  assert.throws(() => captionSchema.parse({ ...caption, destination: 'facebook' }))
+  assert.throws(() => captionSchema.parse({ ...caption, angle: 'summary' }))
+  assert.throws(() => captionSchema.parse({ ...caption, link: 'bio' }))
+  assert.throws(() => captionSchema.parse({ ...caption, body: 'old shape' }))
+})
+
+test('draftLimits follow the destination, the take, a change and a link on X', () => {
+  assert.deepEqual(draftLimits('linkedin'), DRAFT.linkedin)
+  assert.deepEqual(draftLimits('instagram', { url: 'https://example.org' }), DRAFT.instagram)
+  // X counts a link as 23 characters, plus the blank line before it.
+  assert.deepEqual(draftLimits('x', { url: 'https://example.org/a/very/long/path' }), { ...DRAFT.x, maxChars: 255, hookMax: 255 })
+  // A change may make a draft shorter and a single paragraph.
+  assert.deepEqual(draftLimits('linkedin', { changed: true }), { ...DRAFT.linkedin, minWords: 10, minParagraphs: 1 })
+  assert.deepEqual(draftLimits('x', { changed: true }), DRAFT.x)
+  // A take is its own paragraph after at least one other; on X a long take raises the limits.
+  const take = 'word '.repeat(70).trim() + '.'
+  assert.equal(take.length, 350)
+  assert.deepEqual(draftLimits('x', { take }), { ...DRAFT.x, maxChars: 490, hookMax: 490, maxWords: 95, minParagraphs: 2 })
+  assert.deepEqual(draftLimits('x', { take: 'Short take.' }), { ...DRAFT.x, minParagraphs: 2 })
+  assert.deepEqual(draftLimits('linkedin', { take }), DRAFT.linkedin)
+  assert.equal(TAKE_MAX, 400)
+  assert.deepEqual(DESTINATION_DEFAULTS.instagram, { style: 'headline', size: 'feed', extraLines: 3, showTags: true })
 })
 
 test('cardDescription reads the words drawn in each style', () => {
@@ -143,4 +186,65 @@ test('publicUrl keeps only public http and https links', () => {
     assert.equal(publicUrl(bad), '', String(bad))
   }
   assert.equal(publicUrl('http://172.32.0.1/a'), 'http://172.32.0.1/a')
+})
+
+test('numbersIn finds every numeral as written, but not digits inside a name', () => {
+  assert.deepEqual(numbersIn('In 2017, 1,572 alliances (63%) rated g = .65; p53, CO2 and H1N1 are names.'), ['2017', '1,572', '63', '.65'])
+  assert.deepEqual(numbersIn('the 3rd trial, 1990s, 2021–2024, 8:30, −0.3, GPT-4'), ['3', '1990', '2021', '2024', '8', '30', '0.3', '4'])
+  assert.deepEqual(numbersIn('12\u2009345 people, 12 345 items and 1.234,5 euros'), ['12\u2009345', '12', '345', '1.234,5'])
+  assert.deepEqual(numbersIn('No digits at all, one or two words.'), [])
+})
+
+test('unsupportedNumbers compares numbers canonically and lets an ambiguous one through', () => {
+  // [draft, allowed text, numbers refused]
+  const cases: Array<[string, string, string[]]> = [
+    // Thousands separators, either way round, and the Portuguese and thin-space styles.
+    ['1,572 alliances', 'They looked at 1572 alliances', []],
+    ['1572 alliances', 'They looked at 1,572 alliances', []],
+    ['1,572 alianças', 'Foram 1.572 alianças', []],
+    ['12345 people', '12\u00a0345 people', []],
+    ['1,573 alliances', '1,572 alliances', ['1,573']],
+    // Percentages: the unit does not matter, only the number.
+    ['63% of them', 'rated 63 percent successful', []],
+    ['63 percent', 'rated 63% successful', []],
+    ['63 por cento', '63%', []],
+    ['64%', 'rated 63 percent successful', ['64']],
+    // Decimals: a leading point, a decimal comma, trailing zeros, and rounding to fewer places.
+    ['g = 0.65', 'an average effect of g = .65', []],
+    ['g = 0.65', 'efeito médio g = 0,65', []],
+    ['0.650', 'g = 0.65', []],
+    ['1.4 percent', 'by 1.35 percent', []],
+    ['1.3 percent', 'by 1.35 percent', []],
+    ['1.2 percent', 'by 1.35 percent', ['1.2']],
+    ['63%', 'rated 63.4 percent', []],
+    ['2 points', 'a gain of 1.5 points', ['2']],
+    ['0.65', 'g = 0.6', ['0.65']],
+    // Years and ranges: each end is a number; an abbreviated end is read in full.
+    ['in 2017', 'Vaswani et al., 2017', []],
+    ['a 2023 review', 'A review of 185 studies', ['2023']],
+    ['from 2021 to 2024', 'between 2021–2024', []],
+    ['in 2022', 'between 2021–2024', ['2022']],
+    ['until 2024', 'from 2021-24', []],
+    ['the 1990s', 'alliances from the 1990s', []],
+    // Ordinals and numbers spelled out in the source.
+    ['the 21st century', 'in the 21st century', []],
+    ['the 3rd trial', 'the third trial', []],
+    ['33 studies', 'thirty-three studies', []],
+    ['1 in 10', 'one in ten adults', []],
+    ['94 effect sizes', 'ninety four effect sizes', []],
+    ['34 studies', 'thirty-three studies', ['34']],
+    // Names with digits are not quantities; a sign is ignored; an unreadable token must appear as written.
+    ['p53 and CO2', 'nothing here', []],
+    ['GPT-4', 'nothing here', ['4']],
+    ['−0.3', 'a change of 0.3', []],
+    ['version 3.5.1', 'version 3.5.1', []],
+    ['version 3.5.2', 'version 3.5.1', ['3.5.2']],
+    ['47 and 47 again', 'nothing', ['47']],
+    ['1,5 vezes', '1.5 times', []],
+    ['33 studies and 94 effect sizes', 'Of 94 effect sizes across 33 studies', []],
+  ]
+  for (const [draft, allowed, refused] of cases) assert.deepEqual(unsupportedNumbers(draft, [allowed]), refused, `${draft} | ${allowed}`)
+  // Any of the allowed texts may hold the number.
+  assert.deepEqual(unsupportedNumbers('47 points in 2017 on p. 4', ['nothing', 'Vaswani et al., 2017', '4', 'I doubt the 47 points']), [])
+  assert.deepEqual(unsupportedNumbers('No numbers here.', []), [])
 })

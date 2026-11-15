@@ -1,12 +1,11 @@
 // Share cards: the contract between the pipeline (src/core/share-cards.ts), the server routes and the
-// reader's renderer. See docs/share-cards-plan.md. The server and the reader both import this module, so it
+// reader's renderer. See docs/share-posts-plan.md (and docs/share-cards-plan.md for the first build). The server and the reader both import this module, so it
 // imports neither Node nor DOM modules, and no zod: the reader's bundle must stay free of it
 // (test/unit/visual-bundle.test.ts). The zod schemas for these shapes are in ./share-card-schema.ts.
 
 export const CARD = {
   quoteMax: 240, quoteLeadsMax: 120, emphasisMax: 40, headlineMax: 80, pullMax: 140,
   topicMax: 24, takeawaysTitleMax: 48, takeawayTitleMax: 32, takeawayDetailMax: 72,
-  captionMinWords: 40, captionMinWordsChanged: 10, captionMaxWords: 120, hookMax: 110,
   passageMin: 20, passageMax: 6000, contextMax: 12000, creditMax: 200,
 } as const
 /** Page and Headline show the PDF's own pixels; the other three are text cards. See docs/share-posts-plan.md. */
@@ -21,6 +20,8 @@ export const HIGHLIGHT_COLORS = ['yellow', 'green', 'blue', 'pink'] as const
 export const DESTINATIONS = ['linkedin', 'x', 'instagram'] as const
 /** The three drafts one request may return. */
 export const ANGLES = ['finding', 'contrast', 'caveat'] as const
+/** Where the link goes in a LinkedIn post: in the post, or held back as a ready first-comment line. */
+export const LINKS = ['post', 'comment'] as const
 
 export type ShareStyle = (typeof STYLES)[number]
 export type ShareLook = (typeof LOOKS)[number]
@@ -28,6 +29,7 @@ export type ShareLook = (typeof LOOKS)[number]
 export type CardSize = keyof typeof SIZES | 'fit'
 export type Destination = (typeof DESTINATIONS)[number]
 export type Angle = (typeof ANGLES)[number]
+export type LinkPlacement = (typeof LINKS)[number]
 export type HighlightColor = (typeof HIGHLIGHT_COLORS)[number]
 export type ShareCardStatus = 'pending' | 'running' | 'complete' | 'failed' | 'cancelled'
 
@@ -77,8 +79,21 @@ export type CardContent = {
   crop: PageRect | null
 }
 
-/** `edited`, when set, replaces the composed caption text. */
-export type Caption = { body: string; hashtags: string[]; edited: string | null }
+/** The text of a post: up to three drafts for one destination, and how the copied text is composed. */
+export type Caption = {
+  destination: Destination
+  /** The reader's line the drafts were built around, or ''. */
+  take: string
+  /** drafts.finding is never empty; the other two may be ''. */
+  drafts: Record<Angle, string>
+  angle: Angle
+  /** 3 to 5, always returned; shown when showTags. */
+  hashtags: string[]
+  showTags: boolean
+  link: LinkPlacement
+  /** When set, replaces the composed text. */
+  edited: string | null
+}
 
 export type ShareCardRecord = {
   id: string; project_id: string; source_id: string | null; annotation_id: string | null
@@ -92,6 +107,12 @@ export type ShareCardRecord = {
   instruction: string
   error: string | null
   created_at: string; updated_at: string
+  /** Of the latest request; the completed version's own is caption.destination. */
+  destination: Destination
+  /** Of the latest request; the completed version's own is caption.take. */
+  take: string
+  /** Every highlight now on the post's page, the post's own included; read live from annotations. */
+  marks: PageMark[]
 }
 
 export type ShareCardSummary = {
@@ -122,6 +143,34 @@ export const DRAFT: Record<Destination, { minWords: number; maxWords: number; ma
 }
 /** The reader's take. On X a take raises a draft's maxChars to max(280, take.length + 140). */
 export const TAKE_MAX = 400
+
+export type DraftLimits = (typeof DRAFT)[Destination]
+
+/** How X counts any link, plus the blank line the app puts before it. */
+const X_LINK_CHARS = 23 + 2
+const wordCount = (text: string) => text.split(/\s+/u).filter(Boolean).length
+
+/**
+ * The limits one draft is checked against. A take is its own paragraph after at least one other, and a long take
+ * raises the word and character limits so that it still fits with a lead-in (the X rule in docs/share-posts-plan.md,
+ * which never binds on LinkedIn or Instagram). A change instruction may make a draft shorter and a single paragraph.
+ * On X the app appends the link, which counts as 23 characters, so a draft leaves room for it.
+ */
+export function draftLimits(destination: Destination, options: { take?: string; changed?: boolean; url?: string } = {}): DraftLimits {
+  const base = DRAFT[destination], take = collapse(options.take ?? '')
+  let { minWords, maxWords, maxChars, minParagraphs, maxParagraphs } = base
+  if (take) {
+    maxWords = Math.max(maxWords, wordCount(take) + 25)
+    maxChars = Math.max(maxChars, take.length + 140)
+    minParagraphs = Math.max(minParagraphs, 2)
+    maxParagraphs = Math.max(maxParagraphs, 2)
+  }
+  if (options.changed) { minWords = Math.min(minWords, 10); minParagraphs = 1 }
+  if (destination === 'x' && options.url?.trim()) maxChars -= X_LINK_CHARS
+  // Where the first line is the whole visible post (X), it follows the character limit.
+  const hookMax = base.hookMax >= base.maxChars ? maxChars : Math.min(base.hookMax, maxChars)
+  return { minWords, maxWords, maxChars, hookMax, minParagraphs, maxParagraphs }
+}
 
 /** Whether a generation owns the post: nothing else may change it meanwhile. */
 export const isActive = (status: ShareCardStatus) => status === 'pending' || status === 'running'
@@ -178,8 +227,6 @@ export function validateCard(card: CardContent, source: Pick<ShareCardSource, 'p
   if (!(LOOKS as readonly string[]).includes(card.look)) throw new Error(`Unknown card look: ${card.look}.`)
 }
 
-/** A quote this short reads at a glance, so it leads; longer ones open on the Big idea style. */
-export const defaultStyle = (quote: string): ShareStyle => quote.length <= CARD.quoteLeadsMax ? 'quote' : 'idea'
 export const defaultLook = (): ShareLook => 'ink'
 
 /** Unknown stored colours become yellow. */
@@ -190,12 +237,29 @@ export const highlightColor = (color: string | null | undefined): HighlightColor
 export const creditLine = (source: Pick<ShareCardSource, 'credit' | 'page'>) =>
   [collapse(source.credit), `p. ${source.page}`].filter(Boolean).join(' · ')
 
-/** The caption exactly as it is copied: the edited text, or body, source, link and hashtags. */
+/** The typed source line under a post's text: title, credit and page. */
+export const sourceLine = (source: Pick<ShareCardSource, 'title' | 'credit' | 'page'>) =>
+  '📄 ' + [collapse(source.title), collapse(source.credit), `p. ${source.page}`].filter(Boolean).join(' · ')
+
+/**
+ * The post's text exactly as it is copied: the edited text, or the chosen draft (the finding when that angle is
+ * empty) followed by what the destination carries. LinkedIn: the source line, then the link unless it is held back
+ * for the first comment, and the hashtags when shown. X: the link only. Instagram: the source line, the link as plain
+ * text and the hashtags when shown; `link` applies to LinkedIn only.
+ */
 export function captionText(source: ShareCardSource, caption: Caption): string {
   if (caption.edited !== null) return caption.edited
-  const credit = ['📄 ' + [collapse(source.title), collapse(source.credit), `p. ${source.page}`].filter(Boolean).join(' · '), source.url.trim()].filter(Boolean).join('\n')
-  const tags = caption.hashtags.map(tag => `#${tag}`).join(' ')
-  return [caption.body.trim(), credit, tags].filter(Boolean).join('\n\n')
+  const draft = (caption.drafts[caption.angle] || caption.drafts.finding).trim(), url = source.url.trim()
+  const tags = caption.showTags ? caption.hashtags.map(tag => `#${tag}`).join(' ') : ''
+  if (caption.destination === 'x') return [draft, url].filter(Boolean).join('\n\n')
+  const link = caption.destination === 'linkedin' && caption.link === 'comment' ? '' : url
+  return [draft, [sourceLine(source), link].filter(Boolean).join('\n'), tags].filter(Boolean).join('\n\n')
+}
+
+/** The ready first-comment line for a LinkedIn post whose link is held back: the source line and the link; '' without a link. */
+export function firstCommentText(source: ShareCardSource): string {
+  const url = source.url.trim()
+  return url ? `${sourceLine(source)}\n${url}` : ''
 }
 
 /** What a screen reader hears for the card: the words drawn in `style`. */
@@ -241,4 +305,77 @@ export function publicUrl(url: string | null | undefined): string {
   const host = parsed.hostname.toLowerCase().replace(/\.$/u, '')
   if (!host || host === 'localhost' || host.endsWith('.localhost') || privateIPv4(host) || privateIPv6(host)) return ''
   return parsed.href
+}
+
+// The numbers check. Every number the assistant writes must appear in what it was given, so that a recalled,
+// computed or converted figure never reaches a post. When two readings of a numeral are possible (is "1.572" a
+// thousand or a decimal?) both count: the check prefers letting a legitimate draft through to blocking it.
+//
+// - A numeral is a run of digits with "." or "," (or a non-breaking or thin space) between digit groups, or a
+//   leading-point decimal such as ".65". Digits glued to a preceding letter ("p53", "CO2", "H1N1") are names, not
+//   quantities, and are skipped. Signs and units are ignored: "63%", "63 percent" and "63" are the same number.
+// - Thousands separators are dropped in either style ("1,572", "1.572", "1 572" are 1572), a decimal comma is a
+//   decimal point, and trailing decimal zeros do not matter ("0.650" is "0.65", ".65" is "0.65"). A numeral with one
+//   separator and three digits after it ("1,572") reads both as a thousand and as a decimal.
+// - A draft may round a decimal from the source to fewer places ("1.35" as "1.4" or "1.3"), and to a whole number
+//   only when the source's number is 10 or more ("63.4%" as "63%", but not "1.5" as "2").
+// - A year is a number like any other; a range ("2021–2024") is its two ends, and an abbreviated end ("2021-24")
+//   also counts in full. An ordinal ("3rd") is its number. An unreadable numeral ("3.5.1") must appear as written.
+// - English number words from zero to ninety-nine and ordinals up to "twelfth" in the source count as the number,
+//   so "thirty-three studies" supports "33". Number words in a draft are not checked.
+
+const NUMERAL = /(?<![\p{L}\p{N}.,])(?:\d+(?:[.,   ]\d+)*|\.\d+)/gu
+const WORD_UNITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen',
+  'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen']
+const WORD_TENS = ['twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety']
+const WORD_ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth']
+const NUMBER_WORDS = new RegExp(`\\b(?:(${WORD_TENS.join('|')})(?:[-\\s]+(${WORD_UNITS.slice(1, 10).join('|')}))?|(${WORD_UNITS.join('|')})|(${WORD_ORDINALS.join('|')}))\\b`, 'giu')
+const ABBREVIATED_RANGE = /(?<!\d)(\d{2})(\d{2})\s*[-–—]\s*(\d{2})(?!\d)/gu
+
+/** Every numeral in `text`, as written. */
+export const numbersIn = (text: string): string[] => [...text.matchAll(NUMERAL)].map(match => match[0])
+
+/** A plain decimal string without leading or trailing zeros: "007" is "7", ".650" is "0.65". */
+function canonical(digits: string): string {
+  const [whole = '', fraction = ''] = digits.split('.')
+  const head = whole.replace(/^0+(?=\d)/u, '') || '0', tail = fraction.replace(/0+$/u, '')
+  return tail ? `${head}.${tail}` : head
+}
+
+/** Every value a numeral may stand for, in canonical form. */
+function readings(numeral: string): string[] {
+  const out = new Set<string>()
+  if (/^\d+$/u.test(numeral)) out.add(canonical(numeral))
+  if (/^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/u.test(numeral)) out.add(canonical(numeral.replaceAll(',', '')))
+  if (/^\d{1,3}(?:[.   ]\d{3})+(?:,\d+)?$/u.test(numeral)) out.add(canonical(numeral.replace(/[.   ]/gu, '').replace(',', '.')))
+  if (/^\d{1,3}(?:[   ]\d{3})+(?:\.\d+)?$/u.test(numeral)) out.add(canonical(numeral.replace(/[   ]/gu, '')))
+  if (/^\d*[.,]\d+$/u.test(numeral)) out.add(canonical(numeral.replace(',', '.')))
+  return [...out]
+}
+
+const decimals = (value: string) => value.split('.')[1]?.length ?? 0
+
+/**
+ * The numerals in `text` that none of `allowedTexts` supports, each once, as written. See the rules above.
+ */
+export function unsupportedNumbers(text: string, allowedTexts: string[]): string[] {
+  const raw = new Set<string>(), values = new Set<string>()
+  for (const allowed of allowedTexts) {
+    for (const numeral of numbersIn(allowed)) { raw.add(numeral); for (const value of readings(numeral)) values.add(value) }
+    for (const [, century = '', , end = ''] of allowed.matchAll(ABBREVIATED_RANGE)) values.add(canonical(century + end))
+    for (const [, tens, unit, single, ordinal] of allowed.matchAll(NUMBER_WORDS)) {
+      const value = tens ? (WORD_TENS.indexOf(tens.toLowerCase()) + 2) * 10 + (unit ? WORD_UNITS.indexOf(unit.toLowerCase()) : 0)
+        : single ? WORD_UNITS.indexOf(single.toLowerCase()) : WORD_ORDINALS.indexOf(ordinal!.toLowerCase()) + 1
+      values.add(String(value))
+    }
+  }
+  const precise = [...values].filter(value => decimals(value) > 0).map(value => ({ value: Number(value), places: decimals(value) }))
+  const rounds = (value: string) => precise.some(source => source.places > decimals(value) && (decimals(value) > 0 || source.value >= 10) &&
+    Math.abs(source.value - Number(value)) <= 0.5 * 10 ** -decimals(value) + 1e-9)
+  const refused = new Set<string>()
+  for (const numeral of numbersIn(text)) {
+    const options = readings(numeral)
+    if (!raw.has(numeral) && !options.some(value => values.has(value) || rounds(value))) refused.add(numeral)
+  }
+  return [...refused]
 }
