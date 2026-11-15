@@ -10,7 +10,7 @@ const exec = promisify(execFile)
 const script = fileURLToPath(import.meta.url)
 const probe = fileURLToPath(new URL('./linux-vault-probe.mjs', import.meta.url))
 const session = process.argv[2] === '--private-session'
-const electron = path.resolve(process.argv[session ? 4 : 2] ?? '/tmp/pdfpal-linux-tooling/electron-v45.1.0/electron')
+const electron = path.resolve(process.argv[session ? 4 : 2] ?? fileURLToPath(new URL('../node_modules/electron/dist/electron', import.meta.url)))
 
 if (!session) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pdfpal-keyring-proof-'))

@@ -122,6 +122,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y xvfb dbus-x11 libgtk-3-0t64 libnss3 libasound2t64 libgbm1 libsecret-1-0 gnome-keyring libglib2.0-bin desktop-file-utils
       - run: npm ci
       - run: npm ci --prefix desktop
+      - name: Install pinned Electron for secure-storage acceptance
+        run: node desktop/node_modules/electron/install.js
       - name: Stage isolated Electron runtime
         run: |
           npm --prefix desktop run stage
