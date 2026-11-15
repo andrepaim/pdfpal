@@ -14,7 +14,7 @@ Available as a **Windows desktop app**, a **Linux desktop engineering preview**,
 
 ## See pdfpal in action
 
-[Install and run](#install-and-run) · [Quickstart](#quickstart)
+[Install and run](#install-and-run) · [Quickstart](#quickstart) · [Documentation](docs/README.md)
 
 Screenshots show the current Windows desktop preview. The reading examples reuse the original, unedited Codex responses in the updated reader; see [capture details](screenshots/CAPTURE.md).
 
@@ -98,7 +98,7 @@ The Windows app has an integrated dark title bar with native window controls. Us
 
 Closing the window keeps pdfpal running in the system tray near the clock. Click the tray icon to reopen it; use **Quit** in its menu to stop the app.
 
-To browse and manage your library from the Windows ChatGPT app, open **pdfpal menu → Command line & ChatGPT**, choose **Install skill**, then **Check setup**. Windows version 2.7 includes the matching CLI. Keep pdfpal running in its tray, open ChatGPT's **Skills → Installed**, and look for **Pdfpal CLI**. Try: “Show my pdfpal projects.” The setup check verifies the CLI connection; verify skill discovery in ChatGPT separately.
+To browse and manage your library from the Windows ChatGPT app, open **pdfpal menu → Command line & ChatGPT**, choose **Install skill**, then **Check setup**. Current Windows installers include the matching CLI. Keep pdfpal running in its tray, open ChatGPT's **Skills → Installed**, and look for **Pdfpal CLI**. Try: “Show my pdfpal projects.” The setup check verifies the CLI connection; verify skill discovery in ChatGPT separately.
 
 If ChatGPT's **Settings → General → Agent environment** selects WSL, the skill must also be available in that WSL distribution's `~/.agents/skills`. Windows, Ubuntu, and Ubuntu-24.04 use separate skill locations. Link the managed Windows skill into the distribution ChatGPT actually uses; see the [Windows CLI guide](docs/windows-cli.md) for commands and troubleshooting. The skill's WSL adapter operates your Windows library through the running app.
 
@@ -177,7 +177,7 @@ Book questions use title/author, previous discussion, and captured or saved exce
 
 - **Split-pane reader**: PDF viewer on the left, chat/notes/related on the right; resizable.
 - **Reading progress**: remembers the last page read for every source and restores it automatically the next time you open the PDF.
-- **Per-source chat**: persistent conversation history per paper, restored across sessions; renders math (KaTeX); web research is handled by the selected agent when supported.
+- **Per-source chat**: persistent conversation history per paper, restored across sessions; renders math (KaTeX). Answers use retrieved local text and the assistant’s background knowledge. Reading calls run with shell and web tools disabled; paper discovery is available separately.
 - **Text selection → ask or highlight**: stuck on a passage? Select it and ask about it right there, grounded in the paper, or save it as a highlight.
 - **Offline dictionary**: double-click a word, or select a short phrase, and its meanings appear under it. Inflected forms (“ran”, “mice”), hyphenated words and compounds (“neural network”) are recognised. It is English only, uses the bundled WordNet 3.1 data, and sends nothing anywhere. Turn it off with **Definitions** in the reader toolbar.
 - **Project chat**: ask across multiple sources at once, toggle which sources are in context, or scope to a single collection.
@@ -363,7 +363,7 @@ pdfpal CLI ───────────────────────
 
 - **Ingest**: `SourceService` resolves a local file or URL, extracts its text, stores a managed PDF copy, and chunks/indexes the text in SQLite FTS5.
 - **Ask**: `ChatService` scopes retrieval by project, source, or collection, builds a grounded prompt from matching passages, invokes the configured AI provider, and persists the answer and source references.
-- **Use**: React pages call the Fastify API; CLI commands and [`skills/pdfpal-cli`](skills/pdfpal-cli/) automate the same core operations. An agent subprocess may use its own web-search tools when supported by that agent.
+- **Use**: React pages call the Fastify API; CLI commands and [`skills/pdfpal-cli`](skills/pdfpal-cli/) automate the same core operations. Reading subprocesses run with tools disabled. Paper discovery uses the separate OpenAlex and Semantic Scholar services; an external research agent can use its own tools before importing papers.
 
 The implementation follows that split:
 
