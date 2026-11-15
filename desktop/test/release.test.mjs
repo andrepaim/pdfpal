@@ -153,6 +153,19 @@ test('beta.2 release notes describe the cross-page highlight fix, and beta.1 omi
   } finally { await f.cleanup(); await earlier.cleanup() }
 })
 
+test('beta.4 release notes describe the reader dictionary, and beta.3 omits it', async () => {
+  const f = await fixture('2.8.0-beta.4'), earlier = await fixture('2.8.0-beta.3')
+  try {
+    await prepareRelease(f.directory, f.options)
+    const notes = await fs.readFile(path.join(f.directory, 'release-notes.md'), 'utf8')
+    assert.match(notes, /a dictionary in the reader/)
+    assert.match(notes, /sends nothing anywhere/)
+    assert.match(notes, /Clearer visual explanations/)
+    await prepareRelease(earlier.directory, earlier.options)
+    assert.doesNotMatch(await fs.readFile(path.join(earlier.directory, 'release-notes.md'), 'utf8'), /a dictionary in the reader/)
+  } finally { await f.cleanup(); await earlier.cleanup() }
+})
+
 test('beta.3 release notes describe the new visual explanations and related papers, and beta.2 omits them', async () => {
   const f = await fixture('2.8.0-beta.3'), earlier = await fixture('2.8.0-beta.2')
   try {
