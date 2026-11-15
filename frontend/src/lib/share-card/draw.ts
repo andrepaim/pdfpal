@@ -1,11 +1,8 @@
 // Runs a card layout's draw commands on a canvas. All decisions were made in layout.ts; this only paints.
-import type { PageRect } from '../../../../src/shared/share-card'
 import type { CardLayout, DrawCommand } from './layout'
 import type { Fill } from './looks'
 
 type Context = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
-/** The Page style's crop and the highlight's boxes as fractions of the crop. */
-export type CropImage = { image: CanvasImageSource; rects: PageRect[] }
 
 function fill(ctx: Context, value: Fill, width: number, height: number) {
   if (typeof value === 'string') { ctx.fillStyle = value; ctx.fillRect(0, 0, width, height); return }
@@ -20,7 +17,7 @@ function fill(ctx: Context, value: Fill, width: number, height: number) {
   ctx.restore()
 }
 
-function command(ctx: Context, item: DrawCommand, layout: CardLayout, crop?: CropImage) {
+function command(ctx: Context, item: DrawCommand, layout: CardLayout, crop?: CanvasImageSource) {
   switch (item.kind) {
     case 'background': fill(ctx, item.fill, layout.width, layout.height); return
     case 'rect':
@@ -53,18 +50,20 @@ function command(ctx: Context, item: DrawCommand, layout: CardLayout, crop?: Cro
       ctx.save()
       ctx.beginPath(); ctx.roundRect(x, y, width, height, radius); ctx.clip()
       ctx.imageSmoothingQuality = 'high'
-      ctx.drawImage(crop.image, x, y, width, height)
+      ctx.drawImage(crop, x, y, width, height)
       ctx.globalCompositeOperation = 'multiply'
-      ctx.globalAlpha = item.highlight.alpha
-      ctx.fillStyle = item.highlight.color
-      for (const r of crop.rects) ctx.fillRect(x + r.x1 * width, y + r.y1 * height, (r.x2 - r.x1) * width, (r.y2 - r.y1) * height)
+      for (const mark of item.marks) {
+        ctx.globalAlpha = mark.alpha
+        ctx.fillStyle = mark.color
+        for (const r of mark.rects) ctx.fillRect(x + r.x1 * width, y + r.y1 * height, (r.x2 - r.x1) * width, (r.y2 - r.y1) * height)
+      }
       ctx.restore()
       return
     }
   }
 }
 
-/** Paints `layout` onto a context of exactly layout.width × layout.height. */
-export function drawCard(ctx: Context, layout: CardLayout, crop?: CropImage) {
+/** Paints `layout` onto a context of exactly layout.width × layout.height; `crop` is the picture for its sheet. */
+export function drawCard(ctx: Context, layout: CardLayout, crop?: CanvasImageSource) {
   for (const item of layout.commands) command(ctx, item, layout, crop)
 }

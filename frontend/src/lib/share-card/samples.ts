@@ -1,6 +1,6 @@
 // Sample cards for /dev/share-cards and test/unit/share-card-layout.test.ts, ported from DistillPod's
-// ShareCardRendererTest. Pure data.
-import type { CardContent, ShareCardSource } from '../../../../src/shared/share-card'
+// ShareCardRendererTest, and a made-up paper page for the Page and Headline frames. Pure data.
+import type { CardContent, CardSize, HighlightColor, PageRect, ShareCardSource } from '../../../../src/shared/share-card'
 
 export type Sample = { name: string; card: CardContent; source: ShareCardSource }
 
@@ -41,7 +41,7 @@ export const longPortuguese: CardContent = {
   ...base,
   quote: 'A responsabilidade compartilhada é central: quando as organizações convertem reuniões intermináveis em comunicação assíncrona, documentada e auditável, as equipes reconquistam concentração, autonomia e previsibilidade no trabalho cotidiano.',
   emphasis: 'responsabilidade compartilhada é central',
-  headline: 'Responsabilidade compartilhada exige comunicação documentada',
+  headline: 'Responsabilidade compartilhada exige comunicação documentada, clara e auditável.',
   pull: 'Quando as organizações documentam claramente decisões, as equipes recuperam concentração, autonomia e previsibilidade no trabalho cotidiano.',
   topic: 'Documentação e confiança',
   takeawaysTitle: 'Responsabilidade compartilhada, sem interrupções',
@@ -54,7 +54,7 @@ export const longEnglish: CardContent = {
   ...base,
   quote: 'Counterproductive feedback usually arrives as uncharacteristically enthusiastic praise, while what people really need is a specific, actionable observation about the distance between their intentions and the consequences of their decisions.',
   emphasis: 'uncharacteristically enthusiastic praise',
-  headline: 'Counterproductive feedback undermines organisational growth.',
+  headline: 'Counterproductive feedback quietly undermines organisational learning and trust.',
   pull: 'What people actually need is a specific, actionable observation about the distance between their intentions and their eventual consequences.',
   topic: 'Organisational learning!',
   takeawaysTitle: 'Counterproductive feedback and how to replace it',
@@ -94,4 +94,67 @@ export const SAMPLES: Sample[] = [
   { name: 'longword-en', card: longWordEnglish, source: source(longWordEnglish, { color: 'blue' }) },
   { name: 'longword-pt', card: longWordPortuguese, source: source(longWordPortuguese, { title: 'Atenção no trabalho', credit: '', color: 'green' }) },
   { name: 'min', card: minimal, source: source(minimal, { title: '', credit: '', page: 1 }) },
+]
+
+// ── Page and Headline frames ───────────────────────────────────────────────────────────────────────────────────────
+// The samples page draws SAMPLE_PAGE on a canvas, finds each mark's phrase in it, and crops it as pageCrop crops a PDF
+// page. The paper, its authors and its numbers are invented.
+
+export const SAMPLE_PAGE = {
+  /** US Letter, in points. */
+  width: 612, height: 792, margin: 72,
+  journal: 'Journal of Practice Research · 2025 · Vol. 14, No. 3',
+  title: 'Specific feedback speeds up skill learning: a field study of 1,204 practice sessions',
+  authors: 'Claire Moreau¹, Jonas Lindqvist², Ana Ribeiro¹',
+  affiliations: '¹Institute for Learning Research · ²Department of Psychology',
+  sections: [
+    { heading: 'Abstract', text: 'Practice improves performance only when learners can see what to change. We followed 312 music and language students over one semester and recorded 1,204 practice sessions, each ending with either general praise or a specific observation about the gap between the attempt and its result. Students who received specific feedback improved 41% more on blind-rated tests than those who received praise, and the difference grew over the semester. More feedback was not better: beyond three comments per session, gains levelled off and students reported lower motivation. Timing mattered as well; feedback given within ten minutes of an attempt was remembered twice as often a week later. The effect held across instruments, languages and prior skill levels.' },
+    { heading: '1  Introduction', text: 'Feedback is among the most studied influences on learning, yet its effects vary widely. Reviews report average gains, but a large share of feedback interventions lower performance. One explanation is that much feedback describes the learner rather than the task: it praises, encourages or grades without pointing to anything that could be done differently. In this study we ask whether the content of feedback, rather than its amount, explains who improves. We compare two kinds of comment that teachers give every day and measure their effect on skill, memory and motivation over a full semester of ordinary practice.' },
+    { heading: '2  Method', text: 'Students were recruited from four schools and assigned at random to teachers trained in one of the two styles. Each session was recorded, transcribed and coded by two raters who did not know the condition. Skill was measured at the start, the middle and the end of the semester by judges who heard anonymous recordings.' },
+  ],
+} as const
+
+export type FrameMark = { phrase: string; color: HighlightColor }
+export type PageFrame = {
+  name: string
+  style: 'page' | 'headline'
+  size: CardSize
+  extraLines: 0 | 1 | 3
+  /** The reader's crop, as page fractions; null means automatic. */
+  crop: PageRect | null
+  /** Every highlight on the page; the first is the post's own. */
+  marks: FrameMark[]
+  card: CardContent
+  source: Omit<ShareCardSource, 'rects' | 'color'>
+}
+
+const OWN: FrameMark = { phrase: 'Students who received specific feedback improved 41% more on blind-rated tests than those who received praise', color: 'yellow' }
+const OTHERS: FrameMark[] = [
+  { phrase: 'More feedback was not better', color: 'green' },
+  { phrase: 'within ten minutes of an attempt', color: 'blue' },
+  { phrase: 'a large share of feedback interventions lower performance', color: 'pink' },
+]
+const pageCard = (headline: string, topic = 'Learning science'): CardContent => ({ ...english, quote: `${OWN.phrase}.`, emphasis: '', headline, topic, pull: '' })
+const pageSource: PageFrame['source'] = {
+  version: 1, passage: `${OWN.phrase}.`, page: 1, context: SAMPLE_PAGE.sections.map(section => section.text).join(' '),
+  title: 'Specific feedback speeds up skill learning', credit: 'Moreau, Lindqvist and Ribeiro, 2025', url: '',
+}
+/** The title, authors and abstract, as people crop them for LinkedIn and Instagram. */
+const ABSTRACT: PageRect = { x1: 0.07, y1: 0.065, x2: 0.93, y2: 0.5 }
+const WHOLE: PageRect = { x1: 0, y1: 0, x2: 1, y2: 1 }
+const headline = 'Specific feedback beat praise by 41%.'
+
+export const PAGE_FRAMES: PageFrame[] = [
+  { name: 'page-fit-x', style: 'page', size: 'fit', extraLines: 1, crop: null, marks: [OTHERS[0]!, OWN, OTHERS[1]!], card: pageCard(headline), source: pageSource },
+  { name: 'page-fit-linkedin', style: 'page', size: 'fit', extraLines: 3, crop: null, marks: [OWN, ...OTHERS], card: pageCard(headline), source: pageSource },
+  { name: 'page-fit-abstract', style: 'page', size: 'fit', extraLines: 3, crop: ABSTRACT, marks: [OWN, ...OTHERS], card: pageCard(headline), source: pageSource },
+  { name: 'page-fit-whole', style: 'page', size: 'fit', extraLines: 3, crop: WHOLE, marks: [OWN, ...OTHERS], card: pageCard(headline, ''), source: { ...pageSource, title: LONG_TITLE, credit: LONG_CREDIT, page: 1234 } },
+  { name: 'page-feed', style: 'page', size: 'feed', extraLines: 3, crop: null, marks: [OWN, ...OTHERS], card: pageCard(headline), source: pageSource },
+  { name: 'page-story', style: 'page', size: 'story', extraLines: 3, crop: null, marks: [OWN, ...OTHERS], card: pageCard(headline), source: pageSource },
+  { name: 'headline-feed', style: 'headline', size: 'feed', extraLines: 3, crop: null, marks: [OWN, ...OTHERS], card: pageCard(headline), source: pageSource },
+  { name: 'headline-story', style: 'headline', size: 'story', extraLines: 3, crop: null, marks: [OWN, ...OTHERS], card: pageCard(headline), source: pageSource },
+  { name: 'headline-feed-abstract-max', style: 'headline', size: 'feed', extraLines: 3, crop: ABSTRACT, marks: [OWN, ...OTHERS], card: pageCard(longEnglish.headline, longEnglish.topic), source: pageSource },
+  { name: 'headline-story-abstract-max', style: 'headline', size: 'story', extraLines: 3, crop: ABSTRACT, marks: [OWN, ...OTHERS], card: pageCard(longPortuguese.headline, longPortuguese.topic), source: { ...pageSource, title: LONG_TITLE, credit: LONG_CREDIT } },
+  { name: 'headline-feed-whole-min', style: 'headline', size: 'feed', extraLines: 0, crop: WHOLE, marks: [OWN], card: pageCard(minimal.headline, ''), source: { ...pageSource, title: '', credit: '' } },
+  { name: 'headline-feed-word', style: 'headline', size: 'feed', extraLines: 0, crop: null, marks: [OWN, OTHERS[0]!], card: pageCard(longWordEnglish.headline), source: pageSource },
 ]

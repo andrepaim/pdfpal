@@ -2,7 +2,8 @@
 // passes a `measure` function, so the same code lays out the preview, every export and the Node tests. The
 // measurements are DistillPod's (ShareCardRenderer.kt); see "The renderer" in docs/share-cards-plan.md. Below, u is
 // 1% of the card width.
-import { SIZES, collapse, creditLine, type CardContent, type CardSize, type ShareCardSource, type ShareLook, type ShareStyle } from '../../../../src/shared/share-card'
+import { FIT, SIZES, collapse, creditLine, type CardContent, type CardSize, type PageMark, type PageRect, type ShareCardSource, type ShareLook, type ShareStyle } from '../../../../src/shared/share-card'
+import { fitSheet } from './crop-box'
 import { HIGHLIGHT_HEX, palette, type Fill, type Palette } from './looks'
 
 /** Width of `text` in the CSS `font`, with `letterSpacing` px added after every character (the last included). */
@@ -43,6 +44,15 @@ const GROW_LINES = 3
 export const MIN_TEXT_PX = 28
 /** Where a block that does not fill its space sits: 0 top, 1 bottom. Slightly above centre reads as centred. */
 const PLACEMENT = 0.4
+/** The Headline style's headline steps down until the sheet has this share of the main region, or reaches FLOOR. */
+const SHEET_SHARE = 0.5
+/** A headline at its nominal size may grow this much, in this many steps, into room a short crop leaves. */
+const GROW_HEADLINE = 0.35
+const GROW_HEADLINE_STEPS = 7
+/** Below this height, in u, a sheet is not worth drawing and Headline is laid out as Big idea. */
+const MIN_SHEET = 15
+/** The highlights over a crop: their colour at this opacity, with the multiply blend, as one highlight is drawn. */
+const MARK_ALPHA = 0.55
 export const WORDMARK = 'PDFPAL'
 export const TOO_LONG = 'The card text needs shortening.'
 
@@ -61,8 +71,8 @@ export type RectCommand = { kind: 'rect'; x: number; y: number; width: number; h
 export type ImageCommand = {
   kind: 'image'; x: number; y: number; width: number; height: number; radius: number
   shadow: { blur: number; offsetY: number; color: string }
-  /** The reader's highlight, painted over the crop with the multiply blend. */
-  highlight: { color: string; alpha: number }
+  /** Every highlight inside the crop, its boxes as fractions of the crop, painted over it with the multiply blend. */
+  marks: Array<{ color: string; alpha: number; rects: PageRect[] }>
 }
 export type DrawCommand = { kind: 'background'; fill: Fill } | RectCommand | TextCommand | ImageCommand
 
@@ -72,12 +82,15 @@ export type CardLayoutInput = {
   style: ShareStyle
   look: ShareLook
   size: CardSize
-  /** Pixel size of the Page style's crop. Without one, or when it does not fit, Page is drawn as Quote. */
-  crop?: { width: number; height: number }
+  /**
+   * Pixel size of the crop for the Page and Headline styles, and the highlights inside it as fractions of it. Without
+   * one, Page is drawn as Quote and Headline as Big idea.
+   */
+  crop?: { width: number; height: number; marks: PageMark[] }
 }
 export type CardLayout = {
   width: number; height: number
-  /** The style actually drawn: Page falls back to Quote. */
+  /** The style actually drawn: Page falls back to Quote, Headline to Big idea. */
   style: ShareStyle
   look: ShareLook
   /** Where text may go: inside the padding and safe areas. */
@@ -297,11 +310,11 @@ class Card {
   private readonly input: CardLayoutInput
   private readonly measure: Measure
 
-  constructor(input: CardLayoutInput, measure: Measure) {
+  /** A Fit card is given its `height`; every other size has its own. Fit is otherwise laid out as Feed. */
+  constructor(input: CardLayoutInput, measure: Measure, height?: number) {
     this.input = input; this.measure = measure
-    // The Fit size is task T2 of docs/share-posts-plan.md; until then it is drawn as Feed.
-    const size = SIZES[input.size === 'fit' ? 'feed' : input.size]
-    this.width = size.width; this.height = size.height
+    if (input.size === 'fit') { this.width = FIT.width; this.height = height ?? FIT.maxHeight }
+    else { this.width = SIZES[input.size].width; this.height = SIZES[input.size].height }
     this.u = this.width / 100
     this.story = input.size === 'story'
     this.k = this.story ? 1.2 : 1
@@ -327,13 +340,10 @@ class Card {
   layout(): CardLayout {
     this.frame()
     let style = this.input.style
-    // The Headline style is task T2 of docs/share-posts-plan.md; until then it is drawn as Big idea.
-    if (style === 'headline') style = 'idea'
     let parts: Part[] | undefined
-    if (style === 'page') {
-      const page = this.input.crop ? this.pageParts(this.input.crop) : null
-      if (page && total(page) <= this.available) parts = page
-      else style = 'quote'
+    if (style === 'page' || style === 'headline') {
+      parts = this.sheetParts(style) ?? undefined
+      if (!parts) style = style === 'page' ? 'quote' : 'idea'
     }
     if (!parts) {
       // A short quote may grow so the card does not look empty; everything else starts at its nominal size.
@@ -415,26 +425,67 @@ class Card {
     return parts
   }
 
-  /** The Page style: kicker, then the PDF crop as a sheet across the full inner width. */
-  pageParts(crop: { width: number; height: number }): Part[] | null {
-    if (!(crop.width > 0 && crop.height > 0)) return null
-    const parts: Part[] = []
-    this.kicker(parts, 5, 1)
+  /**
+   * Page: the kicker, then the crop as a sheet. Headline: the kicker, the headline, then the sheet. The sheet takes the
+   * full inner width, or is drawn narrower and centred when the crop is too tall for the room left. Null without a
+   * crop, or when there is no room for one.
+   */
+  sheetParts(style: 'page' | 'headline'): Part[] | null {
+    const crop = this.input.crop
+    if (!crop) return null
+    const chosen = this.sheetHead(style)
+    if (!chosen) return null
+    let head = chosen.parts
+    const sheet = fitSheet(crop, { width: this.inner, height: this.available - total(head) })
+    if (!sheet) return null
+    // A crop shorter than its room leaves space that a headline at its nominal size grows into.
+    if (style === 'headline' && chosen.scale >= 1) for (let step = GROW_HEADLINE_STEPS; step > 0; step--) {
+      const larger = this.headlineHead(1 + step * GROW_HEADLINE / GROW_HEADLINE_STEPS, false)
+      if (larger && total(larger) + sheet.height <= this.available) { head = larger; break }
+    }
     const { u, padX, inner } = this
-    const height = inner * crop.height / crop.width
-    parts.push({ height, draw: (out, y) => out.push({
-      kind: 'image', x: padX, y, width: inner, height, radius: 1.4 * u,
-      shadow: { blur: 3 * u, offsetY: 1.2 * u, color: 'rgba(0,0,0,0.35)' },
-      highlight: { color: HIGHLIGHT_HEX[this.input.source.color], alpha: 0.55 },
-    }) })
+    const x = padX + (inner - sheet.width) / 2
+    const marks = crop.marks.map(mark => ({ color: HIGHLIGHT_HEX[mark.color], alpha: MARK_ALPHA, rects: mark.rects }))
+    return [...head, { height: sheet.height, draw: (out, y) => out.push({
+      kind: 'image', x, y, width: sheet.width, height: sheet.height, radius: 1.4 * u,
+      shadow: { blur: 3 * u, offsetY: 1.2 * u, color: 'rgba(0,0,0,0.35)' }, marks,
+    }) }]
+  }
+
+  /**
+   * What sits above the sheet, before the crop is known. The headline starts a little smaller than Big idea's and
+   * steps down until the sheet has SHEET_SHARE of the room or the headline reaches FLOOR; it is never under
+   * MIN_TEXT_PX. Null when the sheet would have less than MIN_SHEET.
+   */
+  sheetHead(style: 'page' | 'headline'): { parts: Part[]; scale: number } | null {
+    if (style === 'page') { const parts: Part[] = []; this.kicker(parts, 5, 1); return { parts, scale: 1 } }
+    let chosen: { parts: Part[]; scale: number } | null = null
+    for (let step = 0; step <= STEPS; step++) {
+      const scale = 1 - step * (1 - FLOOR) / STEPS
+      const parts = this.headlineHead(scale, step === STEPS)
+      if (!parts) continue
+      chosen = { parts, scale }
+      if (this.available - total(parts) >= SHEET_SHARE * this.available) break
+    }
+    return chosen && this.available - total(chosen.parts) >= MIN_SHEET * this.u ? chosen : null
+  }
+
+  /** The kicker and the headline at scale `s`, with the gap before the sheet. Null when a word is too wide. */
+  headlineHead(s: number, floor: boolean): Part[] | null {
+    const parts: Part[] = []
+    this.kicker(parts, 3.5, Math.min(s, 1))
+    const text = clean(this.input.card.headline)
+    if (!text) return parts
+    const headline = this.display(text, 7.2, s, -0.03, 1.06, floor, 'headline')
+    if (!headline) return null
+    parts.push(this.text(headline, this.padX), { height: 5 * this.u * this.k * Math.min(s, 1), draw: () => {} })
     return parts
   }
 
-  /** Room for the Page sheet at full inner width: the main region less the kicker. */
-  sheetSpace(): number {
-    const parts: Part[] = []
-    this.kicker(parts, 5, 1)
-    return this.available - total(parts)
+  /** The room for the sheet at the full inner width, below what sits above it. */
+  sheetSpace(style: 'page' | 'headline'): { width: number; height: number } {
+    const head = this.sheetHead(style)
+    return { width: this.inner, height: head ? this.available - total(head.parts) : 0 }
   }
 
   plain(text: string, ink: Ink, leading: number, role: TextRole) { return new Paragraph(this.measure, clean(text), '', ink, ink, leading, 0, role) }
@@ -555,16 +606,33 @@ const total = (parts: Part[]) => parts.reduce((sum, part) => sum + part.height, 
 
 /**
  * Lays out a card. Throws Error(TOO_LONG) when the text cannot fit, which content within the contract's limits never
- * does. A Page card without a crop, or whose crop does not fit, is laid out as Quote; `style` in the result says so.
+ * does. A Page card without a crop is laid out as Quote, a Headline card as Big idea; `style` in the result says so.
+ * The Fit size applies to Page: as tall as the kicker, the sheet and the footer need, within FIT. Any other style
+ * asked for Fit, and Page drawn as Quote, is laid out as Feed.
  */
 export function layoutCard(input: CardLayoutInput, measure: Measure): CardLayout {
   if (input.style === 'takeaways' && input.card.takeaways.length !== 3) throw new Error('The Takeaways card needs exactly three items.')
+  if (input.size === 'fit') {
+    const tallest = new Card(input, measure, FIT.maxHeight)
+    tallest.frame()
+    const parts = input.style === 'page' ? tallest.sheetParts('page') : null
+    if (!parts) return new Card({ ...input, size: 'feed' }, measure).layout()
+    // Rounded up, so the sheet still fits at the width it had on the tallest card.
+    const height = Math.min(FIT.maxHeight, Math.max(FIT.minHeight, Math.ceil(FIT.maxHeight - (tallest.available - total(parts)) - 1e-6)))
+    return new Card(input, measure, height).layout()
+  }
   return new Card(input, measure).layout()
 }
 
-/** The tallest Page sheet, in px at the full inner width, that fits this card between the kicker and the footer. */
-export function pageSheetSpace(input: Omit<CardLayoutInput, 'crop' | 'style'>, measure: Measure): { width: number; height: number } {
-  const card = new Card({ ...input, style: 'page' }, measure)
+/**
+ * The room for the crop on a Page or Headline card (any other style counts as Page): the tallest sheet, in px at the
+ * full inner width, that fits between what sits above it and the footer. For Fit, that of the tallest Fit card, so
+ * the crop can be chosen before the card's height is known.
+ */
+export function pageSheetSpace(input: Omit<CardLayoutInput, 'crop'>, measure: Measure): { width: number; height: number } {
+  // Headline at Fit is laid out as Feed.
+  const style = input.style === 'headline' ? 'headline' : 'page', size = style === 'headline' && input.size === 'fit' ? 'feed' : input.size
+  const card = new Card({ ...input, style, size }, measure, size === 'fit' ? FIT.maxHeight : undefined)
   card.frame()
-  return { width: card.inner, height: card.sheetSpace() }
+  return card.sheetSpace(style)
 }
