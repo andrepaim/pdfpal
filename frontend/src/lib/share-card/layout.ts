@@ -46,6 +46,9 @@ export const MIN_TEXT_PX = 28
 const PLACEMENT = 0.4
 /** The Headline style's headline steps down until the sheet has this share of the main region, or reaches FLOOR. */
 const SHEET_SHARE = 0.5
+/** A headline at its nominal size may grow this much, in this many steps, into room a short crop leaves. */
+const GROW_HEADLINE = 0.35
+const GROW_HEADLINE_STEPS = 7
 /** Below this height, in u, a sheet is not worth drawing and Headline is laid out as Big idea. */
 const MIN_SHEET = 15
 /** The highlights over a crop: their colour at this opacity, with the multiply blend, as one highlight is drawn. */
@@ -430,10 +433,16 @@ class Card {
   sheetParts(style: 'page' | 'headline'): Part[] | null {
     const crop = this.input.crop
     if (!crop) return null
-    const head = this.sheetHead(style)
-    if (!head) return null
+    const chosen = this.sheetHead(style)
+    if (!chosen) return null
+    let head = chosen.parts
     const sheet = fitSheet(crop, { width: this.inner, height: this.available - total(head) })
     if (!sheet) return null
+    // A crop shorter than its room leaves space that a headline at its nominal size grows into.
+    if (style === 'headline' && chosen.scale >= 1) for (let step = GROW_HEADLINE_STEPS; step > 0; step--) {
+      const larger = this.headlineHead(1 + step * GROW_HEADLINE / GROW_HEADLINE_STEPS, false)
+      if (larger && total(larger) + sheet.height <= this.available) { head = larger; break }
+    }
     const { u, padX, inner } = this
     const x = padX + (inner - sheet.width) / 2
     const marks = crop.marks.map(mark => ({ color: HIGHLIGHT_HEX[mark.color], alpha: MARK_ALPHA, rects: mark.rects }))
@@ -444,34 +453,39 @@ class Card {
   }
 
   /**
-   * What sits above the sheet. The headline starts a little smaller than Big idea's and steps down until the sheet
-   * has SHEET_SHARE of the room or the headline reaches FLOOR; it is never under MIN_TEXT_PX. Null when the sheet
-   * would have less than MIN_SHEET.
+   * What sits above the sheet, before the crop is known. The headline starts a little smaller than Big idea's and
+   * steps down until the sheet has SHEET_SHARE of the room or the headline reaches FLOOR; it is never under
+   * MIN_TEXT_PX. Null when the sheet would have less than MIN_SHEET.
    */
-  sheetHead(style: 'page' | 'headline'): Part[] | null {
-    const parts: Part[] = []
-    if (style === 'page') { this.kicker(parts, 5, 1); return parts }
-    const text = clean(this.input.card.headline)
-    let head: Part[] | null = null
+  sheetHead(style: 'page' | 'headline'): { parts: Part[]; scale: number } | null {
+    if (style === 'page') { const parts: Part[] = []; this.kicker(parts, 5, 1); return { parts, scale: 1 } }
+    let chosen: { parts: Part[]; scale: number } | null = null
     for (let step = 0; step <= STEPS; step++) {
-      const s = 1 - step * (1 - FLOOR) / STEPS
-      const candidate: Part[] = []
-      this.kicker(candidate, 3.5, s)
-      if (text) {
-        const headline = this.display(text, 7.2, s, -0.03, 1.06, step === STEPS, 'headline')
-        if (!headline) continue
-        candidate.push(this.text(headline, this.padX), { height: 5 * this.u * this.k * s, draw: () => {} })
-      }
-      head = candidate
-      if (this.available - total(candidate) >= SHEET_SHARE * this.available) break
+      const scale = 1 - step * (1 - FLOOR) / STEPS
+      const parts = this.headlineHead(scale, step === STEPS)
+      if (!parts) continue
+      chosen = { parts, scale }
+      if (this.available - total(parts) >= SHEET_SHARE * this.available) break
     }
-    return head && this.available - total(head) >= MIN_SHEET * this.u ? head : null
+    return chosen && this.available - total(chosen.parts) >= MIN_SHEET * this.u ? chosen : null
+  }
+
+  /** The kicker and the headline at scale `s`, with the gap before the sheet. Null when a word is too wide. */
+  headlineHead(s: number, floor: boolean): Part[] | null {
+    const parts: Part[] = []
+    this.kicker(parts, 3.5, Math.min(s, 1))
+    const text = clean(this.input.card.headline)
+    if (!text) return parts
+    const headline = this.display(text, 7.2, s, -0.03, 1.06, floor, 'headline')
+    if (!headline) return null
+    parts.push(this.text(headline, this.padX), { height: 5 * this.u * this.k * Math.min(s, 1), draw: () => {} })
+    return parts
   }
 
   /** The room for the sheet at the full inner width, below what sits above it. */
   sheetSpace(style: 'page' | 'headline'): { width: number; height: number } {
     const head = this.sheetHead(style)
-    return { width: this.inner, height: head ? this.available - total(head) : 0 }
+    return { width: this.inner, height: head ? this.available - total(head.parts) : 0 }
   }
 
   plain(text: string, ink: Ink, leading: number, role: TextRole) { return new Paragraph(this.measure, clean(text), '', ink, ink, leading, 0, role) }

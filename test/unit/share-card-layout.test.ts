@@ -5,7 +5,7 @@ import path from 'node:path'
 import { CARD, FIT, LOOKS, SIZES, validateCard, type CardSize, type HighlightColor, type PageMark, type ShareLook, type ShareStyle } from '../../src/shared/share-card.js'
 import { layoutCard, pageSheetSpace, MIN_TEXT_PX, TOO_LONG, type CardLayout, type CardLayoutInput, type ImageCommand, type Measure, type TextCommand } from '../../frontend/src/lib/share-card/layout.js'
 import { contrast, HIGHLIGHT_HEX, mix, palette } from '../../frontend/src/lib/share-card/looks.js'
-import { SAMPLES, english, longEnglish, longPortuguese, longWordEnglish, longWordPortuguese, minimal } from '../../frontend/src/lib/share-card/samples.js'
+import { PAGE_FRAMES, SAMPLE_PAGE, SAMPLES, english, longEnglish, longPortuguese, longWordEnglish, longWordPortuguese, minimal } from '../../frontend/src/lib/share-card/samples.js'
 
 // A stand-in for canvas measurement: per-character widths scaled by size, heavier for bold and narrower for the
 // serif, plus the letter spacing after every character, as canvas adds it.
@@ -269,6 +269,25 @@ test('Headline puts the topic and the headline above the sheet, and is Big idea 
   }
 })
 
+test('a short crop leaves room that the headline grows into, up to 35%', () => {
+  for (const sample of SAMPLES) for (const look of LOOKS) for (const size of SIZE_NAMES) {
+    const name = `${sample.name}/${look}/${size}`
+    const space = pageSheetSpace({ card: sample.card, source: sample.source, style: 'headline', look, size }, measure)
+    const full = layoutCard({ ...inputFor(sample, 'headline', look, size), crop: { width: 900, height: 900 * space.height / space.width, marks: MARKS } }, measure)
+    const short = layoutCard({ ...inputFor(sample, 'headline', look, size), crop: CROPS.short }, measure)
+    const sizeOf = (layout: CardLayout) => texts(layout).find(t => t.role === 'headline')!.size
+    assert.ok(sizeOf(short) >= sizeOf(full) - 1e-9, name)
+    assert.ok(sizeOf(short) <= Math.max(7.2 * 10.8 * (size === 'story' ? 1.2 : 1) * 1.35, MIN_TEXT_PX) + 1e-6, `${name}: ${sizeOf(short)}`)
+    assertFits(short, name)
+    // The sheet keeps its full width.
+    assert.ok(Math.abs(imageOf(short)!.width - space.width) < 1e-6, name)
+  }
+  const sample = SAMPLES[0]!
+  const nominal = texts(layoutCard({ ...inputFor(sample, 'headline', 'ink', 'feed'), crop: { width: 900, height: 900 * 0.8, marks: MARKS } }, measure)).find(t => t.role === 'headline')!.size
+  const grown = texts(layoutCard({ ...inputFor(sample, 'headline', 'ink', 'feed'), crop: CROPS.short }, measure)).find(t => t.role === 'headline')!.size
+  assert.ok(grown > nominal * 1.1, `${grown} vs ${nominal}`)
+})
+
 test('a headline of 80 characters keeps a sheet, and the headline is never drawn below 28 px', () => {
   const card = { ...longEnglish, headline: 'W'.repeat(8) + ' ' + 'Wide words everywhere make this headline as long as the contract allows' }
   assert.equal(card.headline.length, CARD.headlineMax)
@@ -283,6 +302,13 @@ test('a headline of 80 characters keeps a sheet, and the headline is never drawn
 
 test('every fixture is valid under the contract and the maximum ones sit at its limits', () => {
   for (const sample of SAMPLES) validateCard(sample.card, sample.source)
+  // The Page and Headline frames: valid cards, and phrases that are on the made-up page.
+  const pageText = SAMPLE_PAGE.sections.map(section => section.text).join(' ')
+  for (const frame of PAGE_FRAMES) {
+    validateCard(frame.card, frame.source)
+    assert.ok(frame.marks.length > 0 && frame.marks.every(mark => pageText.includes(mark.phrase)), frame.name)
+  }
+  assert.deepEqual(new Set(PAGE_FRAMES.map(frame => `${frame.style}/${frame.size}`)), new Set(['page/fit', 'page/feed', 'page/story', 'headline/feed', 'headline/story']))
   for (const card of [longEnglish, longPortuguese]) {
     assert.equal(card.quote.length, CARD.quoteMax); assert.equal(card.emphasis.length, CARD.emphasisMax)
     assert.equal(card.headline.length, CARD.headlineMax); assert.equal(card.pull.length, CARD.pullMax)
