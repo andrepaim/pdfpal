@@ -25,6 +25,7 @@ import LibraryChanges from './components/LibraryChanges'
 import { desktopChromeCapabilities } from './lib/desktop-chrome'
 // Hidden review page for share cards; linked from nowhere.
 const ShareCardSamples = lazy(() => import('./pages/ShareCardSamples'))
+const CropEditorSample = lazy(() => import('./pages/CropEditorSample'))
 
 const desktopCapabilities = desktopChromeCapabilities()
 document.documentElement.classList.toggle('desktop-shell', desktopCapabilities.sharedMenu)
@@ -104,6 +105,7 @@ function Root() {
         <Route path="/projects/:projectId/notes/:noteId" element={<NoteEditor />} />
         <Route path="/projects/:projectId/visuals/:id" element={<VisualPage />} />
         <Route path="/dev/share-cards" element={<Suspense fallback={null}><ShareCardSamples /></Suspense>} />
+        <Route path="/dev/crop-editor" element={<Suspense fallback={null}><CropEditorSample /></Suspense>} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
