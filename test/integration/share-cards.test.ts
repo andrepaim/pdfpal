@@ -32,6 +32,7 @@ async function setup() {
   const dir = config.dataDir, calls = path.join(dir, 'calls.txt')
   fs.writeFileSync(path.join(dir, 'response.json'), answer())
   fs.writeFileSync(config.codexBin, `#!/usr/bin/env node
+if(process.argv.includes('--version')){console.log('codex-cli 0.164.0');process.exit(0)};if(process.argv.includes('--help')){console.log('--tools --strict-mcp-config --disallowedTools --ignore-user-config --ignore-rules --ephemeral --disable');process.exit(0)};if(process.argv.includes('status')){process.exit(1)};
 const fs=require('node:fs'),path=require('node:path'),dir=${JSON.stringify(dir)};const input=fs.readFileSync(0,'utf8');fs.appendFileSync(path.join(dir,'calls.txt'),'call\\n')
 const n=fs.readFileSync(path.join(dir,'calls.txt'),'utf8').trim().split('\\n').length;fs.writeFileSync(path.join(dir,'prompt.txt.'+n),input)
 const pick=name=>[name.replace('.','-'+n+'.'),name].map(f=>path.join(dir,f)).find(f=>fs.existsSync(f))
