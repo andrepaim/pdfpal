@@ -7,7 +7,7 @@
 // No API mocking, fabricated answers, or changes to the app's DOM/styles.
 import { chromium, expect } from '@playwright/test'
 import { writeFile } from 'node:fs/promises'
-import { visualDefinition, type VisualRecord } from '../src/shared/visual.js'
+import { visualDefinition, visualFrames, type VisualRecord } from '../src/shared/visual.js'
 import { visualHtml } from '../frontend/src/lib/visual-html.js'
 
 const [base, project, chatSource, visualSource, visualId] = process.argv.slice(2)
@@ -22,7 +22,8 @@ const get = async (path: string) => {
 }
 const record: VisualRecord = await get(`/visuals/${visualId}`)
 if (record.status !== 'complete') throw new Error('The visual explanation must be complete.')
-visualDefinition.parse(record.definition)
+const definition = visualDefinition.parse(record.definition)
+const frames = visualFrames(definition)
 const chat = await get(`/sources/${chatSource}/chat`)
 const visualChat = await get(`/sources/${visualSource}/chat`)
 const browser = await chromium.launch()
@@ -68,12 +69,15 @@ try {
     await page.screenshot({path:'screenshots/visual-softmax-scaling.png'})
     // Check all generated steps in the real UI, including navigation back.
     const next = card.getByRole('button',{name:'Next step',exact:true}).first()
-    for(let i=1; i<record.definition!.steps.length; i++) await next.click()
+    for(let i=1; i<frames.length; i++) await next.click()
     if (!await next.isDisabled()) throw new Error('Last-step navigation failed')
     const previous = card.getByRole('button',{name:'Previous step',exact:true}).first()
-    for(let i=1; i<record.definition!.steps.length; i++) await previous.click()
-    await card.locator(':scope > .visual-story').getByRole('button',{name:'B',exact:true}).click()
-    await expect(card.locator(':scope > .visual-story .visual-detail')).toBeVisible()
+    for(let i=1; i<frames.length; i++) await previous.click()
+    const hotspot = card.locator(':scope > .visual-story svg [role="button"]:visible').first()
+    if (await hotspot.count()) {
+      await hotspot.click()
+      await expect(card.locator(':scope > .visual-story .visual-detail')).toBeVisible()
+    }
     await writeFile('screenshots/9-visual-explanation.html',visualHtml(record))
   }
   const turn = visualChat.messages.find((m: {visual_id:string})=>m.visual_id===visualId)

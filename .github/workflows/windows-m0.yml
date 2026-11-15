@@ -10,12 +10,19 @@ on:
       - 'extension/**'
       - 'test/unit/agent-discovery.test.ts'
       - '.github/workflows/windows-m0.yml'
+      - '.github/workflows/change-scope.yml'
+      - 'scripts/ci-changes*.mjs'
       - 'package*.json'
       - 'LICENSE'
       - '.github/workflows/windows-release.yml'
 
 jobs:
+  changes:
+    uses: ./.github/workflows/change-scope.yml
+
   packaged-windows:
+    needs: changes
+    if: needs.changes.outputs.run_full == 'true'
     runs-on: windows-latest
     timeout-minutes: 40
     steps:

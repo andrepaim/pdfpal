@@ -37,6 +37,7 @@
     "build:extension": "npm run build --workspace extension",
     "test:extension": "npm run build && npm exec --workspace extension -- playwright test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check:docs": "node scripts/check-docs.mjs",
     "prepare": "npm run build",
     "skill:install": "bash scripts/install-skill.sh",
     "skill:uninstall": "bash scripts/install-skill.sh --uninstall",

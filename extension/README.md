@@ -6,11 +6,10 @@ Book questions use the book title and author, conversation history, previously d
 
 ## Install
 
-Companion **0.6.1** is bundled with the repository's pdfpal **2.1.0** build. That pdfpal version has not yet been published to npm; use a source checkout until it is released:
+The companion is bundled with desktop builds and the repository source build. In the desktop app, open **Kindle extension** and download its matching ZIP. For the CLI/browser reader, use a source checkout; the current source package has not been published to npm:
 
 ```sh
 npm ci
-npm run build
 npm start
 ```
 
@@ -20,7 +19,7 @@ npm start
 4. Pin **pdfpal Kindle Companion** to the toolbar. Open Kindle for Web and refresh an already-open book tab.
 5. Click the toolbar icon to open the panel. This action also grants screenshot permission for region capture.
 
-Contributors can load `extension/dist` directly after the root build. The archive is generated at `extension/package/companion.zip`; no manual packaging step is needed.
+`npm ci` builds the reader and matching companion through the prepare hook. After editing source, run `npm run build`. Contributors can load `extension/dist` directly after the root build. The archive is generated at `extension/package/companion.zip`; no manual packaging step is needed.
 
 Supported readers: `read.amazon.com`, `ler.amazon.com.br`, and `read.amazon.co.uk`. English prose is the initial OCR target. The native Kindle PC application is not supported.
 
@@ -110,11 +109,11 @@ Use a slash command for graphical explanations with your configured agent, inclu
 
 The chatbox placeholder mentions `/visual`. Typing `/` shows a command suggestion and an example; click it or press Tab to complete `/visual`. Submitting a bare command without an attached selection shows usage guidance without invoking an agent. The previous checkbox and extra **Explain visually** buttons have been removed. In pdfpal's web PDF reader, **Explain visually** is available directly in the text-selection popup.
 
-An explanation contains topic-specific diagrams in progressive steps. Use the arrows to move between scenes and select a shape to reveal additional detail. **Expand** opens a larger viewer. Captions distinguish supplied text, illustrative examples and background knowledge; relevant source labels appear beneath each step. **Read the explanation** and **Takeaways & full transcript** provide text alternatives. Follow-up questions use the conversation context.
+An explanation contains flow diagrams, plots, token/vector grids or other figures that reveal in progressive steps. Use **Next**/**Back**, click the segmented progress bar, or focus the player and use Left/Right arrow keys. Select an item marked with a dot for its named detail. **Expand** opens a larger viewer on the same step. Captions distinguish supplied text, illustrative examples and background knowledge; relevant source labels appear beneath each step. **Read more** and **Takeaways and full transcript** provide text alternatives. Follow-up questions use the conversation context. See the shared [visual explanation guide](../docs/visual-explanations.md).
 
 **Save to project** creates a note with the transcript and a link to the preserved interactive explanation in pdfpal's web interface. **Export HTML** downloads a standalone interactive file that works offline. Visual explanations persist with conversation history; reopening the pane does not regenerate them. Failed generation can be retried explicitly. A server restart interrupts unfinished generation and does not replay it automatically.
 
-Scenes use validated vector shapes and bundled interactions. The model cannot supply executable HTML or JavaScript. Generated examples can simplify a concept, so the captions and detailed explanation identify the intended scope. Arbitrary numerical simulations and sliders are outside this first release.
+Figures use validated content/data and bundled layout and interactions. Older saved explanations still play. The model cannot supply executable HTML or JavaScript. Generated examples can simplify a concept, so the captions and detailed explanation identify the intended scope. Arbitrary numerical simulations and sliders are outside the supported figure interactions.
 
 ## Troubleshooting
 

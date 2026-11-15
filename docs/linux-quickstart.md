@@ -2,9 +2,13 @@
 
 The Linux desktop uses the same local-first reader, SQLite library, PDF extraction, Kindle companion, backups and optional cloud services as the other surfaces. The initial installer is a Debian package for x86-64, built with Electron 45. Mint 22/Ubuntu 24.04 with X11 is the initial validation environment. Wayland and other desktop environments still need interactive acceptance. AppImage and automatic Linux updates are deferred.
 
-## Build and install
+## Download or build
 
-Use Node.js 22 or newer for development. The installed app and its bundled CLI do not need system Node.
+Download the `.deb`, `pdfpal-linux-release.json` and `SHA256SUMS-linux.txt` from the [published Linux engineering preview](https://github.com/andrepaim/pdfpal/releases/tag/linux-desktop-v2.8.0-beta.5.linux.1). Keep all three in the same directory and run `sha256sum -c SHA256SUMS-linux.txt` there before installation. This preview was published separately from the Windows release pipeline; its Linux version can differ from the Windows version in `desktop/version.json`.
+
+For newer engineering artifacts, open a successful [CI run](https://github.com/andrepaim/pdfpal/actions/workflows/ci.yml) for the intended `master` commit and download **pdfpal-linux-x64-preview** (GitHub sign-in may be required). The ZIP contains the Debian package, integrity manifest, checksums and acceptance receipts. Extract it and verify its checksums the same way. CI artifact creation does not automatically publish a Linux GitHub Release.
+
+To build from a source checkout, use Node.js 22 or newer for development. The installed app and its bundled CLI do not need system Node.
 
 ```sh
 npm ci
@@ -25,7 +29,7 @@ Electron's renderer sandbox remains enabled. Do not launch with `--no-sandbox`. 
 
 The shared default library stays at `~/.pdfpal`. Desktop configuration lives at `${XDG_CONFIG_HOME:-~/.config}/pdfpal-desktop`; a `PDFPAL_DESKTOP_PROFILE` or `--profile` override selects a separate profile. A profile registers its active library and authenticated local CLI endpoint. Avoid concurrently opening the same SQLite library from multiple app instances or standalone servers.
 
-Linux exposes application actions in the native menu, including assistant setup, CLI setup, software updates, diagnostics and quitting. A tray icon is optional because support varies by desktop. Closing the Linux window quits safely rather than depending on an invisible tray icon. Background startup is opt-in under **Start at login**. It creates a user-owned XDG autostart desktop entry and removes only pdfpal's managed entry when disabled; the library remains intact. On Linux a login launch keeps a visible window available.
+Linux keeps the window manager’s native title bar and controls, with the compact **pdfpal menu** toolbar inside the frame. The toolbar provides reading history, project search, cloud access and help, sharing the Windows app’s actions without drawing Windows caption buttons. **F10** opens the menu; arrow keys/Home/End navigate it and Escape closes it. **Ctrl+K** finds a project, **Alt+Left/Right** retraces reading history, **Ctrl+,** opens AI settings, and **Ctrl+Q** quits. Backups, privacy/diagnostics, CLI setup, Kindle, updates, licenses and **Start at login** are in this menu. The traditional native menu remains available during startup/recovery and is hidden when the reader’s shared menu is active. A tray icon is optional because support varies by desktop. Closing the Linux window quits safely rather than depending on an invisible tray icon. Background startup is opt-in under **Start at login**. It creates a user-owned XDG autostart desktop entry and removes only pdfpal's managed entry when disabled; the library remains intact. On Linux a login launch keeps a visible window available.
 
 ## Assistants and account protection
 
