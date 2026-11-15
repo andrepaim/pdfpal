@@ -2,9 +2,11 @@
 
 The Linux desktop uses the same local-first reader, SQLite library, PDF extraction, Kindle companion, backups and optional cloud services as the other surfaces. The initial installer is a Debian package for x86-64, built with Electron 45. Mint 22/Ubuntu 24.04 with X11 is the initial validation environment. Wayland and other desktop environments still need interactive acceptance. AppImage and automatic Linux updates are deferred.
 
-## Build and install
+## Download or build
 
-Use Node.js 22 or newer for development. The installed app and its bundled CLI do not need system Node.
+For a prebuilt preview, open a successful [CI run](https://github.com/andrepaim/pdfpal/actions/workflows/ci.yml) for the intended `master` commit and download the **pdfpal-linux-x64-preview** artifact (GitHub sign-in may be required). Extract it and verify `SHA256SUMS-linux.txt` with `sha256sum -c SHA256SUMS-linux.txt` from that directory. The artifact includes the Debian package, integrity manifest and acceptance receipts. The automatic Windows Releases publisher does not publish this package.
+
+To build from a source checkout, use Node.js 22 or newer for development. The installed app and its bundled CLI do not need system Node.
 
 ```sh
 npm ci

@@ -104,6 +104,12 @@ If ChatGPT's **Settings → General → Agent environment** selects WSL, the ski
 
 The Windows installer is currently an **unsigned engineering preview**, so Windows may show an unknown-publisher prompt. To upgrade between previews, download the target installer from GitHub Releases and install it under the same Windows account. The tray’s **Check for updates** only looks for signed stable releases when you request a check. See the [Windows upgrade instructions](docs/windows-quickstart.md#upgrade-or-uninstall) for checksum and installation steps.
 
+### Linux desktop engineering preview
+
+The x86-64 Debian package targets Mint 22/Ubuntu 24.04, with X11 as the initial validation environment. Download the `pdfpal-linux-x64-preview` artifact from a successful [CI run](https://github.com/andrepaim/pdfpal/actions/workflows/ci.yml), or build it from source using the [Linux quickstart](docs/linux-quickstart.md). It is not part of the automatic Windows GitHub Release pipeline.
+
+Install with `sudo apt install ./pdfpal-<version>-amd64.deb`, then open **pdfpal** from the application menu. The app includes its runtime and a separate `pdfpal-desktop-cli`; a system Node installation is unnecessary for those bundled tools. Node-based assistant CLIs may need their own runtime. Closing the Linux window quits the app. Account persistence requires a supported, unlocked OS keyring; local reading works without sign-in. Wayland, live account flows and clean-machine installation remain manual acceptance checks.
+
 ### Linux and WSL
 
 Install **Git** and **Node.js 22 or newer**. For AI features, also install and authenticate a supported assistant CLI: `claude`, `codex`, or `opencode`.
@@ -348,7 +354,7 @@ $loopy run the saved Local test-quality pass loop
 
 ## Architecture
 
-The Windows desktop app, web reader, Kindle companion, and CLI share TypeScript services, local storage, and AI configuration. The desktop app hosts the reader and its local backend, with an Electron shell for the tray and Windows lifecycle. The web reader uses the same-origin Fastify API; the extension uses a loopback bridge with revocable credentials. The standalone CLI calls services directly; the bundled Windows CLI connects to the running app through a private pipe. Kindle conversations are scoped to connection, project, and book, separately from PDF chat sessions. Saved notes are available in the project UI.
+The Windows desktop app, Linux desktop engineering preview, web reader, Kindle companion, and CLI share TypeScript services, local storage, and AI configuration. The desktop app hosts the reader and its local backend in Electron. Windows closes to its tray; Linux closes by quitting safely. The web reader uses the same-origin Fastify API; the extension uses a loopback bridge with revocable credentials. The standalone CLI calls services directly; the bundled Windows CLI connects to the running app through a private pipe, and `pdfpal-desktop-cli` on Linux uses authenticated loopback HTTP. Kindle conversations are scoped to connection, project, and book, separately from PDF chat sessions. Saved notes are available in the project UI.
 
 ```text
 Web reader ── HTTP ──▶ Fastify API ──┐
@@ -369,7 +375,7 @@ pdfpal CLI ───────────────────────
 
 The implementation follows that split:
 
-- [`desktop/`](desktop/) contains the optional desktop shell, installer tooling, and Windows acceptance checks. See the [desktop build guide](desktop/README.md) and [automatic release pipeline](docs/windows-release-pipeline.md).
+- [`desktop/`](desktop/) contains the optional desktop shell, Windows/Linux packaging tooling, and platform acceptance checks. See the [desktop build guide](desktop/README.md) and [automatic release pipeline](docs/windows-release-pipeline.md).
 - [`extension/`](extension/) contains the Chrome side panel, reader capture, bundled OCR, and guided connection flow.
 - [`frontend/src`](frontend/src/) contains the reader, chat, projects, notes, collections, and source-discovery UI.
 - [`src/server`](src/server/) exposes the HTTP API and serves the built frontend.

@@ -2,7 +2,7 @@
 
 The Linux engineering preview now builds an unpacked application and Debian installer, with native menus, XDG preferences and opt-in autostart, secure keyring checks and an independent bundled CLI. See the [Linux quickstart](../docs/linux-quickstart.md), [milestone plan](../docs/linux-desktop-plan.md), and [acceptance results](../docs/linux-desktop-results.md). The Windows build and release procedures below remain in place.
 
-M3 adds a branded per-user Windows installer, versioned desktop releases, guarded upgrades/uninstall, manual update checking, license notices, and signing configuration to the accepted M2 desktop application. See the [Windows quickstart](../docs/windows-quickstart.md), [M3 results](../docs/windows-m3-results.md), and [implementation plan](../docs/windows-desktop-plan.md).
+The Windows desktop includes a per-user installer, integrated app menu, direct ChatGPT sign-in, assistant discovery, bundled CLI/skill setup, local recovery and optional cloud sync. The milestone results below record how its installer and lifecycle were validated. See the [Windows quickstart](../docs/windows-quickstart.md), [M3 results](../docs/windows-m3-results.md), and [implementation plan](../docs/windows-desktop-plan.md).
 
 M4 adds repeatable engineering measurements and an offline beta field-test kit. See [M4 results](../docs/windows-m4-results.md) and the [observer guide](../docs/windows-beta-guide.md). Actual participant results, clean-account provider login, reference-machine validation and publisher signing remain release gates.
 
@@ -10,7 +10,7 @@ Windows downloads are published through the [GitHub Actions release pipeline](..
 
 ## Install the preview
 
-Run **pdfpal-Setup-2.1.0-preview.5-x64.exe**, then open **pdfpal** from the Start menu. Quit an earlier running pdfpal instance from its tray first. The current test candidate is unsigned; publisher signing is an explicit release gate. The installer installs for the current user without requesting administrator privileges. It keeps application files separate from the library, retains data on uninstall, and refuses to force-close a running instance.
+Download **pdfpal-Setup-<version>-x64.exe** from the [official releases](https://github.com/andrepaim/pdfpal/releases), then open **pdfpal** from the Start menu. [`version.json`](version.json) is the source of the desktop build version; do not infer the latest download from a historical milestone receipt. Quit an earlier running pdfpal instance from its tray first. The current test candidate is unsigned; publisher signing is an explicit release gate. The installer installs for the current user without requesting administrator privileges. It keeps application files separate from the library, retains data on uninstall, and refuses to force-close a running instance.
 
 The unpacked artifact remains available for engineering checks as `win-unpacked/pdfpal.exe`; keep the entire folder together if using it.
 
@@ -36,7 +36,7 @@ node desktop/scripts/stage.mjs
 ./desktop/scripts/windows-m3.ps1 -SourceRoot (Get-Location).Path
 ```
 
-The driver also supports UNC/WSL source checkouts, copying the generated stage onto a Windows drive before running npm or packaging. Its default build directory is `%TEMP%\pdfpal-windows-m1`. `artifacts\pdfpal-Setup-2.1.0-preview.5-x64.exe` is the installer and `artifacts\win-unpacked\pdfpal.exe` is its application.
+The driver also supports UNC/WSL source checkouts, copying the generated stage onto a Windows drive before running npm or packaging. Its default build directory is `%TEMP%\pdfpal-windows-m1`. `artifacts\pdfpal-Setup-<version>-x64.exe` is the installer and `artifacts\win-unpacked\pdfpal.exe` is its application.
 
 The shared open-book icon is defined in `frontend/public/favicon.svg`. After installing root dependencies, run `node desktop/scripts/icons.mjs` to regenerate the browser and companion PNGs, logo, browser ICO, and Windows ICO. Each target size is rendered directly from the vector source; the Windows ICO retains native bitmap frames for small shell and installer icons. The companion build copies the same PNGs from the web app.
 
@@ -72,7 +72,7 @@ After the M3 installer build, run `node desktop/scripts/create-beta-kit.mjs <art
 
 ## Architecture and compatibility
 
-Electron 45.1.0 and electron-builder 26.18.0 are isolated from root npm workspaces. The standalone source CLI does not install Electron. Windows installers include a matching console launcher in `bin`, compiled by `build/prepare-cli.cjs` before packaging, and a bundled skill. `desktop/package-lock.json` locks build tooling and `runtime-lock.json` locks the staged runtime; no native rebuild runs against the CLI's development tree.
+Electron 45.1.0 and electron-builder 26.18.0 are isolated from root npm workspaces. The standalone source CLI does not install Electron. Windows installers include a matching console launcher in `bin`, compiled by `build/prepare-cli.cjs` before packaging, and a bundled skill. Linux packages include a separate `pdfpal-desktop-cli` launcher using Electron’s embedded Node runtime and authenticated loopback transport. `desktop/package-lock.json` locks build tooling and `runtime-lock.json` locks the staged runtime; no native rebuild runs against the CLI's development tree.
 
 The desktop stage uses `better-sqlite3` 13.0.3's N-API binaries and `@napi-rs/canvas` 0.1.100. The CLI retains its dependency range. PDF.js treats Electron utility processes as browsers, so the backend supplies DOM primitives and its in-process worker before loading the server. See [M0 results](../docs/windows-m0-results.md) for the original compatibility failures and their resolution.
 
@@ -80,7 +80,7 @@ One utility process owns the local backend and official agent child processes. T
 
 Startup and migrations are serialized by a separate SQLite lease with a 15-second startup wait. Ordinary database writes retain the existing five-second busy timeout. A different lease gives one server ownership of a canonical database path and is released by the OS after process death. Private owner metadata is checked against a live challenge endpoint before offering a browser URL. Newer database schemas are rejected before migration or journal changes. Normal compatible CLI writes remain available while desktop serves the library.
 
-Agent execution now uses the shared Windows resolver and process runner throughout chat, visual explanations, Kindle jobs, and CLI asks. It resolves native Claude/Codex executables without interpolating prompts into `.cmd` commands, hides background console windows, bounds output/time, tracks active requests, and cancels owned process trees during explicit shutdown. Claude calls disable built-in/MCP tools. Codex calls retain the read-only sandbox, disable shell/web tools, use ephemeral sessions, and ignore unrelated user config/rules while retaining authentication. Custom Codex configuration-based providers are not inherited by these isolated reading calls. Unsupported capabilities produce update guidance. Existing OpenCode support remains available.
+Agent execution uses the shared platform-aware resolver and process runner throughout chat, visual explanations, Kindle jobs, and CLI asks. It resolves native Claude/Codex executables without interpolating prompts into `.cmd` commands, hides background console windows, bounds output/time, tracks active requests, and cancels owned process trees during explicit shutdown. Claude calls disable built-in/MCP tools. Codex calls retain the read-only sandbox, disable shell/web tools, use ephemeral sessions, and ignore unrelated user config/rules while retaining authentication. Custom Codex configuration-based providers are not inherited by these isolated reading calls. Unsupported capabilities produce update guidance. Existing OpenCode support remains available.
 
 The backend automatically retries one unexpected crash without replaying AI requests. Startup failures use a local themed recovery page. Repeated crashes offer Retry in the reader and tray. When the service returns on the same origin, the existing reading view and drafts stay mounted. Diagnostics are previewed before export and contain only allowlisted metadata and a bounded event log. Abruptly killing the entire Electron process tree, a power loss, and a fully clean nontechnical user installation remain broader release-hardening checks; the alpha does not claim to cover every forced-exit scenario.
 

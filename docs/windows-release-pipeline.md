@@ -2,11 +2,13 @@
 
 The **Publish Windows desktop release** GitHub Actions workflow builds and publishes a Windows x64 installer when `desktop/version.json` changes on `master`.
 
-The desktop integration uses `2.1.0-preview.4`. After it reaches `master` and the checks pass, GitHub creates a **prerelease** named `desktop-v2.1.0-preview.4` with:
+The version is read from [`desktop/version.json`](../desktop/version.json). A successful release publishes `desktop-v<version>` with:
 
-- `pdfpal-Setup-2.1.0-preview.4-x64.exe` — the normal Windows installer.
+- `pdfpal-Setup-<version>-x64.exe` — the Windows installer.
 - `pdfpal-desktop-release.json` — application/version/signing and SHA-256 metadata.
 - `SHA256SUMS.txt` — checksums for the installer and manifest.
+
+The source/npm package version is independent. The Linux Debian engineering preview is built and uploaded as `pdfpal-linux-x64-preview` by [CI](../.github/workflows/ci.yml); this Windows publisher does not publish a Linux installer. No Mac release target is merged into this branch.
 
 Testers open the [GitHub Releases page](https://github.com/andrepaim/pdfpal/releases), select the version, and download the `.exe`. They do not need Node.js or GitHub Actions artifact access. Preview notes explicitly state when the installer is unsigned and Windows may show an unknown publisher. The desktop's in-app update checker continues to offer stable signed releases only.
 
@@ -26,8 +28,8 @@ Versions with a suffix such as `-preview.4` or `-beta.1` are published as unsign
 
 To retry a failed publication, use **Actions → Publish Windows desktop release → Re-run failed jobs** for that run. **Run workflow** on `master` can publish its current version or verify that it is already published. If code has changed since the existing tag, bump the version instead of reusing it. Signing settings remain documented in `desktop/README.md`.
 
-The desktop app, its prerequisites, and this workflow enter `master` together through the integration PR. Merging the initial `desktop/version.json` at preview.4 triggers the first automatic build and publication. Subsequent releases require a higher desktop version, for example changing `2.1.0-preview.4` to `2.1.0-preview.5`. Publishing the npm CLI remains a separate release action; its version and root installation commands are independent of the desktop installer.
+## Historical first release
 
-The initial [2.1.0-preview.3 download](https://github.com/andrepaim/pdfpal/releases/tag/desktop-v2.1.0-preview.3) was published from the successful Windows CI run for commit `380d40422dc2e80a81aaa63b4ae505d831e3ad61`. Its tag and all three server-reported asset digests were verified. Re-running publication verified the existing release without replacing assets. The integrated `2.1.0-preview.4` uses a new tag and retains preview.3 unchanged.
+The initial [2.1.0-preview.3 download](https://github.com/andrepaim/pdfpal/releases/tag/desktop-v2.1.0-preview.3) was published from Windows CI commit `380d40422dc2e80a81aaa63b4ae505d831e3ad61`. Its tag and asset digests were verified, and retrying publication retained the existing assets. Later versions use new tags; this receipt does not identify the current installer.
 
 Implementation references: [GitHub workflow triggers and permissions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax), [draft release creation](https://cli.github.com/manual/gh_release_create), and [release asset digests](https://docs.github.com/en/rest/releases/assets).
