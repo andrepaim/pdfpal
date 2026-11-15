@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { projectsApi, type Project } from '../lib/api'
 import { timeAgo } from '../lib/time'
+import { desktopChromeCapabilities } from '../lib/desktop-chrome'
 
 interface NewProjectModalProps {
   onClose: () => void
@@ -185,7 +186,7 @@ export default function ProjectsPage({ user }: { user: User }) {
   return (
     <div style={{ minHeight: 'var(--app-height, 100vh)', background: 'var(--bg)', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
-      <div className="projects-page-header" style={{ background: '#111', borderBottom: '1px solid var(--border)', padding: '0 24px', height: 48, display: window.pdfpalDesktop?.chrome ? 'none' : 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div className="projects-page-header" style={{ background: '#111', borderBottom: '1px solid var(--border)', padding: '0 24px', height: 48, display: desktopChromeCapabilities().sharedMenu ? 'none' : 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <img src="/logo.png" alt="pdfpal" style={{ width: 32, height: 32 }} />
           <span style={{ fontWeight: 800, fontSize: 16, color: '#fff', letterSpacing: '-0.5px' }}>pdfpal</span>

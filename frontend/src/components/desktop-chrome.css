@@ -1,8 +1,12 @@
-html.desktop-shell{--desktop-titlebar-height:env(titlebar-area-height,44px);--app-height:calc(100dvh - var(--desktop-titlebar-height));color-scheme:dark}
+html.desktop-shell{--desktop-titlebar-height:44px;--app-height:calc(100dvh - var(--desktop-titlebar-height));color-scheme:dark}
+html.desktop-titlebar-overlay{--desktop-titlebar-height:env(titlebar-area-height,44px)}
 .application-surface{flex:1;min-height:0;overflow:auto;position:relative}
-.desktop-chrome{height:var(--desktop-titlebar-height,44px);flex-shrink:0;background:#171820;color:#aeb0c1;border-bottom:1px solid #ffffff09;user-select:none;-webkit-app-region:drag;z-index:995}
-.desktop-chrome-inner{width:env(titlebar-area-width,calc(100% - 138px));height:100%;display:flex;align-items:center;gap:8px;padding:0 12px 0 10px;min-width:0}
-.desktop-chrome button{font-family:inherit;-webkit-app-region:no-drag;cursor:pointer}
+.desktop-chrome{height:var(--desktop-titlebar-height,44px);flex-shrink:0;background:#171820;color:#aeb0c1;border-bottom:1px solid #ffffff09;user-select:none;z-index:995}
+.desktop-chrome-inner{width:100%;height:100%;display:flex;align-items:center;gap:8px;padding:0 12px 0 10px;min-width:0}
+.desktop-titlebar-overlay .desktop-chrome{-webkit-app-region:drag}
+.desktop-titlebar-overlay .desktop-chrome-inner{width:env(titlebar-area-width,calc(100% - 138px))}
+.desktop-titlebar-overlay .desktop-chrome button{-webkit-app-region:no-drag}
+.desktop-chrome button{font-family:inherit;cursor:pointer}
 .desktop-chrome-button{display:grid;place-items:center;width:28px;height:28px;padding:5px;flex-shrink:0;border:0;border-radius:6px;background:transparent;color:inherit;transition:background .12s,color .12s}
 .desktop-chrome-button:hover,.desktop-brand:hover{background:#ffffff0d;color:#fff}.desktop-chrome-button:disabled{opacity:.3;cursor:default;background:none}
 .desktop-chrome svg{width:17px;height:17px;flex-shrink:0}.desktop-brand{border:0;background:none;color:#e1e1eb;display:flex;align-items:center;gap:7px;padding:4px 8px 4px 3px;font-size:13px;font-weight:650;border-radius:6px;letter-spacing:-.2px}.desktop-brand img{width:21px;height:21px;object-fit:contain}.desktop-history{display:flex;gap:1px;margin:0 6px}

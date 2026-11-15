@@ -10,6 +10,8 @@ ipcRenderer.on('pdfpal:open-ai-settings', () => {
 
 contextBridge.exposeInMainWorld('pdfpalDesktop', {
   platform: process.platform,
+  // Sandboxed preloads cannot import local ESM modules. Match chromeCapabilities in chrome.mjs.
+  capabilities: { sharedMenu: ['win32', 'linux'].includes(process.platform), titleBarOverlay: process.platform === 'win32' },
   chrome: process.platform === 'win32',
   cliSetup: action => { if(!['status','install','check'].includes(action))return Promise.reject(new Error('Unsupported CLI setup action'));return ipcRenderer.invoke('pdfpal:cli-setup',action) },
   chromeState: () => ipcRenderer.invoke('pdfpal:chrome-state'),
