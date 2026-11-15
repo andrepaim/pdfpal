@@ -13,6 +13,8 @@ import { Session } from './chatgpt/session.mjs'
 import { protectedVault } from './chatgpt/vault.mjs'
 import { betaOptions, betaAcceptance } from './beta-acceptance.mjs'
 import {chromeCommands,chromeOptions,chromeShortcut,feedbackIssueURL,readerHistoryTarget} from './chrome.mjs'
+import { clipboard } from 'electron'
+import { clipboardPng } from './clipboard.mjs'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
 const metadata = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).pdfpalDesktop ?? {}
@@ -598,6 +600,8 @@ else {
     if (error) throw new Error('The license file could not be opened. Find THIRD_PARTY_NOTICES.txt in the application resources folder.')
     return true
   }, true)
+  // Share cards: the renderer's clipboard API may not write images here, since every permission request is refused.
+  handle('copy-image', bytes => { const image = nativeImage.createFromBuffer(clipboardPng(bytes)); if (image.isEmpty()) throw new Error('The card image could not be read.'); clipboard.writeImage(image); return true })
   handle('chatgpt-stop', () => { chatgpt.cancelAll(); return chatgpt.summary() })
   handle('chatgpt-state', () => chatgpt.summary())
   handle('chatgpt-connect', id => chatgpt.connect(id))
