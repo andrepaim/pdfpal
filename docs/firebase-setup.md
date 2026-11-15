@@ -1,6 +1,6 @@
 # Firebase library sync and telemetry
 
-The optional cloud integration uses Firebase Authentication, Firestore Standard, and Cloud Storage directly from the local backend with the signed-in user's credentials. No service-account key or separately hosted Fastify/Cloud Run server is needed. SQLite remains the working library and durable offline queue. The Windows main process protects saved Firebase credentials using Electron safeStorage; the standalone CLI/browser server keeps credentials in memory and requires sign-in after restart.
+The optional cloud integration uses Firebase Authentication, Firestore Standard, and Cloud Storage directly from the local backend with the signed-in user's credentials. No service-account key or separately hosted Fastify/Cloud Run server is needed. SQLite remains the working library and durable offline queue. The desktop main process protects saved Firebase credentials using Electron safeStorage; Linux additionally requires a supported, unlocked OS keyring and refuses an unprotected fallback. The standalone CLI/browser server keeps credentials in memory and requires sign-in after restart.
 
 ## Delivered scope
 

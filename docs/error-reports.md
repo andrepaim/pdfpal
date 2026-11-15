@@ -1,6 +1,6 @@
 # Error reporting
 
-Open **Privacy** for local diagnostics and the separate **Share error reports with Firebase** option. Cloud sharing defaults off, including when an older installation already opted into local diagnostics. Google sign-in alone does not enable it. Optional usage analytics remains a separate setting and only runs with an Analytics configuration; the bundled Firebase project has no Analytics property configured by this change.
+Open **Privacy & diagnostics** from the desktop app menu, or **Privacy** in the browser reader, for local diagnostics and the separate **Share error reports with Firebase** option. Cloud sharing defaults off, including when an older installation already opted into local diagnostics. Google sign-in alone does not enable it. Optional usage analytics remains a separate setting and only runs with an Analytics configuration; the bundled Firebase project has no Analytics property configured by this change.
 
 Cloud reports use the existing authenticated Firestore connection on the Spark free tier. They do not require Cloud Functions, Cloud Run, a billing account, Crashlytics, or a new Google API key in the app. The source contains only public project identifiers; Firebase client configuration is loaded at runtime from the fixed Firebase Hosting initialization endpoint.
 

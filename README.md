@@ -275,9 +275,9 @@ Run `npm run skill:uninstall` to remove the symlinks.
 
 ## Optional cloud library
 
-Open **Cloud library** from the Windows toolbar or the browser reader and sign in with Google. Sign-in alone uploads no library content. Explicitly enable sync to share projects, source metadata, nested collections, notes, highlights and reading progress. Choose **Include saved conversations** separately to synchronize existing and future saved PDF and project questions and answers. AI-provider sign-in is separate from Google sign-in.
+Open **Cloud library** from the Windows toolbar, Linux app menu or browser reader and sign in with Google. Sign-in alone uploads no library content. Explicitly enable sync to share projects, source metadata, nested collections, notes, highlights and reading progress. Choose **Include saved conversations** separately to synchronize existing and future saved PDF and project questions and answers. AI-provider sign-in is separate from Google sign-in.
 
-SQLite remains the working library, with changes queued while offline. To connect an existing cloud library on another device, start with an empty local library. **PDF files, Kindle extension history and interactive visual assets stay local in the bundled configuration.** PDF file transfers require a separately configured, billing-enabled Cloud Storage bucket and explicit opt-in on each device. Keep full local backups. See [cloud setup and supported data](docs/firebase-setup.md).
+SQLite remains the working library, with changes queued while offline. Each Google account has one account library; another device joins it from an empty local library. If an older version created multiple cloud libraries, choose the complete one explicitly with **Use as account library**. A device bound to another legacy library stops before uploading; **Restore account library separately** backs up its local work and restores the account library into a separate library. This keeps the original available and does not merge the two. **PDF files, Kindle extension history and interactive visual assets stay local in the bundled configuration.** PDF file transfers require a separately configured, billing-enabled Cloud Storage bucket and explicit opt-in on each device. Keep full local backups. See [cloud setup and supported data](docs/firebase-setup.md).
 
 ## Local data
 
