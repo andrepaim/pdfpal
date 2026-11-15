@@ -12,7 +12,7 @@ import { preferences, registeredLibrary, restoreBounds, restoreLibraryRoute, saf
 import { Session } from './chatgpt/session.mjs'
 import { protectedVault } from './chatgpt/vault.mjs'
 import { betaOptions, betaAcceptance } from './beta-acceptance.mjs'
-import {chromeCommands,chromeOptions,chromeShortcut,feedbackIssueURL,readerHistoryTarget} from './chrome.mjs'
+import {chromeCapabilities,chromeCommands,chromeOptions,chromeShortcut,feedbackIssueURL,nativeMenuRequired,readerHistoryTarget} from './chrome.mjs'
 import { defaultDesktopProfile } from './dist/shared/desktop-profile.js'
 import { closeToTray, initiallyHidden, linuxAutostart, linuxMenuTemplate } from './linux.mjs'
 
@@ -84,7 +84,7 @@ function readerHistory(offset) {
   return readerHistoryTarget(history.getAllEntries(),history.getActiveIndex(),offset,ready?.origin)
 }
 function chromeState(){
-  return {version:app.getVersion(),focused:!!window?.isFocused(),maximized:!!window?.isMaximized(),fullscreen:!!window?.isFullScreen(),canGoBack:readerHistory(-1)!==undefined,canGoForward:readerHistory(1)!==undefined,zoom:window?.webContents.getZoomFactor()??1}
+  return {version:app.getVersion(),focused:!!window?.isFocused(),maximized:!!window?.isMaximized(),fullscreen:!!window?.isFullScreen(),canGoBack:readerHistory(-1)!==undefined,canGoForward:readerHistory(1)!==undefined,zoom:window?.webContents.getZoomFactor()??1,startAtLogin:loginEnabled()}
 }
 function sendChromeState(){if(window&&!window.isDestroyed())window.webContents.send('pdfpal:chrome-state',chromeState())}
 async function chromeCommand(command){
@@ -97,6 +97,12 @@ async function chromeCommand(command){
     if(index!==undefined){await window.webContents.executeJavaScript('window.pdfpalFlushPending?.()');window.webContents.navigationHistory.goToIndex(index)}
   }else if(command==='open-browser'){if(ready)openBrowser(ready.origin+safeRoute(new URL(window.webContents.getURL()).pathname))}
   else if(command==='feedback')openBrowser(feedbackIssueURL({version:app.getVersion(),platform:process.platform,release:process.getSystemVersion()}))
+  else if(command==='diagnostics')openDiagnostics()
+  else if(command==='licenses')await openLicenses()
+  else if(command==='startup-toggle'){
+    if(!ready)throw new Error('The local service is restarting. Retry shortly.')
+    setStartup(!loginEnabled());updateTray()
+  }
   else window.webContents.send('pdfpal:chrome-command',command)
   sendChromeState();return true
 }
@@ -202,6 +208,11 @@ function openDiagnostics() {
 }
 function updateLinuxMenu() {
   if (process.platform !== 'linux') return
+  // A failed backend can leave the reader mounted. Keep a single menu until we
+  // actually return to the separate startup/recovery document.
+  let readerActive = false
+  try { readerActive = new URL(window?.webContents.getURL()).origin === (ready?.origin ?? loadedOrigin) } catch {}
+  if (!nativeMenuRequired(process.platform, readerActive)) { Menu.setApplicationMenu(null); return }
   const attempt = action => (...args) => { void Promise.resolve().then(() => action(...args)).catch(error => dialog.showErrorBox('pdfpal', error.message)) }
   const actions = {
     home: () => navigateReader('/'), extensions: () => navigateReader('/extensions'),
@@ -301,13 +312,14 @@ function ensureWindow() {
         window.webContents.on('page-title-updated', event => { event.preventDefault(); window.setTitle('pdfpal Cloud Preview') })
       }
       restoreWindowState = true
-      if(process.platform==='win32'){
-        window.setMenu(null)
+      if(chromeCapabilities(process.platform).sharedMenu){
+        if(process.platform==='win32')window.setMenu(null)
         window.webContents.on('before-input-event',(event,input)=>{const command=chromeShortcut(input);if(command&&!['menu','find','home','ai-settings'].includes(command)){event.preventDefault();void chromeCommand(command).catch(()=>notify('pdfpal','This action could not finish. Save your changes and try again.'))}})
       }
       for(const event of ['focus','blur','maximize','unmaximize','enter-full-screen','leave-full-screen'])window.on(event,sendChromeState)
       window.webContents.on('did-navigate-in-page',sendChromeState)
       window.webContents.on('did-finish-load',sendChromeState)
+      window.webContents.on('did-finish-load',updateLinuxMenu)
       if(libraryId!=='original')window.webContents.on('page-title-updated',event=>{event.preventDefault();window.setTitle('pdfpal · Recovery library')})
       window.webContents.on('render-process-gone',()=>{if(!stopping){journal.record('RENDERER_CRASH');void rpc('report-native-error',{code:'RENDERER_CRASH'}).catch(()=>{})}})
       window.webContents.setWindowOpenHandler(({ url }) => { openBrowser(url); return { action: 'deny' } })
@@ -368,6 +380,10 @@ async function boot() {
     ensureWindow()
     setServiceState({ state: 'starting' })
     if (!loadedOrigin) { await window.loadURL(recoveryURL); if (!smoke && !initiallyHidden(process.platform, { hidden: process.argv.includes('--hidden'), tray, setupComplete: prefs.value.setupComplete })) showWindow() }
+    if (smoke && process.platform === 'linux' && !loadedOrigin) {
+      if (!Menu.getApplicationMenu()) throw new Error('The Linux startup recovery menu is missing')
+      if (!await window.webContents.executeJavaScript('window.pdfpalDesktop.chromeCommand("startup-toggle").then(() => false, () => true)')) throw new Error('Startup registration was allowed without a ready library')
+    }
     const child = utilityProcess.fork(path.join(root, 'backend.mjs'), [], {
       env: { ...process.env, PDFPAL_APP_VERSION:app.getVersion(), PDFPAL_M0_SMOKE: smoke ? '1' : '0' }, stdio: 'pipe', serviceName: 'pdfpal backend',
     })
@@ -466,6 +482,36 @@ async function smokeTest() {
   pendingReceipt ??= { status: 'passed', platform: process.platform, arch: process.arch, electron: process.versions.electron,
     node: process.versions.node, checks: ready.checks, ui, providers: ready.providers }
   check(process.env.PDFPAL_M0_RECEIPT, 'Set PDFPAL_M0_RECEIPT for evidence')
+  if (chromeCapabilities(process.platform).sharedMenu) {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (await window.webContents.executeJavaScript('!!document.querySelector(".desktop-chrome")')) break
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+    const toolbar = await window.webContents.executeJavaScript(`(() => {
+      const header = document.querySelector('.desktop-chrome'), inner = document.querySelector('.desktop-chrome-inner')
+      document.querySelector('[aria-label="pdfpal menu"]')?.click()
+      return { visible: !!header, width: header?.getBoundingClientRect().width, innerWidth: inner?.getBoundingClientRect().width,
+        capabilities: window.pdfpalDesktop.capabilities, menu: !!document.querySelector('[role="menu"]'),
+        licenses: [...document.querySelectorAll('[role="menuitem"]')].some(item => item.textContent.includes('Third-party licenses')) }
+    })()`)
+    // React flushes the click after executeJavaScript returns.
+    for (let attempt = 0; attempt < 100 && !toolbar.menu; attempt++) {
+      toolbar.menu = await window.webContents.executeJavaScript('!!document.querySelector(".desktop-app-menu")')
+      if (!toolbar.menu) await new Promise(resolve => setTimeout(resolve, 20))
+    }
+    toolbar.licenses = await window.webContents.executeJavaScript('[...document.querySelectorAll("[role=menuitem]")].some(item => item.textContent.includes("Third-party licenses"))')
+    check(toolbar.visible && toolbar.menu && toolbar.licenses, 'Shared app menu did not render its commands')
+    check(Menu.getApplicationMenu() === null, 'The reader has a duplicate native application menu')
+    check(window.webContents.getLastWebPreferences().sandbox === true, 'The renderer sandbox was disabled')
+    if (process.platform === 'linux') check(toolbar.width === toolbar.innerWidth && !toolbar.capabilities.titleBarOverlay, 'Linux reserved Windows caption space')
+    if (process.env.PDFPAL_CHROME_EVIDENCE_DIR) {
+      fs.mkdirSync(process.env.PDFPAL_CHROME_EVIDENCE_DIR, { recursive: true })
+      fs.writeFileSync(path.join(process.env.PDFPAL_CHROME_EVIDENCE_DIR, 'shared-menu.png'), (await window.webContents.capturePage()).toPNG())
+    }
+    await window.webContents.executeJavaScript('document.querySelector("[aria-label=\\"pdfpal menu\\"]")?.click()')
+    pendingReceipt.checks.push('shared-app-menu-mounted', 'single-reader-menu', 'shared-menu-license-command', 'shared-menu-normal-renderer-sandbox')
+    if (process.platform === 'linux') pendingReceipt.checks.push('linux-native-frame-full-width-toolbar', 'linux-native-startup-recovery-menu', 'linux-startup-registration-requires-ready-service')
+  }
   if (ready.providers?.agents.some(agent => agent.generation !== 'passed')) pendingReceipt.status = 'provider_gate_failed'
   if (recoveryScreenPassed && !pendingReceipt.checks.includes('startup-recovery-screen-and-retry')) pendingReceipt.checks.push('startup-recovery-screen-and-retry')
   if (m1) {

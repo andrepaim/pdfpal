@@ -34,6 +34,10 @@ const finished = process => process.exitCode !== null || process.signalCode !== 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
 try {
   const smokeReceipt = path.join(work, 'smoke.json')
+  // This smoke verifies the shared reader, after onboarding. First-run setup has
+  // its own acceptance flow; never let its modal obscure menu screenshots.
+  await fs.mkdir(profile, { recursive: true })
+  await fs.writeFile(path.join(profile, 'desktop.json'), JSON.stringify({ setupComplete: true }))
   env.PDFPAL_M0_RECEIPT = smokeReceipt
   const smoke = runApp(['--m0-smoke'])
   const timer = setTimeout(() => smoke.kill('SIGKILL'), 120000)
