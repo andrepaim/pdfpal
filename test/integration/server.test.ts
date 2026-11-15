@@ -238,3 +238,33 @@ test('reader API refuses cross-site and rebinding requests while preserving same
     assert.equal((await app.inject({ method: 'POST', url: '/api/desktop/install', payload: { command: 'arbitrary' } })).statusCode, 404)
   } finally { await app.close(); fs.rmSync(config.dataDir, { recursive: true, force: true }) }
 })
+
+test('the dictionary route defines a selected word and finds the compound around it', async () => {
+  const config = testConfig(), app = await buildServer(config)
+  try {
+    const define = (query: Record<string, string>) => app.inject({ method: 'GET', url: `/api/dictionary/define?${new URLSearchParams(query)}` })
+
+    const word = await define({ text: 'mice' })
+    assert.equal(word.statusCode, 200)
+    assert.equal(word.json().source, 'WordNet 3.1')
+    assert.deepEqual(word.json().entries.map((entry: { lemma: string; part_of_speech: string }) => [entry.lemma, entry.part_of_speech]), [['mouse', 'noun']])
+    assert.match(word.json().entries[0].senses[0].definition, /rodent/)
+
+    const compound = (await define({ text: 'network', before: 'trained a neural ', after: ' on images' })).json()
+    assert.equal(compound.entries[0].lemma, 'neural network')
+    assert.equal(compound.entries[1].lemma, 'network')
+
+    assert.deepEqual((await define({ text: 'zxqv' })).json().entries, [])
+
+    const missing = await define({ text: '   ' })
+    assert.equal(missing.statusCode, 400)
+    assert.equal(missing.json().code, 'WORD_REQUIRED')
+    const long = await define({ text: 'a'.repeat(121) })
+    assert.equal(long.statusCode, 400)
+    assert.equal(long.json().code, 'WORD_TOO_LONG')
+
+    // Like the rest of the reader API, it is closed to other websites.
+    const foreign = await app.inject({ method: 'GET', url: '/api/dictionary/define?text=mice', headers: { origin: 'https://example.com' } })
+    assert.equal(foreign.statusCode, 403)
+  } finally { await app.close(); cleanup(config, { close() {} } as never) }
+})

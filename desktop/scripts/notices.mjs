@@ -38,6 +38,11 @@ export function writeNotices(stage, sourceRoot) {
     }
   }
   for (const file of [path.join(stage, 'package.json'), ...['frontend', 'extension'].map(name => path.join(sourceRoot, name, 'package.json'))]) visit(file, true)
+  // The offline dictionary is data built into dist/, not an installed
+  // package, so the walk above does not find it. WordNet's licence requires
+  // its notice on every copy.
+  const wordnet = path.join(sourceRoot, 'data/wordnet/LICENSE')
+  if (fs.existsSync(wordnet)) notices.push(`\n${'='.repeat(72)}\nWordNet 3.1 dictionary data (Princeton University)\nUsed for word definitions in the reader.\n\n--- LICENSE ---\n${fs.readFileSync(wordnet, 'utf8')}\n`)
   fs.writeFileSync(path.join(stage, 'THIRD_PARTY_NOTICES.txt'), notices.join('\n'))
   return visited.size - 3
 }
