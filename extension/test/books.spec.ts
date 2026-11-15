@@ -1,3 +1,4 @@
+import { isolatedProviderBinaries } from './provider-fixture';
 import { test, expect, chromium, type BrowserContext } from '@playwright/test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
@@ -11,7 +12,7 @@ import { kindleLaunchUrl } from '../../src/shared/kindle-book';
 
 test('project links select the right project; the companion saves books and respects manual choices', async ({}, info) => {
   const temporary = await mkdtemp(path.join(os.tmpdir(), 'pdfpal-kindle-books-'));
-  const config = loadConfig({ dataDir: path.join(temporary, 'data'), agent: 'codex' });
+  const config = loadConfig({ ...isolatedProviderBinaries(temporary), dataDir: path.join(temporary, 'data'), agent: 'codex' });
   const app = await buildServer(config), db = openDatabase(config);
   let context: BrowserContext | undefined;
   try {

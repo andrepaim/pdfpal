@@ -21,7 +21,7 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
       - name: Desktop preferences
-        run: node --test desktop/test/preferences.test.mjs desktop/test/setup.test.mjs desktop/test/updates.test.mjs desktop/test/beta.test.mjs desktop/test/release.test.mjs
+        run: npm --prefix desktop test
       - name: Test with coverage
         run: npm test
       - name: Build application
@@ -104,3 +104,63 @@ jobs:
       - run: npm ci
       - name: Verify Firebase transactions, ownership and PDF transfers
         run: npm exec --yes --package=firebase-tools@15.5.1 -- firebase --config cloud/firebase.json emulators:exec --only firestore,storage --project demo-pdfpal-sync 'node --import tsx --test test/integration/cloud-firestore.test.ts'
+
+  linux-desktop:
+    runs-on: ubuntu-24.04
+    needs: typescript-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+            desktop/runtime-lock.json
+      - name: Install GUI test dependencies
+        run: sudo apt-get update && sudo apt-get install -y xvfb dbus-x11 libgtk-3-0t64 libnss3 libasound2t64 libgbm1 libsecret-1-0 gnome-keyring libglib2.0-bin desktop-file-utils
+      - run: npm ci
+      - run: npm ci --prefix desktop
+      - name: Stage isolated Electron runtime
+        run: |
+          npm --prefix desktop run stage
+          npm ci --prefix desktop/stage --omit=dev --ignore-scripts
+          node desktop/scripts/notices.mjs desktop/stage .
+          node --test desktop/stage/discovery.test.mjs desktop/stage/test/runtime.test.mjs
+      - name: Build Debian package and unpacked application
+        run: npm --prefix desktop run package:linux
+      - name: Validate normal sandbox and authenticated CLI without system Node
+        run: |
+          # Ubuntu's AppArmor userns policy needs a path-scoped profile for this
+          # temporary CI executable. Electron's renderer sandbox stays enabled.
+          sudo tee /etc/apparmor.d/pdfpal-ci > /dev/null <<EOF
+          abi <abi/4.0>,
+          include <tunables/global>
+          profile pdfpal-ci $GITHUB_WORKSPACE/desktop/artifacts/linux-unpacked/pdfpal-desktop flags=(unconfined) {
+            userns,
+          }
+          profile pdfpal-electron-ci $GITHUB_WORKSPACE/desktop/node_modules/electron/dist/electron flags=(unconfined) {
+            userns,
+          }
+          EOF
+          sudo apparmor_parser -r /etc/apparmor.d/pdfpal-ci
+          dbus-run-session -- xvfb-run -a node desktop/scripts/linux-acceptance.mjs
+          xvfb-run -a node desktop/test/run-linux-vault-probe.mjs desktop/node_modules/electron/dist/electron
+      - name: Generate artifact integrity and source provenance
+        run: |
+          node desktop/scripts/linux-deb-check.mjs
+          node desktop/scripts/linux-release.mjs desktop/artifacts "$GITHUB_SHA"
+          cd desktop/artifacts
+          sha256sum -c SHA256SUMS-linux.txt
+          dpkg-deb --info pdfpal-*-amd64.deb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pdfpal-linux-x64-preview
+          path: |
+            desktop/artifacts/*.deb
+            desktop/artifacts/pdfpal-linux-release.json
+            desktop/artifacts/SHA256SUMS-linux.txt
+            desktop/evidence/linux-acceptance.json
+            desktop/evidence/linux-keyring.json
+            desktop/evidence/linux-deb.json

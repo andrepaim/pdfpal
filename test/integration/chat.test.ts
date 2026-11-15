@@ -1,5 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import path from 'node:path'
 import { ChatService } from '../../src/core/chat.js'
 import { ProjectService } from '../../src/core/projects.js'
 import { RetrievalService } from '../../src/core/retrieval.js'
@@ -7,7 +9,8 @@ import { cleanup, createSource, testConfig, testDb } from '../helpers/test-utils
 
 test('chat retrieves context, invokes an agent, and persists history', async () => {
   const config = testConfig(), db = testDb(config)
-  config.claudeBin = '/bin/echo'
+  config.claudeBin = path.join(config.dataDir, 'mock-claude')
+  fs.writeFileSync(config.claudeBin, `#!/bin/sh\ncase "$*" in\n--version) echo '2.1.0 (Claude Code)';;\n--help) echo '--tools --strict-mcp-config --disallowedTools';;\n'auth status') echo '{"authMethod":"claude.ai"}';;\n*) cat >/dev/null; echo 'mock answer';;\nesac\n`, { mode: 0o700 })
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async () => { throw new Error('unexpected external web search') }) as typeof fetch
   try {
@@ -27,7 +30,8 @@ test('chat retrieves context, invokes an agent, and persists history', async () 
 
 test('a selection page sent by the reader puts that page and its neighbours in the context', async () => {
   const config = testConfig(), db = testDb(config)
-  config.claudeBin = '/bin/echo'
+  config.claudeBin = path.join(config.dataDir, 'mock-claude')
+  fs.writeFileSync(config.claudeBin, `#!/bin/sh\ncase "$*" in\n--version) echo '2.1.0 (Claude Code)';;\n--help) echo '--tools --strict-mcp-config --disallowedTools';;\n'auth status') echo '{"authMethod":"claude.ai"}';;\n*) cat >/dev/null; echo 'mock answer';;\nesac\n`, { mode: 0o700 })
   try {
     const project = new ProjectService(db).create('Selection Chat')
     const text = '[Page 1]\nBackground on optimisers.\n[Page 2]\nGradient clipping limits update size.\n[Page 3]\nWhy it matters: exploding gradients.\n[Page 4]\nUnrelated appendix.'

@@ -1,3 +1,4 @@
+import { isolatedProviderBinaries, providerHandshake } from './provider-fixture';
 import { test, expect, chromium, type BrowserContext, type Page, type Worker } from '@playwright/test';
 import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -202,8 +203,8 @@ test('pairs with real pdfpal, resumes an answer beyond 30 seconds, follows up an
   const { openDatabase } = await import('../../dist/core/database.js');
   const { ExtensionAuth } = await import('../../dist/core/extension-auth.js');
   const agentPath = path.join(profile, 'fixture-agent');
-  await writeFile(agentPath, `#!/usr/bin/env node\nconst fs=require('node:fs');const prompt=fs.readFileSync(0,'utf8');setTimeout(()=>process.stdout.write('# Explanation\\n\\nThe passage connects reading to prior knowledge.\\n\\n$E=mc^2$'),prompt.includes('First slow question')&&!prompt.includes('Previous turns (JSON):\\n[{')?32000:20);\n`, { mode: 0o700 });
-  const config = loadConfig({ dataDir: path.join(profile, 'pdfpal'), agent: 'claude', model: '', claudeBin: agentPath });
+  await writeFile(agentPath, `#!/usr/bin/env node\n${providerHandshake('claude')}const fs=require('node:fs');const prompt=fs.readFileSync(0,'utf8');setTimeout(()=>process.stdout.write('# Explanation\\n\\nThe passage connects reading to prior knowledge.\\n\\n$E=mc^2$'),prompt.includes('First slow question')&&!prompt.includes('Previous turns (JSON):\\n[{')?32000:20);\n`, { mode: 0o700 });
+  const config = loadConfig({ ...isolatedProviderBinaries(profile), dataDir: path.join(profile, 'pdfpal'), agent: 'claude', model: '', claudeBin: agentPath });
   const app = await buildServer(config);
   await app.listen({ host: '127.0.0.1', port: 0 });
   const address = app.server.address() as { port: number };
@@ -262,8 +263,8 @@ test('chat layout supports book questions without a capture and removable automa
   const { ExtensionAuth } = await import('../../dist/core/extension-auth.js');
   const agentPath = path.join(profile, 'codex-fixture');
   const promptPath = path.join(profile, 'last-prompt');
-  await writeFile(agentPath, `#!/usr/bin/env node\nconst fs=require('node:fs');const prompt=fs.readFileSync(0,'utf8');fs.writeFileSync(${JSON.stringify(promptPath)},prompt);process.stdout.write('# A connection to prior knowledge\\n\\nThe book explores how reading helps us connect new ideas with what we already know.\\n\\n- Start with the main idea.\\n- Relate it to a familiar example.\\n- Return to the passage to check your understanding.');\n`, { mode: 0o700 });
-  const config = loadConfig({ dataDir: path.join(profile, 'chat-ui'), agent: 'codex', model: '', codexBin: agentPath });
+  await writeFile(agentPath, `#!/usr/bin/env node\n${providerHandshake('codex')}const fs=require('node:fs');const prompt=fs.readFileSync(0,'utf8');fs.writeFileSync(${JSON.stringify(promptPath)},prompt);process.stdout.write('# A connection to prior knowledge\\n\\nThe book explores how reading helps us connect new ideas with what we already know.\\n\\n- Start with the main idea.\\n- Relate it to a familiar example.\\n- Return to the passage to check your understanding.');\n`, { mode: 0o700 });
+  const config = loadConfig({ ...isolatedProviderBinaries(profile), dataDir: path.join(profile, 'chat-ui'), agent: 'codex', model: '', codexBin: agentPath });
   const app = await buildServer(config);
   await app.listen({ host: '127.0.0.1', port: 0 });
   const db = openDatabase(config);
@@ -324,7 +325,7 @@ test('chat layout supports book questions without a capture and removable automa
     await expect(panel.locator('.empty-state')).toBeVisible();
     expect((await app.inject({ url: `/api/projects/${project.id}/notes` })).json()).toHaveLength(0);
     const clientId = await panel.evaluate(async () => ((await chrome.storage.local.get('companionConnection')).companionConnection as { clientId: string }).clientId);
-    await writeFile(agentPath, '#!/usr/bin/env node\nprocess.stdin.resume();process.stdin.on("end",()=>{process.stderr.write("OAuth session expired in fixture provider");process.exitCode=1;});\n', { mode: 0o700 });
+    await writeFile(agentPath, '#!/usr/bin/env node\n' + providerHandshake('codex') + 'process.stdin.resume();process.stdin.on("end",()=>{process.stderr.write("OAuth session expired in fixture provider");process.exitCode=1;});\n', { mode: 0o700 });
     await panel.locator('#question').fill('A question with an expired provider session');
     await panel.locator('#question').press('Enter');
     await expect(panel.locator('#companion-status')).toContainText('needs sign-in');

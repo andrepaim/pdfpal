@@ -11,12 +11,13 @@ export function safeRoute(route) {
   return typeof route === 'string' && route.startsWith('/') && !route.startsWith('//') && !/[\\\u0000-\u001f]/.test(route) ? route : '/'
 }
 
-export function startupArguments(startup, profile) {
+export function startupArguments(startup, profile, { platform = 'win32' } = {}) {
   // Electron's Windows login registration joins args into a command line.
   const quote = value => /[\s"]/.test(value) ? `"${value.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1')}"` : value
-  return ['--hidden', ...[
+  const args = [
     `--data-dir=${startup.dataDir}`, `--db=${startup.dbPath}`, `--port=${startup.port}`, `--profile=${profile}`,
-  ].map(quote)]
+  ]
+  return platform === 'win32' ? ['--hidden', ...args.map(quote)] : args
 }
 
 export function restoreBounds(saved, displays) {

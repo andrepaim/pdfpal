@@ -12,8 +12,8 @@ import { buildVersion } from '../shared/build-info.js'
 import { CLI_PROTOCOL, type CliReceipt } from '../shared/cli-protocol.js'
 
 export async function runDesktopCli(argv: string[]) {
-  const program = new Command().name('pdfpal').description('Manage the running Windows pdfpal library')
-    .version(buildVersion()).option('--desktop', 'connect to the Windows desktop app')
+  const program = new Command().name('pdfpal').description('Manage the running pdfpal desktop library')
+    .version(buildVersion()).option('--desktop', 'connect to the desktop app')
     .option('--request-file <filename>', 'read arguments from a UTF-8 JSON args array (must be the first option)')
     .option('--profile <directory>', 'explicit desktop profile (regular app by default)')
     .option('--library <id>', 'require a registered active library')
@@ -55,8 +55,16 @@ export async function runDesktopCli(argv: string[]) {
       const result = await promisify(execFile)(path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'where.exe'), ['pdfpal'], { encoding: 'utf8', windowsHide: true, timeout: 3000 })
       commandResolution = result.stdout.trim().split(/\r?\n/).filter(Boolean)
     } catch {}
-    const pathReady = Boolean(launcher && commandResolution.some(item => path.resolve(item).toLowerCase() === path.resolve(launcher).toLowerCase()))
-    const pathConflict = Boolean(commandResolution.length && launcher && path.resolve(commandResolution[0]!).toLowerCase() !== path.resolve(launcher).toLowerCase())
+    if (process.platform === 'linux') commandResolution = (process.env.PATH ?? '').split(path.delimiter).filter(Boolean).flatMap(directory => {
+      const candidate = path.resolve(directory, 'pdfpal-desktop-cli')
+      try { fs.accessSync(candidate, fs.constants.X_OK); return [candidate] } catch { return [] }
+    })
+    const canonical = (filename: string) => {
+      try { filename = fs.realpathSync(filename) } catch { filename = path.resolve(filename) }
+      return process.platform === 'win32' ? filename.toLowerCase() : filename
+    }
+    const pathReady = Boolean(launcher && commandResolution.some(item => canonical(item) === canonical(launcher)))
+    const pathConflict = Boolean(commandResolution.length && launcher && canonical(commandResolution[0]!) !== canonical(launcher))
     emit({ ok: !!connection, cliBuild: buildVersion(), cliProtocol: CLI_PROTOCOL, command: launcher, commandResolution, pathReady, pathConflict, skill,
       ...(connection ? { transport: connection.transport, library: connection.status.library, libraryId: connection.selection.selected.id, label: connection.selection.selected.label, build: connection.status.build, schema: connection.status.schema } : { error }) }, command)
     if (!connection) process.exitCode = 1

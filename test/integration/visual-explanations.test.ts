@@ -18,6 +18,7 @@ async function setup() {
   const output = path.join(config.dataDir, 'response.json'), prompt = path.join(config.dataDir, 'prompt.txt'), calls = path.join(config.dataDir, 'calls.txt')
   fs.writeFileSync(output, JSON.stringify(pq.definition))
   fs.writeFileSync(config.codexBin, `#!/usr/bin/env node
+if(process.argv.includes('--version')){console.log('codex-cli 0.164.0');process.exit(0)};if(process.argv.includes('--help')){console.log('--tools --strict-mcp-config --disallowedTools --ignore-user-config --ignore-rules --ephemeral --disable');process.exit(0)};if(process.argv.includes('status')){process.exit(1)};
 const fs=require('node:fs'),path=require('node:path');const input=fs.readFileSync(0,'utf8');fs.appendFileSync(${JSON.stringify(calls)},'call\\n')
 const n=fs.readFileSync(${JSON.stringify(calls)},'utf8').trim().split('\\n').length;fs.writeFileSync(${JSON.stringify(prompt)},input);fs.writeFileSync(${JSON.stringify(prompt)}+'.'+n,input)
 const nth=path.join(${JSON.stringify(config.dataDir)},'response-'+n+'.json');setTimeout(()=>process.stdout.write(fs.readFileSync(fs.existsSync(nth)?nth:${JSON.stringify(output)},'utf8')),50);`, { mode: 0o700 })

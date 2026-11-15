@@ -10,7 +10,7 @@ There's a lot of vibe researching going on: skim an AI summary, watch an explain
 
 Your library, notes, highlights, and chat history are stored locally. Optional cloud sync can share library metadata and, with separate consent, saved PDF and project conversations between devices. Relevant context goes to your configured AI provider when you ask for help; its terms, charges, and usage limits still apply.
 
-Available as a **Windows desktop app** or a **CLI and browser reader on Linux/WSL**, with an optional Chrome companion for Kindle for Web.
+Available as a **Windows desktop app**, a **Linux desktop engineering preview**, or a **CLI and browser reader on Linux/WSL**, with an optional Chrome companion for Kindle for Web.
 
 ## See pdfpal in action
 
@@ -84,6 +84,7 @@ Download the Chrome companion, connect it to your local library, and manage pair
 | Choose your setup | What you need | Get started |
 | --- | --- | --- |
 | **Windows desktop preview** | Windows 11 on an Intel/AMD 64-bit computer. No separate Node.js or Git installation for pdfpal. | [Install the Windows app](#windows-desktop-preview) |
+| **Linux desktop engineering preview** | x86-64 Debian/Mint/Ubuntu desktop. Node.js 22+ to build; installed app includes its runtime. | [Linux build, installation and acceptance](docs/linux-quickstart.md) |
 | **Linux / WSL: CLI and browser reader** | Git and Node.js 22 or newer. | [Install from source](#linux-and-wsl) |
 
 ### Windows desktop preview

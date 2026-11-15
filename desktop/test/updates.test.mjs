@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { compareVersions, versionParts, verifyRelease, checkDesktopUpdates, releasePage } from '../src/updates.mjs'
+import { compareVersions, versionParts, verifyRelease, checkDesktopUpdates as checkUpdates, releasePage } from '../src/updates.mjs'
 import { buildConfiguration, signingConfiguration } from '../scripts/build-installer.mjs'
 
 function fixture(version = '2.2.0') {
@@ -9,6 +9,18 @@ function fixture(version = '2.2.0') {
   return { release: { tag_name: tag, draft: false, prerelease: false, body: 'New reading features.', assets: [asset(installer), asset('pdfpal-desktop-release.json')] }, manifest: { format: 1, appId: 'io.pdfpal.desktop', version, platform: 'win32', arch: 'x64', signed: true, publisher: 'Test Publisher', installer, sha256: 'a'.repeat(64), size: 1234 } }
 }
 const response = value => new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json' } })
+// Exercise the Windows trust policy explicitly on every test host.
+const checkDesktopUpdates = (version, request, platform = 'win32', arch = 'x64') => checkUpdates(version, request, platform, arch)
+
+test('Linux and unsupported architectures never fetch or offer Windows installers', async () => {
+  const request = async () => { throw new Error('Must not access the Windows release channel') }
+  for (const [platform, arch] of [['linux', 'x64'], ['linux', 'arm64'], ['darwin', 'arm64'], ['win32', 'arm64']]) {
+    const result = await checkDesktopUpdates('2.8.0-beta.4', request, platform, arch)
+    assert.equal(result.state, 'manual')
+    assert.equal(result.releaseURL, releasePage)
+    assert.equal(result.downloadURL, undefined)
+  }
+})
 
 test('desktop versions compare stable/preview and multi-digit versions without permitting malformed tags', () => {
   for (const [a, b] of [['2.1.0-preview.1', '2.1.0'], ['2.1.0-preview.2', '2.1.0-preview.10'], ['2.9.0', '2.10.0'], ['2.1.0-alpha', '2.1.0-beta'], ['2.1.0-preview', '2.1.0-preview.1']]) assert.equal(compareVersions(a, b), -1)

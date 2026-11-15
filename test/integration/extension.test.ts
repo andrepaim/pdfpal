@@ -17,7 +17,7 @@ async function setup() {
   const config = testConfig()
   const promptFile = path.join(config.dataDir, 'prompt.txt')
   config.claudeBin = path.join(config.dataDir, 'fake-agent')
-  fs.writeFileSync(config.claudeBin, `#!/usr/bin/env node\nconst fs=require('node:fs');const prompt=fs.readFileSync(0,'utf8');fs.writeFileSync(${JSON.stringify(promptFile)},prompt);setTimeout(()=>process.stdout.write('# Explanation\\n\\nThis connects the passage to earlier knowledge.'),100);\n`, { mode: 0o700 })
+  fs.writeFileSync(config.claudeBin, `#!/usr/bin/env node\nif(process.argv.includes('--version')){console.log('2.1.0 (Claude Code)');process.exit(0)};if(process.argv.includes('--help')){console.log('--tools --strict-mcp-config --disallowedTools --ignore-user-config --ignore-rules --ephemeral --disable');process.exit(0)};if(process.argv.includes('status')){process.exit(1)};const fs=require('node:fs');const prompt=fs.readFileSync(0,'utf8');fs.writeFileSync(${JSON.stringify(promptFile)},prompt);setTimeout(()=>process.stdout.write('# Explanation\\n\\nThis connects the passage to earlier knowledge.'),100);\n`, { mode: 0o700 })
   const app = await buildServer(config), db = openDatabase(config), auth = new ExtensionAuth(db)
   const project = (await app.inject({ method: 'POST', url: '/api/projects', payload: { title: 'Kindle test' } })).json()
   const pair = await app.inject({ method: 'POST', url: '/api/extension/pair', payload: { code: auth.pairCode().code, origin }, headers: { origin } })

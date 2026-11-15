@@ -13,6 +13,13 @@ export default defineConfig({
   },
   webServer: {
     command: `cd .. && PDFPAL_DATA_DIR=/tmp/pdfpal_e2e_data_${process.pid} node dist/cli/index.js serve --no-open --port 8201`,
+    // Provider discovery must never inspect the developer's installed accounts.
+    // Tests that need assistants mock /api/agents and generation responses.
+    env: {
+      CLAUDE_BIN: `/tmp/pdfpal_e2e_data_${process.pid}/uninstalled-claude`,
+      CODEX_BIN: `/tmp/pdfpal_e2e_data_${process.pid}/uninstalled-codex`,
+      OPENCODE_BIN: `/tmp/pdfpal_e2e_data_${process.pid}/uninstalled-opencode`,
+    },
     port: 8201,
     reuseExistingServer: false,
     timeout: 15_000,

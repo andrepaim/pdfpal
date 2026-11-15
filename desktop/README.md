@@ -1,4 +1,6 @@
-# pdfpal Windows desktop preview
+# pdfpal desktop preview
+
+The Linux engineering preview now builds an unpacked application and Debian installer, with native menus, XDG preferences and opt-in autostart, secure keyring checks and an independent bundled CLI. See the [Linux quickstart](../docs/linux-quickstart.md), [milestone plan](../docs/linux-desktop-plan.md), and [acceptance results](../docs/linux-desktop-results.md). The Windows build and release procedures below remain in place.
 
 M3 adds a branded per-user Windows installer, versioned desktop releases, guarded upgrades/uninstall, manual update checking, license notices, and signing configuration to the accepted M2 desktop application. See the [Windows quickstart](../docs/windows-quickstart.md), [M3 results](../docs/windows-m3-results.md), and [implementation plan](../docs/windows-desktop-plan.md).
 
