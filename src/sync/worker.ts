@@ -113,28 +113,30 @@ export class SyncWorker {
         "This local library is already bound. Use its original account and library.",
       );
     if (!this.auth.credentials) throw Error("Sign in first");
-    const libraries =
-      await this.request<Array<{ id: string; title: string }>>("/libraries");
-    let id = libraryId;
-    if (id && !libraries.some((l) => l.id === id))
-      throw Error("Library not found");
-    if (
-      id &&
-      tables.some(
+    const nonempty = () => tables.some(
         (t) =>
           (this.db.prepare(`SELECT COUNT(*) n FROM ${t}`).get() as any).n > 0,
-      )
-    )
+      );
+    if (nonempty()) {
+      const canonical = await this.transport.canonicalLibrary();
+      const libraries = await this.transport.libraries();
+      if (canonical || libraries.length || libraryId)
+        throw Error('Open an empty local library before downloading an existing cloud library');
+    }
+    // Snapshot before either a cloud claim or a local binding. Binding never
+    // replaces content, cursors, outbox entries, or an earlier library owner.
+    await this.db.backup(path.join(this.config.backupsDir, `before-cloud-${Date.now()}-${randomUUID()}.db`));
+    const owner = this.auth.credentials.uid;
+    const resolved = await this.transport.resolveLibrary(title, libraryId);
+    const id = resolved.id;
+    if (!resolved.created && nonempty())
       throw Error(
         "Open an empty local library before downloading an existing cloud library",
       );
-    if (!id)
-      id = (await this.request<{ id: string }>("/libraries", { title })).id;
-    const head = await this.transport.head(id!);
+    const head = await this.transport.head(id);
+    if (this.auth.credentials?.uid !== owner) throw Error('Account action was cancelled');
+    if (!head.active) throw Error('Cloud library is inactive; synchronization paused');
     if ((head.protocol ?? 1) > 2) throw Error('Update pdfpal before connecting this cloud library');
-    await this.db.backup(
-      path.join(this.config.backupsDir, `before-cloud-${Date.now()}.db`),
-    );
     this.db.transaction(() => {
       setting(this.db, "generation", head.generation);
       setting(this.db, "owner", this.auth.credentials!.uid);
@@ -186,6 +188,15 @@ export class SyncWorker {
           "Synchronization paused: conflicting edits are preserved for recovery",
         );
       const library = setting(this.db, "library")!;
+      let canonical = await this.transport.canonicalLibrary();
+      if (!canonical) {
+        const libraries = await this.transport.libraries();
+        if (libraries.length !== 1 || libraries[0]?.id !== library)
+          throw Error('Choose the account library in Cloud Sync before synchronizing. Existing local and cloud libraries have been preserved.');
+        canonical = await this.transport.claimCanonical(library);
+      }
+      if (canonical !== library)
+        throw Error('This local library differs from your Google account library. Restore the account library separately in Cloud Sync; your local changes have been preserved.');
       const head = await this.transport.head(library);
       if ((head.protocol ?? 1) > 2) throw Error('Update pdfpal before connecting this cloud library');
       if (

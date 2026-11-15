@@ -69,15 +69,22 @@ test("metadata-only cloud configuration is clearly labelled", async ({
 
 const signedIn = { uid: 'fixture-user', email: 'reader@example.test' }
 const baseStatus = { configured: true, pdfStorage: false, conversations: false, account: null as typeof signedIn | null, enabled: false, running: false, pending: 0, conflicts: 0, error: '', lastSync: null as string | null, libraryId: undefined as string | undefined }
-async function cloudFixture(page: import('@playwright/test').Page, initial: Partial<typeof baseStatus> = {}) {
+async function cloudFixture(page: import('@playwright/test').Page, initial: Partial<typeof baseStatus> = {}, cloud: { libraries?: Array<{ id: string; title: string }>; canonicalId?: string | null; failLibraryLoad?: boolean; restoreError?: boolean; missingFiles?: number } = {}) {
   let status = { ...baseStatus, ...initial }
+  const libraries = cloud.libraries ?? [{ id: initial.libraryId || 'existing-library', title: 'Research library' }]
+  let canonicalId = cloud.canonicalId === undefined ? initial.libraryId || null : cloud.canonicalId
   const calls: Array<{ action: string; body: any }> = []
   await page.route('**/api/cloud/**', async route => {
     const action = new URL(route.request().url()).pathname.replace('/api/cloud/', '')
     const body = route.request().method() === 'POST' ? route.request().postDataJSON() : undefined
     calls.push({ action, body })
     if (action === 'files') return route.fulfill({ json: {configured:false,enabled:false,error:'',files:[]} })
-    if (action === 'libraries') return route.fulfill({ json: [{ id: 'existing-library', title: 'Research library' }] })
+    if (action === 'libraries') return route.fulfill(cloud.failLibraryLoad ? { status: 503, json: { detail: 'Temporarily unavailable' } } : { json: libraries })
+    if (action === 'canonical') {
+      if (body) canonicalId = body.libraryId
+      return route.fulfill({ json: { libraryId: canonicalId } })
+    }
+    if (action === 'restore-account') return route.fulfill(cloud.restoreError ? { status: 503, json: { detail: 'The download could not finish. Your current library is preserved.' } } : { json: { id: 'recovered-account-library', missingFiles: cloud.missingFiles ?? 0 } })
     if (action === 'conflicts') return route.fulfill({ json: [] })
     if (action === 'sync') status = { ...status, error: '', pending: 0, lastSync: '2026-11-04T12:00:00Z' }
     if (action === 'pause') status = { ...status, enabled: !body.paused }
@@ -111,12 +118,14 @@ test('signed-in account is distinct from enabling library sync', async ({ page }
   const modal = page.getByRole('dialog', { name: 'Your cloud library' })
   await expect(modal.getByText('reader@example.test')).toBeVisible()
   await expect(modal.getByText('Signed in', { exact: true })).toBeVisible()
-  await expect(modal.getByRole('heading', { name: 'Choose a cloud library' })).toBeVisible()
+  await expect(modal.getByRole('heading', { name: 'Your account library' })).toBeVisible()
   await expect(modal.getByText('Up to date', { exact: true })).toHaveCount(0)
-  await modal.getByLabel('Library name').fill('My reading')
-  await modal.getByRole('button', { name: 'Enable sync', exact: true }).click()
+  await expect(modal.getByText('Cloud library ID: existing-library')).toBeVisible()
+  await expect(modal.getByLabel('Library name')).toHaveCount(0)
+  await expect(modal.getByRole('option', { name: 'Create a new cloud library' })).toHaveCount(0)
+  await modal.getByRole('button', { name: 'Connect account library', exact: true }).click()
   await expect(modal.getByRole('heading', { name: 'Synchronization', exact: true })).toBeVisible()
-  expect(fixture.calls.find(call => call.action === 'connect')?.body).toEqual({ title: 'My reading' })
+  expect(fixture.calls.find(call => call.action === 'connect')?.body).toEqual({ title: 'My pdfpal library', libraryId: 'existing-library' })
   await expect(modal.getByText('No successful sync yet')).toBeVisible()
 })
 
@@ -171,4 +180,111 @@ test('cloud modal fits a narrow window and the footer stays available', async ({
   await page.screenshot({ path: testInfo.outputPath('cloud-settings-narrow.png') })
   await page.keyboard.press('Escape')
   await expect(modal).not.toBeVisible()
+})
+
+
+test('an account with no cloud library can enable its first library', async ({ page }) => {
+  const fixture = await cloudFixture(page, { account: signedIn }, { libraries: [], canonicalId: null })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Cloud library', exact: true }).click()
+  const modal = page.getByRole('dialog', { name: 'Your cloud library' })
+  await modal.getByLabel('Library name').fill('My reading')
+  await modal.getByRole('button', { name: 'Enable sync', exact: true }).click()
+  expect(fixture.calls.find(call => call.action === 'connect')?.body).toEqual({ title: 'My reading' })
+})
+
+test('legacy duplicate libraries require an explicit main library before connecting', async ({ page }) => {
+  const fixture = await cloudFixture(page, { account: signedIn }, { libraries: [{ id: 'linux-library', title: 'Research library' }, { id: 'windows-library', title: 'Research library' }], canonicalId: null })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Cloud library', exact: true }).click()
+  const modal = page.getByRole('dialog', { name: 'Your cloud library' })
+  await expect(modal.getByText(/Older versions created multiple cloud libraries/)).toBeVisible()
+  await expect(modal.getByRole('button', { name: 'Choose account library', exact: true })).toBeDisabled()
+  await expect(modal.getByRole('button', { name: 'Use as account library', exact: true })).toBeDisabled()
+  await modal.getByLabel('Main cloud library').selectOption('windows-library')
+  await modal.getByRole('button', { name: 'Use as account library', exact: true }).click()
+  await expect(modal.getByText('Cloud library ID: windows-library')).toBeVisible()
+  expect(fixture.calls.filter(call => call.action === 'connect')).toHaveLength(0)
+  expect(fixture.calls.filter(call => call.action === 'canonical' && call.body)).toEqual([{ action: 'canonical', body: { libraryId: 'windows-library' } }])
+  await modal.getByRole('button', { name: 'Connect account library', exact: true }).click()
+  expect(fixture.calls.find(call => call.action === 'connect')?.body.libraryId).toBe('windows-library')
+})
+
+test('a bound legacy device preserves its library and cannot sync to a different account library', async ({ page }) => {
+  const fixture = await cloudFixture(page, { account: signedIn, libraryId: 'linux-library', enabled: true }, { libraries: [{ id: 'linux-library', title: 'Linux library' }, { id: 'windows-library', title: 'Windows library' }], canonicalId: 'windows-library' })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Cloud library', exact: true }).click()
+  const modal = page.getByRole('dialog', { name: 'Your cloud library' })
+  await expect(modal.getByRole('alert')).toContainText('This device uses a different cloud library')
+  await expect(modal.getByRole('alert')).toContainText('Open an empty local library')
+  await expect(modal.getByRole('button', { name: 'Account library differs', exact: true })).toBeDisabled()
+  expect(fixture.calls.filter(call => call.action === 'connect' || call.action === 'sync')).toHaveLength(0)
+})
+
+test('library discovery failure never falls back to creating a cloud library', async ({ page }) => {
+  const fixture = await cloudFixture(page, { account: signedIn }, { failLibraryLoad: true })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Cloud library', exact: true }).click()
+  const modal = page.getByRole('dialog', { name: 'Your cloud library' })
+  await modal.getByText('Show details', { exact: true }).click()
+  await expect(modal.getByRole('alert')).toContainText('Could not load your account library')
+  await expect(modal.getByRole('button', { name: 'Enable sync', exact: true })).toBeDisabled()
+  expect(fixture.calls.filter(call => call.action === 'connect')).toHaveLength(0)
+})
+
+
+test('a bound legacy device can nominate the complete account library without rebinding local data', async ({ page }) => {
+  const fixture = await cloudFixture(page, { account: signedIn, libraryId: 'linux-library', enabled: true }, { libraries: [{ id: 'linux-library', title: 'Linux library' }, { id: 'windows-library', title: 'Windows library' }], canonicalId: null })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Cloud library', exact: true }).click()
+  const modal = page.getByRole('dialog', { name: 'Your cloud library' })
+  await modal.getByLabel('Main cloud library').selectOption('windows-library')
+  await modal.getByRole('button', { name: 'Use as account library', exact: true }).click()
+  await expect(modal.getByRole('alert')).toContainText('This device uses a different cloud library')
+  await expect(modal.getByText('Cloud library ID: linux-library')).toBeVisible()
+  await expect(modal.getByRole('button', { name: 'Account library differs', exact: true })).toBeDisabled()
+  expect(fixture.calls.filter(call => call.action === 'connect' || call.action === 'sync')).toHaveLength(0)
+})
+
+
+test('separate account restore opens the prepared recovery library on desktop', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.pdfpalDesktop = { setAgent: async id => id, onAgentChanged: () => () => {}, openRecoveredLibrary: async id => { localStorage.setItem('opened-recovery-library', id); return true } }
+  })
+  const fixture = await cloudFixture(page, { account: signedIn, libraryId: 'linux-library', enabled: true }, { canonicalId: 'windows-library' })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Cloud library', exact: true }).click()
+  const modal = page.getByRole('dialog', { name: 'Your cloud library' })
+  await modal.getByRole('button', { name: 'Restore account library separately', exact: true }).click()
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('opened-recovery-library'))).toBe('recovered-account-library')
+  expect(fixture.calls.filter(call => call.action === 'restore-account')).toEqual([{ action: 'restore-account', body: {} }])
+  expect(fixture.calls.filter(call => call.action === 'connect' || call.action === 'sync')).toHaveLength(0)
+})
+
+test('failed account restore keeps the current library open and preserves the retry action', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.pdfpalDesktop = { setAgent: async id => id, onAgentChanged: () => () => {}, openRecoveredLibrary: async id => { localStorage.setItem('opened-recovery-library', id); return true } }
+  })
+  await cloudFixture(page, { account: signedIn, libraryId: 'linux-library', enabled: true }, { canonicalId: 'windows-library', restoreError: true })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Cloud library', exact: true }).click()
+  const modal = page.getByRole('dialog', { name: 'Your cloud library' })
+  await modal.getByRole('button', { name: 'Restore account library separately', exact: true }).click()
+  await modal.getByText('Show details', { exact: true }).click()
+  await expect(modal.getByText('The download could not finish. Your current library is preserved.')).toBeVisible()
+  await expect(modal.getByText('Cloud library ID: linux-library')).toBeVisible()
+  await expect(modal.getByRole('button', { name: 'Restore account library separately', exact: true })).toBeEnabled()
+  expect(await page.evaluate(() => localStorage.getItem('opened-recovery-library'))).toBeNull()
+})
+
+test('browser account restore directs the reader to the separate recovery copy in Backups', async ({ page }) => {
+  await cloudFixture(page, { account: signedIn, libraryId: 'linux-library', enabled: true }, { canonicalId: 'windows-library', missingFiles: 3 })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Cloud library', exact: true }).click()
+  const modal = page.getByRole('dialog', { name: 'Your cloud library' })
+  await modal.getByRole('button', { name: 'Restore account library separately', exact: true }).click()
+  await expect(modal.getByText(/Your account library is ready as a separate recovery copy/)).toContainText('Open Backups')
+  await expect(modal.getByText(/Your account library is ready as a separate recovery copy/)).toContainText('3 PDF files are not downloaded.')
+  await expect(modal.getByText(/Your account library is ready as a separate recovery copy/)).toContainText('PDF transfers stay off until you enable them')
+  await expect(modal.getByText('Cloud library ID: linux-library')).toBeVisible()
 })
