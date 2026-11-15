@@ -24,7 +24,7 @@ export const cardTakeawaySchema = z.object({ title: z.string(), detail: z.string
 export const cardContentSchema = z.object({
   quote: z.string(), quoteEdited: z.boolean(), emphasis: z.string(), headline: z.string(), pull: z.string(),
   topic: z.string(), takeawaysTitle: z.string(), takeaways: z.array(cardTakeawaySchema),
-  style: z.enum(STYLES), look: z.enum(LOOKS),
+  style: z.enum(STYLES), look: z.enum(LOOKS), crop: pageRectSchema.nullable(),
 }).strict()
 
 export const captionSchema = z.object({

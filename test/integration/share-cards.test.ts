@@ -96,7 +96,7 @@ test('a highlight becomes a post in one request built from the passage and its p
     })
     assert.match(record.source.context, /^Page one introduces the model\.\n\nAttention lets every position.*sparse patterns may reduce this cost\.\n\nPage three compares results\.$/)
     assert.doesNotMatch(record.source.context, /Page four/)
-    assert.deepEqual(record.card, { ...CARD, quoteEdited: false, style: 'quote', look: 'ink' })
+    assert.deepEqual(record.card, { ...CARD, quoteEdited: false, style: 'quote', look: 'ink', crop: null })
     assert.deepEqual(record.caption, { body: CAPTION, hashtags: ['attention', 'transformers', 'research'], edited: null })
     const prompt = s.prompt(1), input = s.input(1)
     assert.ok(prompt.startsWith(`${SHARE_CARD_PROMPT}\n\n{`))

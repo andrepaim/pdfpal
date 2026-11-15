@@ -299,7 +299,8 @@ class Card {
 
   constructor(input: CardLayoutInput, measure: Measure) {
     this.input = input; this.measure = measure
-    const size = SIZES[input.size]
+    // The Fit size is task T2 of docs/share-posts-plan.md; until then it is drawn as Feed.
+    const size = SIZES[input.size === 'fit' ? 'feed' : input.size]
     this.width = size.width; this.height = size.height
     this.u = this.width / 100
     this.story = input.size === 'story'
@@ -326,6 +327,8 @@ class Card {
   layout(): CardLayout {
     this.frame()
     let style = this.input.style
+    // The Headline style is task T2 of docs/share-posts-plan.md; until then it is drawn as Big idea.
+    if (style === 'headline') style = 'idea'
     let parts: Part[] | undefined
     if (style === 'page') {
       const page = this.input.crop ? this.pageParts(this.input.crop) : null

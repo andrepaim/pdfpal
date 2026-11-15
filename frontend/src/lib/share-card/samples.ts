@@ -4,7 +4,7 @@ import type { CardContent, ShareCardSource } from '../../../../src/shared/share-
 
 export type Sample = { name: string; card: CardContent; source: ShareCardSource }
 
-const base = { quoteEdited: false, style: 'quote', look: 'ink' } as const
+const base = { quoteEdited: false, style: 'quote', look: 'ink', crop: null } as const
 const takeaways = (...items: Array<[string, string]>) => items.map(([title, detail]) => ({ title, detail }))
 const source = (card: CardContent, extra: Partial<ShareCardSource>): ShareCardSource => ({
   version: 1, passage: `${card.quote} ${card.pull}`.trim(), page: 4, rects: [{ x1: 0.12, y1: 0.3, x2: 0.88, y2: 0.33 }], color: 'yellow',

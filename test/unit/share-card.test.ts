@@ -15,7 +15,7 @@ const source: ShareCardSource = {
 const card: CardContent = {
   quote: 'Attention lets every position look at every other one.', quoteEdited: false, emphasis: 'every other one',
   headline: 'Attention trades cost for reach', pull: 'sparse patterns may reduce this cost', topic: 'Attention',
-  takeawaysTitle: 'What full attention buys', style: 'quote', look: 'ink',
+  takeawaysTitle: 'What full attention buys', style: 'quote', look: 'ink', crop: null,
   takeaways: [{ title: 'Reach is global', detail: 'Every position can use any other.' },
     { title: 'Cost is quadratic', detail: 'Longer inputs cost much more.' }, { title: 'Sparsity may help', detail: 'The authors suspect it.' }],
 }

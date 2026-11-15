@@ -9,19 +9,33 @@ export const CARD = {
   captionMinWords: 40, captionMinWordsChanged: 10, captionMaxWords: 120, hookMax: 110,
   passageMin: 20, passageMax: 6000, contextMax: 12000, creditMax: 200,
 } as const
-export const STYLES = ['quote', 'page', 'idea', 'takeaways'] as const
+/** Page and Headline show the PDF's own pixels; the other three are text cards. See docs/share-posts-plan.md. */
+export const STYLES = ['page', 'headline', 'quote', 'idea', 'takeaways'] as const
+export const TEXT_CARD_STYLES = ['quote', 'idea', 'takeaways'] as const
 export const LOOKS = ['ink', 'paper', 'marker'] as const
 export const SIZES = { feed: { width: 1080, height: 1350 }, story: { width: 1080, height: 1920 } } as const
+/** The Fit size: as tall as the Page style's crop needs, within these bounds. */
+export const FIT = { width: 1080, minHeight: 608, maxHeight: 1350 } as const
 export const HIGHLIGHT_COLORS = ['yellow', 'green', 'blue', 'pink'] as const
+/** Where the post is going. It sets the frame, the text length and the defaults. */
+export const DESTINATIONS = ['linkedin', 'x', 'instagram'] as const
+/** The three drafts one request may return. */
+export const ANGLES = ['finding', 'contrast', 'caveat'] as const
 
 export type ShareStyle = (typeof STYLES)[number]
 export type ShareLook = (typeof LOOKS)[number]
-export type CardSize = keyof typeof SIZES
+/** 'fit' applies to the Page style; other styles draw it as 'feed'. */
+export type CardSize = keyof typeof SIZES | 'fit'
+export type Destination = (typeof DESTINATIONS)[number]
+export type Angle = (typeof ANGLES)[number]
 export type HighlightColor = (typeof HIGHLIGHT_COLORS)[number]
 export type ShareCardStatus = 'pending' | 'running' | 'complete' | 'failed' | 'cancelled'
 
 /** Fractions of the page, 0..1. */
 export type PageRect = { x1: number; y1: number; x2: number; y2: number }
+
+/** One highlight on the post's page: its boxes as page fractions. */
+export type PageMark = { rects: PageRect[]; color: HighlightColor }
 
 /** Fixed when the post is created. Only `credit` may change later. */
 export type ShareCardSource = {
@@ -59,6 +73,8 @@ export type CardContent = {
   takeaways: CardTakeaway[]
   style: ShareStyle
   look: ShareLook
+  /** The reader's crop of the page, as page fractions; null means automatic. */
+  crop: PageRect | null
 }
 
 /** `edited`, when set, replaces the composed caption text. */
@@ -86,8 +102,26 @@ export type ShareCardSummary = {
   updated_at: string
 }
 
-export const STYLE_NAMES: Record<ShareStyle, string> = { quote: 'Quote', page: 'Page', idea: 'Big idea', takeaways: 'Takeaways' }
+export const STYLE_NAMES: Record<ShareStyle, string> = { page: 'Page', headline: 'Headline', quote: 'Quote', idea: 'Big idea', takeaways: 'Takeaways' }
 export const LOOK_NAMES: Record<ShareLook, string> = { ink: 'Ink', paper: 'Paper', marker: 'Marker' }
+export const DESTINATION_NAMES: Record<Destination, string> = { linkedin: 'LinkedIn', x: 'X · Bluesky · Threads', instagram: 'Instagram' }
+export const ANGLE_NAMES: Record<Angle, string> = { finding: 'The finding', contrast: 'Belief vs. paper', caveat: 'The caveat' }
+
+/** What a destination starts with. `extraLines` is the context around the highlight in an automatic crop. */
+export const DESTINATION_DEFAULTS: Record<Destination, { style: ShareStyle; size: CardSize; extraLines: 0 | 1 | 3; showTags: boolean }> = {
+  linkedin: { style: 'page', size: 'fit', extraLines: 3, showTags: false },
+  x: { style: 'page', size: 'fit', extraLines: 1, showTags: false },
+  instagram: { style: 'headline', size: 'feed', extraLines: 3, showTags: true },
+}
+
+/** Limits of one draft, by destination. `hookMax` is the first line, which is what shows before "see more". */
+export const DRAFT: Record<Destination, { minWords: number; maxWords: number; maxChars: number; hookMax: number; minParagraphs: number; maxParagraphs: number }> = {
+  linkedin: { minWords: 120, maxWords: 300, maxChars: 3000, hookMax: 140, minParagraphs: 3, maxParagraphs: 8 },
+  instagram: { minWords: 80, maxWords: 200, maxChars: 2200, hookMax: 125, minParagraphs: 2, maxParagraphs: 6 },
+  x: { minWords: 8, maxWords: 60, maxChars: 280, hookMax: 280, minParagraphs: 1, maxParagraphs: 2 },
+}
+/** The reader's take. On X a take raises a draft's maxChars to max(280, take.length + 140). */
+export const TAKE_MAX = 400
 
 /** Whether a generation owns the post: nothing else may change it meanwhile. */
 export const isActive = (status: ShareCardStatus) => status === 'pending' || status === 'running'
@@ -169,6 +203,7 @@ export function cardDescription(card: CardContent, style: ShareStyle): string {
   switch (style) {
     case 'quote': return `Quote card: “${card.quote}”`
     case 'page': return `Page card: “${card.quote}”`
+    case 'headline': return `Headline card: ${card.headline.replace(/\.+$/u, '')}. “${card.quote}”`
     case 'idea': return `Big idea card: ${card.headline.replace(/\.+$/u, '')}.` + (card.pull.trim() ? ` “${card.pull}”` : '')
     case 'takeaways': return `Takeaways card: ${card.takeawaysTitle.replace(/\.+$/u, '')}. ` +
       card.takeaways.map((item, index) => `${index + 1}. ${item.title}: ${item.detail}`).join(' ')

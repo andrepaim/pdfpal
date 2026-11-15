@@ -110,7 +110,7 @@ export function parseShareCardAnswer(raw: string, source: Pick<ShareCardSource, 
   const fixed = options.fixedQuote
   const card: CardContent = {
     quote: fixed ? fixed.quote : text('quote'), quoteEdited: fixed?.edited ?? false, emphasis: text('emphasis', true), headline: text('headline'),
-    pull: text('pull', true), topic: collapse(text('topic')), takeawaysTitle: text('takeawaysTitle'), takeaways, style: 'quote', look: 'ink',
+    pull: text('pull', true), topic: collapse(text('topic')), takeawaysTitle: text('takeawaysTitle'), takeaways, style: 'quote', look: 'ink', crop: null,
   }
   try { validateCard(card, source) } catch (error) { throw new AnswerError((error as Error).message) }
   // Stored cards may lack a topic; a new answer must name one.
