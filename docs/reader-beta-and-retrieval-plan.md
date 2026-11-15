@@ -30,7 +30,7 @@ This plan does two things and parks the rest:
 1. **Track A:** run the Windows beta that [the desktop plan](windows-desktop-plan.md) already defines (WIN-20), with the gaps closed that currently prevent it.
 2. **Track B:** measure retrieval, then improve it, keeping only changes the measurement supports.
 
-It does not redefine the beta targets, signing approach, or release gates. Those stay in the [desktop plan](windows-desktop-plan.md#success-metrics), [beta field guide](windows-beta-guide.md) and [signing plan](windows-code-signing-plan.md).
+It does not redefine the beta targets, signing approach, or release gates. Those stay in the [desktop plan](windows-desktop-plan.md#success-metrics), [beta field guide](windows-beta-guide.md) and [signing and release instructions](windows-release-pipeline.md#signing-and-retries).
 
 ## Parked until the beta decision
 

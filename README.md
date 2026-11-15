@@ -10,13 +10,13 @@ There's a lot of vibe researching going on: skim an AI summary, watch an explain
 
 Your library, notes, highlights, and chat history are stored locally. Optional cloud sync can share library metadata and, with separate consent, saved PDF and project conversations between devices. Relevant context goes to your configured AI provider when you ask for help; its terms, charges, and usage limits still apply.
 
-Available as a **Windows desktop app** or a **CLI and browser reader on Linux/WSL**, with an optional Chrome companion for Kindle for Web.
+Available as a **Windows desktop app**, a **Linux desktop engineering preview**, or a **CLI and browser reader on Linux/WSL**, with an optional Chrome companion for Kindle for Web.
 
 ## See pdfpal in action
 
-[Install and run](#install-and-run) · [Quickstart](#quickstart)
+[Install and run](#install-and-run) · [Quickstart](#quickstart) · [Documentation](docs/README.md)
 
-Screenshots show the current Windows desktop preview. The reading examples reuse the original, unedited Codex responses in the updated reader; see [capture details](screenshots/CAPTURE.md).
+Reader screenshots show the current browser interface, which is shared with the desktop app. The visual example replays a recorded Claude response in the new renderer; the decoder answer is the original Codex response. Windows menu evidence is dated separately. See [capture details](screenshots/CAPTURE.md).
 
 ### Read with AI beside the page
 
@@ -26,11 +26,15 @@ Select the passage you're stuck on and work through it beside the paper. In §3.
 
 ### Turn difficult concepts into visual explanations
 
-Further into the paper, §3.2.1 raises a different question: why divide attention scores by √dₖ? Use `/visual` to see the missing intuition. The graph compares a large score gap in softmax's nearly flat region with a scaled gap in a steeper region. The highlighted paragraph and footnote 4 stay in view while you explore the explanation.
+How do queries, keys and values turn a sequence into a context-aware representation? Use `/visual` to work through attention one step at a time. Here the reader shows the attention paper beside a token grid that reveals scores and weights, with a caption for each step.
 
-![Dark PDF reader showing the highlighted scaling passage beside an interactive softmax graph comparing the flat and steep regions](screenshots/visual-softmax-scaling.png)
+![Current PDF reader beside an attention explanation showing aligned token, score and weight rows, step navigation and an illustrative-example label](screenshots/visual-attention-steps.png)
 
-Both answers were generated through pdfpal using Codex and their selected PDF passages. The graph's numbers are a worked example, rather than measurements from the paper. Step through the explanation, click shapes for details, or [download the interactive HTML](screenshots/9-visual-explanation.html) to explore all three steps offline. Visual explanations also work in project chat and the Kindle companion.
+Expand the viewer to inspect a query/key plot, then return to the same step beside the paper.
+
+![Expanded visual explanation with labeled query and key vectors, a small-angle annotation and a segmented nine-step progress bar](screenshots/visual-attention-expanded.png)
+
+This recorded visual response is a general-concept example: its illustrative numbers are not measurements from the paper, and no passage was supplied to that original request. The decoder answer above was generated from its selected PDF passage. Explore all nine visual steps in the [interactive HTML download](screenshots/9-visual-explanation.html), which works offline. Visual explanations also work in project chat and the Kindle companion.
 
 ### Build a research library
 
@@ -45,7 +49,13 @@ Write what you learned in your own words and save questions to revisit as Markdo
 ![Rendered research note explaining why attention replaced recurrence, with an open question to revisit](screenshots/5-notes.png)
 
 <details>
-<summary>Discovery, Windows navigation, and Kindle setup</summary>
+<summary>Dictionary, discovery, Windows navigation, and Kindle setup</summary>
+
+**Look up a word without leaving the page**
+
+Double-click an English word for a definition from the bundled offline dictionary. Ask and Highlight stay beside the selection.
+
+![PDF reader with a selected word, its local WordNet definition card, and the Ask, Highlight and Explain visually actions](screenshots/reader-dictionary.png)
 
 **Find your next paper**
 
@@ -63,11 +73,13 @@ Explore a paper's references and citing papers, and add useful sources as you re
 
 Keep sources, notes, and conversations together in a local project.
 
-![Current Windows projects page with the integrated title bar and three research workspaces](screenshots/4-projects.png)
+![Current browser projects page with three sample research workspaces](screenshots/4-projects.png)
 
 **Move around the Windows app**
 
 Use the integrated toolbar for reading history, project search, cloud sync and help. Press **Ctrl+K** to find a project or **F10** to open the app menu for AI settings, backups, privacy, Kindle setup and the CLI skill.
+
+The Windows menu capture below is retained from the installed 2.7.0-preview.2 build on November 6, 2026.
 
 ![Windows app menu with library navigation, Command line & ChatGPT, AI settings, recovery, privacy and update controls](screenshots/desktop-menu.png)
 
@@ -84,6 +96,7 @@ Download the Chrome companion, connect it to your local library, and manage pair
 | Choose your setup | What you need | Get started |
 | --- | --- | --- |
 | **Windows desktop preview** | Windows 11 on an Intel/AMD 64-bit computer. No separate Node.js or Git installation for pdfpal. | [Install the Windows app](#windows-desktop-preview) |
+| **Linux desktop engineering preview** | x86-64 Debian/Mint/Ubuntu desktop. Node.js 22+ to build; installed app includes its runtime. | [Linux build, installation and acceptance](docs/linux-quickstart.md) |
 | **Linux / WSL: CLI and browser reader** | Git and Node.js 22 or newer. | [Install from source](#linux-and-wsl) |
 
 ### Windows desktop preview
@@ -97,11 +110,17 @@ The Windows app has an integrated dark title bar with native window controls. Us
 
 Closing the window keeps pdfpal running in the system tray near the clock. Click the tray icon to reopen it; use **Quit** in its menu to stop the app.
 
-To browse and manage your library from the Windows ChatGPT app, open **pdfpal menu → Command line & ChatGPT**, choose **Install skill**, then **Check setup**. Windows version 2.7 includes the matching CLI. Keep pdfpal running in its tray, open ChatGPT's **Skills → Installed**, and look for **Pdfpal CLI**. Try: “Show my pdfpal projects.” The setup check verifies the CLI connection; verify skill discovery in ChatGPT separately.
+To browse and manage your library from the Windows ChatGPT app, open **pdfpal menu → Command line & ChatGPT**, choose **Install skill**, then **Check setup**. Current Windows installers include the matching CLI. Keep pdfpal running in its tray, open ChatGPT's **Skills → Installed**, and look for **Pdfpal CLI**. Try: “Show my pdfpal projects.” The setup check verifies the CLI connection; verify skill discovery in ChatGPT separately.
 
 If ChatGPT's **Settings → General → Agent environment** selects WSL, the skill must also be available in that WSL distribution's `~/.agents/skills`. Windows, Ubuntu, and Ubuntu-24.04 use separate skill locations. Link the managed Windows skill into the distribution ChatGPT actually uses; see the [Windows CLI guide](docs/windows-cli.md) for commands and troubleshooting. The skill's WSL adapter operates your Windows library through the running app.
 
 The Windows installer is currently an **unsigned engineering preview**, so Windows may show an unknown-publisher prompt. To upgrade between previews, download the target installer from GitHub Releases and install it under the same Windows account. The tray’s **Check for updates** only looks for signed stable releases when you request a check. See the [Windows upgrade instructions](docs/windows-quickstart.md#upgrade-or-uninstall) for checksum and installation steps.
+
+### Linux desktop engineering preview
+
+The x86-64 Debian package targets Mint 22/Ubuntu 24.04, with X11 as the initial validation environment. Download the `.deb`, `pdfpal-linux-release.json` and `SHA256SUMS-linux.txt` from the [Linux preview release](https://github.com/andrepaim/pdfpal/releases/tag/linux-desktop-v2.8.0-beta.5.linux.1), then check `sha256sum -c SHA256SUMS-linux.txt` in the download directory. Newer engineering artifacts are available from [CI](https://github.com/andrepaim/pdfpal/actions/workflows/ci.yml), or build from source using the [Linux quickstart](docs/linux-quickstart.md). Linux publication is separate from the automatic Windows release pipeline.
+
+Install with `sudo apt install ./pdfpal-<version>-amd64.deb`, then open **pdfpal** from the application menu. The app includes its runtime and a separate `pdfpal-desktop-cli`; a system Node installation is unnecessary for those bundled tools. Node-based assistant CLIs may need their own runtime. The shared **pdfpal menu** offers settings, backups, CLI setup, licenses and updates inside the native Linux window frame. **F10** opens it; **Ctrl+K** finds a project. Closing the Linux window quits the app. Account persistence requires a supported, unlocked OS keyring; local reading works without sign-in. Wayland, live account flows and clean-machine installation remain manual acceptance checks.
 
 ### Linux and WSL
 
@@ -113,9 +132,10 @@ Run these commands in your Linux or WSL terminal:
 git clone https://github.com/andrepaim/pdfpal.git
 cd pdfpal
 npm ci
-npm run build
 npm start
 ```
+
+`npm ci` runs the build automatically through its prepare hook. After changing source code, rebuild with `npm run build`.
 
 `npm start` starts the local server at `http://localhost:8200` and opens the reader in your browser. To run without opening a browser, use `npm start -- serve --no-open`.
 
@@ -148,11 +168,13 @@ Keep the checkout in place when using this link. AI features use your assistant�
 
 Use **Dark pages** beside the reader's zoom controls for a dark page background and light text. The setting is remembered in your browser across documents and reloads. It also changes figure and photo colors; switch it off to view their original colors.
 
+Double-click an English word for a local definition, or select a short phrase. **Definitions** toggles the bundled offline dictionary; it needs no AI account. See the [reader guide](docs/reader-guide.md) for definitions, selection context and navigation.
+
 After following a reference link within a PDF, click **Back to citation** in the reader toolbar to return to your previous position and zoom. Follow several references and click it repeatedly to retrace your jumps.
 
 ### Read a Kindle book
 
-1. Start pdfpal. On Windows, choose **pdfpal menu → Kindle extension**. In the browser reader, choose **Extension** on the projects home page (or **Kindle extension** in a project).
+1. Start pdfpal. In the Windows or Linux desktop app, choose **pdfpal menu → Kindle extension**. In the browser reader, choose **Extension** on the projects home page (or **Kindle extension** in a project).
 2. **Download Chrome extension**, extract it to a folder you will keep, and open `chrome://extensions`. Enable **Developer mode**, choose **Load unpacked**, and select the extracted folder containing `manifest.json`.
 3. Pin pdfpal to Chrome's toolbar. Open your book in [Kindle for Web](https://read.amazon.com/), refresh the tab, and click the pdfpal toolbar icon.
 4. Click **Connect to pdfpal**. In the local tab that opens, click **Allow connection**, then return to Kindle. Choose or create a project.
@@ -176,14 +198,14 @@ Book questions use title/author, previous discussion, and captured or saved exce
 
 - **Split-pane reader**: PDF viewer on the left, chat/notes/related on the right; resizable.
 - **Reading progress**: remembers the last page read for every source and restores it automatically the next time you open the PDF.
-- **Per-source chat**: persistent conversation history per paper, restored across sessions; renders math (KaTeX); web research is handled by the selected agent when supported.
+- **Per-source chat**: persistent conversation history per paper, restored across sessions; renders math (KaTeX). Answers use retrieved local text and the assistant’s background knowledge. Reading calls run with shell and web tools disabled; paper discovery is available separately.
 - **Text selection → ask or highlight**: stuck on a passage? Select it and ask about it right there, grounded in the paper, or save it as a highlight.
 - **Offline dictionary**: double-click a word, or select a short phrase, and its meanings appear under it. Inflected forms (“ran”, “mice”), hyphenated words and compounds (“neural network”) are recognised. It is English only, uses the bundled WordNet 3.1 data, and sends nothing anywhere. Turn it off with **Definitions** in the reader toolbar.
 - **Project chat**: ask across multiple sources at once, toggle which sources are in context, or scope to a single collection.
 
 ### Visual explanations
 
-Select text in the PDF reader and choose **Explain visually** from its popup, or type `/visual <concept>` in the reader or project chat. Type `/` for a command suggestion; Tab completes `/visual`. With a passage attached, `/visual` alone explains that selection. The same command works in the [Kindle companion](extension/README.md#explain-visually). Your configured agent creates progressive diagrams with clickable details, captions, a text transcript and source labels. Expand the viewer, ask follow-ups, save the explanation to a project note, or export a self-contained HTML file for offline reading. Saved explanations reopen without another model call. Project chat also supports general-concept visual questions without PDFs using `/visual <concept>`.
+Select text in the PDF reader and choose **Explain visually** from its popup, or type `/visual <concept>` in the reader or project chat. Type `/` for a command suggestion; Tab completes `/visual`. With a passage attached, `/visual` alone explains that selection. The same command works in the [Kindle companion](extension/README.md#explain-visually). Your configured assistant supplies content for flow diagrams, plots, token/vector grids, comparisons, bars and quadrants; pdfpal handles their layout. Figures reveal in steps with named clickable details, captions, source labels and a full text transcript. Use Next/Back, the segmented progress bar or arrow keys; **Expand** keeps your current step in a larger viewer. Save to a project note or export a self-contained HTML file that uses the same renderer and works offline. Saved explanations reopen without another model call, including older saved visuals. Project chat also supports general-concept questions without PDFs. See the [visual explanation guide](docs/visual-explanations.md).
 
 ### Share a highlight as a post
 
@@ -200,11 +222,11 @@ Use **Copy image** and **Copy caption** to paste into a post, or save a feed (4:
 
 ### Backups, recovery & privacy
 
-Open **pdfpal menu → Backups & recovery** on Windows, or **Backups** at the lower left in the browser reader. Save a complete local library copy, including managed PDFs, notes, highlights, saved conversations and visual explanations. Automatic backups run daily by default while the app is open; choose every six hours, daily or weekly. Verify a backup or open a separate recovery copy while keeping your current library. **Recently deleted** retains up to 100 deletion entries for 30 days. See [backup and recovery](docs/backup-recovery.md).
+Open **pdfpal menu → Backups & recovery** in the Windows or Linux desktop app, or **Backups** at the lower left in the browser reader. Save a complete local library copy, including managed PDFs, notes, highlights, saved conversations and visual explanations. Automatic backups run daily by default while the app is open; choose every six hours, daily or weekly. Verify a backup or open a separate recovery copy while keeping your current library. **Recently deleted** retains up to 100 deletion entries for 30 days. See [backup and recovery](docs/backup-recovery.md).
 
-![Backups and recovery settings in the current Windows app, including local backup controls and recently deleted items](screenshots/backups-recovery.png)
+![Current browser backup settings showing a verified local library copy and recovery controls](screenshots/backups-recovery.png)
 
-**Privacy & diagnostics** in the Windows app menu (or **Privacy** in the browser) separates local diagnostics, optional usage analytics and default-off error sharing. Shared error reports exclude documents, conversations, titles, filenames and raw error messages. See [error reporting](docs/error-reports.md).
+**Privacy & diagnostics** in the desktop app menu (or **Privacy** in the browser) separates local diagnostics, optional usage analytics and default-off error sharing. Shared error reports exclude documents, conversations, titles, filenames and raw error messages. See [error reporting](docs/error-reports.md).
 
 ### Sources & Discovery
 
@@ -272,9 +294,9 @@ Run `npm run skill:uninstall` to remove the symlinks.
 
 ## Optional cloud library
 
-Open **Cloud library** from the Windows toolbar or the browser reader and sign in with Google. Sign-in alone uploads no library content. Explicitly enable sync to share projects, source metadata, nested collections, notes, highlights and reading progress. Choose **Include saved conversations** separately to synchronize existing and future saved PDF and project questions and answers. AI-provider sign-in is separate from Google sign-in.
+Open **Cloud library** from the Windows toolbar, Linux app menu or browser reader and sign in with Google. Sign-in alone uploads no library content. Explicitly enable sync to share projects, source metadata, nested collections, notes, highlights and reading progress. Choose **Include saved conversations** separately to synchronize existing and future saved PDF and project questions and answers. AI-provider sign-in is separate from Google sign-in.
 
-SQLite remains the working library, with changes queued while offline. To connect an existing cloud library on another device, start with an empty local library. **PDF files, Kindle extension history and interactive visual assets stay local in the bundled configuration.** PDF file transfers require a separately configured, billing-enabled Cloud Storage bucket and explicit opt-in on each device. Keep full local backups. See [cloud setup and supported data](docs/firebase-setup.md).
+SQLite remains the working library, with changes queued while offline. Each Google account has one account library; another device joins it from an empty local library. If an older version created multiple cloud libraries, choose the complete one explicitly with **Use as account library**. A device bound to another legacy library stops before uploading; **Restore account library separately** backs up its local work and restores the account library into a separate library. This keeps the original available and does not merge the two. **PDF files, Kindle extension history and interactive visual assets stay local in the bundled configuration.** PDF file transfers require a separately configured, billing-enabled Cloud Storage bucket and explicit opt-in on each device. Keep full local backups. See [cloud setup and supported data](docs/firebase-setup.md).
 
 ## Local data
 
@@ -324,6 +346,7 @@ npm run build
 npm exec --workspace frontend -- playwright install --with-deps chromium
 npm exec --workspace extension -- playwright install --with-deps chromium
 npm exec --workspace frontend -- playwright test
+npm --prefix desktop test
 npm run test:extension
 npm run test:archive
 npm run test:package
@@ -334,6 +357,8 @@ npm run test:package
 `npm run build` builds the server, web reader, and extension, and creates a reproducible ZIP in `extension/package/`. The server serves that matching ZIP from its Extension page. `test:package` installs a real tarball into a temporary prefix and exercises guided pairing, chat, and note saving outside the checkout. Extension browser tests use their workspace’s bundled Chromium; all automated AI calls use fixtures.
 
 `npm test` runs Node's test runner through `tsx`, fails when no tests are found, and enforces the configured c8 coverage thresholds. Playwright starts the compiled Fastify server using an isolated temporary data directory. Set `PLAYWRIGHT_EXECUTABLE_PATH` to use a system Chromium installation.
+
+Documentation-only CI runs link checks, credential scanning and tests of the change classifier. Application builds, browser suites, Firebase contracts and native packaging are skipped when the entire change is limited to documentation/media. Code, tooling, workflows, dependency inputs and shipped agent skills keep full validation; manual Windows checks always run.
 
 ### Project loops
 
@@ -351,7 +376,7 @@ $loopy run the saved Local test-quality pass loop
 
 ## Architecture
 
-The Windows desktop app, web reader, Kindle companion, and CLI share TypeScript services, local storage, and AI configuration. The desktop app hosts the reader and its local backend, with an Electron shell for the tray and Windows lifecycle. The web reader uses the same-origin Fastify API; the extension uses a loopback bridge with revocable credentials. The standalone CLI calls services directly; the bundled Windows CLI connects to the running app through a private pipe. Kindle conversations are scoped to connection, project, and book, separately from PDF chat sessions. Saved notes are available in the project UI.
+The Windows desktop app, Linux desktop engineering preview, web reader, Kindle companion, and CLI share TypeScript services, local storage, and AI configuration. The desktop app hosts the reader and its local backend in Electron. Windows closes to its tray; Linux closes by quitting safely. The web reader uses the same-origin Fastify API; the extension uses a loopback bridge with revocable credentials. The standalone CLI calls services directly; the bundled Windows CLI connects to the running app through a private pipe, and `pdfpal-desktop-cli` on Linux uses authenticated loopback HTTP. Kindle conversations are scoped to connection, project, and book, separately from PDF chat sessions. Saved notes are available in the project UI.
 
 ```text
 Web reader ── HTTP ──▶ Fastify API ──┐
@@ -368,11 +393,11 @@ pdfpal CLI ───────────────────────
 
 - **Ingest**: `SourceService` resolves a local file or URL, extracts its text, stores a managed PDF copy, and chunks/indexes the text in SQLite FTS5.
 - **Ask**: `ChatService` scopes retrieval by project, source, or collection, builds a grounded prompt from matching passages, invokes the configured AI provider, and persists the answer and source references.
-- **Use**: React pages call the Fastify API; CLI commands and [`skills/pdfpal-cli`](skills/pdfpal-cli/) automate the same core operations. An agent subprocess may use its own web-search tools when supported by that agent.
+- **Use**: React pages call the Fastify API; CLI commands and [`skills/pdfpal-cli`](skills/pdfpal-cli/) automate the same core operations. Reading subprocesses run with tools disabled. Paper discovery uses the separate OpenAlex and Semantic Scholar services; an external research agent can use its own tools before importing papers.
 
 The implementation follows that split:
 
-- [`desktop/`](desktop/) contains the optional desktop shell, installer tooling, and Windows acceptance checks. See the [desktop build guide](desktop/README.md) and [automatic release pipeline](docs/windows-release-pipeline.md).
+- [`desktop/`](desktop/) contains the optional desktop shell, Windows/Linux packaging tooling, and platform acceptance checks. See the [desktop build guide](desktop/README.md) and [automatic release pipeline](docs/windows-release-pipeline.md).
 - [`extension/`](extension/) contains the Chrome side panel, reader capture, bundled OCR, and guided connection flow.
 - [`frontend/src`](frontend/src/) contains the reader, chat, projects, notes, collections, and source-discovery UI.
 - [`src/server`](src/server/) exposes the HTTP API and serves the built frontend.

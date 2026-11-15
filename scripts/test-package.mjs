@@ -32,12 +32,19 @@ try {
   const cli = path.join(prefix, 'node_modules/pdfpal/dist/cli/index.js');
   assert.match(execFileSync(process.execPath, [cli, '--help'], { cwd, encoding: 'utf8', env: { ...process.env, PDFPAL_DATA_DIR: path.join(temporary, 'data') } }), /Kindle/);
   const fixture = path.join(temporary, 'fixture-agent');
-  await writeFile(fixture, '#!/usr/bin/env node\nprocess.stdin.resume();process.stdin.on("end",()=>process.stdout.write("A useful explanation of the book."));\n', { mode: 0o700 });
+  await writeFile(fixture, `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args.includes('--version')) { console.log('codex-cli 0.164.0'); process.exit(0); }
+if (args.includes('--help')) { console.log('--ignore-user-config --ignore-rules --ephemeral --disable'); process.exit(0); }
+if (args.join(' ') === 'login status') { console.log('Logged in using ChatGPT'); process.exit(0); }
+process.stdin.resume();process.stdin.on('end',()=>process.stdout.write('A useful explanation of the book.'));
+`, { mode: 0o700 });
   const socket = createServer(); socket.listen(0, '127.0.0.1'); await once(socket, 'listening');
   const port = socket.address().port; await new Promise(resolve => socket.close(resolve));
   const base = `http://127.0.0.1:${port}`;
   server = spawn(process.execPath, [cli, 'serve', '--no-open', '--port', String(port)], { cwd,
-    env: { ...process.env, PDFPAL_DATA_DIR: path.join(temporary, 'data'), PDFPAL_AGENT: 'codex', CODEX_BIN: fixture }, stdio: ['ignore', 'pipe', 'pipe'] });
+    env: { ...process.env, PDFPAL_DATA_DIR: path.join(temporary, 'data'), PDFPAL_AGENT: 'codex', CODEX_BIN: fixture,
+      CLAUDE_BIN: path.join(temporary, 'uninstalled-claude'), OPENCODE_BIN: path.join(temporary, 'uninstalled-opencode') }, stdio: ['ignore', 'pipe', 'pipe'] });
   let log = ''; server.stdout.on('data', data => { log = (log + data).slice(-4000); }); server.stderr.on('data', data => { log = (log + data).slice(-4000); });
   let ready = false;
   for (let i = 0; i < 100; i++) { try { if ((await fetch(`${base}/api/health`)).ok) { ready = true; break; } } catch {} await new Promise(resolve => setTimeout(resolve, 100)); }

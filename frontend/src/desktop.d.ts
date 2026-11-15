@@ -1,18 +1,20 @@
-export interface DesktopUpdateState { state: 'idle' | 'available' | 'current' | 'unpublished' | 'error'; currentVersion: string; distribution?: string; version?: string; publisher?: string; notes?: string; message?: string }
+export interface DesktopUpdateState { state: 'idle' | 'available' | 'current' | 'unpublished' | 'manual' | 'error'; currentVersion: string; distribution?: string; version?: string; publisher?: string; notes?: string; message?: string }
 export interface DesktopAssistant {
   id: string; label: string; available: boolean; state?: string; version?: string; auth?: string; testedAt?: string
 }
 export interface DesktopSetupState { default: string; explicit?: boolean; complete: boolean; agents: DesktopAssistant[] }
 export interface DesktopServiceState { state: 'starting' | 'ready' | 'failed'; interrupted?: boolean }
-export interface DesktopChromeState {version:string;focused:boolean;maximized:boolean;fullscreen:boolean;canGoBack:boolean;canGoForward:boolean;zoom:number}
+export interface DesktopChromeState {version:string;focused:boolean;maximized:boolean;fullscreen:boolean;canGoBack:boolean;canGoForward:boolean;zoom:number;startAtLogin?:boolean}
 export interface DesktopCliSetup {available:boolean;launcher:string;version:string;library:string;setupCommand:string;skill:{installed:boolean;managed:boolean;edited:boolean;directory:string;legacy:string[]};check?:{ok:boolean;pathReady?:boolean;pathConflict?:boolean;error?:{code:string;message:string}}}
 
 declare global {
   interface Window {
     pdfpalFlushPending?: () => Promise<void>
     pdfpalDesktop?: {
+      platform?: string
       cliSetup?(action:'status'|'install'|'check'):Promise<DesktopCliSetup>
       chrome?:boolean
+      capabilities?:{sharedMenu:boolean;titleBarOverlay:boolean}
       chromeState?(): Promise<DesktopChromeState>
       chromeCommand?(command:string): Promise<boolean>
       onChromeState?(callback:(state:DesktopChromeState)=>void):()=>void

@@ -12,7 +12,9 @@ import { preferences, registeredLibrary, restoreBounds, restoreLibraryRoute, saf
 import { Session } from './chatgpt/session.mjs'
 import { protectedVault } from './chatgpt/vault.mjs'
 import { betaOptions, betaAcceptance } from './beta-acceptance.mjs'
-import {chromeCommands,chromeOptions,chromeShortcut,feedbackIssueURL,readerHistoryTarget} from './chrome.mjs'
+import {chromeCapabilities,chromeCommands,chromeOptions,chromeShortcut,feedbackIssueURL,nativeMenuRequired,readerHistoryTarget} from './chrome.mjs'
+import { defaultDesktopProfile } from './dist/shared/desktop-profile.js'
+import { closeToTray, initiallyHidden, linuxAutostart, linuxMenuTemplate } from './linux.mjs'
 import { clipboard } from 'electron'
 import { clipboardPng } from './clipboard.mjs'
 
@@ -23,7 +25,7 @@ if (metadata.cloudPreview) {
   process.env.PDFPAL_DATA_DIR = path.join(os.homedir(), '.pdfpal-cloud-preview')
   delete process.env.PDFPAL_DB
   process.env.PDFPAL_PORT = '8202'
-  process.env.PDFPAL_DESKTOP_PROFILE = path.join(app.getPath('appData'), 'pdfpal-cloud-preview')
+  process.env.PDFPAL_DESKTOP_PROFILE = defaultDesktopProfile({ preview: true, env: { ...process.env, PDFPAL_DESKTOP_PROFILE: undefined } })
 }
 let beta
 if (process.argv.includes('--beta-acceptance')) {
@@ -47,11 +49,12 @@ for (const [flag, env] of [['--data-dir=', 'PDFPAL_DATA_DIR'], ['--db=', 'PDFPAL
 }
 app.setName(metadata.cloudPreview ? 'pdfpal Cloud Preview' : 'pdfpal')
 nativeTheme.themeSource = 'dark'
-const profile = process.env.PDFPAL_DESKTOP_PROFILE ?? path.join(app.getPath('appData'), 'pdfpal-desktop')
+const profile = defaultDesktopProfile()
 fs.mkdirSync(profile, { recursive: true })
 app.setPath('userData', profile)
 if (process.platform === 'win32') app.setAppUserModelId(applicationId)
 const prefs = preferences(path.join(app.getPath('userData'), 'desktop.json'))
+const autostart = process.platform === 'linux' ? linuxAutostart({ id: applicationId }) : undefined
 const explicitLibrary = !!process.env.PDFPAL_DATA_DIR || !!process.env.PDFPAL_DB
 const requestedLibrary = process.argv.find(value => value.startsWith('--selected-library='))?.slice('--selected-library='.length)
 const knownLibraries = prefs.value.libraries ?? {}
@@ -83,7 +86,7 @@ function readerHistory(offset) {
   return readerHistoryTarget(history.getAllEntries(),history.getActiveIndex(),offset,ready?.origin)
 }
 function chromeState(){
-  return {version:app.getVersion(),focused:!!window?.isFocused(),maximized:!!window?.isMaximized(),fullscreen:!!window?.isFullScreen(),canGoBack:readerHistory(-1)!==undefined,canGoForward:readerHistory(1)!==undefined,zoom:window?.webContents.getZoomFactor()??1}
+  return {version:app.getVersion(),focused:!!window?.isFocused(),maximized:!!window?.isMaximized(),fullscreen:!!window?.isFullScreen(),canGoBack:readerHistory(-1)!==undefined,canGoForward:readerHistory(1)!==undefined,zoom:window?.webContents.getZoomFactor()??1,startAtLogin:loginEnabled()}
 }
 function sendChromeState(){if(window&&!window.isDestroyed())window.webContents.send('pdfpal:chrome-state',chromeState())}
 async function chromeCommand(command){
@@ -96,6 +99,12 @@ async function chromeCommand(command){
     if(index!==undefined){await window.webContents.executeJavaScript('window.pdfpalFlushPending?.()');window.webContents.navigationHistory.goToIndex(index)}
   }else if(command==='open-browser'){if(ready)openBrowser(ready.origin+safeRoute(new URL(window.webContents.getURL()).pathname))}
   else if(command==='feedback')openBrowser(feedbackIssueURL({version:app.getVersion(),platform:process.platform,release:process.getSystemVersion()}))
+  else if(command==='diagnostics')openDiagnostics()
+  else if(command==='licenses')await openLicenses()
+  else if(command==='startup-toggle'){
+    if(!ready)throw new Error('The local service is restarting. Retry shortly.')
+    setStartup(!loginEnabled());updateTray()
+  }
   else window.webContents.send('pdfpal:chrome-command',command)
   sendChromeState();return true
 }
@@ -159,35 +168,83 @@ async function openUpdates() {
 }
 async function checkUpdates() {
   if (updateRequest) return updateRequest
-  updateRequest = checkDesktopUpdates(app.getVersion()).then(result => {
+  updateRequest = checkDesktopUpdates(app.getVersion(), fetch, process.platform, process.arch).then(result => {
     updateState = { ...result, distribution: metadata.distribution ?? 'unsigned' }
     return updateState
   }).finally(() => { updateRequest = undefined })
   return updateRequest
 }
-function startupArgs() {
-  if (!ready) return []
-  return [...startupArguments(ready.startup, app.getPath('userData')),`--selected-library=${libraryId}`]
+function startupArgs(startup = ready?.startup, selected = libraryId) {
+  if (!startup) return []
+  return [...startupArguments(startup, app.getPath('userData'), { platform: process.platform }),`--selected-library=${selected}`]
 }
 function loginEnabled() {
-  return process.platform === 'win32' && app.getLoginItemSettings({ path: process.execPath }).launchItems.some(item => item.name === applicationId && item.enabled)
+  return autostart ? autostart.enabled() : process.platform === 'win32' && app.getLoginItemSettings({ path: process.execPath }).launchItems.some(item => item.name === applicationId && item.enabled)
+}
+function setStartup(enabled, startup = ready?.startup, selected = libraryId) {
+  if (autostart) autostart.set(enabled, process.execPath, [...(!app.isPackaged ? [app.getAppPath()] : []), ...startupArgs(startup, selected)])
+  else if (process.platform === 'win32') app.setLoginItemSettings({ name: applicationId, openAtLogin: enabled, path: process.execPath, args: startupArgs(startup, selected) })
+  else throw new Error('Start at login is unavailable on this platform.')
+  prefs.update({ startAtLogin: enabled })
+}
+async function navigateReader(route) {
+  showWindow()
+  if (!ready) return
+  await window.webContents.executeJavaScript('window.pdfpalFlushPending?.()')
+  await window.loadURL(ready.origin + route)
+}
+function openPanel(panel) {
+  showWindow()
+  if (!ready) return
+  return window.webContents.executeJavaScript(`window.dispatchEvent(new CustomEvent('pdfpal:open-panel',{detail:${JSON.stringify(panel)}}))`)
+}
+async function openLicenses() {
+  const error = await shell.openPath(path.join(process.resourcesPath, 'THIRD_PARTY_NOTICES.txt'))
+  if (error) throw new Error('The license file could not be opened. Find THIRD_PARTY_NOTICES.txt in the application resources folder.')
+  return true
+}
+function openDiagnostics() {
+  showWindow()
+  if (loadedOrigin && !window.webContents.getURL().startsWith('file:')) window.webContents.send('pdfpal:open-diagnostics')
+  else void window.loadURL(recoveryURL)
+}
+function updateLinuxMenu() {
+  if (process.platform !== 'linux') return
+  // A failed backend can leave the reader mounted. Keep a single menu until we
+  // actually return to the separate startup/recovery document.
+  let readerActive = false
+  try { readerActive = new URL(window?.webContents.getURL()).origin === (ready?.origin ?? loadedOrigin) } catch {}
+  if (!nativeMenuRequired(process.platform, readerActive)) { Menu.setApplicationMenu(null); return }
+  const attempt = action => (...args) => { void Promise.resolve().then(() => action(...args)).catch(error => dialog.showErrorBox('pdfpal', error.message)) }
+  const actions = {
+    home: () => navigateReader('/'), extensions: () => navigateReader('/extensions'),
+    browser: () => chromeCommand('open-browser'), ai: aiSettings,
+    cli: () => openPanel('cli'), cloud: () => openPanel('cloud'), backups: () => openPanel('backups'), privacy: () => openPanel('privacy'),
+    back: () => chromeCommand('back'), forward: () => chromeCommand('forward'),
+    zoomIn: () => chromeCommand('zoom-in'), zoomOut: () => chromeCommand('zoom-out'), zoomReset: () => chromeCommand('zoom-reset'), fullscreen: () => chromeCommand('fullscreen'),
+    show: showWindow, quit: requestQuit, startup: enabled => { setStartup(enabled); updateTray() },
+    retry: () => { crashRetries = 0; return boot() }, updates: openUpdates, diagnostics: openDiagnostics,
+    feedback: () => chromeCommand('feedback'), licenses: openLicenses,
+  }
+  Menu.setApplicationMenu(Menu.buildFromTemplate(linuxMenuTemplate(Object.fromEntries(Object.entries(actions).map(([name, action]) => [name, attempt(action)])), { ready: !!ready, starting: booting, startup: loginEnabled() })))
 }
 function updateTray() {
+  updateLinuxMenu()
   if (!tray) return
   tray.setToolTip(ready ? 'pdfpal — running' : 'pdfpal — starting or needs attention')
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Open pdfpal', click: showWindow },
     { label: 'Open in browser', enabled: !!ready, click: () => openBrowser(ready.origin) },
     { label: 'AI settings', enabled: !!ready, click: () => { void aiSettings().catch(error => dialog.showErrorBox('AI settings', error.message)) } },
-    { label: 'Start with Windows', type: 'checkbox', enabled: !!ready && process.platform === 'win32',
+    { label: process.platform === 'win32' ? 'Start with Windows' : 'Start at login', type: 'checkbox', enabled: !!ready && ['win32', 'linux'].includes(process.platform),
       checked: !!ready && loginEnabled(),
       click: item => {
-        try { app.setLoginItemSettings({ name: applicationId, openAtLogin: item.checked, path: process.execPath, args: startupArgs() }); savePrefs({ startAtLogin: item.checked }) }
+        try { setStartup(item.checked) }
         catch (error) { dialog.showErrorBox('Startup preference', error.message) }
         updateTray()
       } },
     { label: 'Check for updates…', click: () => { void openUpdates() } },
-    { label: 'Diagnostics', click: () => { showWindow(); if (loadedOrigin && !window.webContents.getURL().startsWith('file:')) window.webContents.send('pdfpal:open-diagnostics'); else void window.loadURL(recoveryURL) } },
+    { label: 'Diagnostics', click: openDiagnostics },
     { label: 'Retry service', enabled: !ready && !booting, click: () => { crashRetries = 0; void boot() } },
     { type: 'separator' },
     { label: 'Quit', click: () => { void requestQuit() } },
@@ -257,13 +314,14 @@ function ensureWindow() {
         window.webContents.on('page-title-updated', event => { event.preventDefault(); window.setTitle('pdfpal Cloud Preview') })
       }
       restoreWindowState = true
-      if(process.platform==='win32'){
-        window.setMenu(null)
+      if(chromeCapabilities(process.platform).sharedMenu){
+        if(process.platform==='win32')window.setMenu(null)
         window.webContents.on('before-input-event',(event,input)=>{const command=chromeShortcut(input);if(command&&!['menu','find','home','ai-settings'].includes(command)){event.preventDefault();void chromeCommand(command).catch(()=>notify('pdfpal','This action could not finish. Save your changes and try again.'))}})
       }
       for(const event of ['focus','blur','maximize','unmaximize','enter-full-screen','leave-full-screen'])window.on(event,sendChromeState)
       window.webContents.on('did-navigate-in-page',sendChromeState)
       window.webContents.on('did-finish-load',sendChromeState)
+      window.webContents.on('did-finish-load',updateLinuxMenu)
       if(libraryId!=='original')window.webContents.on('page-title-updated',event=>{event.preventDefault();window.setTitle('pdfpal · Recovery library')})
       window.webContents.on('render-process-gone',()=>{if(!stopping){journal.record('RENDERER_CRASH');void rpc('report-native-error',{code:'RENDERER_CRASH'}).catch(()=>{})}})
       window.webContents.setWindowOpenHandler(({ url }) => { openBrowser(url); return { action: 'deny' } })
@@ -277,7 +335,7 @@ function ensureWindow() {
       for (const event of ['move', 'resize', 'maximize', 'unmaximize']) window.on(event, () => { clearTimeout(boundsTimer); boundsTimer = setTimeout(saveWindow, 200) })
       window.on('close', event => {
         saveWindow()
-        if (!stopping && tray) {
+        if (!stopping && closeToTray(process.platform, tray)) {
           event.preventDefault(); window.hide()
           if (!prefs.value.hideNotice) { savePrefs({ hideNotice: true }); notify('pdfpal is still running', 'Reopen pdfpal from the tray. Choose Quit there to stop it.') }
         } else if (!stopping) { event.preventDefault(); void requestQuit() }
@@ -323,7 +381,11 @@ async function boot() {
   try {
     ensureWindow()
     setServiceState({ state: 'starting' })
-    if (!loadedOrigin) { await window.loadURL(recoveryURL); if (!smoke && (!process.argv.includes('--hidden') || !tray || !prefs.value.setupComplete)) showWindow() }
+    if (!loadedOrigin) { await window.loadURL(recoveryURL); if (!smoke && !initiallyHidden(process.platform, { hidden: process.argv.includes('--hidden'), tray, setupComplete: prefs.value.setupComplete })) showWindow() }
+    if (smoke && process.platform === 'linux' && !loadedOrigin) {
+      if (!Menu.getApplicationMenu()) throw new Error('The Linux startup recovery menu is missing')
+      if (!await window.webContents.executeJavaScript('window.pdfpalDesktop.chromeCommand("startup-toggle").then(() => false, () => true)')) throw new Error('Startup registration was allowed without a ready library')
+    }
     const child = utilityProcess.fork(path.join(root, 'backend.mjs'), [], {
       env: { ...process.env, PDFPAL_APP_VERSION:app.getVersion(), PDFPAL_M0_SMOKE: smoke ? '1' : '0' }, stdio: 'pipe', serviceName: 'pdfpal backend',
     })
@@ -376,7 +438,7 @@ async function boot() {
     for(const event of journal.preview(app.getVersion()).events.filter(event=>event.at>(prefs.value.lastNativeReportAt??'')&&['BACKEND_STOPPED','START_FAILED','PREFERENCES_FAILED','RENDERER_CRASH'].includes(event.code)))await rpc('report-native-error',{code:event.code}).catch(()=>{})
     savePrefs({lastNativeReportAt:new Date().toISOString()})
     if (exited) throw new Error('The local service stopped during startup. Retry.')
-    if (!smoke && (!process.argv.includes('--hidden') || !tray || !prefs.value.setupComplete)) showWindow()
+    if (!smoke && !initiallyHidden(process.platform, { hidden: process.argv.includes('--hidden'), tray, setupComplete: prefs.value.setupComplete })) showWindow()
     booting = false; updateTray()
     if (beta) {
       await betaAcceptance({ options: beta, app, window, ready, tray, showWindow, requestQuit, secondLaunches: () => secondLaunches })
@@ -422,6 +484,36 @@ async function smokeTest() {
   pendingReceipt ??= { status: 'passed', platform: process.platform, arch: process.arch, electron: process.versions.electron,
     node: process.versions.node, checks: ready.checks, ui, providers: ready.providers }
   check(process.env.PDFPAL_M0_RECEIPT, 'Set PDFPAL_M0_RECEIPT for evidence')
+  if (chromeCapabilities(process.platform).sharedMenu) {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (await window.webContents.executeJavaScript('!!document.querySelector(".desktop-chrome")')) break
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+    const toolbar = await window.webContents.executeJavaScript(`(() => {
+      const header = document.querySelector('.desktop-chrome'), inner = document.querySelector('.desktop-chrome-inner')
+      document.querySelector('[aria-label="pdfpal menu"]')?.click()
+      return { visible: !!header, width: header?.getBoundingClientRect().width, innerWidth: inner?.getBoundingClientRect().width,
+        capabilities: window.pdfpalDesktop.capabilities, menu: !!document.querySelector('[role="menu"]'),
+        licenses: [...document.querySelectorAll('[role="menuitem"]')].some(item => item.textContent.includes('Third-party licenses')) }
+    })()`)
+    // React flushes the click after executeJavaScript returns.
+    for (let attempt = 0; attempt < 100 && !toolbar.menu; attempt++) {
+      toolbar.menu = await window.webContents.executeJavaScript('!!document.querySelector(".desktop-app-menu")')
+      if (!toolbar.menu) await new Promise(resolve => setTimeout(resolve, 20))
+    }
+    toolbar.licenses = await window.webContents.executeJavaScript('[...document.querySelectorAll("[role=menuitem]")].some(item => item.textContent.includes("Third-party licenses"))')
+    check(toolbar.visible && toolbar.menu && toolbar.licenses, 'Shared app menu did not render its commands')
+    check(Menu.getApplicationMenu() === null, 'The reader has a duplicate native application menu')
+    check(window.webContents.getLastWebPreferences().sandbox === true, 'The renderer sandbox was disabled')
+    if (process.platform === 'linux') check(toolbar.width === toolbar.innerWidth && !toolbar.capabilities.titleBarOverlay, 'Linux reserved Windows caption space')
+    if (process.env.PDFPAL_CHROME_EVIDENCE_DIR) {
+      fs.mkdirSync(process.env.PDFPAL_CHROME_EVIDENCE_DIR, { recursive: true })
+      fs.writeFileSync(path.join(process.env.PDFPAL_CHROME_EVIDENCE_DIR, 'shared-menu.png'), (await window.webContents.capturePage()).toPNG())
+    }
+    await window.webContents.executeJavaScript('document.querySelector("[aria-label=\\"pdfpal menu\\"]")?.click()')
+    pendingReceipt.checks.push('shared-app-menu-mounted', 'single-reader-menu', 'shared-menu-license-command', 'shared-menu-normal-renderer-sandbox')
+    if (process.platform === 'linux') pendingReceipt.checks.push('linux-native-frame-full-width-toolbar', 'linux-native-startup-recovery-menu', 'linux-startup-registration-requires-ready-service')
+  }
   if (ready.providers?.agents.some(agent => agent.generation !== 'passed')) pendingReceipt.status = 'provider_gate_failed'
   if (recoveryScreenPassed && !pendingReceipt.checks.includes('startup-recovery-screen-and-retry')) pendingReceipt.checks.push('startup-recovery-screen-and-retry')
   if (m1) {
@@ -556,17 +648,18 @@ else {
   handle('chrome-command',chromeCommand,true)
   handle('cli-setup', async action => {
     if (!['status','install','check'].includes(action)) throw new Error('Unsupported CLI setup action')
-    const launcher = path.join(path.dirname(process.execPath), 'bin', 'pdfpal.exe')
+    const launcher = path.join(path.dirname(process.execPath), 'bin', process.platform === 'linux' ? 'pdfpal-desktop-cli' : 'pdfpal.exe')
     const skill = action === 'install' ? installSkill() : skillStatus()
     let check
     if (action === 'check') {
       const env = {...process.env,PDFPAL_DESKTOP_PROFILE:profile}
       delete env.PDFPAL_DATA_DIR;delete env.PDFPAL_DB;delete env.PDFPAL_PORT
       check = await new Promise((resolve,reject)=>execFile(launcher,['--desktop','--json','--profile',profile,'doctor'],{env,windowsHide:true,encoding:'utf8',timeout:15000,maxBuffer:256*1024},(_error,stdout)=>{
-        try {resolve(JSON.parse(stdout))}catch {reject(new Error('The bundled CLI could not be checked. Repair the Windows installation.'))}
+        try {resolve(JSON.parse(stdout))}catch {reject(new Error('The bundled CLI could not be checked. Repair the desktop installation.'))}
       }))
     }
-    return {available:process.platform==='win32'&&fs.existsSync(launcher),launcher,version:app.getVersion(),library:prefs.value.libraries?.[libraryId]?.label??'Current library',skill,setupCommand:"& '"+launcher.replaceAll("'","''")+"' --desktop skill install",...(check?{check}:{})}
+    const quotedLauncher = process.platform === 'win32' ? "& '" + launcher.replaceAll("'", "''") + "'" : "'" + launcher.replaceAll("'", "'\\''") + "'"
+    return {available:['win32','linux'].includes(process.platform)&&fs.existsSync(launcher),launcher,version:app.getVersion(),library:prefs.value.libraries?.[libraryId]?.label??'Current library',skill,setupCommand:quotedLauncher+' --desktop skill install',...(check?{check}:{})}
   })
   handle('library-state', () => ({active:libraryId,libraries:Object.entries(prefs.value.libraries??{}).map(([id,item])=>({id,label:item.label}))}))
   handle('choose-backup-folder', async () => {
@@ -580,7 +673,7 @@ else {
     if((await rpc('status')).active)throw new Error('Wait for the current answer to finish before switching libraries.')
     if(window&&!window.isDestroyed())await window.webContents.executeJavaScript('window.pdfpalFlushPending?.()')
     prefs.update({activeLibrary:id,route:'/'})
-    if(prefs.value.startAtLogin&&process.platform==='win32')app.setLoginItemSettings({name:applicationId,openAtLogin:true,path:process.execPath,args:[...startupArguments({...ready.startup,...prefs.value.libraries[id]},app.getPath('userData')),`--selected-library=${id}`]})
+    if(loginEnabled())setStartup(true,{...ready.startup,...prefs.value.libraries[id]},id)
     const args=process.argv.slice(1).filter(value=>!['--selected-library=','--data-dir=','--db='].some(flag=>value.startsWith(flag)))
     app.relaunch({args:[...args,`--selected-library=${id}`]});void shutdown();return true
   }
@@ -595,11 +688,7 @@ else {
   handle('check-updates', checkUpdates, true)
   handle('download-update', () => { if (updateState.state !== 'available') throw new Error('Check for an available update first'); openBrowser(updateState.downloadURL); return true }, true)
   handle('release-notes', () => { openBrowser(updateState.releaseURL ?? releasePage); return true }, true)
-  handle('open-licenses', async () => {
-    const error = await shell.openPath(path.join(process.resourcesPath, 'THIRD_PARTY_NOTICES.txt'))
-    if (error) throw new Error('The license file could not be opened. Find THIRD_PARTY_NOTICES.txt in the application resources folder.')
-    return true
-  }, true)
+  handle('open-licenses', openLicenses, true)
   // Share cards: the renderer's clipboard API may not write images here, since every permission request is refused.
   handle('copy-image', bytes => { const image = nativeImage.createFromBuffer(clipboardPng(bytes)); if (image.isEmpty()) throw new Error('The card image could not be read.'); clipboard.writeImage(image); return true })
   handle('chatgpt-stop', () => { chatgpt.cancelAll(); return chatgpt.summary() })
@@ -653,7 +742,7 @@ else {
   app.whenReady().then(async () => {
   if(process.platform==='win32')Menu.setApplicationMenu(null)
   chatgpt = new Session({ ...protectedVault(path.join(profile, 'chatgpt'), safeStorage), open: url => shell.openExternal(url) })
-  try { await chatgpt.init() } catch { chatgpt.data={host:'urn:uuid:'+randomUUID(),accounts:[],active:null};chatgpt.message='Windows could not unlock the saved connection. Reconnect in AI settings.' }
+  try { await chatgpt.init() } catch { chatgpt.data={host:'urn:uuid:'+randomUUID(),accounts:[],active:null};chatgpt.message=process.platform==='linux'?'Secure credential storage is unavailable. Unlock or configure your desktop keyring, then reconnect in AI settings.':'The system could not unlock the saved connection. Reconnect in AI settings.' }
     try {
       const icon = nativeImage.createFromPath(path.join(root, 'frontend/dist/favicon-32.png'))
       if (icon.isEmpty()) throw new Error('Tray icon is missing')

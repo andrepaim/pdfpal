@@ -1,3 +1,4 @@
+import { isolatedProviderBinaries, providerHandshake } from './provider-fixture';
 import { test, expect, chromium, type BrowserContext } from '@playwright/test';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -15,8 +16,8 @@ test('visual explanations work in Kindle, project chat and the PDF reader, inclu
   const fixture = path.join(temporary, 'codex-fixture');
   const responseFile = path.join(temporary, 'visual-response.json');
   await writeFile(responseFile, JSON.stringify(visualFixture));
-  await writeFile(fixture, `#!/usr/bin/env node\nconst fs=require('node:fs');const prompt=fs.readFileSync(0,'utf8');setTimeout(()=>process.stdout.write(prompt.startsWith("You are pdfpal's visual teacher.")?fs.readFileSync(${JSON.stringify(responseFile)},'utf8'):'# Attention\\n\\nAttention lets tokens combine context.'),150);`, { mode: 0o700 });
-  const config = loadConfig({ dataDir: path.join(temporary, 'data'), agent: 'codex', codexBin: fixture });
+  await writeFile(fixture, `#!/usr/bin/env node\n${providerHandshake('codex')}const fs=require('node:fs');const prompt=fs.readFileSync(0,'utf8');setTimeout(()=>process.stdout.write(prompt.startsWith("You are pdfpal's visual teacher.")?fs.readFileSync(${JSON.stringify(responseFile)},'utf8'):'# Attention\\n\\nAttention lets tokens combine context.'),150);`, { mode: 0o700 });
+  const config = loadConfig({ ...isolatedProviderBinaries(temporary), dataDir: path.join(temporary, 'data'), agent: 'codex', codexBin: fixture });
   const app = await buildServer(config), db = openDatabase(config);
   let context: BrowserContext | undefined;
   try {

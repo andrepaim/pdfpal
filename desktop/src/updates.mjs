@@ -62,8 +62,12 @@ async function readJSON(url, request, limit) {
   } finally { await reader.cancel().catch(() => {}); reader.releaseLock() }
 }
 /** User-initiated metadata check only. No automatic downloads, execution, or telemetry. */
-export async function checkDesktopUpdates(currentVersion, request = fetch) {
+export async function checkDesktopUpdates(currentVersion, request = fetch, platform = process.platform, arch = process.arch) {
   versionParts(currentVersion)
+  // Linux distribution upgrades are manual until a signed Linux channel exists.
+  // Never promote a Windows installer to another platform or architecture.
+  if (platform !== 'win32' || arch !== 'x64') return { state: 'manual', currentVersion, releaseURL: releasePage,
+    message: 'Download the package for your platform from Releases. Quit pdfpal before upgrading; your library is retained.' }
   try {
     const releases = await readJSON(api, request, 1024 * 1024)
     if (!Array.isArray(releases)) throw new Error('Unverified release information')

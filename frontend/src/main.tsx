@@ -22,10 +22,13 @@ import RecoverySettings from './components/RecoverySettings'
 import DesktopChrome from './components/DesktopChrome'
 import CommandLineSettings from './components/CommandLineSettings'
 import LibraryChanges from './components/LibraryChanges'
+import { desktopChromeCapabilities } from './lib/desktop-chrome'
 // Hidden review page for share cards; linked from nowhere.
 const ShareCardSamples = lazy(() => import('./pages/ShareCardSamples'))
 
-if(window.pdfpalDesktop?.chrome)document.documentElement.classList.add('desktop-shell')
+const desktopCapabilities = desktopChromeCapabilities()
+document.documentElement.classList.toggle('desktop-shell', desktopCapabilities.sharedMenu)
+document.documentElement.classList.toggle('desktop-titlebar-overlay', desktopCapabilities.titleBarOverlay)
 
 // ── Error boundary ────────────────────────────────────────────────────────────
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {

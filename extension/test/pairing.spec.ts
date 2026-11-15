@@ -1,3 +1,4 @@
+import { isolatedProviderBinaries, providerHandshake } from './provider-fixture';
 import { test, expect, chromium, type BrowserContext, type Page } from '@playwright/test';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -12,8 +13,8 @@ const extensionPath = fileURLToPath(new URL('../dist', import.meta.url));
 async function setup() {
   const temporary = await mkdtemp(path.join(os.tmpdir(), 'pdfpal-guided-'));
   const fixture = path.join(temporary, 'agent');
-  await writeFile(fixture, '#!/usr/bin/env node\nprocess.stdin.resume();process.stdin.on("end",()=>process.stdout.write("A useful explanation of the book."));\n', { mode: 0o700 });
-  const config = loadConfig({ dataDir: path.join(temporary, 'data'), agent: 'codex', codexBin: fixture });
+  await writeFile(fixture, '#!/usr/bin/env node\n' + providerHandshake('codex') + 'process.stdin.resume();process.stdin.on("end",()=>process.stdout.write("A useful explanation of the book."));\n', { mode: 0o700 });
+  const config = loadConfig({ ...isolatedProviderBinaries(temporary), dataDir: path.join(temporary, 'data'), agent: 'codex', codexBin: fixture });
   let app = await buildServer(config);
   const db = openDatabase(config);
   await app.listen({ host: '127.0.0.1', port: 0 });

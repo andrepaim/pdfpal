@@ -35,6 +35,7 @@ export default function DesktopUpdates() {
         {state?.state === 'available' && <><h3>pdfpal {state.version} is available</h3><p className="ai-settings-help">Download the installer, quit pdfpal from its tray menu, then run the installer. Your library is kept.</p><p className="ai-settings-help">Publisher: {state.publisher}</p>{state.notes && <div className="desktop-update-notes">{state.notes}</div>}</>}
         {state?.state === 'current' && <p role="status" className="ai-settings-notice">No newer signed stable release is available.</p>}
         {state?.state === 'unpublished' && <p role="status" className="ai-settings-help">No signed stable desktop release was found.</p>}
+        {state?.state === 'manual' && <p role="status" className="ai-settings-help">{state.message}</p>}
         {state?.state === 'error' && <p role="alert" className="ai-settings-error">{state.message}</p>}
         {state?.currentVersion.includes('-') && <p className="ai-settings-help">Engineering previews may be unsigned. To update a preview manually, <a href="https://github.com/andrepaim/pdfpal/releases" target="_blank" rel="noopener noreferrer">browse previews on GitHub</a>.</p>}
         <div className="ai-settings-actions"><button onClick={() => { void action(bridge.releaseNotes) }}>Release notes</button><button onClick={() => { void action(bridge.openLicenses) }}>Open-source licenses</button></div>

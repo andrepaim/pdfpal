@@ -18,6 +18,7 @@ import { NoteService } from "../../src/core/notes.js";
 import { testConfig, testDb, cleanup } from "../helpers/test-utils.js";
 
 class MemoryStore {
+  canonical = new Map<string, string>();
   roots = new Map<
     string,
     { title: string; protocol: number; changes: Change[]; receipts: Map<string, Receipt> }
@@ -304,7 +305,24 @@ function memoryClient(store: MemoryStore, config: ReturnType<typeof testConfig>,
       expiresAt: Date.now() + 100000,
     };
     const worker = new SyncWorker(db, config, auth);
-    worker.transport.head = async id => ({ generation: "g1", protocol: store.root("alice", id).protocol });
+    worker.transport.head = async id => ({ generation: "g1", active: true, sequence: store.root("alice", id).changes.length, protocol: store.root("alice", id).protocol });
+    worker.transport.libraries = async () => store.libraries('alice');
+    worker.transport.canonicalLibrary = async () => store.canonical.get('alice') ?? null;
+    worker.transport.claimCanonical = async id => {
+      store.root('alice', id);
+      const current = store.canonical.get('alice');
+      if (current && current !== id) throw Error('Different account library');
+      store.canonical.set('alice', id);
+      return id;
+    };
+    worker.transport.create = async title => {
+      const current = store.canonical.get('alice');
+      if (current) return { id: current, generation: 'g1', title, created: false };
+      const id = randomUUID();
+      await store.create('alice', id, title);
+      store.canonical.set('alice', id);
+      return { id, generation: 'g1', title, created: true };
+    };
     worker.transport.enableConversations = async id => { store.root("alice", id).protocol = 2; };
     worker.request = async (route: string, body?: unknown): Promise<any> => {
       if (route === "/libraries") return store.libraries("alice");
@@ -352,3 +370,51 @@ test('cloud deletion recovery stays incomplete across upload batches and restore
   await wa.run();assert.equal(wa.error,'');assert.equal(new NoteService(adb,a).list(p.id).length,120)
  }finally{cleanup(a,adb);cleanup(b,bdb);if(old.PDFPAL_FIREBASE_PROJECT_ID===undefined)delete process.env.PDFPAL_FIREBASE_PROJECT_ID;else process.env.PDFPAL_FIREBASE_PROJECT_ID=old.PDFPAL_FIREBASE_PROJECT_ID}
 })
+
+test('automatic account connection joins the existing cloud library without creating another', async () => {
+  const store = new MemoryStore(), config = testConfig(), db = testDb(config);
+  try {
+    await store.create('alice', 'windows', 'Account library');
+    const worker = memoryClient(store, config, db);
+    await worker.connect('Linux library');
+    assert.equal(worker.status().libraryId, 'windows');
+    assert.equal(store.roots.size, 1);
+    assert.equal(store.canonical.get('alice'), 'windows');
+  } finally { cleanup(config, db); }
+});
+
+test('joining an existing account library rejects local content before claiming or changing binding', async () => {
+  const store = new MemoryStore(), config = testConfig(), db = testDb(config);
+  try {
+    await store.create('alice', 'windows', 'Account library');
+    const project = new ProjectService(db).create('Local content');
+    const worker = memoryClient(store, config, db);
+    await assert.rejects(worker.connect('Linux library'), /empty local library/);
+    assert.equal(worker.status().libraryId, undefined);
+    assert.equal(store.canonical.size, 0);
+    assert.equal(new ProjectService(db).resolve(project.id).id, project.id);
+    assert.equal(store.roots.size, 1);
+  } finally { cleanup(config, db); }
+});
+
+test('a device bound to a legacy duplicate stops before upload and preserves its outbox and cursor', async () => {
+  const store = new MemoryStore(), config = testConfig(), db = testDb(config);
+  try {
+    await store.create('alice', 'linux', 'Local library');
+    const worker = memoryClient(store, config, db);
+    await worker.connect('Local library', 'linux');
+    const project = new ProjectService(db).create('Pending local content');
+    const before = pending(db);
+    await store.create('alice', 'windows', 'Windows library');
+    store.canonical.set('alice', 'windows');
+    await worker.run();
+    assert.match(worker.error, /differs from your Google account library/);
+    assert.equal(worker.status().libraryId, 'linux');
+    assert.equal(setting(db, 'cursor'), '0');
+    assert.deepEqual(pending(db), before);
+    assert.equal(new ProjectService(db).resolve(project.id).id, project.id);
+    assert.equal(store.root('alice', 'linux').changes.length, 0);
+    assert.equal(store.root('alice', 'windows').changes.length, 0);
+    await assert.rejects(worker.connect('Windows library', 'windows'), /already bound/);
+  } finally { cleanup(config, db); }
+});

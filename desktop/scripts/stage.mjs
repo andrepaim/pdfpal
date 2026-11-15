@@ -10,9 +10,10 @@ const { versionParts } = await import('../src/updates.mjs')
 versionParts(version)
 await fs.mkdir(stage, { recursive: true })
 await fs.rm(path.join(stage, 'frontend/dist'), { recursive: true, force: true })
+await fs.rm(path.join(stage, 'cli-bin'), { recursive: true, force: true })
 const pkg = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'))
 await fs.writeFile(path.join(stage, 'package.json'), JSON.stringify({ name: 'pdfpal-desktop', version,
-  private: true, type: 'module', main: 'main.mjs', description: 'Read PDFs and Kindle with your AI assistant', author: 'pdfpal contributors', license: 'MIT', homepage: 'https://github.com/andrepaim/pdfpal',
+  private: true, type: 'module', main: 'main.mjs', desktopName: 'io.pdfpal.desktop.desktop', description: 'Read PDFs and Kindle with your AI assistant', author: 'pdfpal contributors', license: 'MIT', homepage: 'https://github.com/andrepaim/pdfpal',
   pdfpalDesktop: { appId: 'io.pdfpal.desktop', distribution: 'unsigned' },
   // v13 uses N-API and ships platform binaries; v12 fails against Electron 45's V8.
   dependencies: { ...pkg.dependencies, 'better-sqlite3': '13.0.3', '@napi-rs/canvas': '0.1.100' } }, null, 2))
@@ -24,6 +25,7 @@ for (const [source, destination] of [
   ['desktop/src/chatgpt', 'chatgpt'],
   ['desktop/src/chrome.mjs','chrome.mjs'],
   ['desktop/src/clipboard.mjs','clipboard.mjs'],
+  ['desktop/src/linux.mjs', 'linux.mjs'],
   ['desktop/src/preload.cjs', 'preload.cjs'],
   ...['setup.mjs', 'updates.mjs', 'installer-acceptance.mjs', 'beta-acceptance.mjs', 'recovery.html', 'recovery.js', 'recovery.css'].map(name => [`desktop/src/${name}`, name]), ['desktop/src/preferences.mjs', 'preferences.mjs'],
   ['desktop/test/runtime.test.mjs', 'test/runtime.test.mjs'],

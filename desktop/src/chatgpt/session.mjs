@@ -31,7 +31,8 @@ export class Session {
     if(existing&&identity.sub!==existing.subject)throw Error('The account does not match this registration')
     if(this.pending!==pending)return
     const account={...tokens,id:existing?.id||randomUUID(),client_id:result.clientId,subject:identity.sub,email:identity.email,expires_at:Date.now()+tokens.expires_in*1000,models:[]}
-    this.data.accounts=this.data.accounts.filter(a=>a.id!==account.id).concat(account);this.data.active=account.id;await this.write(this.data)
+    const next={...this.data,accounts:this.data.accounts.filter(a=>a.id!==account.id).concat(account),active:account.id}
+    await this.write(next);this.data=next
     this.message=account.scope?.split(' ').includes('chatgpt.tokens.use.direct')?'ChatGPT connected. Eligible requests use your plan.':'Signed in. Plan permission is required before asking.'
     this.cancelConnect();if(this.summary().connected)await this.models()
    }catch{if(this.pending===pending){this.cancelConnect();this.message='Sign-in could not finish. Start a new sign-in.'}}

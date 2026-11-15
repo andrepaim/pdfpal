@@ -1,4 +1,4 @@
-name: Publish Windows desktop release
+name: Publish desktop release
 
 on:
   push:
@@ -8,8 +8,11 @@ on:
   pull_request:
     paths:
       - '.github/workflows/windows-release.yml'
+      - 'desktop/version.json'
       - 'desktop/scripts/desktop-release.mjs'
       - 'desktop/test/release.test.mjs'
+      - 'desktop/scripts/linux-release.mjs'
+      - 'desktop/scripts/linux-deb-check.mjs'
 
 permissions:
   contents: read
@@ -28,12 +31,12 @@ jobs:
       - run: node --test desktop/test/release.test.mjs
 
   plan:
-    if: github.event_name != 'pull_request' && github.repository == 'andrepaim/pdfpal' && github.ref == 'refs/heads/master'
+    if: github.repository == 'andrepaim/pdfpal' && (github.event_name == 'pull_request' || github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.plan.outputs.version }}
-      channel: ${{ steps.plan.outputs.channel }}
-      publish: ${{ steps.plan.outputs.publish }}
+      version: ${{ steps.plan.outputs.version || steps.preview.outputs.version }}
+      channel: ${{ steps.plan.outputs.channel || steps.preview.outputs.channel }}
+      publish: ${{ steps.plan.outputs.publish || steps.preview.outputs.publish }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,11 +46,22 @@ jobs:
         with:
           node-version: '22'
       - id: plan
+        if: github.event_name != 'pull_request'
         env:
           RELEASE_BEFORE: ${{ github.event.before }}
         run: |
           node scripts/check-secrets.mjs
           node desktop/scripts/desktop-release.mjs plan
+      - id: preview
+        if: github.event_name == 'pull_request'
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs/promises'
+          import { releasePlan } from './desktop/scripts/desktop-release.mjs'
+          const { version } = JSON.parse(await fs.readFile('desktop/version.json', 'utf8'))
+          const plan = { ...releasePlan(version), publish: false }
+          await fs.appendFile(process.env.GITHUB_OUTPUT, Object.entries(plan).map(([key, value]) => `${key}=${value}\n`).join(''))
+          JS
 
   regression:
     needs: plan
@@ -77,17 +91,17 @@ jobs:
       - run: npm run test:archive
       - run: npm run test:package
 
-  build:
+  windows:
     needs: plan
-    if: needs.plan.outputs.publish == 'true'
+    if: github.event_name == 'pull_request' || needs.plan.outputs.publish == 'true'
     runs-on: windows-latest
     timeout-minutes: 40
-    environment: ${{ needs.plan.outputs.channel == 'stable' && 'windows-release' || 'windows-preview' }}
+    environment: ${{ github.event_name != 'pull_request' && needs.plan.outputs.channel == 'stable' && 'windows-release' || 'windows-preview' }}
     env:
       RELEASE_VERSION: ${{ needs.plan.outputs.version }}
-      PDFPAL_PUBLISHER_NAME: ${{ vars.PDFPAL_PUBLISHER_NAME }}
-      CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
-      CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+      PDFPAL_PUBLISHER_NAME: ${{ github.event_name != 'pull_request' && vars.PDFPAL_PUBLISHER_NAME || '' }}
+      CSC_LINK: ${{ github.event_name != 'pull_request' && secrets.WINDOWS_CSC_LINK || '' }}
+      CSC_KEY_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.WINDOWS_CSC_KEY_PASSWORD || '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -97,7 +111,7 @@ jobs:
           node-version: '22'
           cache: npm
       - name: Require signing credentials for a stable release
-        if: needs.plan.outputs.channel == 'stable'
+        if: github.event_name != 'pull_request' && needs.plan.outputs.channel == 'stable'
         run: node --input-type=module -e "import {signingConfiguration} from './desktop/scripts/build-installer.mjs'; signingConfiguration(true)"
       - run: npm ci
       - run: node desktop/scripts/stage.mjs
@@ -106,14 +120,14 @@ jobs:
         env:
           RELEASE_CHANNEL: ${{ needs.plan.outputs.channel }}
         run: |
-          $signed = $env:RELEASE_CHANNEL -eq 'stable'
+          $signed = '${{ github.event_name }}' -ne 'pull_request' -and $env:RELEASE_CHANNEL -eq 'stable'
           ./desktop/scripts/windows-m3.ps1 -SourceRoot $env:GITHUB_WORKSPACE -WorkRoot "$env:RUNNER_TEMP/pdfpal-desktop-release" -Signed:$signed
       - name: Verify publication files
         shell: pwsh
         run: node desktop/scripts/desktop-release.mjs prepare "$env:RUNNER_TEMP/pdfpal-desktop-release/artifacts"
       - uses: actions/upload-artifact@v4
         with:
-          name: desktop-release-files
+          name: desktop-windows-release-files
           if-no-files-found: error
           compression-level: 0
           path: |
@@ -122,9 +136,120 @@ jobs:
             ${{ runner.temp }}/pdfpal-desktop-release/artifacts/SHA256SUMS.txt
             ${{ runner.temp }}/pdfpal-desktop-release/artifacts/release-plan.json
             ${{ runner.temp }}/pdfpal-desktop-release/artifacts/release-notes.md
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-windows-release-evidence
+          path: |
+            ${{ runner.temp }}/pdfpal-desktop-release/installer-receipt.json
+            ${{ runner.temp }}/pdfpal-desktop-release/packaged-receipt.json
+            ${{ runner.temp }}/pdfpal-desktop-release/cli-native-receipt.json
+            ${{ runner.temp }}/pdfpal-desktop-release/no-system-node-receipt.json
+
+  linux:
+    runs-on: ubuntu-24.04
+    needs: plan
+    if: github.event_name == 'pull_request' || needs.plan.outputs.publish == 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            desktop/package-lock.json
+            desktop/runtime-lock.json
+      - name: Install GUI test dependencies
+        run: sudo apt-get update && sudo apt-get install -y xvfb dbus-x11 libgtk-3-0t64 libnss3 libasound2t64 libgbm1 libsecret-1-0 gnome-keyring libglib2.0-bin desktop-file-utils
+      - run: npm ci
+      - run: npm ci --prefix desktop
+      - name: Install pinned Electron for secure-storage acceptance
+        run: node desktop/node_modules/electron/install.js
+      - name: Stage isolated Electron runtime
+        run: |
+          npm --prefix desktop run stage
+          npm ci --prefix desktop/stage --omit=dev --ignore-scripts
+          node desktop/scripts/notices.mjs desktop/stage .
+          node --test desktop/stage/discovery.test.mjs desktop/stage/test/runtime.test.mjs
+      - name: Build Debian package and unpacked application
+        run: npm --prefix desktop run package:linux
+      - name: Validate normal sandbox and authenticated CLI without system Node
+        run: |
+          # Ubuntu's AppArmor userns policy needs a path-scoped profile for this
+          # temporary CI executable. Electron's renderer sandbox stays enabled.
+          sudo tee /etc/apparmor.d/pdfpal-ci > /dev/null <<EOF
+          abi <abi/4.0>,
+          include <tunables/global>
+          profile pdfpal-ci $GITHUB_WORKSPACE/desktop/artifacts/linux-unpacked/pdfpal-desktop flags=(unconfined) {
+            userns,
+          }
+          profile pdfpal-electron-ci $GITHUB_WORKSPACE/desktop/node_modules/electron/dist/electron flags=(unconfined) {
+            userns,
+          }
+          EOF
+          sudo apparmor_parser -r /etc/apparmor.d/pdfpal-ci
+          dbus-run-session -- xvfb-run -a node desktop/scripts/linux-acceptance.mjs
+          xvfb-run -a node desktop/test/run-linux-vault-probe.mjs desktop/node_modules/electron/dist/electron
+      - name: Generate artifact integrity and source provenance
+        run: |
+          node desktop/scripts/linux-deb-check.mjs
+          node desktop/scripts/linux-release.mjs desktop/artifacts "$GITHUB_SHA"
+          cd desktop/artifacts
+          sha256sum -c SHA256SUMS-linux.txt
+          dpkg-deb --info pdfpal-*-amd64.deb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux-release-files
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            desktop/artifacts/*.deb
+            desktop/artifacts/pdfpal-linux-release.json
+            desktop/artifacts/SHA256SUMS-linux.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux-release-evidence
+          if-no-files-found: error
+          path: |
+            desktop/evidence/linux-acceptance.json
+            desktop/evidence/linux-keyring.json
+            desktop/evidence/linux-deb.json
+
+  combined:
+    needs: [plan, regression, windows, linux]
+    if: github.event_name == 'pull_request' || needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    env:
+      RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-windows-release-files
+          path: release-files
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-linux-release-files
+          path: release-files
+      - name: Verify both native builds and all six publication files
+        run: node desktop/scripts/desktop-release.mjs combine release-files
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-release-files
+          if-no-files-found: error
+          compression-level: 0
+          path: release-files/
 
   publish:
-    needs: [plan, regression, build]
+    needs: [plan, combined]
     if: needs.plan.outputs.publish == 'true' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     permissions:
@@ -143,7 +268,7 @@ jobs:
         with:
           name: desktop-release-files
           path: release-files
-      - name: Publish tested installer to GitHub Releases
+      - name: Publish both tested installers to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ needs.plan.outputs.version }}

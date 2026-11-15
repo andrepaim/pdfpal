@@ -11,7 +11,7 @@ The desktop preview supports Windows 11 on an Intel/AMD 64-bit computer. It incl
 5. Optionally choose **Test connection** inside your selected assistant's card. It uses a short test prompt and your provider allowance. You can also choose **Continue without AI**.
 6. Create a project, import a PDF, select a passage, and ask a question. PDF files, notes, highlights, and history are stored in your local library; relevant reading context is sent to your assistant's provider when you request an AI answer.
 
-The current engineering installer is unsigned, so Windows may show an unknown-publisher/reputation prompt. Use it only as the test build supplied by the maintainer. A signed publisher identity is a gate for a public beta, not something this preview claims.
+The current engineering installer is unsigned, so Windows may show an unknown-publisher/reputation prompt. Download previews from the official repository and check their release checksums. A signed publisher identity is a gate for a public beta, not something this preview claims.
 
 ## Window and app menu
 
@@ -39,9 +39,9 @@ To manage this library from a local ChatGPT conversation, open **pdfpal menu →
 
 ## Optional Google sign-in and cloud sync
 
-Open **Cloud library**, choose **Sign in with Google**, and complete sign-in in your browser. For your existing local library, choose **Create a new cloud library**, give it a name, then **Enable sync**. Google sign-in is separate from your AI-provider account, and signing in alone uploads no library content.
+Open **Cloud library**, choose **Sign in with Google**, and complete sign-in in your browser. For a Google account without a cloud library, enter a library name and choose **Enable sync**. An account with an existing library offers **Connect account library**, which requires an empty local library. Google sign-in is separate from your AI-provider account, and signing in alone uploads no library content.
 
-The bundled Firebase project synchronizes projects, source metadata, collections, notes, highlights and reading progress. To include existing and future saved PDF/project questions and answers, choose **Include saved conversations** in Cloud library. This upgrades the cloud library; all devices using it need pdfpal 2.4 or later. **PDF files, Kindle extension history and interactive visual assets stay local.** Keep local backups. To connect an existing cloud library on another device, begin with an empty local library. Details and configuration are in [Firebase setup](firebase-setup.md).
+The bundled Firebase project synchronizes projects, source metadata, collections, notes, highlights and reading progress. To include existing and future saved PDF/project questions and answers, choose **Include saved conversations** in Cloud library. This upgrades the cloud library; all devices using it need pdfpal 2.4 or later. **PDF files, Kindle extension history and interactive visual assets stay local.** Keep local backups. To connect an existing cloud library on another device, begin with an empty local library. Each Google account has one account library. If older installations show several, choose the complete one with **Use as account library**; the choice is permanent in the app. A mismatched device can **Restore account library separately** after a safety backup, keeping its original work. Details and configuration are in [Firebase setup](firebase-setup.md).
 
 The separate Cloud Preview test installation uses its own library and profile. Updating regular pdfpal retains the regular library; it does not merge the preview's test library.
 
@@ -49,10 +49,10 @@ The separate Cloud Preview test installation uses its own library and profile. U
 
 **Stable releases.** Choose **Check for updates** in the tray to see your installed version and look for a newer signed stable release. This check only runs when requested. It reads GitHub release metadata and the manifest produced after the build verifies the publisher and timestamped Authenticode signatures. **Download installer** opens the installer URL in your browser. You quit pdfpal and run the installer yourself.
 
-**Engineering previews.** The check skips prereleases, even when you are running one. To move from one preview to the next (for example, preview.4 to preview.5):
+**Engineering previews.** The check skips prereleases, even when you are running one. To move from one preview to the next (for example, beta.3 to beta.4):
 
-1. Open [GitHub Releases](https://github.com/andrepaim/pdfpal/releases), choose the target Windows desktop tag (for example, `desktop-v2.1.0-preview.5`), and download its `pdfpal-Setup-…-x64.exe`.
-2. To check the download, run `Get-FileHash .\pdfpal-Setup-2.1.0-preview.5-x64.exe -Algorithm SHA256` in PowerShell from the download directory, substituting your installer filename. Compare the result with the entry in that release’s `SHA256SUMS.txt`. A matching checksum confirms file integrity. An unsigned preview has no verified publisher.
+1. Open [GitHub Releases](https://github.com/andrepaim/pdfpal/releases), choose the target Windows desktop tag (use the tag matching the intended version), and download its `pdfpal-Setup-…-x64.exe`.
+2. To check the download, run `Get-FileHash .\pdfpal-Setup-<version>-x64.exe -Algorithm SHA256` in PowerShell from the download directory, substituting your installer filename. Compare the result with the entry in that release’s `SHA256SUMS.txt`. A matching checksum confirms file integrity. An unsigned preview has no verified publisher.
 3. Save your work, choose **Quit** from the pdfpal tray menu, and run the installer under the same Windows account. It upgrades in place and keeps your library. Reopen pdfpal and use **Check for updates** to confirm the installed version.
 
 If installation says pdfpal is running, save your work, quit it from the tray, and select **Retry**. Cancelling leaves the previous version in place. The installer does not force-stop your reading session or another CLI server.

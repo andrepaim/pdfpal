@@ -16,8 +16,15 @@ await fs.mkdir(output, { recursive: true })
 let runtime, browser
 try {
   const binary = path.join(directory, 'fixture-agent')
-  await fs.writeFile(binary, '#!/usr/bin/env node\nprocess.stdin.resume();process.stdin.on("end",()=>process.stdout.write("This sample PDF is a small document for testing the reader. You can select text, ask questions, save notes, and return to your reading later."));\n', { mode: 0o700 })
-  runtime = await startRuntime(loadConfig({ dataDir: directory, agent: 'codex', codexBin: binary }), 0)
+  await fs.writeFile(binary, `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args.includes('--version')) { console.log('codex-cli 0.164.0'); process.exit(0); }
+if (args.includes('--help')) { console.log('--ignore-user-config --ignore-rules --ephemeral --disable'); process.exit(0); }
+if (args.join(' ') === 'login status') { console.log('Logged in using ChatGPT'); process.exit(0); }
+process.stdin.resume();process.stdin.on('end',()=>process.stdout.write('This sample PDF is a small document for testing the reader. You can select text, ask questions, save notes, and return to your reading later.'));
+`, { mode: 0o700 })
+  runtime = await startRuntime(loadConfig({ dataDir: directory, agent: 'codex', codexBin: binary,
+    claudeBin: path.join(directory, 'uninstalled-claude'), opencodeBin: path.join(directory, 'uninstalled-opencode') }), 0)
   const json = async (url, body) => {
     const response = await fetch(runtime.origin + url, { ...(body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {}) })
     if (!response.ok) throw new Error(`Demo request failed (${response.status})`)

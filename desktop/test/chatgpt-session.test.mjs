@@ -29,3 +29,15 @@ test('browser callback finishes a new registration without exposing credentials 
  await fetch(target);for(let i=0;i<50&&s.summary().busy;i++)await new Promise(r=>setTimeout(r,10))
  assert.equal(s.summary().connected,true);assert.equal(s.summary().model,'eligible');assert.equal(persisted.accounts[0].client_id,'issued-client');assert.ok(!JSON.stringify(s.summary()).includes('private-'));s.cancelConnect()
 })
+test('a failed protected credential write never connects the newly authorized account',async()=>{
+ let opened,writable=true,requests=0
+ const s=new Session({read:async()=>structuredClone(saved),write:async()=>{if(!writable)throw Error('Secure credential storage is unavailable')},open:async url=>{opened=new URL(url)},verify:async()=>({sub:'synthetic-reader'}),fetch:async()=>{requests++;return Response.json({access_token:'synthetic-access',refresh_token:'synthetic-refresh',id_token:'synthetic-id',scope:'chatgpt.tokens.use.direct',expires_in:3600})}})
+ await s.init();writable=false;await s.connect()
+ const target=new URL(opened.searchParams.get('redirect_uri'));target.searchParams.set('state',opened.searchParams.get('state'));target.searchParams.set('code','synthetic-code');target.searchParams.set('client_id','synthetic-client')
+ try {
+  await fetch(target);for(let i=0;i<50&&s.summary().busy;i++)await new Promise(r=>setTimeout(r,10))
+  assert.equal(requests,1);assert.equal(s.summary().connected,false);assert.deepEqual(s.data.accounts,[]);assert.equal(s.data.active,null)
+  assert.equal(JSON.stringify(s.data).includes('synthetic-access'),false)
+  await assert.rejects(s.invoke('synthetic prompt'),/Connect ChatGPT/)
+ } finally {s.cancelConnect()}
+})

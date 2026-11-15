@@ -1,4 +1,12 @@
 export const chromeHeight = 44
+/** Shared app navigation is independent of the operating system's window frame. */
+export function chromeCapabilities(platform) {
+  return { sharedMenu: platform === 'win32' || platform === 'linux', titleBarOverlay: platform === 'win32' }
+}
+/** The Linux recovery document retains its native menu when the shared reader is absent. */
+export function nativeMenuRequired(platform, readerActive) {
+  return !chromeCapabilities(platform).sharedMenu || (platform === 'linux' && !readerActive)
+}
 export function chromeOptions(platform) {
   return platform === 'win32' ? { titleBarStyle: 'hidden', titleBarOverlay: { color: '#171820', symbolColor: '#c9ccd8', height: chromeHeight } } : {}
 }
@@ -11,7 +19,7 @@ export function readerHistoryTarget(entries, index, offset, origin) {
 }
 
 /** Commands the renderer may send through `pdfpal:chrome-command`. None of them carry data. */
-export const chromeCommands = ['back','forward','zoom-in','zoom-out','zoom-reset','fullscreen','open-browser','quit','menu','find','home','ai-settings','feedback']
+export const chromeCommands = ['back','forward','zoom-in','zoom-out','zoom-reset','fullscreen','open-browser','quit','menu','find','home','ai-settings','feedback','diagnostics','licenses','startup-toggle']
 
 export const feedbackIssueBase = 'https://github.com/andrepaim/pdfpal/issues/new'
 const versionToken = value => typeof value === 'string' && /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$/.test(value) ? value : 'unknown'
