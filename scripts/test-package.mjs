@@ -24,7 +24,7 @@ try {
   assert.ok(!packed.files.some(file => /^desktop\//.test(file.path)), 'The CLI tarball must exclude desktop tooling and builds');
   const lock = JSON.parse(await readFile(path.join(root, 'package-lock.json'), 'utf8'));
   assert.ok(!Object.keys(lock.packages).some(name => /(?:^|\/)node_modules\/(?:electron|electron-builder)$/.test(name)), 'Root npm installation must not install Electron');
-  for (const name of ['dist/cli/index.js', 'frontend/dist/index.html', 'extension/package/companion.zip', 'extension/dist/manifest.json'])
+  for (const name of ['dist/cli/index.js', 'frontend/dist/index.html', 'extension/package/companion.zip', 'extension/dist/manifest.json', 'dist/dictionary/wordnet.sqlite', 'dist/dictionary/WORDNET-LICENSE.txt'])
     assert.ok(packed.files.some(file => file.path === name), name);
   const prefix = path.join(temporary, 'installed application');
   execFileSync('npm', ['install', '--prefix', prefix, '--omit=dev', '--no-audit', '--no-fund', path.join(temporary, packed.filename)], { stdio: 'pipe' });
@@ -44,6 +44,9 @@ try {
   assert.ok(ready, `Installed server did not start: ${log}`);
   const index = await (await fetch(base)).text(); const asset = index.match(/src="([^\"]+\.js)"/)[1];
   assert.match((await fetch(new URL(asset, base))).headers.get('content-type'), /javascript/);
+  // The offline dictionary ships inside the package and answers without the dev-only WordNet source.
+  const definition = await (await fetch(`${base}/api/dictionary/define?text=mice`)).json();
+  assert.equal(definition.entries[0]?.lemma, 'mouse', 'The installed package must include a working dictionary');
   const metadata = await (await fetch(`${base}/api/extensions/package`)).json();
   const download = await fetch(`${base}/api/extensions/download`);
   assert.equal(download.headers.get('content-type'), 'application/zip');

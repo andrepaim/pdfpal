@@ -14,7 +14,7 @@ pdfpal is a local-first reading assistant for PDFs and Kindle books. It has four
 
 ## Structure
 
-- `src/core/`: config, migrations (`database.ts`), services (projects, sources, collections, notes, highlights, chat, trash, backups), PDF handling, FTS retrieval, research APIs, Kindle, visual explanations, telemetry, error reports, agent adapters (`agents.ts`, `agent-discovery.ts`, `ai.ts`). `chatgpt/` holds the ChatGPT sign-in and Responses protocol.
+- `src/core/`: config, migrations (`database.ts`), services (projects, sources, collections, notes, highlights, chat, trash, backups), PDF handling, FTS retrieval, research APIs, Kindle, visual explanations, the offline dictionary (`dictionary.ts`; `dictionary-build.ts` runs at build time), telemetry, error reports, agent adapters (`agents.ts`, `agent-discovery.ts`, `ai.ts`). `chatgpt/` holds the ChatGPT sign-in and Responses protocol.
 - `src/server/`: Fastify routes and SPA serving, the extension bridge (`extension*.ts`), cloud routes (`cloud.ts`), recovery, and the private pipe used by the Windows CLI (`cli-pipe.ts`).
 - `src/sync/`: Firebase cloud sync: auth, the SQLite outbox (`database.ts`), the Firestore transport, and the worker.
 - `src/shared/`: code shared across server, frontend, extension, and desktop: sync record schema (`sync/schema.ts`), diagnostics allowlist, CLI protocol, extension pairing, public Firebase identifiers.
@@ -56,6 +56,7 @@ Install Playwright browsers with `npm exec --workspace <frontend|extension> -- p
 - Bump `CURRENT_SCHEMA` with each new version. It gates the `VACUUM INTO` backup taken before migrating an older database, and the `NEWER_DATABASE` refusal for databases from a newer build. Startup is serialized by a lease in `locking.ts`. Migration tests are in `test/integration/database-migration.test.ts`.
 - Legacy `sessions/messages` data is migrated into projects, sources, and chat sessions.
 - Rendering falls back to the source URL when the managed PDF copy is missing.
+- The reader's dictionary is a separate read-only file, `dist/dictionary/wordnet.sqlite`, built by `npm run build:server` from the `wordnet-db` dev dependency and `data/wordnet/*.exc`. It is not part of the library: no migration, sync or backup. It is opened from memory because the desktop app keeps it inside the app archive. It is named `.sqlite` because `test:package` rejects `.db` files in the tarball.
 - Synced record shapes are defined twice: `src/shared/sync/schema.ts` and the exact key lists in `cloud/firestore.rules`. Change both, then run `npm run test:firebase`.
 - Windows and WSL use separate libraries. Sharing one live SQLite file between them is unsupported.
 

@@ -25,7 +25,7 @@
   },
   "scripts": {
     "build": "npm run build:server && npm run build --workspace frontend && npm run build:extension",
-    "build:server": "tsc -p tsconfig.json",
+    "build:server": "tsc -p tsconfig.json && node scripts/build-dictionary.mjs",
     "dev": "tsx src/cli/index.ts serve --no-open",
     "start": "node dist/cli/index.js",
     "pretest": "npm run build:server",
@@ -69,6 +69,7 @@
     "fflate": "0.8.2",
     "firebase": "^12.7.0",
     "tsx": "^4.20.3",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "wordnet-db": "3.1.14"
   }
 }

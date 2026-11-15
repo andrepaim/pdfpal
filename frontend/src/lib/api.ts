@@ -231,6 +231,25 @@ export const relatedApi = {
     apiFetch<RelatedResult>(`/projects/${projectId}/sources/${sourceId}/related${refresh ? '?refresh=true' : ''}`),
 }
 
+export interface DictionaryEntry {
+  lemma: string
+  part_of_speech: 'noun' | 'verb' | 'adjective' | 'adverb'
+  senses: { definition: string; examples: string[] }[]
+}
+
+export interface DictionaryResult {
+  query: string
+  entries: DictionaryEntry[]
+  source: string
+}
+
+export const dictionaryApi = {
+  // The text around the selection goes only to the local server, which uses
+  // it to recognise a compound such as "neural network" around one word.
+  define: (text: string, context: { before: string; after: string }) =>
+    apiFetch<DictionaryResult>(`/dictionary/define?${new URLSearchParams({ text, ...context })}`),
+}
+
 export const chatApi = {
   getProjectChat: (projectId: string) =>
     apiFetch<{ messages: ChatMessage[] }>(`/projects/${projectId}/chat`),

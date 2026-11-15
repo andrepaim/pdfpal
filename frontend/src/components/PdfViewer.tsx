@@ -3,7 +3,9 @@ import { Document, Page, pdfjs, type DocumentProps } from 'react-pdf'
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
-import type { Annotation } from '../lib/api'
+import { dictionaryApi, type Annotation, type DictionaryResult } from '../lib/api'
+import { isDefinable, selectionContext } from '../lib/selection-context'
+import DefinitionCard from './DefinitionCard'
 import VisualIcon from './VisualIcon'
 
 // Bundle the worker from the same pdfjs-dist version used by react-pdf.
@@ -108,6 +110,10 @@ function getSelectionPages(selection: Selection): PageSelection[] {
 
 const ZOOM_LEVELS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
 const DARK_PAGES_STORAGE_KEY = 'pdfpal.pdf.darkPages'
+const DEFINITIONS_STORAGE_KEY = 'pdfpal.pdf.definitions'
+const DEFINITION_CARD_WIDTH = 340
+// Room the card needs under the selection before it opens above it instead.
+const DEFINITION_CARD_ROOM = 220
 
 function normalizePage(page: number | undefined): number {
   return Number.isInteger(page) && Number(page) > 0 ? Number(page) : 1
@@ -152,6 +158,16 @@ export default function PdfViewer({
   const [linkHistory, setLinkHistory] = useState<ReadingPosition[]>([])
   const [returnPosition, setReturnPosition] = useState<ReadingPosition | null>(null)
   const [bubble, setBubble] = useState<{ x: number; y: number; text: string; pages: PageSelection[] } | null>(null)
+  // Definitions of a selected word are on unless the reader turned them off.
+  const [definitions, setDefinitions] = useState(() => {
+    try { return localStorage.getItem(DEFINITIONS_STORAGE_KEY) !== 'false' }
+    catch { return true }
+  })
+  const [definition, setDefinition] = useState<{ id: number; result: DictionaryResult; style: React.CSSProperties } | null>(null)
+  const definitionsRef = useRef(definitions)
+  // Counts lookups and clicks, so an answer that arrives after the reader
+  // has moved on is dropped instead of opening a card for an old selection.
+  const definitionRequest = useRef(0)
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const currentPageRef = useRef(requestedPage)
@@ -211,25 +227,67 @@ export default function PdfViewer({
     }
   }, [isResizing])
 
-  // Text selection bubble
   useEffect(() => {
+    definitionsRef.current = definitions
+    if (!definitions) setDefinition(null)
+    try { localStorage.setItem(DEFINITIONS_STORAGE_KEY, String(definitions)) }
+    catch { /* The preference still applies until the reader is closed. */ }
+  }, [definitions])
+
+  // The card is placed over the viewer, so it would drift away from its word
+  // when the pages scroll underneath it.
+  useEffect(() => {
+    const scroll = scrollRef.current
+    if (!definition || !scroll) return
+    const close = () => setDefinition(null)
+    scroll.addEventListener('scroll', close, { passive: true })
+    return () => scroll.removeEventListener('scroll', close)
+  }, [definition])
+
+  // Text selection bubble and definition card
+  useEffect(() => {
+    // Look a selected word or short phrase up in the offline dictionary and
+    // open the card under it, or above it near the bottom of the viewer.
+    const defineSelection = (range: Range, text: string, viewer: DOMRect) => {
+      const rects = Array.from(range.getClientRects()).filter(r => r.width > 0 && r.height > 0)
+      if (!rects.length) return
+      const left = Math.min(...rects.map(r => r.left)) - viewer.left
+      const top = Math.min(...rects.map(r => r.top)) - viewer.top
+      const bottom = Math.max(...rects.map(r => r.bottom)) - viewer.top
+      const x = Math.max(8, Math.min(left, viewer.width - DEFINITION_CARD_WIDTH - 8))
+      // Above the word, the card also has to clear the selection bubble.
+      const style = bottom + DEFINITION_CARD_ROOM > viewer.height && top > DEFINITION_CARD_ROOM
+        ? { left: x, bottom: viewer.height - top + 56 }
+        : { left: x, top: bottom + 8 }
+      const id = ++definitionRequest.current
+      dictionaryApi.define(text, selectionContext(range)).then(result => {
+        // No card when the dictionary has no entry: names, numbers, "the".
+        if (id === definitionRequest.current && result.entries.length) setDefinition({ id, result, style })
+      }).catch(() => { /* Definitions are an extra; the selection still works without one. */ })
+    }
     const handleMouseUp = (e: MouseEvent) => {
+      // A click in the bubble or the card is not a new selection.
+      if ((e.target as HTMLElement).closest?.('[data-ask-bubble],[data-definition-card]')) return
       setTimeout(() => {
         const selection = window.getSelection()
         if (!selection || selection.isCollapsed) return
-        const text = selection.toString().trim()
-        if (!text || text.length < 3) return
+        const selected = selection.toString(), text = selected.trim()
         const container = containerRef.current
-        if (!container) return
+        if (!text || !container) return
         const anchor = selection.anchorNode
         if (!anchor || !container.contains(anchor)) return
         const rect = container.getBoundingClientRect()
+        // Untrimmed: a space at either end tells the lookup the word is complete.
+        if (definitionsRef.current && isDefinable(selected)) defineSelection(selection.getRangeAt(0), selected, rect)
+        if (text.length < 3) return
         const pages = getSelectionPages(selection)
         setBubble({ x: e.clientX - rect.left, y: e.clientY - rect.top, text, pages })
       }, 80)
     }
     const handleMouseDown = (e: MouseEvent) => {
-      if (!(e.target as HTMLElement).closest('[data-ask-bubble]')) setBubble(null)
+      const target = e.target as HTMLElement
+      if (!target.closest('[data-ask-bubble],[data-definition-card]')) setBubble(null)
+      if (!target.closest('[data-definition-card]')) { definitionRequest.current++; setDefinition(null) }
     }
     document.addEventListener('mouseup', handleMouseUp)
     document.addEventListener('mousedown', handleMouseDown)
@@ -475,10 +533,19 @@ export default function PdfViewer({
         )}
         <button
           type="button"
+          aria-pressed={definitions}
+          onClick={() => setDefinitions(value => !value)}
+          title="Show the dictionary meaning of a word when you select it"
+          style={{ ...btnStyle, width: 'auto', padding: '4px 10px', marginLeft: 'auto', fontSize: 12, background: definitions ? 'var(--accent)' : btnStyle.background }}
+        >
+          Definitions
+        </button>
+        <button
+          type="button"
           aria-pressed={darkPages}
           onClick={() => setDarkPages(value => !value)}
           title="Use dark page colors. Figure and photo colors will also change."
-          style={{ ...btnStyle, width: 'auto', padding: '4px 10px', marginLeft: 'auto', fontSize: 12, background: darkPages ? 'var(--accent)' : btnStyle.background }}
+          style={{ ...btnStyle, width: 'auto', padding: '4px 10px', fontSize: 12, background: darkPages ? 'var(--accent)' : btnStyle.background }}
         >
           Dark pages
         </button>
@@ -513,6 +580,10 @@ export default function PdfViewer({
           })}
         </Document>
       </div>
+
+      {definition && (
+        <DefinitionCard key={definition.id} result={definition.result} style={definition.style} onClose={() => setDefinition(null)} />
+      )}
 
       {/* Selection bubble */}
       {bubble && (
