@@ -207,8 +207,8 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
     if (!record || !card || page?.key === pageKey) return
     let live = true
     const content = { card, source: record.source }
-    cardSheetSpace(content, { look, size: 'feed' })
-      .then(sheet => pageCrop(fileUrl, record.source, sheet))
+    cardSheetSpace(content, { style: 'page', look, size: 'feed' })
+      .then(sheet => pageCrop(fileUrl, record.source, { sheet, crop: null, marks: [], extraLines: 3 }))
       .then(crop => { if (live) setPage({ key: pageKey, crop }) })
       .catch(error => { if (live) setPage({ key: pageKey, reason: ((error as Error).message in PAGE_UNAVAILABLE ? (error as Error).message : 'no-file') as PageUnavailable }) })
     return () => { live = false }
@@ -259,7 +259,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
     if (!record || !card) throw new Error('This post has no completed version yet.')
     let crop: PageCrop | undefined
     if (drawn === 'page') crop = size === 'feed' && pageReady?.crop ? pageReady.crop
-      : await pageCrop(fileUrl, record.source, await cardSheetSpace({ card, source: record.source }, { look, size })).catch(() => undefined)
+      : await pageCrop(fileUrl, record.source, { sheet: await cardSheetSpace({ card, source: record.source }, { style: 'page', look, size }), crop: null, marks: [], extraLines: 3 }).catch(() => undefined)
     const content = { card, source: record.source }
     const canvas = await renderCard(content, { style: drawn, look, size, crop })
     return { blob: await canvasPng(canvas), style: (canvas.dataset.style as ShareStyle | undefined) ?? drawn }
