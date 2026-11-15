@@ -17,7 +17,7 @@ const fileName=z.string().min(1).max(240).refine(s=>s===path.basename(s)&&s!=='.
 const fileInfo=z.object({name:fileName,bytes:z.number().int().nonnegative(),sha256:z.string().regex(/^[a-f0-9]{64}$/)}).strict()
 const manifestSchema=z.object({format:z.literal('pdfpal-library-backup'),version:z.literal(1),id:uuid,createdAt:z.string().datetime(),purpose:z.enum(['manual','scheduled','before-restore']),schema:z.number().int().min(1).max(CURRENT_SCHEMA),database:fileInfo,files:z.array(fileInfo).max(100000),missingFiles:z.number().int().nonnegative(),counts:z.record(z.string(),z.number().int().nonnegative())}).strict()
 type Manifest=z.infer<typeof manifestSchema>
-const countTables=['projects','sources','collections','notes','annotations','chat_sessions','chat_messages','kindle_conversations','kindle_turns','visual_explanations']
+const countTables=['projects','sources','collections','notes','annotations','chat_sessions','chat_messages','kindle_conversations','kindle_turns','visual_explanations','share_cards']
 const recoveryMarker='.pdfpal-recovered.json'
 
 async function digest(filename:string){
