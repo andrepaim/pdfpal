@@ -149,6 +149,8 @@ Keep the checkout in place when using this link. AI features use your assistantâ
 
 Use **Dark pages** beside the reader's zoom controls for a dark page background and light text. The setting is remembered in your browser across documents and reloads. It also changes figure and photo colors; switch it off to view their original colors.
 
+Double-click an English word for a local definition, or select a short phrase. **Definitions** toggles the bundled offline dictionary; it needs no AI account. See the [reader guide](docs/reader-guide.md) for definitions, selection context and navigation.
+
 After following a reference link within a PDF, click **Back to citation** in the reader toolbar to return to your previous position and zoom. Follow several references and click it repeatedly to retrace your jumps.
 
 ### Read a Kindle book
@@ -184,7 +186,7 @@ Book questions use title/author, previous discussion, and captured or saved exce
 
 ### Visual explanations
 
-Select text in the PDF reader and choose **Explain visually** from its popup, or type `/visual <concept>` in the reader or project chat. Type `/` for a command suggestion; Tab completes `/visual`. With a passage attached, `/visual` alone explains that selection. The same command works in the [Kindle companion](extension/README.md#explain-visually). Your configured agent creates progressive diagrams with clickable details, captions, a text transcript and source labels. Expand the viewer, ask follow-ups, save the explanation to a project note, or export a self-contained HTML file for offline reading. Saved explanations reopen without another model call. Project chat also supports general-concept visual questions without PDFs using `/visual <concept>`.
+Select text in the PDF reader and choose **Explain visually** from its popup, or type `/visual <concept>` in the reader or project chat. Type `/` for a command suggestion; Tab completes `/visual`. With a passage attached, `/visual` alone explains that selection. The same command works in the [Kindle companion](extension/README.md#explain-visually). Your configured assistant supplies content for flow diagrams, plots, token/vector grids, comparisons, bars and quadrants; pdfpal handles their layout. Figures reveal in steps with named clickable details, captions, source labels and a full text transcript. Use Next/Back, the segmented progress bar or arrow keys; **Expand** keeps your current step in a larger viewer. Save to a project note or export a self-contained HTML file that uses the same renderer and works offline. Saved explanations reopen without another model call, including older saved visuals. Project chat also supports general-concept questions without PDFs. See the [visual explanation guide](docs/visual-explanations.md).
 
 ### Organization
 
