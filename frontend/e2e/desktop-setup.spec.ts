@@ -58,6 +58,23 @@ test('missing assistants get explicit installation help and reading without AI r
   expect(await page.evaluate(() => localStorage.getItem('chosen'))).toBeNull();
 });
 
+test('Linux setup opens browser instructions and explains terminal sign-in accurately', async ({ page }) => {
+  await page.addInitScript(() => { window.pdfpalDesktop!.platform = 'linux'; });
+  await page.goto('/');
+  const modal = page.getByRole('dialog');
+  await modal.getByRole('button', { name: 'Install Claude Code' }).click();
+  const confirm = modal.getByRole('region', { name: 'Confirm assistant setup' });
+  await expect(confirm).toContainText('Linux installation instructions in a terminal');
+  await expect(confirm).not.toContainText('PowerShell');
+  await confirm.getByRole('button', { name: 'Open setup guide' }).click();
+  await expect(modal.getByRole('status')).toContainText('guide has opened in your browser');
+  expect(JSON.parse(await page.evaluate(() => localStorage.getItem('action')) || '{}')).toEqual({ agent: 'claude', action: 'install' });
+  await modal.getByRole('button', { name: 'Sign in again' }).click();
+  await expect(confirm).toContainText('codex login');
+  await confirm.getByRole('button', { name: 'Open sign-in guide' }).click();
+  expect(JSON.parse(await page.evaluate(() => localStorage.getItem('action')) || '{}')).toEqual({ agent: 'codex', action: 'login' });
+});
+
 test('optional connection tests report success and offline failures inline', async ({ page }) => {
   await page.goto('/');
   const modal = page.getByRole('dialog');

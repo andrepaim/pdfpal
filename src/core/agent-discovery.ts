@@ -3,15 +3,16 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 
-export type DesktopAgent = 'claude' | 'codex'
+export type DesktopAgent = 'claude' | 'codex' | 'opencode'
+type DiscoveryOptions = { binary?: string; platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv; home?: string }
 export type ProbeResult = { code: number | null; stdout: string; stderr: string; failure?: 'timeout' | 'output_limit' | 'spawn' | 'cancelled' }
 
 /** Bounded diagnostics only. Never return raw authentication output to the UI. */
-export function runProbe(binary: string, args: string[], options: { timeoutMs?: number; maxBytes?: number; stdin?: string; cwd?: string; signal?: AbortSignal } = {}): Promise<ProbeResult> {
+export function runProbe(binary: string, args: string[], options: { timeoutMs?: number; maxBytes?: number; stdin?: string; cwd?: string; signal?: AbortSignal; env?: NodeJS.ProcessEnv } = {}): Promise<ProbeResult> {
   if (options.signal?.aborted) return Promise.resolve({ code: null, stdout: '', stderr: '', failure: 'cancelled' })
   return new Promise(resolve => {
     const child = spawn(binary, args, { windowsHide: true, detached: process.platform !== 'win32',
-      cwd: options.cwd ?? os.tmpdir(), stdio: ['pipe', 'pipe', 'pipe'] })
+      cwd: options.cwd ?? os.tmpdir(), env: options.env ?? agentEnvironment(binary), stdio: ['pipe', 'pipe', 'pipe'] })
     const stdout: Buffer[] = [], stderr: Buffer[] = []
     let bytes = 0, done = false, failure: ProbeResult['failure']
     const finish = (result: ProbeResult) => {
@@ -50,13 +51,47 @@ export function runProbe(binary: string, args: string[], options: { timeoutMs?: 
   })
 }
 
-export function agentCandidates(agent: DesktopAgent, options: { binary?: string; platform?: NodeJS.Platform; env?: NodeJS.ProcessEnv; home?: string } = {}): string[] {
+/** GUI launchers often omit the user's terminal PATH. Never source shell startup files. */
+function posixDirectories(env: NodeJS.ProcessEnv, home: string): string[] {
+  const dirs = (env.PATH ?? '').split(':').filter(dir => path.posix.isAbsolute(dir))
+  dirs.push(...['.local/bin', '.npm-global/bin', '.npm/bin', '.bun/bin', '.opencode/bin', '.volta/bin'].map(dir => path.join(home, dir)))
+  for (const prefix of [env.npm_config_prefix, env.NPM_CONFIG_PREFIX, env.VOLTA_HOME]) {
+    if (prefix && path.isAbsolute(prefix)) dirs.push(path.join(prefix, 'bin'))
+  }
+  if (env.NVM_BIN && path.isAbsolute(env.NVM_BIN)) dirs.push(env.NVM_BIN)
+  const nvm = path.join(env.NVM_DIR && path.isAbsolute(env.NVM_DIR) ? env.NVM_DIR : path.join(home, '.nvm'), 'versions', 'node')
+  try {
+    dirs.push(...fs.readdirSync(nvm).filter(name => /^v\d+\.\d+\.\d+$/.test(name))
+      .sort((a, b) => b.localeCompare(a, undefined, { numeric: true })).slice(0, 50).map(name => path.join(nvm, name, 'bin')))
+  } catch {}
+  dirs.push('/usr/local/bin', '/usr/bin', '/bin', '/snap/bin')
+  return [...new Set(dirs)]
+}
+
+/** Preserve the inherited environment, adding known executable directories for env/node and npm wrappers. */
+export function agentEnvironment(binary: string, options: Omit<DiscoveryOptions, 'binary'> = {}): NodeJS.ProcessEnv {
+  const env = options.env ?? process.env
+  if ((options.platform ?? process.platform) === 'win32') return env
+  const dirs: string[] = []
+  if (path.isAbsolute(binary)) {
+    dirs.push(path.dirname(binary))
+    try { dirs.push(path.dirname(fs.realpathSync(binary))) } catch {}
+  }
+  return { ...env, PATH: [...new Set([...dirs, ...posixDirectories(env, options.home ?? os.homedir())])].join(':') }
+}
+
+export function agentCandidates(agent: DesktopAgent, options: DiscoveryOptions = {}): string[] {
   const platform = options.platform ?? process.platform, env = options.env ?? process.env
   const p = platform === 'win32' ? path.win32 : path.posix
   // Explicit overrides are authoritative, including a broken override.
-  if (options.binary && options.binary !== agent) return [options.binary]
-  const dirs = (env.PATH ?? env.Path ?? '').split(platform === 'win32' ? ';' : ':').filter(dir => p.isAbsolute(dir))
   const home = options.home ?? os.homedir()
+  const dirs = platform === 'win32'
+    ? (env.PATH ?? env.Path ?? '').split(';').filter(dir => p.isAbsolute(dir))
+    : posixDirectories(env, home)
+  if (options.binary && options.binary !== agent) {
+    if (platform === 'win32' || options.binary.includes('/')) return [options.binary]
+    return dirs.map(dir => p.join(dir, options.binary!))
+  }
   if (platform === 'win32' && env.APPDATA) dirs.push(p.join(env.APPDATA, 'npm'))
   const candidates = dirs.map(dir => p.join(dir, `${agent}${platform === 'win32' ? '.exe' : ''}`))
   if (platform === 'win32' && env.LOCALAPPDATA) candidates.push(p.join(env.LOCALAPPDATA, 'Microsoft', 'WinGet', 'Links', `${agent}.exe`))
@@ -77,6 +112,7 @@ export function agentCandidates(agent: DesktopAgent, options: { binary?: string;
 
 export function parseAuth(agent: DesktopAgent, result: ProbeResult): 'account' | 'api' | 'external' | 'signed_out' | 'unknown' {
   if (result.failure) return 'unknown'
+  if (agent === 'opencode') return 'unknown'
   if (agent === 'claude') {
     try {
       const value = JSON.parse(result.stdout)
@@ -96,24 +132,32 @@ export function parseAuth(agent: DesktopAgent, result: ProbeResult): 'account' |
   return 'unknown'
 }
 
-export async function discoverAgent(agent: DesktopAgent, binary?: string, signal?: AbortSignal) {
+export async function discoverAgent(agent: DesktopAgent, binary?: string, signal?: AbortSignal, options: Omit<DiscoveryOptions, 'binary'> = {}) {
   let found = false
   let unsupportedVersion: string | undefined
-  for (const executable of agentCandidates(agent, { binary })) {
-    if (signal?.aborted) break
+  const deadline = Date.now() + 15_000
+  for (const executable of agentCandidates(agent, { ...options, binary })) {
+    if (signal?.aborted || Date.now() >= deadline) break
     try { if (!fs.statSync(executable).isFile()) continue } catch { continue }
     found = true
-    const version = await runProbe(executable, ['--version'], { signal })
+    try { fs.accessSync(executable, fs.constants.X_OK) } catch { continue }
+    const env = agentEnvironment(executable, options)
+    const probe = (args: string[]) => runProbe(executable, args, { signal, env, timeoutMs: Math.max(1, Math.min(5000, deadline - Date.now())) })
+    const version = await probe(['--version'])
     const text = `${version.stdout}\n${version.stderr}`
-    const match = agent === 'claude' ? text.match(/(\d+\.\d+\.\d+)[^\r\n]*\(Claude Code\)/i) : text.match(/codex-cli\s+(\d+\.\d+\.\d+(?:[-+][\w.]+)?)/i)
+    const match = agent === 'claude' ? text.match(/(\d+\.\d+\.\d+)[^\r\n]*\(Claude Code\)/i)
+      : agent === 'codex' ? text.match(/codex-cli\s+(\d+\.\d+\.\d+(?:[-+][\w.]+)?)/i)
+      : text.match(/^(?:opencode\s+)?(\d+\.\d+\.\d+(?:[-+][\w.]+)?)\s*$/im)
     if (version.code !== 0 || !match) continue
-    const help = await runProbe(executable, agent === 'claude' ? ['--help'] : ['exec', '--help'], { signal })
+    const help = await probe(agent === 'claude' ? ['--help'] : [agent === 'codex' ? 'exec' : 'run', '--help'])
     const capabilities = `${help.stdout}\n${help.stderr}`
-    const required = agent === 'claude' ? ['--tools', '--strict-mcp-config', '--disallowedTools'] : ['--ignore-user-config', '--ignore-rules', '--ephemeral', '--disable']
+    const required = agent === 'claude' ? ['--tools', '--strict-mcp-config', '--disallowedTools']
+      : agent === 'codex' ? ['--ignore-user-config', '--ignore-rules', '--ephemeral', '--disable'] : ['--agent', '--format']
     if (help.failure) continue
     if (help.code !== 0 || !required.every(flag => capabilities.includes(flag))) { unsupportedVersion = match[1]!; continue }
-    const auth = await runProbe(executable, agent === 'claude' ? ['auth', 'status'] : ['login', 'status'], { signal })
-    return { agent, state: 'installed' as const, executable, version: match[1]!, auth: parseAuth(agent, auth) }
+    const auth = agent === 'opencode' ? 'unknown' as const : parseAuth(agent,
+      await probe(agent === 'claude' ? ['auth', 'status'] : ['login', 'status']))
+    return { agent, state: 'installed' as const, executable, version: match[1]!, auth }
   }
   if (unsupportedVersion) return { agent, state: 'unsupported' as const, version: unsupportedVersion, auth: 'unknown' as const }
   return { agent, state: found ? 'unusable' as const : 'missing' as const, auth: 'unknown' as const }

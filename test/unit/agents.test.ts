@@ -31,7 +31,8 @@ test('Claude receives the configured model', async () => {
 
 function executable(config: ReturnType<typeof testConfig>, name: string, body: string): string {
   const file = path.join(config.dataDir, name)
-  fs.writeFileSync(file, `#!/bin/sh\n${body}\n`, { mode: 0o700 })
+  const version = name.startsWith('codex') ? 'codex-cli 0.164.0' : name.startsWith('opencode') ? '1.2.3' : '2.1.0 (Claude Code)'
+  fs.writeFileSync(file, `#!/bin/sh\ncase "$*" in\n  --version) printf '%s\\n' '${version}'; exit 0;;\n  *--help*) printf '%s\\n' '--tools --strict-mcp-config --disallowedTools --ignore-user-config --ignore-rules --ephemeral --disable --agent --format'; exit 0;;\n  'auth status'|'login status') printf '%s\\n' 'Not logged in'; exit 1;;\nesac\n${body}\n`, { mode: 0o700 })
   return file
 }
 
@@ -64,6 +65,36 @@ test('Codex and OpenCode output adapters parse successful responses', async () =
   config.opencodeBin = executable(config, 'opencode', `printf '%s\\n' '{"type":"text","part":{"type":"text","text":"open answer"}}'`)
   assert.equal(await new AgentService(config).invoke('prompt', 'codex', 'model-x'), 'codex answer')
   assert.equal(await new AgentService(config).invoke('prompt', 'opencode', 'model-x'), 'open answer')
+})
+
+test('Linux inspection probes all providers without reading account files or running inference', async () => {
+  const config = testConfig()
+  try {
+    config.claudeBin = executable(config, 'claude', 'exit 99')
+    config.codexBin = executable(config, 'codex', 'exit 99')
+    config.opencodeBin = executable(config, 'opencode', 'exit 99')
+    const agents = await new AgentService(config).inspect()
+    assert.equal(agents.length, 3)
+    for (const agent of agents) {
+      assert.equal(agent.available, true)
+      assert.equal('state' in agent && agent.state, 'installed')
+      assert.equal('version' in agent && typeof agent.version, 'string')
+    }
+    assert.equal('auth' in agents[2]! && agents[2].auth, 'unknown')
+  } finally { fs.rmSync(config.dataDir, { recursive: true, force: true }) }
+})
+
+test('assistant invocation uses an isolated cwd and removes OpenCode permissions afterward', async () => {
+  const config = testConfig(), cwdPath = path.join(config.dataDir, 'cwd'), permissionPath = path.join(config.dataDir, 'permissions')
+  try {
+    config.opencodeBin = executable(config, 'opencode', `pwd > '${cwdPath}'; cat .opencode/agent/pdfpal.md > '${permissionPath}'; printf '%s\\n' '{"type":"text","part":{"type":"text","text":"answer"}}'`)
+    assert.equal(await new AgentService(config).invoke('prompt', 'opencode'), 'answer')
+    const cwd = fs.readFileSync(cwdPath, 'utf8').trim()
+    assert.notEqual(cwd, process.cwd())
+    assert.notEqual(cwd, config.dataDir)
+    assert.equal(fs.existsSync(cwd), false)
+    assert.match(fs.readFileSync(permissionPath, 'utf8'), /permissions: \[\]/)
+  } finally { fs.rmSync(config.dataDir, { recursive: true, force: true }) }
 })
 
 test('Codex global approval option precedes the exec subcommand', async () => {

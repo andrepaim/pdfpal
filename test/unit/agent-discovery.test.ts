@@ -4,7 +4,52 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
-import { agentCandidates, parseAuth, runProbe } from '../../src/core/agent-discovery.js'
+import { agentCandidates, agentEnvironment, discoverAgent, parseAuth, runProbe } from '../../src/core/agent-discovery.js'
+
+test('Linux GUI discovery includes native, npm, OpenCode and Node-manager installs without relative PATH entries', { skip: process.platform === 'win32' }, () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pdfpal-discovery-home-'))
+  try {
+    fs.mkdirSync(path.join(home, '.nvm/versions/node/v22.1.0/bin'), { recursive: true })
+    const found = agentCandidates('opencode', { platform: 'linux', home, env: { PATH: '.:relative:/custom/bin' } })
+    assert.equal(found[0], '/custom/bin/opencode')
+    for (const dir of ['.local/bin', '.npm-global/bin', '.npm/bin', '.opencode/bin', '.bun/bin', '.volta/bin', '.nvm/versions/node/v22.1.0/bin'])
+      assert.ok(found.includes(path.join(home, dir, 'opencode')))
+    assert.ok(found.every(file => path.isAbsolute(file)))
+  } finally { fs.rmSync(home, { recursive: true, force: true }) }
+})
+
+test('Linux probes and invocation find the Node runtime beside a symlinked npm provider with a GUI PATH', { skip: process.platform === 'win32' }, async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "pdfpal-provider's $()-"))
+  try {
+    const bin = path.join(home, '.nvm/versions/node/v22.1.0/bin'), local = path.join(home, '.local/bin')
+    fs.mkdirSync(bin, { recursive: true }); fs.mkdirSync(local, { recursive: true })
+    const marker = path.join(home, 'used-node'), source = path.join(bin, 'claude'), executable = path.join(local, 'claude')
+    const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'"
+    fs.writeFileSync(path.join(bin, 'node'), `#!/bin/sh\nprintf used > ${quote(marker)}\nexec ${quote(process.execPath)} "$@"\n`, { mode: 0o700 })
+    fs.writeFileSync(source, `#!/usr/bin/env node\nconst a=process.argv.slice(2).join(' '); console.log(a==='--version'?'2.1.0 (Claude Code)':a==='--help'?'--tools --strict-mcp-config --disallowedTools':a==='auth status'?'${JSON.stringify({ authMethod: 'claude.ai', token: 'SECRET' })}':process.argv[2]);\n`, { mode: 0o700 })
+    fs.symlinkSync(source, executable)
+    const options = { home, platform: 'linux' as const, env: { PATH: '', HOME: home } }
+    const status = await discoverAgent('claude', undefined, undefined, options)
+    assert.equal(status.state, 'installed'); assert.equal(status.auth, 'account')
+    assert.equal(status.executable, executable)
+    assert.equal(fs.readFileSync(marker, 'utf8'), 'used')
+    assert.ok(!JSON.stringify(status).includes('SECRET'))
+    const result = await runProbe(executable, ['space & $(not-a-command)'], { env: agentEnvironment(executable, options) })
+    assert.equal(result.stdout, 'space & $(not-a-command)')
+  } finally { fs.rmSync(home, { recursive: true, force: true }) }
+})
+
+test('Linux discovery distinguishes non-executable, incompatible and broken explicit providers', { skip: process.platform === 'win32' }, async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pdfpal-provider-state-'))
+  try {
+    const file = path.join(home, 'claude')
+    fs.writeFileSync(file, '#!/bin/sh\nprintf "2.1.0 (Claude Code)"\n', { mode: 0o600 })
+    assert.equal((await discoverAgent('claude', file)).state, 'unusable')
+    fs.chmodSync(file, 0o700)
+    assert.equal((await discoverAgent('claude', file)).state, 'unsupported')
+    assert.equal((await discoverAgent('claude', path.join(home, 'missing'))).state, 'missing')
+  } finally { fs.rmSync(home, { recursive: true, force: true }) }
+})
 
 test('Windows discovery excludes relative PATH entries and Claude Desktop aliases, includes native fallback', () => {
   const found = agentCandidates('claude', { platform: 'win32', home: 'C:\\Users\\Reader', env: {

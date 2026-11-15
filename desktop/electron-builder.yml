@@ -16,15 +16,15 @@ files:
   - '!test/**'
   - '!discovery.test.mjs'
   - '!cli-bin/**'
-extraFiles:
-  - from: stage/cli-bin
-    to: bin
 extraResources:
   - from: stage/THIRD_PARTY_NOTICES.txt
     to: THIRD_PARTY_NOTICES.txt
   - from: build/LICENSE.txt
     to: LICENSE.pdfpal.txt
 win:
+  extraFiles:
+    - from: stage/cli-bin
+      to: bin
   target: nsis
   icon: build/icon.ico
   signAndEditExecutable: true
@@ -50,7 +50,22 @@ nsis:
   installerLanguages:
     - en_US
 linux:
-  target: dir
+  target:
+    - dir
+    - deb
+  executableName: pdfpal-desktop
+  syncDesktopName: true
+  artifactName: pdfpal-${version}-${arch}.${ext}
+  category: Office
+  synopsis: Local-first PDF and Kindle reading assistant
+  icon: build/icon.png
+  maintainer: pdfpal contributors
+  desktop:
+    entry:
+      Keywords: PDF;Reader;Kindle;
+  extraFiles:
+    - from: stage/cli-bin
+      to: bin
 # Native dependencies are installed only inside the isolated desktop stage.
 npmRebuild: false
 publish: null

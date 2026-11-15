@@ -37,11 +37,10 @@ export class AgentService {
   }
 
   private async inspectWithSignal(signal: AbortSignal) {
-    if (process.platform !== 'win32') return this.list()
     await refreshWindowsPath(signal)
     const agents = this.list()
     return Promise.all(agents.map(async item => {
-      if (item.id === 'opencode') return item
+      if (process.platform === 'win32' && item.id === 'opencode') return item
       const status = await discoverAgent(item.id, this.binary(item.id), signal)
       let modified: number | undefined
       try { if (status.executable) modified = fs.statSync(status.executable).mtimeMs } catch {}
@@ -56,8 +55,10 @@ export class AgentService {
     return (['claude', 'codex', 'opencode'] as AgentName[]).map(id => ({
       id,
       label: id[0]!.toUpperCase() + id.slice(1),
-      available: process.platform === 'win32' && id !== 'opencode'
-        ? agentCandidates(id, { binary: this.binary(id) }).some(file => fs.existsSync(file))
+      available: process.platform !== 'win32' || id !== 'opencode'
+        ? agentCandidates(id, { binary: this.binary(id) }).some(file => {
+          try { fs.accessSync(file, fs.constants.X_OK); return fs.statSync(file).isFile() } catch { return false }
+        })
         : commandAvailable(this.binary(id)),
     }))
   }
@@ -79,10 +80,12 @@ export class AgentService {
 
   private async run(prompt: string, agent: AgentName, model: string, signal: AbortSignal, timeoutMs = 300_000): Promise<string> {
     let binary = this.binary(agent)
-    if (process.platform === 'win32' && agent !== 'opencode') {
+    if (process.platform !== 'win32' || agent !== 'opencode') {
       const status = await discoverAgent(agent, binary, signal)
       if (signal.aborted) throw new PdfpalError('AGENT_CANCELLED', 'The AI request was cancelled.')
-      if (status.state !== 'installed') throw new PdfpalError('AGENT_NOT_FOUND', `The ${agent} executable needs installation or repair.`)
+      if (status.state !== 'installed') throw new PdfpalError('AGENT_NOT_FOUND', status.state === 'missing'
+        ? `The "${agent}" agent CLI is not installed. Open AI settings for setup instructions.`
+        : `The ${agent} executable needs installation or repair.`)
       binary = status.executable
     }
     if (!commandAvailable(binary)) throw new PdfpalError('AGENT_NOT_FOUND', `The "${agent}" agent CLI is not installed or not on PATH`)

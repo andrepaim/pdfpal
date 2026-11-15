@@ -1,3 +1,4 @@
+import { isolatedProviderBinaries } from './provider-fixture';
 import { test, expect, chromium, type BrowserContext, type Page } from '@playwright/test';
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -21,7 +22,7 @@ test('pairing survives reload, an update from another directory and a browser re
   const nextVersion = manifest.version.split('.').map(Number); nextVersion[2]++;
   manifest.version = nextVersion.join('.');
   await writeFile(path.join(second, 'manifest.json'), JSON.stringify(manifest));
-  const config = loadConfig({ dataDir: path.join(temporary, 'data'), agent: 'codex' });
+  const config = loadConfig({ ...isolatedProviderBinaries(temporary), dataDir: path.join(temporary, 'data'), agent: 'codex' });
   const app = await buildServer(config), db = openDatabase(config);
   let context: BrowserContext | undefined;
   const launch = (directory: string) => chromium.launchPersistentContext(path.join(temporary, 'browser'), {
