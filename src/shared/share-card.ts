@@ -242,3 +242,76 @@ export function publicUrl(url: string | null | undefined): string {
   if (!host || host === 'localhost' || host.endsWith('.localhost') || privateIPv4(host) || privateIPv6(host)) return ''
   return parsed.href
 }
+
+// The numbers check. Every number the assistant writes must appear in what it was given, so that a recalled,
+// computed or converted figure never reaches a post. When two readings of a numeral are possible (is "1.572" a
+// thousand or a decimal?) both count: the check prefers letting a legitimate draft through to blocking it.
+//
+// - A numeral is a run of digits with "." or "," (or a non-breaking or thin space) between digit groups, or a
+//   leading-point decimal such as ".65". Digits glued to a preceding letter ("p53", "CO2", "H1N1") are names, not
+//   quantities, and are skipped. Signs and units are ignored: "63%", "63 percent" and "63" are the same number.
+// - Thousands separators are dropped in either style ("1,572", "1.572", "1 572" are 1572), a decimal comma is a
+//   decimal point, and trailing decimal zeros do not matter ("0.650" is "0.65", ".65" is "0.65"). A numeral with one
+//   separator and three digits after it ("1,572") reads both as a thousand and as a decimal.
+// - A draft may round a decimal from the source to fewer places ("1.35" as "1.4" or "1.3"), and to a whole number
+//   only when the source's number is 10 or more ("63.4%" as "63%", but not "1.5" as "2").
+// - A year is a number like any other; a range ("2021–2024") is its two ends, and an abbreviated end ("2021-24")
+//   also counts in full. An ordinal ("3rd") is its number. An unreadable numeral ("3.5.1") must appear as written.
+// - English number words from zero to ninety-nine and ordinals up to "twelfth" in the source count as the number,
+//   so "thirty-three studies" supports "33". Number words in a draft are not checked.
+
+const NUMERAL = /(?<![\p{L}\p{N}.,])(?:\d+(?:[.,   ]\d+)*|\.\d+)/gu
+const WORD_UNITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen',
+  'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen']
+const WORD_TENS = ['twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety']
+const WORD_ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth']
+const NUMBER_WORDS = new RegExp(`\\b(?:(${WORD_TENS.join('|')})(?:[-\\s]+(${WORD_UNITS.slice(1, 10).join('|')}))?|(${WORD_UNITS.join('|')})|(${WORD_ORDINALS.join('|')}))\\b`, 'giu')
+const ABBREVIATED_RANGE = /(?<!\d)(\d{2})(\d{2})\s*[-–—]\s*(\d{2})(?!\d)/gu
+
+/** Every numeral in `text`, as written. */
+export const numbersIn = (text: string): string[] => [...text.matchAll(NUMERAL)].map(match => match[0])
+
+/** A plain decimal string without leading or trailing zeros: "007" is "7", ".650" is "0.65". */
+function canonical(digits: string): string {
+  const [whole = '', fraction = ''] = digits.split('.')
+  const head = whole.replace(/^0+(?=\d)/u, '') || '0', tail = fraction.replace(/0+$/u, '')
+  return tail ? `${head}.${tail}` : head
+}
+
+/** Every value a numeral may stand for, in canonical form. */
+function readings(numeral: string): string[] {
+  const out = new Set<string>()
+  if (/^\d+$/u.test(numeral)) out.add(canonical(numeral))
+  if (/^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/u.test(numeral)) out.add(canonical(numeral.replaceAll(',', '')))
+  if (/^\d{1,3}(?:[.   ]\d{3})+(?:,\d+)?$/u.test(numeral)) out.add(canonical(numeral.replace(/[.   ]/gu, '').replace(',', '.')))
+  if (/^\d{1,3}(?:[   ]\d{3})+(?:\.\d+)?$/u.test(numeral)) out.add(canonical(numeral.replace(/[   ]/gu, '')))
+  if (/^\d*[.,]\d+$/u.test(numeral)) out.add(canonical(numeral.replace(',', '.')))
+  return [...out]
+}
+
+const decimals = (value: string) => value.split('.')[1]?.length ?? 0
+
+/**
+ * The numerals in `text` that none of `allowedTexts` supports, each once, as written. See the rules above.
+ */
+export function unsupportedNumbers(text: string, allowedTexts: string[]): string[] {
+  const raw = new Set<string>(), values = new Set<string>()
+  for (const allowed of allowedTexts) {
+    for (const numeral of numbersIn(allowed)) { raw.add(numeral); for (const value of readings(numeral)) values.add(value) }
+    for (const [, century = '', , end = ''] of allowed.matchAll(ABBREVIATED_RANGE)) values.add(canonical(century + end))
+    for (const [, tens, unit, single, ordinal] of allowed.matchAll(NUMBER_WORDS)) {
+      const value = tens ? (WORD_TENS.indexOf(tens.toLowerCase()) + 2) * 10 + (unit ? WORD_UNITS.indexOf(unit.toLowerCase()) : 0)
+        : single ? WORD_UNITS.indexOf(single.toLowerCase()) : WORD_ORDINALS.indexOf(ordinal!.toLowerCase()) + 1
+      values.add(String(value))
+    }
+  }
+  const precise = [...values].filter(value => decimals(value) > 0).map(value => ({ value: Number(value), places: decimals(value) }))
+  const rounds = (value: string) => precise.some(source => source.places > decimals(value) && (decimals(value) > 0 || source.value >= 10) &&
+    Math.abs(source.value - Number(value)) <= 0.5 * 10 ** -decimals(value) + 1e-9)
+  const refused = new Set<string>()
+  for (const numeral of numbersIn(text)) {
+    const options = readings(numeral)
+    if (!raw.has(numeral) && !options.some(value => values.has(value) || rounds(value))) refused.add(numeral)
+  }
+  return [...refused]
+}
