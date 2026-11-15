@@ -16,7 +16,7 @@ Available as a **Windows desktop app**, a **Linux desktop engineering preview**,
 
 [Install and run](#install-and-run) · [Quickstart](#quickstart) · [Documentation](docs/README.md)
 
-Screenshots show the current Windows desktop preview. The reading examples reuse the original, unedited Codex responses in the updated reader; see [capture details](screenshots/CAPTURE.md).
+Reader screenshots show the current browser interface, which is shared with the desktop app. The visual example replays a recorded Claude response in the new renderer; the decoder answer is the original Codex response. Windows menu evidence is dated separately. See [capture details](screenshots/CAPTURE.md).
 
 ### Read with AI beside the page
 
@@ -26,11 +26,15 @@ Select the passage you're stuck on and work through it beside the paper. In §3.
 
 ### Turn difficult concepts into visual explanations
 
-Further into the paper, §3.2.1 raises a different question: why divide attention scores by √dₖ? Use `/visual` to see the missing intuition. The graph compares a large score gap in softmax's nearly flat region with a scaled gap in a steeper region. The highlighted paragraph and footnote 4 stay in view while you explore the explanation.
+How do queries, keys and values turn a sequence into a context-aware representation? Use `/visual` to work through attention one step at a time. Here the reader shows the attention paper beside a token grid that reveals scores and weights, with a caption for each step.
 
-![Dark PDF reader showing the highlighted scaling passage beside an interactive softmax graph comparing the flat and steep regions](screenshots/visual-softmax-scaling.png)
+![Current PDF reader beside an attention explanation showing aligned token, score and weight rows, step navigation and an illustrative-example label](screenshots/visual-attention-steps.png)
 
-Both answers were generated through pdfpal using Codex and their selected PDF passages. The graph's numbers are a worked example, rather than measurements from the paper. Step through the explanation, click shapes for details, or [download the interactive HTML](screenshots/9-visual-explanation.html) to explore all three steps offline. Visual explanations also work in project chat and the Kindle companion.
+Expand the viewer to inspect a query/key plot, then return to the same step beside the paper.
+
+![Expanded visual explanation with labeled query and key vectors, a small-angle annotation and a segmented nine-step progress bar](screenshots/visual-attention-expanded.png)
+
+This recorded visual response is a general-concept example: its illustrative numbers are not measurements from the paper, and no passage was supplied to that original request. The decoder answer above was generated from its selected PDF passage. Explore all nine visual steps in the [interactive HTML download](screenshots/9-visual-explanation.html), which works offline. Visual explanations also work in project chat and the Kindle companion.
 
 ### Build a research library
 
@@ -45,7 +49,13 @@ Write what you learned in your own words and save questions to revisit as Markdo
 ![Rendered research note explaining why attention replaced recurrence, with an open question to revisit](screenshots/5-notes.png)
 
 <details>
-<summary>Discovery, Windows navigation, and Kindle setup</summary>
+<summary>Dictionary, discovery, Windows navigation, and Kindle setup</summary>
+
+**Look up a word without leaving the page**
+
+Double-click an English word for a definition from the bundled offline dictionary. Ask and Highlight stay beside the selection.
+
+![PDF reader with a selected word, its local WordNet definition card, and the Ask, Highlight and Explain visually actions](screenshots/reader-dictionary.png)
 
 **Find your next paper**
 
@@ -63,11 +73,13 @@ Explore a paper's references and citing papers, and add useful sources as you re
 
 Keep sources, notes, and conversations together in a local project.
 
-![Current Windows projects page with the integrated title bar and three research workspaces](screenshots/4-projects.png)
+![Current browser projects page with three sample research workspaces](screenshots/4-projects.png)
 
 **Move around the Windows app**
 
 Use the integrated toolbar for reading history, project search, cloud sync and help. Press **Ctrl+K** to find a project or **F10** to open the app menu for AI settings, backups, privacy, Kindle setup and the CLI skill.
+
+The Windows menu capture below is retained from the installed 2.7.0-preview.2 build on November 6, 2026.
 
 ![Windows app menu with library navigation, Command line & ChatGPT, AI settings, recovery, privacy and update controls](screenshots/desktop-menu.png)
 
@@ -206,7 +218,7 @@ Select text in the PDF reader and choose **Explain visually** from its popup, or
 
 Open **pdfpal menu → Backups & recovery** on Windows, or **Backups** at the lower left in the browser reader. Save a complete local library copy, including managed PDFs, notes, highlights, saved conversations and visual explanations. Automatic backups run daily by default while the app is open; choose every six hours, daily or weekly. Verify a backup or open a separate recovery copy while keeping your current library. **Recently deleted** retains up to 100 deletion entries for 30 days. See [backup and recovery](docs/backup-recovery.md).
 
-![Backups and recovery settings in the current Windows app, including local backup controls and recently deleted items](screenshots/backups-recovery.png)
+![Current browser backup settings showing a verified local library copy and recovery controls](screenshots/backups-recovery.png)
 
 **Privacy & diagnostics** in the Windows app menu (or **Privacy** in the browser) separates local diagnostics, optional usage analytics and default-off error sharing. Shared error reports exclude documents, conversations, titles, filenames and raw error messages. See [error reporting](docs/error-reports.md).
 

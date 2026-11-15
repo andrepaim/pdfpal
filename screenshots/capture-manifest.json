@@ -1,0 +1,13 @@
+{
+  "capturedAt": "2026-11-15T13:40:44.421Z",
+  "surface": "browser reader",
+  "viewport": {
+    "width": 1600,
+    "height": 1000
+  },
+  "visualFixture": "test/fixtures/visual-v2/attention.claude.json",
+  "visualSteps": 9,
+  "decoderFixture": "screenshots/paper-reading-example.json",
+  "providerCalls": 0,
+  "applicationCommit": "a402cec44c86a4e2d2976aacf8655962bc914f45"
+}
