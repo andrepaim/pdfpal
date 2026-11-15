@@ -1,7 +1,10 @@
 // Zod schemas for the share-card shapes in ./share-card.ts. Server-side only: the reader imports the
 // contract module, never this one, so zod stays out of its bundle (test/unit/visual-bundle.test.ts).
 import { z } from 'zod'
-import { CARD, HIGHLIGHT_COLORS, LOOKS, STYLES, type Caption, type CardContent, type PageRect, type ShareCardSource } from './share-card.js'
+import {
+  ANGLES, CARD, DESTINATIONS, HIGHLIGHT_COLORS, LINKS, LOOKS, STYLES, TAKE_MAX,
+  type Caption, type CardContent, type PageMark, type PageRect, type ShareCardSource,
+} from './share-card.js'
 
 const fraction = z.number().finite().min(0).max(1)
 export const pageRectSchema = z.object({ x1: fraction, y1: fraction, x2: fraction, y2: fraction }).strict()
@@ -27,8 +30,18 @@ export const cardContentSchema = z.object({
   style: z.enum(STYLES), look: z.enum(LOOKS), crop: pageRectSchema.nullable(),
 }).strict()
 
+export const pageMarkSchema = z.object({ rects: z.array(pageRectSchema).max(500), color: z.enum(HIGHLIGHT_COLORS) }).strict()
+
+const draft = z.string().max(16_000)
 export const captionSchema = z.object({
-  body: z.string().max(16_000), hashtags: z.array(z.string().max(31)).max(5), edited: z.string().max(16_000).nullable(),
+  destination: z.enum(DESTINATIONS),
+  take: z.string().max(TAKE_MAX),
+  drafts: z.object({ finding: draft, contrast: draft, caveat: draft }).strict(),
+  angle: z.enum(ANGLES),
+  hashtags: z.array(z.string().max(31)).max(5),
+  showTags: z.boolean(),
+  link: z.enum(LINKS),
+  edited: z.string().max(16_000).nullable(),
 }).strict()
 
 /** The version behind Undo: the card and caption as they were before the last change. */
@@ -41,3 +54,4 @@ same<Same<z.infer<typeof pageRectSchema>, PageRect>>(true)
 same<Same<z.infer<typeof shareCardSourceSchema>, ShareCardSource>>(true)
 same<Same<z.infer<typeof cardContentSchema>, CardContent>>(true)
 same<Same<z.infer<typeof captionSchema>, Caption>>(true)
+same<Same<z.infer<typeof pageMarkSchema>, PageMark>>(true)

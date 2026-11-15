@@ -1,12 +1,11 @@
 // Share cards: the contract between the pipeline (src/core/share-cards.ts), the server routes and the
-// reader's renderer. See docs/share-cards-plan.md. The server and the reader both import this module, so it
+// reader's renderer. See docs/share-posts-plan.md (and docs/share-cards-plan.md for the first build). The server and the reader both import this module, so it
 // imports neither Node nor DOM modules, and no zod: the reader's bundle must stay free of it
 // (test/unit/visual-bundle.test.ts). The zod schemas for these shapes are in ./share-card-schema.ts.
 
 export const CARD = {
-  quoteMax: 240, quoteLeadsMax: 120, emphasisMax: 40, headlineMax: 60, pullMax: 140,
+  quoteMax: 240, quoteLeadsMax: 120, emphasisMax: 40, headlineMax: 80, pullMax: 140,
   topicMax: 24, takeawaysTitleMax: 48, takeawayTitleMax: 32, takeawayDetailMax: 72,
-  captionMinWords: 40, captionMinWordsChanged: 10, captionMaxWords: 120, hookMax: 110,
   passageMin: 20, passageMax: 6000, contextMax: 12000, creditMax: 200,
 } as const
 /** Page and Headline show the PDF's own pixels; the other three are text cards. See docs/share-posts-plan.md. */
@@ -21,6 +20,8 @@ export const HIGHLIGHT_COLORS = ['yellow', 'green', 'blue', 'pink'] as const
 export const DESTINATIONS = ['linkedin', 'x', 'instagram'] as const
 /** The three drafts one request may return. */
 export const ANGLES = ['finding', 'contrast', 'caveat'] as const
+/** Where the link goes in a LinkedIn post: in the post, or held back as a ready first-comment line. */
+export const LINKS = ['post', 'comment'] as const
 
 export type ShareStyle = (typeof STYLES)[number]
 export type ShareLook = (typeof LOOKS)[number]
@@ -28,6 +29,7 @@ export type ShareLook = (typeof LOOKS)[number]
 export type CardSize = keyof typeof SIZES | 'fit'
 export type Destination = (typeof DESTINATIONS)[number]
 export type Angle = (typeof ANGLES)[number]
+export type LinkPlacement = (typeof LINKS)[number]
 export type HighlightColor = (typeof HIGHLIGHT_COLORS)[number]
 export type ShareCardStatus = 'pending' | 'running' | 'complete' | 'failed' | 'cancelled'
 
@@ -77,8 +79,21 @@ export type CardContent = {
   crop: PageRect | null
 }
 
-/** `edited`, when set, replaces the composed caption text. */
-export type Caption = { body: string; hashtags: string[]; edited: string | null }
+/** The text of a post: up to three drafts for one destination, and how the copied text is composed. */
+export type Caption = {
+  destination: Destination
+  /** The reader's line the drafts were built around, or ''. */
+  take: string
+  /** drafts.finding is never empty; the other two may be ''. */
+  drafts: Record<Angle, string>
+  angle: Angle
+  /** 3 to 5, always returned; shown when showTags. */
+  hashtags: string[]
+  showTags: boolean
+  link: LinkPlacement
+  /** When set, replaces the composed text. */
+  edited: string | null
+}
 
 export type ShareCardRecord = {
   id: string; project_id: string; source_id: string | null; annotation_id: string | null
@@ -92,6 +107,12 @@ export type ShareCardRecord = {
   instruction: string
   error: string | null
   created_at: string; updated_at: string
+  /** Of the latest request; the completed version's own is caption.destination. */
+  destination: Destination
+  /** Of the latest request; the completed version's own is caption.take. */
+  take: string
+  /** Every highlight now on the post's page, the post's own included; read live from annotations. */
+  marks: PageMark[]
 }
 
 export type ShareCardSummary = {
@@ -122,6 +143,34 @@ export const DRAFT: Record<Destination, { minWords: number; maxWords: number; ma
 }
 /** The reader's take. On X a take raises a draft's maxChars to max(280, take.length + 140). */
 export const TAKE_MAX = 400
+
+export type DraftLimits = (typeof DRAFT)[Destination]
+
+/** How X counts any link, plus the blank line the app puts before it. */
+const X_LINK_CHARS = 23 + 2
+const wordCount = (text: string) => text.split(/\s+/u).filter(Boolean).length
+
+/**
+ * The limits one draft is checked against. A take is its own paragraph after at least one other, and a long take
+ * raises the word and character limits so that it still fits with a lead-in (the X rule in docs/share-posts-plan.md,
+ * which never binds on LinkedIn or Instagram). A change instruction may make a draft shorter and a single paragraph.
+ * On X the app appends the link, which counts as 23 characters, so a draft leaves room for it.
+ */
+export function draftLimits(destination: Destination, options: { take?: string; changed?: boolean; url?: string } = {}): DraftLimits {
+  const base = DRAFT[destination], take = collapse(options.take ?? '')
+  let { minWords, maxWords, maxChars, minParagraphs, maxParagraphs } = base
+  if (take) {
+    maxWords = Math.max(maxWords, wordCount(take) + 25)
+    maxChars = Math.max(maxChars, take.length + 140)
+    minParagraphs = Math.max(minParagraphs, 2)
+    maxParagraphs = Math.max(maxParagraphs, 2)
+  }
+  if (options.changed) { minWords = Math.min(minWords, 10); minParagraphs = 1 }
+  if (destination === 'x' && options.url?.trim()) maxChars -= X_LINK_CHARS
+  // Where the first line is the whole visible post (X), it follows the character limit.
+  const hookMax = base.hookMax >= base.maxChars ? maxChars : Math.min(base.hookMax, maxChars)
+  return { minWords, maxWords, maxChars, hookMax, minParagraphs, maxParagraphs }
+}
 
 /** Whether a generation owns the post: nothing else may change it meanwhile. */
 export const isActive = (status: ShareCardStatus) => status === 'pending' || status === 'running'
@@ -178,8 +227,6 @@ export function validateCard(card: CardContent, source: Pick<ShareCardSource, 'p
   if (!(LOOKS as readonly string[]).includes(card.look)) throw new Error(`Unknown card look: ${card.look}.`)
 }
 
-/** A quote this short reads at a glance, so it leads; longer ones open on the Big idea style. */
-export const defaultStyle = (quote: string): ShareStyle => quote.length <= CARD.quoteLeadsMax ? 'quote' : 'idea'
 export const defaultLook = (): ShareLook => 'ink'
 
 /** Unknown stored colours become yellow. */
@@ -190,12 +237,29 @@ export const highlightColor = (color: string | null | undefined): HighlightColor
 export const creditLine = (source: Pick<ShareCardSource, 'credit' | 'page'>) =>
   [collapse(source.credit), `p. ${source.page}`].filter(Boolean).join(' · ')
 
-/** The caption exactly as it is copied: the edited text, or body, source, link and hashtags. */
+/** The typed source line under a post's text: title, credit and page. */
+export const sourceLine = (source: Pick<ShareCardSource, 'title' | 'credit' | 'page'>) =>
+  '📄 ' + [collapse(source.title), collapse(source.credit), `p. ${source.page}`].filter(Boolean).join(' · ')
+
+/**
+ * The post's text exactly as it is copied: the edited text, or the chosen draft (the finding when that angle is
+ * empty) followed by what the destination carries. LinkedIn: the source line, then the link unless it is held back
+ * for the first comment, and the hashtags when shown. X: the link only. Instagram: the source line, the link as plain
+ * text and the hashtags when shown; `link` applies to LinkedIn only.
+ */
 export function captionText(source: ShareCardSource, caption: Caption): string {
   if (caption.edited !== null) return caption.edited
-  const credit = ['📄 ' + [collapse(source.title), collapse(source.credit), `p. ${source.page}`].filter(Boolean).join(' · '), source.url.trim()].filter(Boolean).join('\n')
-  const tags = caption.hashtags.map(tag => `#${tag}`).join(' ')
-  return [caption.body.trim(), credit, tags].filter(Boolean).join('\n\n')
+  const draft = (caption.drafts[caption.angle] || caption.drafts.finding).trim(), url = source.url.trim()
+  const tags = caption.showTags ? caption.hashtags.map(tag => `#${tag}`).join(' ') : ''
+  if (caption.destination === 'x') return [draft, url].filter(Boolean).join('\n\n')
+  const link = caption.destination === 'linkedin' && caption.link === 'comment' ? '' : url
+  return [draft, [sourceLine(source), link].filter(Boolean).join('\n'), tags].filter(Boolean).join('\n\n')
+}
+
+/** The ready first-comment line for a LinkedIn post whose link is held back: the source line and the link; '' without a link. */
+export function firstCommentText(source: ShareCardSource): string {
+  const url = source.url.trim()
+  return url ? `${sourceLine(source)}\n${url}` : ''
 }
 
 /** What a screen reader hears for the card: the words drawn in `style`. */

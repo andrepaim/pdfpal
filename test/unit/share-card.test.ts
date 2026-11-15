@@ -1,10 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  CARD, captionText, cardDescription, cleanPassage, creditLine, defaultLook, defaultStyle, highlightColor, numbersIn, publicUrl, quoteMatches, unsupportedNumbers, validateCard,
-  type CardContent, type ShareCardSource,
+  CARD, DESTINATION_DEFAULTS, DRAFT, TAKE_MAX, captionText, cardDescription, cleanPassage, creditLine, defaultLook, draftLimits, firstCommentText,
+  highlightColor, numbersIn, publicUrl, quoteMatches, sourceLine, unsupportedNumbers, validateCard,
+  type Caption, type CardContent, type ShareCardSource,
 } from '../../src/shared/share-card.js'
-import { cardContentSchema, shareCardSourceSchema } from '../../src/shared/share-card-schema.js'
+import { captionSchema, cardContentSchema, previousVersionSchema, shareCardSourceSchema } from '../../src/shared/share-card-schema.js'
 
 const passage = 'Attention lets every position look at every other one. However, the cost grows with the square of the sequence length.'
 const source: ShareCardSource = {
@@ -36,9 +37,9 @@ test('every limit is checked and named', () => {
   rejects({ quote: 'Attention lets every token look at every other one.' }, /quote must be copied exactly from highlight/)
   rejects({ emphasis: 'e'.repeat(41) }, /emphasis has 41 characters; allowed 0–40/)
   rejects({ emphasis: 'every token' }, /emphasis must be an exact part of quote/)
-  rejects({ headline: '' }, /headline has 0 characters; allowed 1–60/)
-  rejects({ headline: 'h'.repeat(61) }, /headline has 61 characters; allowed 1–60/)
-  validateCard({ ...card, headline: 'h'.repeat(60) }, source)
+  rejects({ headline: '' }, /headline has 0 characters; allowed 1–80/)
+  rejects({ headline: 'h'.repeat(81) }, /headline has 81 characters; allowed 1–80/)
+  validateCard({ ...card, headline: 'h'.repeat(80) }, source)
   rejects({ pull: 'p'.repeat(141) }, /pull has 141 characters; allowed 0–140/)
   rejects({ pull: 'An invented pull quote.' }, /pull must be copied exactly from highlight or pageText/)
   rejects({ topic: 't'.repeat(25) }, /topic has 25 characters; allowed 0–24/)
@@ -99,22 +100,64 @@ test('cleanPassage collapses every whitespace run and trims', () => {
   assert.equal(cleanPassage('\n\n'), '')
 })
 
-test('captionText composes the body, source, link and hashtags', () => {
-  const caption = { body: 'Hook line.\n\nBody text.', hashtags: ['attention', 'ml', 'research'], edited: null }
-  assert.equal(captionText(source, caption),
-    'Hook line.\n\nBody text.\n\n📄 Attention Is All You Need · Vaswani et al., 2017 · p. 4\n\n#attention #ml #research')
-  assert.equal(captionText({ ...source, credit: '', url: 'https://arxiv.org/abs/1706.03762' }, caption),
-    'Hook line.\n\nBody text.\n\n📄 Attention Is All You Need · p. 4\nhttps://arxiv.org/abs/1706.03762\n\n#attention #ml #research')
-  assert.equal(captionText({ ...source, title: ' ', credit: '' }, { ...caption, hashtags: [] }), 'Hook line.\n\nBody text.\n\n📄 p. 4')
-  assert.equal(captionText(source, { ...caption, edited: 'My own words.' }), 'My own words.')
+const caption: Caption = {
+  destination: 'linkedin', take: '', angle: 'finding', hashtags: ['attention', 'ml', 'research'], showTags: false, link: 'post', edited: null,
+  drafts: { finding: 'Hook line.\n\nBody text.', contrast: 'Belief line.\n\nBut the paper.', caveat: '' },
+}
+const linked = { ...source, url: 'https://arxiv.org/abs/1706.03762' }
+const SOURCE_LINE = '📄 Attention Is All You Need · Vaswani et al., 2017 · p. 4'
+
+test('captionText composes the chosen draft, source line, link and hashtags for LinkedIn', () => {
+  assert.equal(sourceLine(source), SOURCE_LINE)
+  assert.equal(sourceLine({ ...source, title: ' ', credit: '' }), '📄 p. 4')
+  assert.equal(captionText(linked, caption), `Hook line.\n\nBody text.\n\n${SOURCE_LINE}\nhttps://arxiv.org/abs/1706.03762`)
+  assert.equal(captionText(linked, { ...caption, angle: 'contrast' }), `Belief line.\n\nBut the paper.\n\n${SOURCE_LINE}\nhttps://arxiv.org/abs/1706.03762`)
+  // The link held back for the first comment; hashtags only when shown.
+  assert.equal(captionText(linked, { ...caption, link: 'comment', showTags: true }), `Hook line.\n\nBody text.\n\n${SOURCE_LINE}\n\n#attention #ml #research`)
+  assert.equal(captionText(source, { ...caption, showTags: true, hashtags: [] }), `Hook line.\n\nBody text.\n\n${SOURCE_LINE}`)
+  // An empty angle falls back to the finding; edited text replaces everything.
+  assert.equal(captionText(source, { ...caption, angle: 'caveat' }), `Hook line.\n\nBody text.\n\n${SOURCE_LINE}`)
+  assert.equal(captionText(linked, { ...caption, edited: 'My own words.' }), 'My own words.')
+  assert.equal(firstCommentText(linked), `${SOURCE_LINE}\nhttps://arxiv.org/abs/1706.03762`)
+  assert.equal(firstCommentText(source), '')
   assert.equal(creditLine(source), 'Vaswani et al., 2017 · p. 4')
   assert.equal(creditLine({ credit: '', page: 9 }), 'p. 9')
 })
 
-test('defaultStyle leads with the quote up to 120 characters', () => {
-  assert.equal(defaultStyle('q'.repeat(CARD.quoteLeadsMax)), 'quote')
-  assert.equal(defaultStyle('q'.repeat(121)), 'idea')
-  assert.equal(defaultLook(), 'ink')
+test('captionText gives X the draft and the link only, and Instagram the source line, link and hashtags', () => {
+  const x: Caption = { ...caption, destination: 'x', showTags: true, link: 'comment' }
+  assert.equal(captionText(linked, x), 'Hook line.\n\nBody text.\n\nhttps://arxiv.org/abs/1706.03762')
+  assert.equal(captionText(source, x), 'Hook line.\n\nBody text.')
+  const instagram: Caption = { ...caption, destination: 'instagram', showTags: true, link: 'comment' }
+  assert.equal(captionText(linked, instagram), `Hook line.\n\nBody text.\n\n${SOURCE_LINE}\nhttps://arxiv.org/abs/1706.03762\n\n#attention #ml #research`)
+  assert.equal(captionText(source, { ...instagram, showTags: false }), `Hook line.\n\nBody text.\n\n${SOURCE_LINE}`)
+})
+
+test('the caption schema matches the contract and refuses an unknown destination or angle', () => {
+  assert.deepEqual(captionSchema.parse(caption), caption)
+  assert.deepEqual(previousVersionSchema.parse({ card, caption }), { card, caption })
+  assert.throws(() => captionSchema.parse({ ...caption, destination: 'facebook' }))
+  assert.throws(() => captionSchema.parse({ ...caption, angle: 'summary' }))
+  assert.throws(() => captionSchema.parse({ ...caption, link: 'bio' }))
+  assert.throws(() => captionSchema.parse({ ...caption, body: 'old shape' }))
+})
+
+test('draftLimits follow the destination, the take, a change and a link on X', () => {
+  assert.deepEqual(draftLimits('linkedin'), DRAFT.linkedin)
+  assert.deepEqual(draftLimits('instagram', { url: 'https://example.org' }), DRAFT.instagram)
+  // X counts a link as 23 characters, plus the blank line before it.
+  assert.deepEqual(draftLimits('x', { url: 'https://example.org/a/very/long/path' }), { ...DRAFT.x, maxChars: 255, hookMax: 255 })
+  // A change may make a draft shorter and a single paragraph.
+  assert.deepEqual(draftLimits('linkedin', { changed: true }), { ...DRAFT.linkedin, minWords: 10, minParagraphs: 1 })
+  assert.deepEqual(draftLimits('x', { changed: true }), DRAFT.x)
+  // A take is its own paragraph after at least one other; on X a long take raises the limits.
+  const take = 'word '.repeat(70).trim() + '.'
+  assert.equal(take.length, 350)
+  assert.deepEqual(draftLimits('x', { take }), { ...DRAFT.x, maxChars: 490, hookMax: 490, maxWords: 95, minParagraphs: 2 })
+  assert.deepEqual(draftLimits('x', { take: 'Short take.' }), { ...DRAFT.x, minParagraphs: 2 })
+  assert.deepEqual(draftLimits('linkedin', { take }), DRAFT.linkedin)
+  assert.equal(TAKE_MAX, 400)
+  assert.deepEqual(DESTINATION_DEFAULTS.instagram, { style: 'headline', size: 'feed', extraLines: 3, showTags: true })
 })
 
 test('cardDescription reads the words drawn in each style', () => {
