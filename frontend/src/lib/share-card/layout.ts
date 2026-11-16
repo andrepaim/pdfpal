@@ -425,7 +425,8 @@ class Card {
         const candidate = quote(smaller)
         if (candidate.wrap(inner, false) && !candidate.splitsEmphasis) { paragraph = candidate; break }
       }
-      if (marker) this.kicker(parts, 6, s)
+      // A slide's own kicker (a page slide's fallback) replaces the quotation mark: the text may be a headline.
+      if (marker || this.input.kicker !== undefined) this.kicker(parts, 6, s)
       else { parts.push(this.glyph(this.px(30, s))); gap(4, s) }
       parts.push(this.text(paragraph, padX))
     }
@@ -623,12 +624,22 @@ class Card {
 const total = (parts: Part[]) => parts.reduce((sum, part) => sum + part.height, 0)
 
 /**
+ * The Carousel style is drawn only as slides (slides.ts, renderSlide). Asked of layoutCard, renderCard or
+ * pageSheetSpace it is laid out as Headline, so a caller that forgets gets a card rather than an error. Compared as a
+ * string, so this holds whether or not ShareStyle includes 'carousel'.
+ */
+function asCard<T extends { style: ShareStyle }>(input: T): T {
+  return (input.style as string) === 'carousel' ? { ...input, style: 'headline' } : input
+}
+
+/**
  * Lays out a card. Throws Error(TOO_LONG) when the text cannot fit, which content within the contract's limits never
  * does. A Page card without a crop is laid out as Quote, a Headline card as Big idea; `style` in the result says so.
  * The Fit size applies to Page: as tall as the kicker, the sheet and the footer need, within FIT. Any other style
  * asked for Fit, and Page drawn as Quote, is laid out as Feed.
  */
 export function layoutCard(input: CardLayoutInput, measure: Measure): CardLayout {
+  input = asCard(input)
   if (input.style === 'takeaways' && input.card.takeaways.length !== 3) throw new Error('The Takeaways card needs exactly three items.')
   if (input.size === 'fit') {
     const tallest = new Card(input, measure, FIT.maxHeight)
@@ -649,6 +660,7 @@ export function layoutCard(input: CardLayoutInput, measure: Measure): CardLayout
  * towards so the card has no empty ground: all the room on Feed and Story, the smallest Fit card's sheet on Fit.
  */
 export function pageSheetSpace(input: Omit<CardLayoutInput, 'crop'>, measure: Measure): { width: number; height: number; fill: number } {
+  input = asCard(input)
   // Headline at Fit is laid out as Feed.
   const style = input.style === 'headline' ? 'headline' : 'page', size = style === 'headline' && input.size === 'fit' ? 'feed' : input.size
   const card = new Card({ ...input, style, size }, measure, size === 'fit' ? FIT.maxHeight : undefined)
