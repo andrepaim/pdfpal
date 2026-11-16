@@ -4,13 +4,13 @@
 //
 // Page and Headline frames (data-frame) crop a made-up paper page drawn here, through the same planCrop that
 // pageCrop uses for a PDF, with the page's lines given as text runs as pdf.js gives them. Slides (data-slide) do the
-// same for the Carousel style's page slide (automatic, short and tall crops, and its fallback) and for each point of
-// a carousel of several highlights. Text cards (data-sample) are the first build's matrix, unchanged.
+// same for the Carousel style's page slide (automatic, short and tall crops, and its fallback), a paper carousel's
+// lead, and each point of a carousel of several highlights. Text cards (data-sample) are the first build's matrix, unchanged.
 import { useEffect, useState } from 'react'
 import { LOOKS, type CardSize, type PageMark, type PageRect, type ShareLook, type ShareStyle } from '../../../src/shared/share-card'
 import { canvasPng, cardSheetSpace, loadCardFonts, renderCard, type PageCrop } from '../lib/share-card'
 import { boundingBox, planCrop, runBox, type CropPlan } from '../lib/share-card/crop-box'
-import { CAROUSEL_MAX, CAROUSEL_SHORT, OTHERS_ON_PAGE, PAGE_FRAMES, POST_CAROUSEL, SAMPLE_PAGE, SAMPLES, type CarouselSample, type PageFrame } from '../lib/share-card/samples'
+import { CAROUSEL_MAX, CAROUSEL_SHORT, OTHERS_ON_PAGE, PAGE_FRAMES, PAPER_CAROUSEL, PAPER_CAROUSEL_FIVE, POST_CAROUSEL, SAMPLE_PAGE, SAMPLES, type CarouselSample, type PageFrame } from '../lib/share-card/samples'
 import { renderSlide, slideSheetSpace, type SlideContext, type SlideSpec } from '../lib/share-card/slides'
 
 type Result = { kind: 'frame' | 'slide' | 'sample'; name: string; url?: string; size?: string; error?: string }
@@ -192,6 +192,30 @@ export default function ShareCardSamples() {
           if (canvas.dataset.style !== frame.style) throw new Error(`Drawn as ${canvas.dataset.style}.`)
           return canvas
         })
+      }
+      // A paper carousel in every look (six slides) and the five-slide one in Ink; the lead also without its crop.
+      for (const [carousel, looks] of [[PAPER_CAROUSEL, LOOKS], [PAPER_CAROUSEL_FIVE, ['ink']]] as const) for (const look of looks as readonly ShareLook[]) {
+        type Variant = { slide: SlideSpec; index: number; crop: boolean; label: string }
+        const variants = carousel.slides.flatMap((slide, index): Variant[] => slide.kind === 'lead' && carousel === PAPER_CAROUSEL
+          ? [{ slide, index, crop: true, label: 'lead' }, { slide, index, crop: false, label: 'lead-cover' }]
+          : [{ slide, index, crop: slide.kind === 'lead', label: slide.kind }])
+        for (const { slide, index, crop: withCrop, label } of variants) {
+          if (cancelled) return
+          await show('slide', `${carousel.name}-${look}-${index + 1}-${label}`, async () => {
+            const context: SlideContext = { source: { ...carousel.source, color: 'yellow' }, number: index + 1, count: carousel.slides.length }
+            let crop: PageCrop | undefined
+            if (withCrop) {
+              const rects = pages[1].find(POST_CAROUSEL.mark.phrase)
+              const marks = [POST_CAROUSEL.mark, ...OTHERS_ON_PAGE].map(mark => ({ rects: pages[1].find(mark.phrase), color: mark.color }))
+              const sheet = await slideSheetSpace(slide, context, { look })
+              crop = cut(pages[1], planCrop({ rects, color: POST_CAROUSEL.mark.color }, SAMPLE_PAGE, { sheet, crop: carousel.crop, marks, extraLines: 3 }))
+            }
+            const canvas = await renderSlide(slide, context, { look, crop })
+            const expected = slide.kind === 'lead' && crop ? 'headline' : 'idea'
+            if (canvas.dataset.style !== expected) throw new Error(`Drawn as ${canvas.dataset.style}.`)
+            return canvas
+          })
+        }
       }
       // The Carousel style's three cards in every look: the page slide automatic, short, tall, and as its fallback.
       for (const look of LOOKS as readonly ShareLook[]) {
