@@ -66,6 +66,34 @@ test('a region across two columns reads the left column, then the right, after a
   assert.equal(regionText([...right, ...left], { x1: 0.05, y1: 0, x2: 0.5, y2: 0.5 }, A4), 'Left one\nLeft two\nLeft three')
 })
 
+/** A whole line as one run, as pdf.js often gives it: its box as wide as its characters, spaces included. */
+const wholeLine = (text: string, x: number, y: number): TextRun => ({ text, box: { x1: x, y1: y - HEIGHT, x2: x + text.length * CHAR, y2: y } })
+
+test('words are chosen one by one inside a run that holds a whole line', () => {
+  // Nine five-letter words, one run from 0.1 to 0.63: word i starts at 0.1 + 0.06 i, its centre 0.025 further on.
+  const run = wholeLine('word1 word2 word3 word4 word5 word6 word7 word8 word9', 0.1, 0.3)
+  const third = (run.box.x2 - run.box.x1) / 3
+  assert.equal(regionText([run], { x1: run.box.x1 + third, y1: 0.2, x2: run.box.x1 + 2 * third, y2: 0.4 }, A4), 'word4 word5 word6')
+  // A box edge through a word: the word counts when its centre is inside, and not when it is not.
+  const centre5 = 0.1 + 4 * 0.06 + 0.025
+  assert.equal(regionText([run], { x1: 0.29, y1: 0.2, x2: centre5 + 0.001, y2: 0.4 }, A4), 'word4 word5')
+  assert.equal(regionText([run], { x1: 0.29, y1: 0.2, x2: centre5 - 0.001, y2: 0.4 }, A4), 'word4')
+  assert.equal(regionText([run], { x1: centre5 - 0.001, y1: 0.2, x2: 1, y2: 0.4 }, A4), 'word5 word6 word7 word8 word9')
+})
+
+test('a box over one column of a two-column page takes only that column, however pdf.js split the rows', () => {
+  const rows = [['Left one', 'Right one'], ['Left two', 'Right two'], ['Left three', 'Right three']]
+  const y = (index: number) => 0.2 + index * 1.4 * HEIGHT
+  // Each column's part of a row as its own run.
+  const separate = rows.flatMap(([left, right], index) => [wholeLine(left!, 0.1, y(index)), wholeLine(right!, 0.55, y(index))])
+  // Harder: each row as one run, the gutter held by spaces.
+  const joined = rows.map(([left, right], index) => wholeLine(`${left}${' '.repeat(45 - left!.length)}${right}`, 0.1, y(index)))
+  for (const runs of [separate, joined]) {
+    assert.equal(regionText(runs, { x1: 0.05, y1: 0.1, x2: 0.5, y2: 0.4 }, A4), 'Left one\nLeft two\nLeft three')
+    assert.equal(regionText(runs, { x1: 0.5, y1: 0.1, x2: 0.95, y2: 0.4 }, A4), 'Right one\nRight two\nRight three')
+  }
+})
+
 test(`the text is cut to ${CARD.passageMax} characters at a line break`, () => {
   const texts = Array.from({ length: 300 }, (_, index) => `Line ${index} of a long table with several cells`)
   const runs = texts.flatMap((text, index) => line(text, 0.05, 0.02 + index * 0.0031, 0.003))
