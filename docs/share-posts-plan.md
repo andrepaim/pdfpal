@@ -394,10 +394,10 @@ Settled in T13:
 
 **Tasks**
 
-- [ ] **T13 Server** (`share-posts/server`): the wider text, the prompt variant, the fields and their checks, the edit, `postSlides`, tests.
-- [ ] **T14 Renderer** (`share-posts/renderer`): the `lead`, `question`, `method` and `result` slides, sample frames.
+- [x] **T13 Server** (`share-posts/server`): the wider text, the prompt variant, the fields and their checks, the edit, `postSlides`, tests.
+- [x] **T14 Renderer** (`share-posts/renderer`): the `lead`, `question`, `method` and `result` slides, sample frames.
 - [x] **T15 Panel** (on `feat/share-posts`, after T13 and T14): "Share the paper" with one click, the viewer and edits for the new slides, labels, browser tests, README.
-- [ ] **G5 Gate** as G1.
+- [x] **G5 Gate** as G1.
 
 ## Acceptance criteria
 
@@ -535,3 +535,25 @@ Revision `8ce8d615f2f0b50827897b61fb281507517e8e27` on `feat/share-posts`, not p
 Tasks done: T10 to T12. Instagram posts from a highlight, a region or the first page open in the Carousel style: the hook, the page, the takeaway. A post stored before the takeaway existed shows two slides and offers "Add a takeaway".
 
 Still unchecked: the takeaway's wording and the set's limitations rule against real answers (no live request since they were written); the three exported cards posted to Instagram; Copy slide in the desktop apps.
+
+### G5: share the paper (16 November 2026)
+
+Revision `4f13062` on `feat/share-posts`, not pushed. Typecheck, `npm test`, build, desktop tests and the secrets scan were run on `1cbdc80`; the one commit after it changes a browser test only, and the whole browser suite was run again on `4f13062`.
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | passes |
+| `npm test` | 427 tests: 426 pass, 0 fail, 1 skipped (Firebase rules, no emulator). Lines 88.83%, branches 86.25%; `src/core/share-cards.ts` 99.63% lines, `src/server/share-cards.ts` 100% |
+| `npm run build` | passes; no zod in `frontend/dist/assets` |
+| Frontend Playwright | 189 passed |
+| `npm --prefix desktop test` | 75 passed |
+| `node scripts/check-secrets.mjs` | passed for 526 files |
+
+Tasks done: T13 to T15. "Share the paper" starts with one click and replaces "Share the first page". A paper post carries a question, a method and one or two results; its carousel has five or six slides (the headline above the first page, the question, the method, the results, the takeaway). Posts from one highlight or a region keep three cards, as the owner confirmed.
+
+Found on the way:
+
+- The wider text was run on the two real papers of the live check. One lost its "Limitations and Discussion" section, took a mid-paper "Summary" for its conclusion, found no method (the section is named after the method) and read a page number as a section number. All four are fixed with tests on made-up pages of the same structure.
+- The screenshot test for the paper post assumed page 1 was in view; at some window sizes it is page 2, and the test failed in about half its runs. It no longer checks the page number.
+
+Still unchecked: the paper prompt against real answers (whether the drafts run question, method, results, and whether the headline is a hook and not the title); the wider text on papers other than those two (two-column layouts, unnumbered headings, results sections named after the experiment); the six exported slides posted to Instagram or uploaded to LinkedIn as a document.
