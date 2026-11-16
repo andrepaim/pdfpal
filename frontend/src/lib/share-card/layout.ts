@@ -44,6 +44,9 @@ const GROW_LINES = 3
 export const MIN_TEXT_PX = 28
 /** Where a block that does not fill its space sits: 0 top, 1 bottom. Slightly above centre reads as centred. */
 const PLACEMENT = 0.4
+/** Stat tiles: the text colour at this opacity over the ground, and their labels' opacity (contrast-tested). */
+export const TILE_ALPHA = 0.07
+export const TILE_LABEL_ALPHA = 0.8
 /** The Headline style's headline steps down until the sheet has this share of the main region, or reaches FLOOR. */
 const SHEET_SHARE = 0.5
 /** A headline at its nominal size may grow this much, in this many steps, into room a short crop leaves. */
@@ -59,6 +62,7 @@ export const TOO_LONG = 'The card text needs shortening.'
 export type Box = { x1: number; y1: number; x2: number; y2: number }
 export type TextRole = 'glyph' | 'kicker' | 'quote' | 'emphasis' | 'headline' | 'pull' | 'takeawaysTitle' | 'numeral' | 'takeawayTitle' | 'takeawayDetail'
   | 'footerTitle' | 'footerCredit' | 'wordmark' | 'slideNumber'
+  | 'statValue' | 'statLabel' | 'rowLabel' | 'rowValue' | 'deckText' | 'mark'
 export type TextCommand = {
   kind: 'text'; role: TextRole; text: string
   /** Start of the text and its alphabetic baseline. */
@@ -67,7 +71,7 @@ export type TextCommand = {
   /** Approximate ink box, for tests and hit checks. */
   box: Box
 }
-export type RectCommand = { kind: 'rect'; x: number; y: number; width: number; height: number; color: string; alpha: number }
+export type RectCommand = { kind: 'rect'; x: number; y: number; width: number; height: number; color: string; alpha: number; radius?: number }
 export type ImageCommand = {
   kind: 'image'; x: number; y: number; width: number; height: number; radius: number
   shadow: { blur: number; offsetY: number; color: string }
@@ -99,7 +103,36 @@ export type CardLayoutInput = {
    * carousel's result slide boxes the number its text starts with. Ignored when the headline does not contain it.
    */
   headlineEmphasis?: string
+  /**
+   * A carousel slide's own layout (slides.ts picks it from the slide's fields): the kicker pinned at the top, then
+   * text, stat tiles, a key number or a comparison table. Replaces the style's main block; the frame, the kicker and
+   * the strip are the card's. `style` stays what the input says ('idea').
+   */
+  deck?: DeckBlock
 }
+/** A value with its unit as the paper writes it, and what it counts. */
+export type DeckStat = { value: string; label: string }
+export type DeckRow = { label: string; value: string }
+export type DeckBlock =
+  /**
+   * Text alone; `emphasis`, an exact part of it, in the look's emphasis box. A hook (a cover, a question without its
+   * mark) is set as Big idea's headline; a `statement` (what a study did, a result, a limit) in a lighter, smaller
+   * semibold, so explanation does not shout like a hook.
+   */
+  | { kind: 'text'; text: string; emphasis?: string; statement?: boolean }
+  /** A question: an oversized question mark in the accent above the text when it ends with one. */
+  | { kind: 'question'; text: string }
+  /** The takeaway: the text with the accent bar on its left, set at the foot of the slide. */
+  | { kind: 'takeaway'; text: string }
+  /** One to four tiles (a value over its label), then the sentence in a smaller size. */
+  | { kind: 'stats'; stats: DeckStat[]; text: string }
+  /** One number very large over its label, a short rule, then the text: a headline (a cover) or a sentence. */
+  | { kind: 'number'; stat: DeckStat; text: string; headline: boolean }
+  /**
+   * The sentence, then two to four rows of one measure, values large and aligned right. Row `marked` has its value in
+   * the emphasis box. `bars`, when set, are each row's value as a fraction of the largest, drawn from a common zero.
+   */
+  | { kind: 'table'; text: string; rows: DeckRow[]; marked: number; bars: number[] | null }
 export type CardLayout = {
   width: number; height: number
   /** The style actually drawn: Page falls back to Quote, Headline to Big idea. */
@@ -351,6 +384,7 @@ class Card {
 
   layout(): CardLayout {
     this.frame()
+    if (this.input.deck) return this.layoutDeck(this.input.deck)
     let style = this.input.style
     let parts: Part[] | undefined
     if (style === 'page' || style === 'headline') {
@@ -368,6 +402,164 @@ class Card {
     let y = this.top + (this.available - total(parts)) * PLACEMENT
     for (const part of parts) { part.draw(this.out, y); y += part.height }
     return { width: this.width, height: this.height, style, look: this.input.look, safe: this.safe, commands: this.out, fits: true }
+  }
+
+  /**
+   * A carousel slide's layout: the kicker pinned at the top of the safe area, the block below it 40% of the way down
+   * the free space (the takeaway at the foot), everything stepping down together until it fits.
+   */
+  layoutDeck(deck: DeckBlock): CardLayout {
+    for (let step = 0; step <= STEPS; step++) {
+      const s = 1 - step * (1 - FLOOR) / STEPS
+      const head: Part[] = []
+      this.kicker(head, 4.5, 1)
+      const body = this.composeDeck(deck, s, step === STEPS)
+      if (!body || total(head) + total(body) > this.available) continue
+      let y = this.top
+      for (const part of head) { part.draw(this.out, y); y += part.height }
+      y += (this.available - total(head) - total(body)) * (deck.kind === 'takeaway' ? 1 : PLACEMENT)
+      for (const part of body) { part.draw(this.out, y); y += part.height }
+      return { width: this.width, height: this.height, style: this.input.style, look: this.input.look, safe: this.safe, commands: this.out, fits: true }
+    }
+    throw new Error(TOO_LONG)
+  }
+
+  /** A deck block's parts at scale `s`, or null when something cannot fit at that size. */
+  composeDeck(deck: DeckBlock, s: number, floor: boolean): Part[] | null {
+    const t = 1 - (1 - s) / 2
+    const { u, p, padX, inner } = this
+    const gap = (units: number, scale = s): Part => ({ height: units * u * scale, draw: () => {} })
+    const body = (text: string, column = inner, size = 4.3) =>
+      this.wrapped(t, column, false, floor, q => this.plain(text, { face: 'regular', size: this.px(size, q), color: p.text, alpha: 0.9, tracking: 0 }, 1.32, 'deckText'))
+    switch (deck.kind) {
+      case 'text': {
+        const text = deck.statement ? this.display(deck.text, 8.4, s, -0.025, 1.1, floor, 'headline', deck.emphasis, inner, 'semibold')
+          : this.display(deck.text, 11.5, s, -0.04, 1, floor, 'headline', deck.emphasis)
+        return text && [this.text(text, padX)]
+      }
+      case 'question': {
+        const text = this.display(deck.text, 11.5, s, -0.04, 1, floor, 'headline')
+        if (!text) return null
+        if (!/\?\s*$/u.test(deck.text)) return [this.text(text, padX)]
+        // The question mark the text ends with, oversized in the accent, as the Quote style's opening mark is.
+        const ink: Ink = { face: 'serif', size: this.px(22, s), color: p.accent, alpha: 1, tracking: 0 }
+        const height = 0.7 * ink.size
+        return [{ height, draw: (out, y) => {
+          const command = textCommand('mark', '?', padX, y + height, ink, this.measure('?', fontOf(ink), 0))
+          command.box = { ...command.box, y1: y, y2: y + height }
+          out.push(command)
+        } }, gap(3), this.text(text, padX)]
+      }
+      case 'takeaway': {
+        const bar = 1 * u, indent = bar + 4.4 * u
+        const text = this.display(deck.text, 10, s, -0.035, 1.02, floor, 'headline', undefined, inner - indent)
+        if (!text) return null
+        return [{ height: text.height, draw: (out, y) => {
+          out.push({ kind: 'rect', x: padX, y: y + 0.12 * text.size, width: bar, height: text.height - 0.12 * text.size, color: p.accent, alpha: 1 })
+          text.draw(out, padX + indent, y)
+        } }]
+      }
+      case 'stats': {
+        const tiles = this.tiles(deck.stats, s, t, floor)
+        if (!tiles) return null
+        if (!deck.text.trim()) return [tiles]
+        const text = body(deck.text)
+        return text && [tiles, gap(5), this.text(text, padX)]
+      }
+      case 'number': {
+        // The number as large as fits on one line, up to 24u.
+        const value = clean(deck.stat.value)
+        const valueInk: Ink = { face: 'bold', size: this.px(deck.headline ? 21 : 24, s), color: p.accent, alpha: 1, tracking: -0.045 }
+        const natural = this.measure(value, fontOf(valueInk), spacingOf(valueInk)) - spacingOf(valueInk)
+        if (natural > inner) valueInk.size = Math.max(MIN_TEXT_PX, valueInk.size * inner / natural * 0.995)
+        const valueHeight = valueInk.size * 0.98
+        const label = this.wrapped(t, inner, false, floor, q => this.plain(deck.stat.label, { face: 'semibold', size: this.px(4.4, q), color: p.text, alpha: 1, tracking: 0 }, 1.25, 'statLabel'))
+        if (!label) return null
+        const text = deck.headline ? this.display(deck.text, 7.2, s, -0.03, 1.06, floor, 'headline') : body(deck.text, inner, 4.4)
+        if (!text) return null
+        const rule = Math.max(2, 0.25 * u)
+        return [
+          { height: valueHeight, draw: (out, y) => out.push(textCommand('statValue', value, padX, y + 0.8 * valueInk.size, valueInk, this.measure(value, fontOf(valueInk), spacingOf(valueInk)))) },
+          gap(1.6), this.text(label, padX), gap(3.6),
+          { height: rule, draw: (out, y) => out.push({ kind: 'rect', x: padX, y, width: 12 * u, height: rule, color: p.text, alpha: 0.3 }) },
+          gap(3.6), this.text(text, padX),
+        ]
+      }
+      case 'table': {
+        const text = this.display(deck.text, 5.6, s, -0.02, 1.12, floor, 'headline')
+        const table = text && this.table(deck, s, t, floor)
+        return table ? [this.text(text!, padX), gap(4.5), table] : null
+      }
+    }
+  }
+
+  /** Stat tiles: one wide, or two columns; with three, the third spans both. Values share one size. */
+  tiles(stats: DeckStat[], s: number, t: number, floor: boolean): Part | null {
+    const { u, p, padX, inner } = this
+    const n = Math.min(stats.length, 4), between = 2.4 * u * s, column = (inner - between) / 2
+    const cells = stats.slice(0, n).map((stat, index) => n === 1 || (n === 3 && index === 2)
+      ? { stat, x: 0, width: inner, row: index === 2 ? 1 : 0 }
+      : { stat, x: (index % 2) * (column + between), width: column, row: Math.floor(index / 2) })
+    const padH = 3.2 * u * s, padV = 2.8 * u * s
+    const valueInk: Ink = { face: 'bold', size: this.px(n === 1 ? 13 : 9.5, s), color: p.accent, alpha: 1, tracking: -0.03 }
+    for (const cell of cells) {
+      const width = this.measure(clean(cell.stat.value), fontOf(valueInk), spacingOf(valueInk)) - spacingOf(valueInk)
+      if (width > cell.width - 2 * padH) valueInk.size *= (cell.width - 2 * padH) / width * 0.995
+    }
+    if (valueInk.size < MIN_TEXT_PX) return null
+    const labels = cells.map(cell => this.wrapped(t, cell.width - 2 * padH, false, floor,
+      q => this.plain(cell.stat.label, { face: 'regular', size: this.px(3.3, q), color: p.text, alpha: TILE_LABEL_ALPHA, tracking: 0 }, 1.25, 'statLabel')))
+    if (labels.some(label => !label || label.lines.length > 3)) return null
+    const valueLine = valueInk.size * 1.02, labelGap = 1 * u * s
+    const rows = Math.max(...cells.map(cell => cell.row)) + 1
+    const rowHeights = Array.from({ length: rows }, (_, row) => Math.max(...cells.flatMap((cell, index) => cell.row === row ? [padV * 2 + valueLine + labelGap + labels[index]!.height] : [])))
+    const height = rowHeights.reduce((sum, value) => sum + value, 0) + between * (rows - 1)
+    return { height, draw: (out, y) => cells.forEach((cell, index) => {
+      const top = y + rowHeights.slice(0, cell.row).reduce((sum, value) => sum + value + between, 0), x = padX + cell.x
+      out.push({ kind: 'rect', x, y: top, width: cell.width, height: rowHeights[cell.row]!, color: p.text, alpha: TILE_ALPHA, radius: 1.4 * u })
+      const value = clean(cell.stat.value)
+      out.push(textCommand('statValue', value, x + padH, top + padV + 0.84 * valueInk.size, valueInk, this.measure(value, fontOf(valueInk), spacingOf(valueInk))))
+      labels[index]!.draw(out, x + padH, top + padV + valueLine + labelGap)
+    }) }
+  }
+
+  /** A comparison: rows of label and value under a rule each, values right-aligned, optional bars from zero. */
+  table(deck: Extract<DeckBlock, { kind: 'table' }>, s: number, t: number, floor: boolean): Part | null {
+    const { u, p, padX, inner } = this
+    const rows = deck.rows.slice(0, 4)
+    const valueInk: Ink = { face: 'bold', size: this.px(6.4, s), color: p.text, alpha: 1, tracking: -0.02 }
+    const markedInk: Ink = { ...valueInk, color: p.emphasis.text, box: { color: p.emphasis.box, alpha: p.emphasis.boxAlpha } }
+    const widest = Math.max(...rows.map(row => this.measure(clean(row.value), fontOf(valueInk), spacingOf(valueInk)) - spacingOf(valueInk)))
+    const maxColumn = 0.42 * inner
+    if (widest > maxColumn) { valueInk.size *= maxColumn / widest * 0.995; markedInk.size = valueInk.size }
+    if (valueInk.size < MIN_TEXT_PX) return null
+    const valueColumn = Math.min(widest, maxColumn), between = 4 * u * s, labelColumn = inner - valueColumn - between
+    const labels = rows.map(row => this.wrapped(t, labelColumn, false, floor,
+      q => this.plain(row.label, { face: 'regular', size: this.px(3.8, q), color: p.text, alpha: 0.75, tracking: 0 }, 1.25, 'rowLabel')))
+    if (labels.some(label => !label || label.lines.length > 2)) return null
+    const padV = 1.9 * u * s, bar = deck.bars ? 1.1 * u * s : 0, barGap = deck.bars ? 1.2 * u * s : 0
+    const rule = Math.max(2, 0.18 * u), valueLine = valueInk.size * 1.1
+    const heights = rows.map((_, index) => padV * 2 + Math.max(labels[index]!.height + barGap + bar, valueLine))
+    const height = heights.reduce((sum, value) => sum + value, 0) + rule * (rows.length + 1)
+    return { height, draw: (out, y) => {
+      let top = y
+      out.push({ kind: 'rect', x: padX, y: top, width: inner, height: rule, color: p.text, alpha: 0.35 })
+      top += rule
+      rows.forEach((row, index) => {
+        const label = labels[index]!, rowHeight = heights[index]!, marked = index === deck.marked
+        const labelTop = top + (rowHeight - label.height - barGap - bar) / 2
+        label.draw(out, padX, labelTop)
+        if (deck.bars) out.push({ kind: 'rect', x: padX, y: labelTop + label.height + barGap, width: Math.max(bar * 0.5, labelColumn * deck.bars[index]!), height: bar,
+          color: marked ? p.emphasis.box : p.text, alpha: marked ? Math.max(p.emphasis.boxAlpha, 0.85) : 0.3 })
+        const value = clean(row.value), paragraph = new Paragraph(this.measure, value, marked ? value : '', valueInk, markedInk, 1.1, 0.17 * valueInk.size, 'rowValue')
+        paragraph.wrap(Number.MAX_SAFE_INTEGER, false)
+        const width = this.measure(value, fontOf(valueInk), spacingOf(valueInk)) - spacingOf(valueInk)
+        paragraph.draw(out, padX + inner - width, top + (rowHeight - valueLine) / 2)
+        top += rowHeight
+        out.push({ kind: 'rect', x: padX, y: top, width: inner, height: rule, color: p.text, alpha: index === rows.length - 1 ? 0.35 : 0.15 })
+        top += rule
+      })
+    } }
   }
 
   /** The main block at scale `s`, or null when a word is too wide at that size. */
@@ -507,20 +699,20 @@ class Card {
    * A balanced display line at `units` and scale `s`. It takes up to 15% less size when that saves a line, so a
    * word that only just misses does not sit alone ("More / feedback / ...").
    */
-  display(text: string, units: number, s: number, tracking: number, leading: number, floor: boolean, role: TextRole, emphasis = ''): Paragraph | null {
+  display(text: string, units: number, s: number, tracking: number, leading: number, floor: boolean, role: TextRole, emphasis = '', column = this.inner, face: Face = 'bold'): Paragraph | null {
     const words = clean(text), boxed = emphasis && words.includes(clean(emphasis)) ? clean(emphasis) : ''
     const build = (q: number) => {
-      const ink: Ink = { face: 'bold', size: this.px(units, q), color: this.p.text, alpha: 1, tracking }
+      const ink: Ink = { face, size: this.px(units, q), color: this.p.text, alpha: 1, tracking }
       if (!boxed) return this.plain(text, ink, leading, role)
       const marked: Ink = { ...ink, color: this.p.emphasis.text, box: { color: this.p.emphasis.box, alpha: this.p.emphasis.boxAlpha } }
       return new Paragraph(this.measure, words, boxed, ink, marked, leading, 0.17 * ink.size, role)
     }
     const full = build(s)
-    if (!full.wrap(this.inner, true)) return this.wrapped(s, this.inner, true, floor, build)
+    if (!full.wrap(column, true)) return this.wrapped(s, column, true, floor, build)
     const smaller = Math.max(s * 0.85, FLOOR)
     if (smaller >= s) return full
     const tight = build(smaller)
-    return tight.wrap(this.inner, true) && tight.lines.length < full.lines.length ? tight : full
+    return tight.wrap(column, true) && tight.lines.length < full.lines.length ? tight : full
   }
 
   /**

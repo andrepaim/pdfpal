@@ -9,17 +9,28 @@ import type { SheetRoom } from './crop-box'
 import { drawCard } from './draw'
 import { loadCardFonts } from './fonts'
 import { canvasMeasure } from './index'
-import { layoutCard, pageSheetSpace, TOO_LONG, type CardLayout, type CardLayoutInput, type Measure } from './layout'
+import { layoutCard, pageSheetSpace, TOO_LONG, type CardLayout, type CardLayoutInput, type DeckBlock, type Measure } from './layout'
 import type { PageCrop } from './page-crop'
 
-/** One slide; structurally the same as SlideSpec in src/shared/share-card.ts, which setSlides() returns. */
+/** A number with its unit as the paper writes it ("312", "24 hours", "41%"), and what it counts. */
+export type Stat = { value: string; label: string }
+/** One row of a comparison: what is compared, and its value in the measure all rows share. */
+export type Row = { label: string; value: string }
+
+/**
+ * One slide; structurally the same as SlideSpec in src/shared/share-card.ts. The numbers (`stat`, `stats`, `rows`)
+ * are optional here so a slide from a post stored before them draws as before: missing means none.
+ */
 export type SlideSpec =
-  | { kind: 'cover'; kicker: string; headline: string }
-  | { kind: 'study' | 'takeaway' | 'limitations'; kicker: string; text: string }
+  | { kind: 'cover'; kicker: string; headline: string; stat?: Stat | null }
+  | { kind: 'study'; kicker: string; text: string; stats?: Stat[] }
+  | { kind: 'takeaway' | 'limitations'; kicker: string; text: string }
   | { kind: 'point'; kicker: string; headline: string; item: number }
   | { kind: 'page'; kicker: string; fallback: string }
   | { kind: 'lead'; kicker: string; headline: string; fallback: string }
-  | { kind: 'question' | 'method' | 'result'; kicker: string; text: string; item?: number }
+  | { kind: 'question'; kicker: string; text: string }
+  | { kind: 'method'; kicker: string; text: string; stats?: Stat[] }
+  | { kind: 'result'; kicker: string; text: string; item?: number; stat?: Stat | null; rows?: Row[] }
 
 /**
  * The longest text each kind holds, in characters: SET's limits, CARD.headlineMax for the cover and a paper's lead,
@@ -59,6 +70,63 @@ export type SlideOptions = {
   crop?: PageCrop
 }
 
+const filled = (stat: Stat | null | undefined): stat is Stat => !!stat && !!collapse(stat.value)
+
+/**
+ * The rows' values as fractions of the largest, for bars from a common zero; null unless every value is one
+ * non-negative number with the same unit ("41%", "1,204", "12.5 GB"): no ranges, signs, bounds or approximations, and
+ * a largest value above zero. Bars are drawn only when they can be honest.
+ */
+export function comparable(rows: Row[]): number[] | null {
+  const parsed = rows.map(row => {
+    const value = collapse(row.value)
+    if (/[<>~≈±–—]|^[-−+]|\d\s*-\s*\d/u.test(value)) return null
+    const match = /^(\d{1,3}(?:,\d{3})+|\d+)(\.\d+)?\s*(\D*)$/u.exec(value)
+    if (!match) return null
+    return { number: Number(match[1]!.replace(/,/gu, '') + (match[2] ?? '')), unit: match[3]!.trim().toLowerCase() }
+  })
+  if (parsed.length < 2 || parsed.some(item => !item || !Number.isFinite(item.number))) return null
+  const units = new Set(parsed.map(item => item!.unit)), largest = Math.max(...parsed.map(item => item!.number))
+  if (units.size !== 1 || !(largest > 0)) return null
+  return parsed.map(item => item!.number / largest)
+}
+
+/**
+ * The layout a slide's content asks for; undefined for the slides that show the page (page, point, lead). Numbers
+ * lead when there are any: tiles for a method or study with stats, a comparison table for a result with two or more
+ * rows, the number very large for a result or cover with a key number. A cover whose headline already holds its
+ * number boxes it in the headline instead of saying it twice at two sizes. Without numbers: the cover as a hook,
+ * the question with its mark, the takeaway with its bar, and the study, method, result and limits as statements.
+ */
+export function deckBlock(slide: SlideSpec): DeckBlock | undefined {
+  switch (slide.kind) {
+    case 'point': case 'page': case 'lead': return undefined
+    case 'cover': {
+      if (!filled(slide.stat)) return { kind: 'text', text: slide.headline }
+      const value = collapse(slide.stat.value)
+      return collapse(slide.headline).includes(value) ? { kind: 'text', text: slide.headline, emphasis: value }
+        : { kind: 'number', stat: slide.stat, text: slide.headline, headline: true }
+    }
+    case 'study': case 'method': {
+      const stats = (slide.stats ?? []).filter(filled)
+      return stats.length ? { kind: 'stats', stats: stats.slice(0, 4), text: slide.text } : { kind: 'text', text: slide.text, statement: true }
+    }
+    case 'question': return { kind: 'question', text: slide.text }
+    case 'takeaway': return { kind: 'takeaway', text: slide.text }
+    case 'limitations': return { kind: 'text', text: slide.text, statement: true }
+    case 'result': {
+      const rows = (slide.rows ?? []).filter(row => collapse(row.label) && collapse(row.value)).slice(0, 4)
+      if (rows.length >= 2) {
+        const key = filled(slide.stat) ? collapse(slide.stat.value) : ''
+        const marked = Math.max(0, rows.findIndex(row => key && collapse(row.value) === key))
+        return { kind: 'table', text: slide.text, rows, marked, bars: comparable(rows) }
+      }
+      if (filled(slide.stat)) return { kind: 'number', stat: slide.stat, text: slide.text, headline: false }
+      return { kind: 'text', text: slide.text, emphasis: leadingNumber(slide.text) || undefined, statement: true }
+    }
+  }
+}
+
 /** A slide's words: the cover's, a point's and a lead's headline, a page slide's fallback, the other kinds' text. */
 export const slideText = (slide: SlideSpec) =>
   slide.kind === 'cover' || slide.kind === 'point' || slide.kind === 'lead' ? slide.headline : slide.kind === 'page' ? slide.fallback : slide.text
@@ -80,7 +148,7 @@ export function slideInput(slide: SlideSpec, context: SlideContext, options: Omi
     card: { quote: slideText(slide), emphasis: '', headline: slideText(slide), pull, topic: '', takeawaysTitle: '', takeaways: [] },
     source: { title: context.source.title, credit: context.source.credit, page, color: context.source.color },
     style: point || slide.kind === 'lead' ? 'headline' : slide.kind === 'page' ? 'page' : 'idea',
-    headlineEmphasis: slide.kind === 'result' ? leadingNumber(slide.text) || undefined : undefined,
+    deck: deckBlock(slide),
     look: options.look,
     size: 'feed',
     crop: sheet && options.crop ? { width: options.crop.width, height: options.crop.height, marks: options.crop.marks } : undefined,
