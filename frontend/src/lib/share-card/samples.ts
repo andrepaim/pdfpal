@@ -1,7 +1,7 @@
 // Sample cards for /dev/share-cards and test/unit/share-card-layout.test.ts, ported from DistillPod's
 // ShareCardRendererTest, and a made-up paper page for the Page and Headline frames. Pure data.
 import type { CardContent, CardSize, HighlightColor, PageRect, ShareCardSource } from '../../../../src/shared/share-card'
-import type { SlideSpec } from './slides'
+import type { SlideSpec, Stat } from './slides'
 
 export type Sample = { name: string; card: CardContent; source: ShareCardSource }
 
@@ -279,3 +279,81 @@ export const PAPER_CAROUSEL_FIVE: PaperCarouselSample = {
     { kind: 'takeaway', kicker: 'The takeaway', text: 'Fewer, specific comments, soon.' },
   ],
 }
+
+// ── Decks: numbers as numbers (stage 6) ────────────────────────────────────────────────────────────────────────────
+// The same three kinds of post twice: with the numbers their text gives, and without any, so both can be judged.
+// Picture slides (page, point, lead) are drawn from the made-up page as above. `items` say which highlight each
+// point slide shows; a page or lead slide shows the post's own highlight.
+
+export type DeckSample = { name: string; slides: SlideSpec[]; source: PageFrame['source']; items: FrameMark[] }
+
+const TOPIC = 'Learning science'
+const strip = (slides: SlideSpec[]): SlideSpec[] => slides.map(slide => {
+  const { stat: _stat, stats: _stats, rows: _rows, ...rest } = slide as SlideSpec & { stat?: unknown; stats?: unknown; rows?: unknown }
+  return rest as SlideSpec
+})
+const STUDY_STATS: Stat[] = [{ value: '312', label: 'music and language students' }, { value: '1,204', label: 'recorded practice sessions' }, { value: '1 semester', label: 'of ordinary weekly lessons' }]
+const COVER_STAT: Stat = { value: '41%', label: 'higher gains on blind-rated tests than praise' }
+
+/** A highlight post's three cards: the hook with its key number, the page, the takeaway. */
+export const DECK_POST: DeckSample = {
+  name: 'deck-post', source: pageSource, items: [OWN],
+  slides: [
+    { kind: 'cover', kicker: TOPIC, headline: 'Specific feedback beats praise, and the gap keeps growing', stat: COVER_STAT },
+    { kind: 'page', kicker: TOPIC, fallback: `${OWN.phrase}.` },
+    { kind: 'takeaway', kicker: 'The takeaway', text: 'Point at the gap between what the learner tried and what happened, not at the learner.' },
+  ],
+}
+
+/** A carousel of three highlights: cover with its number, the study in tiles, three points, takeaway, limits. */
+export const DECK_SET: DeckSample = {
+  name: 'deck-set', source: pageSource, items: [OWN, OTHERS[0]!, OTHERS[1]!],
+  slides: [
+    { kind: 'cover', kicker: TOPIC, headline: 'What makes feedback work: three findings from one field study', stat: COVER_STAT },
+    { kind: 'study', kicker: 'The study', text: 'Students were followed for a semester; each session ended with general praise or one specific comment.', stats: STUDY_STATS },
+    { kind: 'point', kicker: TOPIC, headline: 'Specific comments beat praise on blind-rated tests.', item: 0 },
+    { kind: 'point', kicker: TOPIC, headline: 'More than three comments a session stopped helping.', item: 1 },
+    { kind: 'point', kicker: TOPIC, headline: 'Feedback within ten minutes was remembered twice as often.', item: 2 },
+    { kind: 'takeaway', kicker: 'The takeaway', text: 'Fewer comments, each one specific, given soon after the attempt.' },
+    { kind: 'limitations', kicker: 'Limits', text: 'One country, teachers who knew their condition, and motivation that was self-reported.' },
+  ],
+}
+
+/** A paper's deck: lead, question, method in tiles, a comparison, one key number, takeaway. */
+export const DECK_PAPER: DeckSample = {
+  name: 'deck-paper', source: pageSource, items: [OWN],
+  slides: [
+    { kind: 'lead', kicker: TOPIC, headline: 'Specific feedback speeds up skill learning', fallback: 'Specific feedback speeds up skill learning' },
+    { kind: 'question', kicker: 'The question', text: 'Does a specific comment help learners improve more than general praise?' },
+    { kind: 'method', kicker: 'The method', text: 'Teachers were trained in one style each; judges rated anonymous recordings at the start, middle and end of the term.',
+      stats: [{ value: '312', label: 'music and language students' }, { value: '1,204', label: 'recorded practice sessions' }, { value: '4', label: 'schools' }, { value: '1 semester', label: 'of ordinary weekly lessons' }] },
+    { kind: 'result', kicker: 'Result 1', text: 'Specific comments given right away produced the largest gains on blind-rated tests.', item: 0,
+      stat: { value: '41%', label: 'gain' }, rows: [{ label: 'Specific, right away', value: '41%' }, { label: 'Specific, end of lesson', value: '29%' }, { label: 'Praise, right away', value: '12%' }, { label: 'Praise, end of lesson', value: '9%' }] },
+    { kind: 'result', kicker: 'Result 2', text: 'Feedback given within ten minutes of an attempt was remembered twice as often a week later.', item: 1,
+      stat: { value: '2x', label: 'as often remembered a week later' }, rows: [] },
+    { kind: 'takeaway', kicker: 'The takeaway', text: 'Fewer comments, each one specific, given soon after the attempt.' },
+  ],
+}
+
+/** The same three decks without a single number to show. */
+export const DECK_POST_PLAIN: DeckSample = { ...DECK_POST, name: 'deck-post-plain', slides: strip(DECK_POST.slides) }
+export const DECK_SET_PLAIN: DeckSample = { ...DECK_SET, name: 'deck-set-plain', slides: strip(DECK_SET.slides) }
+export const DECK_PAPER_PLAIN: DeckSample = { ...DECK_PAPER, name: 'deck-paper-plain', slides: strip(DECK_PAPER.slides) }
+
+/** Every new layout at the contract's limits, and the edge cases: one stat, a headline that holds its number. */
+export const DECK_LIMITS: SlideSpec[] = [
+  { kind: 'method', kicker: 'The method', text: PAPER_CAROUSEL.slides[2]!.kind === 'method' ? PAPER_CAROUSEL.slides[2]!.text : '',
+    stats: [{ value: '12,345.67 ms', label: 'music and language students in four city schools' }, { value: '19,876.54 ms', label: 'recorded practice sessions, over one entire term' },
+      { value: '11,024.00 ms', label: 'teachers, each one trained in one feedback style' }, { value: '10,998.76 ms', label: 'of ordinary weekly practice, rated blind by jury' }] },
+  { kind: 'result', kicker: 'Result 1', text: PAPER_CAROUSEL.slides[3]!.kind === 'result' ? PAPER_CAROUSEL.slides[3]!.text : '', item: 0, stat: null,
+    rows: [{ label: 'Specific comment, right away', value: '12,345.67 ms' }, { label: 'Specific comments at the end', value: '19,876.54 ms' },
+      { label: 'Praise only, right after it.', value: '11,024.00 ms' }, { label: 'Praise only, at lesson’s end', value: '10,998.76 ms' }] },
+  { kind: 'result', kicker: 'Result 2', text: PAPER_CAROUSEL.slides[4]!.kind === 'result' ? PAPER_CAROUSEL.slides[4]!.text : '', item: 1,
+    stat: { value: '12,345.67 ms', label: 'higher gain on blind-rated tests than praise did' }, rows: [] },
+  { kind: 'cover', kicker: 'Organisational learning!', headline: 'Specific feedback beat praise by a wide margin over a semester of real practice.',
+    stat: { value: '12,345.67 ms', label: 'higher gain on blind-rated tests than praise did' } },
+  { kind: 'study', kicker: 'The study', text: CAROUSEL_MAX.slides[1]!.kind === 'study' ? CAROUSEL_MAX.slides[1]!.text : '', stats: [{ value: '1,204', label: 'recorded practice sessions, over one entire term' }] },
+  { kind: 'cover', kicker: TOPIC, headline: 'Specific feedback lifted test gains by 41% over praise', stat: { value: '41%', label: 'higher gains' } },
+  { kind: 'result', kicker: 'Result 1', text: 'Specific comments, given right away, gave the largest gains.', item: 0, stat: { value: '41%', label: 'gain' },
+    rows: [{ label: 'Specific', value: '41%' }, { label: 'Praise', value: '9–12%' }, { label: 'None', value: '−2%' }] },
+]
