@@ -34,6 +34,11 @@ export type ShareCardChange = { instruction?: string; destination?: Destination;
 /** Exactly one kind of edit per request (see the PATCH route in src/server/share-cards.ts). */
 const patch = (projectId: string, id: string, body: object) => request<ShareCardRecord>(`${base(projectId)}/${id}`, { method: 'PATCH', body })
 
+/** What a carousel starts from: highlights of one PDF, in the order of their slides. */
+export type SetStart = { sourceId: string; annotationIds: string[] }
+/** One carousel slide's words: `index` names a point, and only a point. */
+export type SetTextEdit = { field: 'study' | 'takeaway' | 'limitations' | 'point'; index?: number; text: string }
+
 /** What a region or first-page post starts from: the box as page fractions and the text read inside it. */
 export type RegionStart = { sourceId: string; page: number; region: PageRect; text: string; kind: 'region' | 'paper' }
 
@@ -74,6 +79,14 @@ export const shareCardApi = {
     const box = [region.x1, region.y1, region.x2, region.y2].map(value => value.toFixed(4)).join(',')
     return startOnce(projectId, `${projectId}:${kind}:${sourceId}:${page}:${box}`, { source_id: sourceId, page, region, text, kind }, options)
   },
+  /**
+   * Starts a carousel from 2 to SET.maxItems highlights of one PDF, in the reader's order. Destination, take and the
+   * reload-safe request ID work as in start(); a set is known by its source and its highlights in order.
+   */
+  startSet(projectId: string, input: SetStart, options: { destination?: Destination; take?: string } = {}): Promise<ShareCardRecord> {
+    const { sourceId, annotationIds } = input
+    return startOnce(projectId, `${projectId}:set:${sourceId}:${annotationIds.join(',')}`, { source_id: sourceId, annotation_ids: annotationIds, kind: 'set' }, options)
+  },
   list: (projectId: string, sourceId?: string) =>
     request<ShareCardSummary[]>(`${base(projectId)}${sourceId ? `?source_id=${encodeURIComponent(sourceId)}` : ''}`),
   get: (projectId: string, id: string) => request<ShareCardRecord>(`${base(projectId)}/${id}`),
@@ -85,6 +98,10 @@ export const shareCardApi = {
   restyle: (projectId: string, id: string, style: ShareStyle, look: ShareLook) => patch(projectId, id, { style, look }),
   /** The reader's crop as page fractions; null returns to the automatic crop. */
   crop: (projectId: string, id: string, crop: PageRect | null) => patch(projectId, id, { crop }),
+  /** One carousel highlight slide's crop, by the index of its highlight (SlideSpec's `item`); null is automatic. */
+  cropSlide: (projectId: string, id: string, slide: number, crop: PageRect | null) => patch(projectId, id, { crop, slide }),
+  /** One carousel slide's words; an empty study or limitations removes that slide. The cover uses editHeadline. */
+  editSetText: (projectId: string, id: string, edit: SetTextEdit) => patch(projectId, id, { set_text: edit }),
   angle: (projectId: string, id: string, angle: Angle) => patch(projectId, id, { angle }),
   showTags: (projectId: string, id: string, showTags: boolean) => patch(projectId, id, { show_tags: showTags }),
   link: (projectId: string, id: string, link: LinkPlacement) => patch(projectId, id, { link }),
