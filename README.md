@@ -16,7 +16,7 @@ Available as a **Windows desktop app**, a **Linux desktop engineering preview**,
 
 [Install and run](#install-and-run) · [Quickstart](#quickstart) · [Documentation](docs/README.md)
 
-<!-- demo-video: the link is added before this pull request is merged -->
+https://github.com/user-attachments/assets/9014a985-5a21-41a6-9084-6f9d5dece3ec
 
 One reading session with [*Attention Is All You Need*](https://arxiv.org/pdf/1706.03762v7), recorded in the browser reader, which the desktop app shares. The answers are live Codex output and the waits are shortened. See [how it was recorded](screenshots/CAPTURE.md).
 
