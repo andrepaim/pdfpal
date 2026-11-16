@@ -218,3 +218,29 @@ export const CAROUSEL_SHORT: CarouselSample = {
     limitations: 'One country; self-reported motivation.',
   }),
 }
+
+// ── Three cards for one highlight (the Carousel style) ─────────────────────────────────────────────────────────────
+
+export type PostCarouselSample = {
+  name: string
+  slides: SlideSpec[]
+  /** The post's own highlight on the made-up page. */
+  mark: FrameMark
+  /** The page slide's crops: automatic, a short reader's crop of the highlight's lines, and the whole page. */
+  crops: Record<'auto' | 'short' | 'tall', PageRect | 'tight' | null>
+  source: PageFrame['source']
+}
+
+/** The other highlights on the made-up page, drawn as marks around the post's own. */
+export const OTHERS_ON_PAGE: FrameMark[] = OTHERS
+
+/** Cover, the page with the highlight, and the takeaway; the page slide's fallback is a quote at its longest. */
+export const POST_CAROUSEL: PostCarouselSample = {
+  name: 'post-carousel', mark: OWN, source: pageSource,
+  crops: { auto: null, short: 'tight', tall: WHOLE },
+  slides: [
+    { kind: 'cover', kicker: 'Learning science', headline },
+    { kind: 'page', kicker: 'Learning science', fallback: longEnglish.quote },
+    { kind: 'takeaway', kicker: 'The takeaway', text: 'Point at the gap between what the learner tried and what happened, not at the learner.' },
+  ],
+}

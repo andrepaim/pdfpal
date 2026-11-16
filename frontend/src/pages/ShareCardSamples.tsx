@@ -3,13 +3,14 @@
 // the page holds a hundred-odd small blobs instead of as many full-size canvases.
 //
 // Page and Headline frames (data-frame) crop a made-up paper page drawn here, through the same planCrop that
-// pageCrop uses for a PDF, with the page's lines given as text runs as pdf.js gives them. Carousel slides
-// (data-slide) do the same for each point. Text cards (data-sample) are the first build's matrix, unchanged.
+// pageCrop uses for a PDF, with the page's lines given as text runs as pdf.js gives them. Slides (data-slide) do the
+// same for the Carousel style's page slide (automatic, short and tall crops, and its fallback) and for each point of
+// a carousel of several highlights. Text cards (data-sample) are the first build's matrix, unchanged.
 import { useEffect, useState } from 'react'
 import { LOOKS, type CardSize, type PageMark, type PageRect, type ShareLook, type ShareStyle } from '../../../src/shared/share-card'
 import { canvasPng, cardSheetSpace, loadCardFonts, renderCard, type PageCrop } from '../lib/share-card'
 import { boundingBox, planCrop, runBox, type CropPlan } from '../lib/share-card/crop-box'
-import { CAROUSEL_MAX, CAROUSEL_SHORT, PAGE_FRAMES, SAMPLE_PAGE, SAMPLES, type CarouselSample, type PageFrame } from '../lib/share-card/samples'
+import { CAROUSEL_MAX, CAROUSEL_SHORT, OTHERS_ON_PAGE, PAGE_FRAMES, POST_CAROUSEL, SAMPLE_PAGE, SAMPLES, type CarouselSample, type PageFrame } from '../lib/share-card/samples'
 import { renderSlide, slideSheetSpace, type SlideContext, type SlideSpec } from '../lib/share-card/slides'
 
 type Result = { kind: 'frame' | 'slide' | 'sample'; name: string; url?: string; size?: string; error?: string }
@@ -140,6 +141,16 @@ const carouselContext = (carousel: CarouselSample, index: number): SlideContext 
   number: index + 1, count: carousel.slides.length,
 })
 
+/** The Carousel style's page slide: the post's own highlight and every other one on the made-up page, cropped. */
+async function postPageCrop(slide: SlideSpec, context: SlideContext, look: ShareLook, page: SamplePage, crop: PageRect | 'tight' | null): Promise<PageCrop> {
+  const rects = page.find(POST_CAROUSEL.mark.phrase)
+  const marks = [POST_CAROUSEL.mark, ...OTHERS_ON_PAGE].map(mark => ({ rects: page.find(mark.phrase), color: mark.color }))
+  const sheet = await slideSheetSpace(slide, context, { look })
+  const box = boundingBox(rects)
+  const reader = crop === 'tight' ? { x1: 0.09, y1: box.y1 - 0.0016, x2: 0.91, y2: box.y2 + 0.0016 } : crop
+  return cut(page, planCrop({ rects, color: POST_CAROUSEL.mark.color }, SAMPLE_PAGE, { sheet, crop: reader, marks, extraLines: 3 }, reader ? [] : page.runs))
+}
+
 /** A point slide's crop: its highlight on the made-up page, with every highlight of the set as marks. */
 async function slideCrop(carousel: CarouselSample, slide: Extract<SlideSpec, { kind: 'point' }>, context: SlideContext, look: ShareLook, page: SamplePage): Promise<PageCrop> {
   const item = carousel.items[slide.item]!
@@ -181,6 +192,24 @@ export default function ShareCardSamples() {
           if (canvas.dataset.style !== frame.style) throw new Error(`Drawn as ${canvas.dataset.style}.`)
           return canvas
         })
+      }
+      // The Carousel style's three cards in every look: the page slide automatic, short, tall, and as its fallback.
+      for (const look of LOOKS as readonly ShareLook[]) {
+        type Variant = { slide: SlideSpec; index: number; variant: string }
+        const variants = POST_CAROUSEL.slides.flatMap((slide, index): Variant[] => slide.kind === 'page'
+          ? ['auto', 'short', 'tall', 'fallback'].map(variant => ({ slide, index, variant }))
+          : [{ slide, index, variant: slide.kind }])
+        for (const { slide, index, variant } of variants) {
+          if (cancelled) return
+          await show('slide', `${POST_CAROUSEL.name}-${look}-${index + 1}-${variant}`, async () => {
+            const context: SlideContext = { source: { ...POST_CAROUSEL.source, color: 'yellow' }, number: index + 1, count: POST_CAROUSEL.slides.length }
+            const crop = slide.kind === 'page' && variant !== 'fallback' ? await postPageCrop(slide, context, look, pages[1], POST_CAROUSEL.crops[variant as 'auto' | 'short' | 'tall']) : undefined
+            const canvas = await renderSlide(slide, context, { look, crop })
+            const expected = slide.kind === 'page' ? (crop ? 'page' : 'quote') : 'idea'
+            if (canvas.dataset.style !== expected) throw new Error(`Drawn as ${canvas.dataset.style}.`)
+            return canvas
+          })
+        }
       }
       // The longest texts in every look; the short ones in Ink.
       for (const [carousel, looks] of [[CAROUSEL_MAX, LOOKS], [CAROUSEL_SHORT, ['ink']]] as const) for (const look of looks as readonly ShareLook[])

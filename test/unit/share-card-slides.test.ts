@@ -1,9 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { LOOKS, type PageMark, type ShareCardSource } from '../../src/shared/share-card.js'
-import { layoutCard, MIN_TEXT_PX, type Box, type CardLayout, type ImageCommand, type Measure, type TextCommand } from '../../frontend/src/lib/share-card/layout.js'
-import { itemSource, layoutSlide, SLIDE_LIMITS, slideInput, type SlideContext, type SlideSpec } from '../../frontend/src/lib/share-card/slides.js'
-import { CAROUSEL_MAX, CAROUSEL_SHORT, LONG_CREDIT, LONG_TITLE, SAMPLES } from '../../frontend/src/lib/share-card/samples.js'
+import { layoutCard, pageSheetSpace, MIN_TEXT_PX, type Box, type CardLayout, type ImageCommand, type Measure, type TextCommand } from '../../frontend/src/lib/share-card/layout.js'
+import { itemSource, layoutSlide, SLIDE_LIMITS, slideInput, slideSpace, type SlideContext, type SlideSpec } from '../../frontend/src/lib/share-card/slides.js'
+import { CAROUSEL_MAX, CAROUSEL_SHORT, LONG_CREDIT, LONG_TITLE, POST_CAROUSEL, SAMPLES, longEnglish } from '../../frontend/src/lib/share-card/samples.js'
 
 // The same stand-in for canvas measurement as share-card-layout.test.ts.
 const measure: Measure = (text, font, letterSpacing) => {
@@ -52,7 +52,7 @@ test('the sample carousels hold every slide kind, the longest at the contract\'s
     const text = slide.kind === 'cover' || slide.kind === 'point' ? slide.headline : slide.text
     assert.equal(text.length, SLIDE_LIMITS[slide.kind], `${slide.kind}: ${text}`)
   }
-  assert.deepEqual(SLIDE_LIMITS, { cover: 80, study: 160, takeaway: 140, limitations: 160, point: 70 })
+  assert.deepEqual(SLIDE_LIMITS, { cover: 80, study: 160, takeaway: 140, limitations: 160, point: 70, page: 240 })
 })
 
 test('every slide fits in every look, at the longest texts and with short and tall crops, numbered up to 12 / 12', () => {
@@ -132,4 +132,73 @@ test('one item of a set becomes a source for pageCrop: its page, boxes and colou
   const one = itemSource(post, { page: 9, rects, color: 'green' })
   assert.deepEqual(one, { ...post, page: 9, rects, color: 'green', region: null })
   assert.equal(post.page, 2)
+})
+
+// ── Three cards for one highlight (stage 4) ─────────────────────────────────────────────────────────────────────────
+const page = (fallback: string): SlideSpec => ({ kind: 'page', kicker: 'LLM Finetuning', fallback })
+const one = (number: number, count: number): SlideContext => ({ source, number, count })
+
+test('a page slide is the Page style at Feed: its kicker, the sheet filling the room, the strip with its page and number', () => {
+  for (const look of LOOKS) {
+    const slide = page(longEnglish.quote), space = slideSpace(slide, one(2, 3), { look }, measure)
+    // The room is the Page style's at Feed under the slide's own kicker.
+    assert.deepEqual(space, pageSheetSpace({ ...slideInput(slide, one(2, 3), { look }), style: 'page' }, measure))
+    assert.equal(space.fill, space.height)
+    const layout = layoutSlide(slide, one(2, 3), { look, crop: { width: 900, height: 900 * space.height / space.width, marks: MARKS } }, measure)
+    assertSlideFits(layout, `page/${look}`)
+    assert.equal(layout.style, 'page')
+    const image = imageOf(layout)!
+    assert.ok(Math.abs(image.width - space.width) < 1e-6 && Math.abs(image.height - space.height) < 1e-6)
+    assert.deepEqual(image.marks.map(m => m.rects), [MARKS[0]!.rects])
+    assert.equal(texts(layout).find(t => t.role === 'kicker')!.text, 'LLM FINETUNING')
+    assert.equal(texts(layout).some(t => t.role === 'headline' || t.role === 'quote'), false)
+    const short = layoutSlide(slide, { ...one(2, 3), source: { ...source, credit: 'Dettmers et al., 2023' } }, { look, crop: CROPS.short }, measure)
+    assert.equal(texts(short).find(t => t.role === 'footerCredit')!.text, 'Dettmers et al., 2023 · p. 4')
+    assert.equal(texts(layout).find(t => t.role === 'slideNumber')!.text, '2 / 3')
+    // A tall crop is drawn narrower and centred; a short one at full width.
+    for (const crop of [CROPS.short, CROPS.tall]) assertSlideFits(layoutSlide(slide, one(2, 3), { look, crop }, measure), `page/${look}/${crop.height}`)
+  }
+})
+
+test('without a crop, a page slide draws its fallback as text under the same kicker, at up to 240 characters', () => {
+  assert.equal(longEnglish.quote.length, 240)
+  for (const look of LOOKS) for (const fallback of [longEnglish.quote, longEnglish.headline, 'Rest more.']) {
+    const name = `${look}/${fallback.length}`
+    const layout = layoutSlide(page(fallback), one(2, 3), { look }, measure)
+    assertSlideFits(layout, name)
+    assert.equal(layout.style, 'quote', name)
+    assert.equal(imageOf(layout), undefined)
+    assert.equal(texts(layout).find(t => t.role === 'kicker')?.text, 'LLM FINETUNING', name)
+    // No quotation glyph: the fallback may be a headline as well as a quote.
+    assert.equal(texts(layout).some(t => t.role === 'glyph'), false, name)
+    assert.equal(texts(layout).filter(t => t.role === 'quote').map(t => t.text).join(' '), fallback, name)
+  }
+  // A Quote card without a kicker of its own keeps its glyph.
+  const sample = SAMPLES[0]!
+  assert.ok(texts(layoutCard({ card: sample.card, source: sample.source, style: 'quote', look: 'ink', size: 'feed' }, measure)).some(t => t.role === 'glyph'))
+})
+
+test('the three cards of a post fit numbered 1 / 3 to 3 / 3, and 1 / 2 to 2 / 2 without a takeaway', () => {
+  assert.deepEqual(POST_CAROUSEL.slides.map(s => s.kind), ['cover', 'page', 'takeaway'])
+  for (const look of LOOKS) for (const slides of [POST_CAROUSEL.slides, POST_CAROUSEL.slides.slice(0, 2)]) for (const [index, slide] of slides.entries()) {
+    for (const crop of slide.kind === 'page' ? [CROPS.short, CROPS.tall, undefined] : [undefined]) {
+      const name = `${look}/${index + 1}/${slides.length}/${slide.kind}${crop ? `/${crop.height}` : ''}`
+      const layout = layoutSlide(slide, one(index + 1, slides.length), { look, crop }, measure)
+      assertSlideFits(layout, name)
+      assert.equal(texts(layout).find(t => t.role === 'slideNumber')!.text, `${index + 1} / ${slides.length}`, name)
+    }
+  }
+})
+
+test('the Carousel style asked of layoutCard is laid out as Headline', () => {
+  const sample = SAMPLES[0]!
+  for (const crop of [{ width: 900, height: 400, marks: MARKS }, undefined]) {
+    const input = { card: sample.card, source: sample.source, look: 'paper' as const, size: 'feed' as const, crop }
+    const carousel = layoutCard({ ...input, style: 'carousel' as unknown as 'headline' }, measure)
+    const headline = layoutCard({ ...input, style: 'headline' }, measure)
+    assert.deepEqual(carousel, headline)
+    assert.equal(carousel.style, crop ? 'headline' : 'idea')
+  }
+  const space = pageSheetSpace({ card: sample.card, source: sample.source, style: 'carousel' as unknown as 'headline', look: 'ink', size: 'feed' }, measure)
+  assert.deepEqual(space, pageSheetSpace({ card: sample.card, source: sample.source, style: 'headline', look: 'ink', size: 'feed' }, measure))
 })
