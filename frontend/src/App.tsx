@@ -18,7 +18,7 @@ import { kindleLaunchUrl } from '../../src/shared/kindle-book'
 import SharePostPanel from './components/SharePostPanel'
 import HighlightMenu, { type HighlightMenuState } from './components/HighlightMenu'
 import { shareCardApi } from './lib/share-card-api'
-import type { ShareCardSummary } from '../../src/shared/share-card'
+import { highlightColor, type PageMark, type ShareCardSummary } from '../../src/shared/share-card'
 
 interface User { email: string; name: string; picture: string }
 
@@ -178,6 +178,8 @@ export default function App({ user }: { user: User }) {
   const [posts, setPosts] = useState<ShareCardSummary[]>([])
   const [postNotice, setPostNotice] = useState<string | null>(null)
   const [postPage, setPostPage] = useState<number | null>(null)
+  // The page in view, where "Share a region" starts.
+  const [viewedPage, setViewedPage] = useState<number | null>(null)
   const [highlightMenu, setHighlightMenu] = useState<HighlightMenuState | null>(null)
   const [jumpTo, setJumpTo] = useState<{ page: number; key: string } | null>(null)
 
@@ -213,6 +215,7 @@ export default function App({ user }: { user: User }) {
         setAnnotations(anns)
         if (post) { setPostId(post.id); setPostPage(post.source.page); setRightPanel('post') }
         else setPostPage(null)
+        setViewedPage(post?.source.page ?? s.last_page_read ?? 1)
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
@@ -245,6 +248,9 @@ export default function App({ user }: { user: User }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postParam])
 
+  /** The reader's highlights on a page, as the crop editor draws them. */
+  const marksOn = (page: number): PageMark[] => annotations.filter(annotation => annotation.page_number === page)
+    .map(annotation => ({ rects: annotation.rects?.length ? annotation.rects : [{ x1: annotation.x1, y1: annotation.y1, x2: annotation.x2, y2: annotation.y2 }], color: highlightColor(annotation.color) }))
   const postsByAnnotation = new Map(posts.filter(post => post.annotation_id).map(post => [post.annotation_id!, post]))
 
   const createPost = async (annotation: Annotation) => {
@@ -281,6 +287,7 @@ export default function App({ user }: { user: User }) {
   useEffect(() => registerPendingSave(flushReadingProgress), [flushReadingProgress])
 
   const handlePageChange = useCallback((page: number) => {
+    setViewedPage(page)
     if (page === lastSavedProgress.current || page === pendingProgress.current) return
     pendingProgress.current = page
     if (progressTimer.current) clearTimeout(progressTimer.current)
@@ -544,6 +551,7 @@ export default function App({ user }: { user: User }) {
           )}
           {rightPanel === 'post' && projectId && sourceId && (
             <SharePostPanel projectId={projectId} sourceId={sourceId} postId={postId} notice={postNotice}
+              currentPage={source?.type === 'pdf' ? viewedPage ?? 1 : undefined} marksOn={marksOn}
               onOpen={id => openPost(id, id ? posts.find(post => post.id === id)?.page : undefined)} onChanged={loadPosts} />
           )}
         </div>

@@ -17,8 +17,9 @@ type PageSize = { width: number; height: number }
 export const MIDDLE_REGION: PageRect = { x1: 0.12, y1: 0.3, x2: 0.88, y2: 0.62 }
 /** The share of the text area (or of the page, without text) a first-page post starts with when no heading ends it. */
 const TOP_SHARE = 0.55
-/** The margin around the first page's text, as a page fraction. */
-const MARGIN = 0.02
+/** The margins beside and above or below the first page's text, as page fractions. */
+const MARGIN_X = 0.03
+const MARGIN_Y = 0.02
 /** The smallest box this module returns, as in the crop editor (frontend/src/lib/share-card/crop-edit.ts MIN_CROP). */
 const MIN_SIDE = 0.1
 /** Runs further apart than this many line heights get a space between them. */
@@ -158,13 +159,13 @@ export function firstPageRegion(runs: TextRun[], page: PageSize): PageRect {
   const lines = linesOf(runs, page)
   if (!lines.length) return { x1: 0, y1: 0, x2: 1, y2: TOP_SHARE }
   const area = boundingBox(lines.map(line => line.box))
-  const x1 = area.x1 - MARGIN, x2 = area.x2 + MARGIN, y1 = area.y1 - MARGIN
+  const x1 = area.x1 - MARGIN_X, x2 = area.x2 + MARGIN_X, y1 = area.y1 - MARGIN_Y
   const heading = lines.find(line => INTRODUCTION.test(cleanPassage(line.text)))
   const above = heading ? lines.filter(line => line.box.y2 <= heading.box.y1 + EPS) : []
   if (heading && above.length) {
     const bottom = Math.max(...above.map(line => line.box.y2))
     // The margin below the last line, but never past the middle of the gap to the heading.
-    return onPage({ x1, y1, x2, y2: Math.min(bottom + MARGIN, (bottom + heading.box.y1) / 2) })
+    return onPage({ x1, y1, x2, y2: Math.min(bottom + MARGIN_Y, (bottom + heading.box.y1) / 2) })
   }
   return onPage({ x1, y1, x2, y2: area.y1 + TOP_SHARE * (area.y2 - area.y1) })
 }
