@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { ANGLES, LINKS, LOOKS, STYLES } from '../shared/share-card.js'
+import { ANGLES, LINKS, LOOKS, SET, STYLES } from '../shared/share-card.js'
 import { pageRectSchema } from '../shared/share-card-schema.js'
 import { ShareCardService, changeShareCardInput, startShareCardInput } from '../core/share-cards.js'
 
@@ -9,7 +9,8 @@ const empty = z.object({}).strict()
 /** Exactly one kind of edit per request. */
 const patch = z.union([
   z.object({ style: z.enum(STYLES), look: z.enum(LOOKS) }).strict(),
-  z.object({ crop: pageRectSchema.nullable() }).strict(),
+  z.object({ crop: pageRectSchema.nullable(), slide: z.number().int().min(0).max(SET.maxItems - 1).optional() }).strict(),
+  z.object({ set_text: z.object({ field: z.enum(['study', 'takeaway', 'limitations', 'point']), index: z.number().int().min(0).max(SET.maxItems - 1).optional(), text: z.string().max(1_000) }).strict() }).strict(),
   z.object({ angle: z.enum(ANGLES) }).strict(),
   z.object({ show_tags: z.boolean() }).strict(),
   z.object({ link: z.enum(LINKS) }).strict(),
@@ -40,7 +41,8 @@ export function registerShareCardRoutes(app: FastifyInstance, cards: ShareCardSe
   app.patch<{ Params: Params }>(`${base}/:id`, options, async request => {
     const body = patch.parse(request.body), { projectId, id } = request.params
     if ('style' in body) return cards.restyle(projectId, id, body.style, body.look)
-    if ('crop' in body) return cards.crop(projectId, id, body.crop)
+    if ('crop' in body) return cards.crop(projectId, id, body.crop, body.slide)
+    if ('set_text' in body) return cards.editSetText(projectId, id, body.set_text.field, body.set_text.text, body.set_text.index)
     if ('angle' in body) return cards.angle(projectId, id, body.angle)
     if ('show_tags' in body) return cards.showTags(projectId, id, body.show_tags)
     if ('link' in body) return cards.link(projectId, id, body.link)

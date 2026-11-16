@@ -1,9 +1,9 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  CARD, DESTINATION_DEFAULTS, DRAFT, REGION_MIN, TAKE_MAX, captionText, cardDescription, cleanPassage, creditLine, defaultLook, draftLimits,
-  firstCommentText, highlightColor, numbersIn, publicUrl, quoteMatches, regionProblem, sourceLine, summaryTitle, unsupportedNumbers, validateCard,
-  type Caption, type CardContent, type ShareCardSource,
+  CARD, DESTINATION_DEFAULTS, DRAFT, REGION_MIN, SET, SET_STYLE_REFUSED, TAKE_MAX, captionText, cardDescription, cleanPassage, creditLine, defaultLook,
+  draftLimits, firstCommentText, highlightColor, numbersIn, publicUrl, quoteMatches, regionProblem, setSlides, sourceLine, summaryTitle, unsupportedNumbers,
+  validateCard, type Caption, type CardContent, type SetContent, type SetItem, type ShareCardSource,
 } from '../../src/shared/share-card.js'
 import { captionSchema, cardContentSchema, previousVersionSchema, shareCardSourceSchema } from '../../src/shared/share-card-schema.js'
 
@@ -11,12 +11,12 @@ const passage = 'Attention lets every position look at every other one. However,
 const source: ShareCardSource = {
   version: 1, passage, page: 4, rects: [{ x1: 0.1, y1: 0.2, x2: 0.9, y2: 0.25 }], color: 'yellow',
   context: 'Earlier text. We suspect that sparse patterns may reduce this cost. Later text.', title: 'Attention Is All You Need',
-  credit: 'Vaswani et al., 2017', url: '', kind: 'highlight', region: null,
+  credit: 'Vaswani et al., 2017', url: '', kind: 'highlight', region: null, items: [],
 }
 const card: CardContent = {
   quote: 'Attention lets every position look at every other one.', quoteEdited: false, emphasis: 'every other one',
   headline: 'Attention trades cost for reach', pull: 'sparse patterns may reduce this cost', topic: 'Attention',
-  takeawaysTitle: 'What full attention buys', style: 'quote', look: 'ink', crop: null,
+  takeawaysTitle: 'What full attention buys', style: 'quote', look: 'ink', crop: null, set: null,
   takeaways: [{ title: 'Reach is global', detail: 'Every position can use any other.' },
     { title: 'Cost is quadratic', detail: 'Longer inputs cost much more.' }, { title: 'Sparsity may help', detail: 'The authors suspect it.' }],
 }
@@ -253,7 +253,7 @@ const REGION = { x1: 0.1, y1: 0.4, x2: 0.9, y2: 0.7 }
 const regionSource: ShareCardSource = { ...source, kind: 'region', region: REGION, rects: [], passage: 'Accuracy Sequence length', page: 3 }
 const regionCard: CardContent = {
   quote: '', quoteEdited: false, emphasis: '', headline: 'Longer inputs cost more', pull: '', topic: 'Attention', takeawaysTitle: '', takeaways: [],
-  style: 'page', look: 'ink', crop: REGION,
+  style: 'page', look: 'ink', crop: REGION, set: null,
 }
 
 test('a region or paper card has only a headline and a topic, and only the Page and Headline styles', () => {
@@ -279,7 +279,7 @@ test('a region or paper card has only a headline and a topic, and only the Page 
 })
 
 test('the source schema reads a stored source without a kind as a highlight and allows a short region text', () => {
-  const { kind: _kind, region: _region, ...stored } = source
+  const { kind: _kind, region: _region, items: _items, ...stored } = source
   assert.deepEqual(shareCardSourceSchema.parse(stored), source)
   assert.deepEqual(shareCardSourceSchema.parse(regionSource), regionSource)
   assert.deepEqual(shareCardSourceSchema.parse({ ...regionSource, kind: 'paper', passage: '' }), { ...regionSource, kind: 'paper', passage: '' })
@@ -310,4 +310,89 @@ test('a region or paper post is described and listed without a quote', () => {
   assert.equal(summaryTitle({ ...regionSource, kind: 'paper', page: 2 }, ''), 'Paper on p. 2')
   assert.equal(summaryTitle(source, ''), passage.slice(0, 80).replace(/\s+\S*$/, '') + '…')
   assert.equal(summaryTitle({ ...source, passage: 'A short passage of text.' }, ''), 'A short passage of text.')
+})
+
+// Carousels: several highlights of one paper, one post.
+const items: SetItem[] = [
+  { annotation_id: 'a1', passage: 'Attention lets every position look at every other one.', page: 2, rects: [{ x1: 0.1, y1: 0.2, x2: 0.9, y2: 0.22 }], color: 'green' },
+  { annotation_id: 'a2', passage: 'The cost grows with the square of the sequence length.', page: 3, rects: [{ x1: 0.1, y1: 0.5, x2: 0.6, y2: 0.52 }], color: 'pink' },
+  { annotation_id: null, passage: 'We suspect that sparse patterns may reduce this cost.', page: 5, rects: [{ x1: 0.1, y1: 0.7, x2: 0.8, y2: 0.72 }], color: 'yellow' },
+]
+const setSource: ShareCardSource = {
+  ...source, kind: 'set', items, passage: items.map(item => item.passage).join('\n\n'), page: 2, rects: [], color: 'yellow', region: null,
+}
+const set: SetContent = {
+  study: 'The authors describe a model built only on attention.', points: ['Every position sees every other', 'Cost grows with the square', 'Sparsity may cut the cost'],
+  takeaway: 'Attention buys reach at a price that grows fast.', limitations: 'The fix for the cost is a suspicion, not a result.', crops: [null, null, null],
+}
+const setCard: CardContent = { ...regionCard, style: 'headline', crop: null, headline: 'Reach has a quadratic price', set }
+
+test('a carousel card has a headline, a topic and one point and crop per highlight, in the Headline style', () => {
+  assert.deepEqual(SET, { minItems: 2, maxItems: 8, studyMax: 160, pointMax: 70, takeawayMax: 140, limitationsMax: 160 })
+  validateCard(setCard, setSource)
+  validateCard({ ...setCard, set: { ...set, study: '', limitations: '', crops: [null, { x1: 0, y1: 0.4, x2: 1, y2: 0.6 }, null] } }, setSource)
+  const withSet = (change: Partial<SetContent>) => ({ ...setCard, set: { ...set, ...change } })
+  for (const [value, message] of [
+    [{ ...setCard, set: null }, /^Error: A carousel needs its slides\.$/],
+    [{ ...setCard, quote: 'Attention' }, /quote must be empty for a carousel/],
+    [{ ...setCard, takeaways: card.takeaways }, /takeaways must be empty for a carousel/],
+    [{ ...setCard, crop: { x1: 0, y1: 0, x2: 1, y2: 1 } }, /crop must be empty for a carousel; each highlight slide has its own/],
+    [{ ...setCard, style: 'page' }, /^Error: A carousel's slides use the Headline style; only the look can change\.$/],
+    [{ ...setCard, headline: 'h'.repeat(81) }, /headline has 81 characters; allowed 1–80/],
+    [withSet({ points: set.points.slice(0, 2) }), /^Error: points has 2 items; it needs exactly 3, one per highlight in order\.$/],
+    [withSet({ crops: [null] }), /crops has 1 items; it needs exactly 3/],
+    [withSet({ points: ['p'.repeat(71), 'b', 'c'] }), /^Error: points\[0\] has 71 characters; allowed 1–70\.$/],
+    [withSet({ points: ['a', '', 'c'] }), /points\[1\] has 0 characters; allowed 1–70/],
+    [withSet({ study: 's'.repeat(161) }), /^Error: study has 161 characters; allowed 0–160\.$/],
+    [withSet({ takeaway: '' }), /takeaway has 0 characters; allowed 1–140/],
+    [withSet({ takeaway: 't'.repeat(141) }), /takeaway has 141 characters; allowed 1–140/],
+    [withSet({ limitations: 'l'.repeat(161) }), /limitations has 161 characters; allowed 0–160/],
+    [withSet({ crops: [null, { x1: 0.5, y1: 0, x2: 0.4, y2: 1 }, null] }), /crops\[1\] needs x1 < x2 and y1 < y2/],
+  ] as Array<[CardContent, RegExp]>) assert.throws(() => validateCard(value, setSource), message, String(message))
+  // A carousel's words are refused on a single post, and a single post's on a carousel.
+  assert.throws(() => validateCard(setCard, source), /quote has 0 characters/)
+  assert.throws(() => validateCard({ ...card, set }, source), /set must be empty for a post from one highlight/)
+  assert.throws(() => validateCard({ ...regionCard, set }, regionSource), /set must be empty for a post made from a region/)
+  assert.equal(SET_STYLE_REFUSED, "A carousel's slides use the Headline style; only the look can change.")
+})
+
+test('the source and card schemas read stored values without items or set, and hold a carousel\'s', () => {
+  const { set: _set, ...stored } = card
+  assert.deepEqual(cardContentSchema.parse(stored), card)
+  assert.deepEqual(cardContentSchema.parse(setCard), setCard)
+  assert.deepEqual(shareCardSourceSchema.parse(setSource), setSource)
+  assert.throws(() => shareCardSourceSchema.parse({ ...setSource, items: items.slice(0, 1) }))
+  assert.throws(() => shareCardSourceSchema.parse({ ...setSource, items: [...items, ...items, ...items] }))
+  assert.throws(() => shareCardSourceSchema.parse({ ...source, items }))
+  assert.throws(() => shareCardSourceSchema.parse({ ...setSource, region: REGION }))
+  assert.throws(() => shareCardSourceSchema.parse({ ...setSource, items: [{ ...items[0], passage: 'Too short.' }, items[1]] }))
+  // A carousel's passage holds all its highlights; a single post's stays within passageMax.
+  const long = Array.from({ length: 8 }, (_, index) => ({ ...items[0]!, passage: 'p'.repeat(CARD.passageMax), page: index + 1 }))
+  shareCardSourceSchema.parse({ ...setSource, items: long, passage: long.map(item => item.passage).join('\n\n') })
+  assert.throws(() => shareCardSourceSchema.parse({ ...source, passage: 'p'.repeat(CARD.passageMax + 1) }))
+})
+
+test('setSlides lists the cover, the study, one slide per highlight, the takeaway and the limits', () => {
+  const cover = { kind: 'cover', kicker: 'Attention', headline: 'Reach has a quadratic price' }
+  const points = set.points.map((headline, item) => ({ kind: 'point', kicker: 'Attention', headline, item }))
+  const takeaway = { kind: 'takeaway', kicker: 'The takeaway', text: set.takeaway }
+  const study = { kind: 'study', kicker: 'The study', text: set.study }
+  const limits = { kind: 'limitations', kicker: 'Limits', text: set.limitations }
+  assert.deepEqual(setSlides(setCard, setSource), [cover, study, ...points, takeaway, limits])
+  assert.deepEqual(setSlides({ ...setCard, set: { ...set, study: '' } }, setSource), [cover, ...points, takeaway, limits])
+  assert.deepEqual(setSlides({ ...setCard, set: { ...set, limitations: '' } }, setSource), [cover, study, ...points, takeaway])
+  assert.deepEqual(setSlides({ ...setCard, set: { ...set, study: '', limitations: '' } }, setSource), [cover, ...points, takeaway])
+  // Two highlights make the shortest carousel; a point beyond the source's highlights is not drawn.
+  const two = { ...setSource, items: items.slice(0, 2) }
+  assert.deepEqual(setSlides({ ...setCard, set: { ...set, study: '', limitations: '', points: set.points.slice(0, 2), crops: [null, null] } }, two), [cover, ...points.slice(0, 2), takeaway])
+  assert.deepEqual(setSlides(setCard, two).filter(slide => slide.kind === 'point').length, 2)
+  // A card that is not a carousel has no slides.
+  assert.deepEqual(setSlides(card, source), [])
+})
+
+test('a carousel is described and listed by its headline and its size', () => {
+  assert.equal(cardDescription(setCard, 'headline', setSource), 'Carousel of 7 slides: Reach has a quadratic price.')
+  assert.equal(cardDescription({ ...setCard, set: { ...set, study: '' } }, 'headline'), 'Carousel of 6 slides: Reach has a quadratic price.')
+  assert.equal(summaryTitle(setSource, 'Reach has a quadratic price'), 'Reach has a quadratic price')
+  assert.equal(summaryTitle(setSource, ''), '3 highlights')
 })

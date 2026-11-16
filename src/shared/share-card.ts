@@ -20,8 +20,13 @@ export const HIGHLIGHT_COLORS = ['yellow', 'green', 'blue', 'pink'] as const
 export const DESTINATIONS = ['linkedin', 'x', 'instagram'] as const
 /** The three drafts one request may return. */
 export const ANGLES = ['finding', 'contrast', 'caveat'] as const
-/** What a post started from: a highlight, a box the reader drew on a page, or the first page of the paper. */
-export const SOURCE_KINDS = ['highlight', 'region', 'paper'] as const
+/**
+ * What a post started from: a highlight, a box the reader drew on a page, the first page of the paper, or a set of
+ * highlights from one paper told as a carousel.
+ */
+export const SOURCE_KINDS = ['highlight', 'region', 'paper', 'set'] as const
+/** A carousel: how many highlights, and the limits of its slides' words. */
+export const SET = { minItems: 2, maxItems: 8, studyMax: 160, pointMax: 70, takeawayMax: 140, limitationsMax: 160 } as const
 /** The smallest region, as a fraction of the page in each direction. */
 export const REGION_MIN = 0.05
 /** Where the link goes in a LinkedIn post: in the post, or held back as a ready first-comment line. */
@@ -35,6 +40,10 @@ export type Destination = (typeof DESTINATIONS)[number]
 export type Angle = (typeof ANGLES)[number]
 export type LinkPlacement = (typeof LINKS)[number]
 export type SourceKind = (typeof SOURCE_KINDS)[number]
+/** One highlight of a carousel, copied when the post is made so that the post outlives it. */
+export type SetItem = { annotation_id: string | null; passage: string; page: number; rects: PageRect[]; color: HighlightColor }
+/** A carousel's words beyond the cover, and the reader's crop of each highlight slide (null is automatic). */
+export type SetContent = { study: string; points: string[]; takeaway: string; limitations: string; crops: Array<PageRect | null> }
 export type HighlightColor = (typeof HIGHLIGHT_COLORS)[number]
 export type ShareCardStatus = 'pending' | 'running' | 'complete' | 'failed' | 'cancelled'
 
@@ -62,7 +71,15 @@ export type ShareCardSource = {
   color: HighlightColor
   /** The box a region or first-page post started from, as page fractions; null for a highlight. */
   region: PageRect | null
-  /** Text of the page and its two neighbours, at most CARD.contextMax characters. */
+  /**
+   * A carousel's highlights in the reader's order, 2 to SET.maxItems; [] for every other kind. For a set, passage is
+   * their passages joined by blank lines, page is the first item's page, rects is [], color 'yellow' and region null.
+   */
+  items: SetItem[]
+  /**
+   * Text of the page and its two neighbours, at most CARD.contextMax characters. For a set, the text of the items'
+   * own pages, the budget shared fairly between them.
+   */
   context: string
   title: string
   /** For example "Vaswani et al., 2017"; may be empty. */
@@ -88,8 +105,13 @@ export type CardContent = {
   takeaways: CardTakeaway[]
   style: ShareStyle
   look: ShareLook
-  /** The reader's crop of the page, as page fractions; null means automatic. */
+  /** The reader's crop of the page, as page fractions; null means automatic. Always null for a set. */
   crop: PageRect | null
+  /**
+   * A carousel's slides (null for every other kind). A set's card has a headline and a topic, no quote and no
+   * takeaways, points and crops one per item, and the Headline style.
+   */
+  set: SetContent | null
 }
 
 /** The text of a post: up to three drafts for one destination, and how the copied text is composed. */
@@ -124,8 +146,10 @@ export type ShareCardRecord = {
   destination: Destination
   /** Of the latest request; the completed version's own is caption.take. */
   take: string
-  /** Every highlight now on the post's page, the post's own included; read live from annotations. */
+  /** Every highlight now on the post's page, the post's own included; read live from annotations. A set's first item's page. */
   marks: PageMark[]
+  /** For a set, one list per item: every highlight now on that item's page, the item's own included. [] otherwise. */
+  set_marks: PageMark[][]
 }
 
 export type ShareCardSummary = {
@@ -222,7 +246,8 @@ function limit(name: string, value: string, max: number, min = 1) {
  * Throws unless the card can be drawn and every quoted word comes from the source. Messages name the field
  * and the limit, because they are handed back to the model as the repair reason.
  */
-export function validateCard(card: CardContent, source: Pick<ShareCardSource, 'passage' | 'context'> & { kind?: SourceKind }): void {
+export function validateCard(card: CardContent, source: Pick<ShareCardSource, 'passage' | 'context'> & { kind?: SourceKind; items?: SetItem[] }): void {
+  if (source.kind === 'set') return validateSetCard(card, source.items ?? [])
   if (source.kind && source.kind !== 'highlight') return validateRegionCard(card)
   limit('quote', card.quote, CARD.quoteMax)
   if (!card.quoteEdited && !quoteMatches(card.quote, source.passage)) throw new Error('quote must be copied exactly from highlight.')
@@ -240,6 +265,7 @@ export function validateCard(card: CardContent, source: Pick<ShareCardSource, 'p
   })
   if (!(STYLES as readonly string[]).includes(card.style)) throw new Error(`Unknown card style: ${card.style}.`)
   if (!(LOOKS as readonly string[]).includes(card.look)) throw new Error(`Unknown card look: ${card.look}.`)
+  if (card.set) throw new Error('set must be empty for a post from one highlight.')
 }
 
 /** Why a region or first-page post cannot take a text-card style. */
@@ -256,6 +282,56 @@ function validateRegionCard(card: CardContent): void {
   if (!(STYLES as readonly string[]).includes(card.style)) throw new Error(`Unknown card style: ${card.style}.`)
   if (!(REGION_STYLES as readonly string[]).includes(card.style)) throw new Error(REGION_STYLE_REFUSED)
   if (!(LOOKS as readonly string[]).includes(card.look)) throw new Error(`Unknown card look: ${card.look}.`)
+  if (card.set) throw new Error('set must be empty for a post made from a region.')
+}
+
+/** Why a carousel cannot take another style. */
+export const SET_STYLE_REFUSED = "A carousel's slides use the Headline style; only the look can change."
+
+/**
+ * A carousel's card: a headline and a topic on the cover, then its slides' words within SET's limits, one point and
+ * one crop per item. Messages name the answer's fields, because they are also the repair reason.
+ */
+function validateSetCard(card: CardContent, items: SetItem[]): void {
+  const set = card.set
+  if (!set) throw new Error('A carousel needs its slides.')
+  for (const name of ['quote', 'emphasis', 'pull', 'takeawaysTitle'] as const) if (card[name]) throw new Error(`${name} must be empty for a carousel.`)
+  if (!Array.isArray(card.takeaways) || card.takeaways.length) throw new Error('takeaways must be empty for a carousel.')
+  if (card.crop) throw new Error('crop must be empty for a carousel; each highlight slide has its own.')
+  limit('headline', card.headline, CARD.headlineMax)
+  limit('topic', card.topic, CARD.topicMax, 0)
+  for (const name of ['points', 'crops'] as const)
+    if (!Array.isArray(set[name]) || set[name].length !== items.length) throw new Error(`${name} has ${Array.isArray(set[name]) ? set[name].length : 0} items; it needs exactly ${items.length}, one per highlight in order.`)
+  set.points.forEach((point, index) => limit(`points[${index}]`, point, SET.pointMax))
+  limit('study', set.study, SET.studyMax, 0)
+  limit('takeaway', set.takeaway, SET.takeawayMax)
+  limit('limitations', set.limitations, SET.limitationsMax, 0)
+  set.crops.forEach((crop, index) => { if (crop && !(crop.x1 < crop.x2 && crop.y1 < crop.y2)) throw new Error(`crops[${index}] needs x1 < x2 and y1 < y2.`) })
+  if (card.style !== 'headline') throw new Error(SET_STYLE_REFUSED)
+  if (!(LOOKS as readonly string[]).includes(card.look)) throw new Error(`Unknown card look: ${card.look}.`)
+}
+
+/** One slide of a carousel, in order. `item` is the index of the highlight a point slide shows. */
+export type SlideSpec =
+  | { kind: 'cover'; kicker: string; headline: string }
+  | { kind: 'study' | 'takeaway' | 'limitations'; kicker: string; text: string }
+  | { kind: 'point'; kicker: string; headline: string; item: number }
+
+/**
+ * A carousel's slides: the cover; the study when it is not empty; one slide per highlight; the takeaway; the limits
+ * when they are not empty. A point slide's kicker is the topic, as the cover's. [] for a card that is not a carousel.
+ */
+export function setSlides(card: CardContent, source: Pick<ShareCardSource, 'items'>): SlideSpec[] {
+  const set = card.set
+  if (!set) return []
+  const points = set.points.slice(0, source.items.length).map((headline, item): SlideSpec => ({ kind: 'point', kicker: card.topic, headline, item }))
+  return [
+    { kind: 'cover', kicker: card.topic, headline: card.headline },
+    ...set.study ? [{ kind: 'study', kicker: 'The study', text: set.study } as const] : [],
+    ...points,
+    { kind: 'takeaway', kicker: 'The takeaway', text: set.takeaway },
+    ...set.limitations ? [{ kind: 'limitations', kicker: 'Limits', text: set.limitations } as const] : [],
+  ]
 }
 
 /** Why a region cannot start a post, or null when it can: ordered, inside the page, at least REGION_MIN each way. */
@@ -267,9 +343,10 @@ export function regionProblem(region: PageRect): string | null {
     : 'A region needs x1 < x2 and y1 < y2 inside the page, and at least 5% of the page in each direction.'
 }
 
-/** A post's name in lists: the headline, else the start of the highlight, "Region on p. N" or "First page". */
-export function summaryTitle(source: Pick<ShareCardSource, 'kind' | 'passage' | 'page'>, headline: string): string {
+/** A post's name in lists: the headline, else the start of the highlight, "Region on p. N", "First page" or "N highlights". */
+export function summaryTitle(source: Pick<ShareCardSource, 'kind' | 'passage' | 'page' | 'items'>, headline: string): string {
   if (headline) return headline
+  if (source.kind === 'set') return `${source.items.length} highlights`
   if (source.kind === 'region') return `Region on p. ${source.page}`
   if (source.kind === 'paper') return source.page === 1 ? 'First page' : `Paper on p. ${source.page}`
   return source.passage.length > 80 ? `${source.passage.slice(0, 80).replace(/\s+\S*$/u, '')}…` : source.passage
@@ -312,6 +389,10 @@ export function firstCommentText(source: ShareCardSource): string {
 
 /** What a screen reader hears for the card: the words drawn in `style`. */
 export function cardDescription(card: CardContent, style: ShareStyle, source?: Pick<ShareCardSource, 'kind' | 'page'>): string {
+  if (card.set) {
+    const count = 2 + (card.set.study ? 1 : 0) + card.set.points.length + (card.set.limitations ? 1 : 0)
+    return `Carousel of ${count} slides: ${card.headline.replace(/\.+$/u, '')}.`
+  }
   // A region or first-page post has no quote: the Page card names what it shows, the Headline card reads its headline.
   if (!card.quote && (style === 'page' || style === 'headline')) {
     if (style === 'headline') return `Headline card: ${card.headline.replace(/\.+$/u, '')}.`
