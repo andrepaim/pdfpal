@@ -2,8 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { LOOKS, type PageMark, type ShareCardSource } from '../../src/shared/share-card.js'
 import { layoutCard, pageSheetSpace, MIN_TEXT_PX, type Box, type CardLayout, type ImageCommand, type Measure, type TextCommand } from '../../frontend/src/lib/share-card/layout.js'
-import { itemSource, layoutSlide, SLIDE_LIMITS, slideInput, slideSpace, type SlideContext, type SlideSpec } from '../../frontend/src/lib/share-card/slides.js'
-import { CAROUSEL_MAX, CAROUSEL_SHORT, LONG_CREDIT, LONG_TITLE, POST_CAROUSEL, SAMPLES, longEnglish } from '../../frontend/src/lib/share-card/samples.js'
+import { itemSource, layoutSlide, leadingNumber, SLIDE_LIMITS, slideInput, slideSpace, type SlideContext, type SlideSpec } from '../../frontend/src/lib/share-card/slides.js'
+import { CAROUSEL_MAX, CAROUSEL_SHORT, LONG_CREDIT, LONG_TITLE, PAPER_CAROUSEL, PAPER_CAROUSEL_FIVE, POST_CAROUSEL, SAMPLES, longEnglish } from '../../frontend/src/lib/share-card/samples.js'
 
 // The same stand-in for canvas measurement as share-card-layout.test.ts.
 const measure: Measure = (text, font, letterSpacing) => {
@@ -52,7 +52,7 @@ test('the sample carousels hold every slide kind, the longest at the contract\'s
     const text = slide.kind === 'cover' || slide.kind === 'point' ? slide.headline : slide.text
     assert.equal(text.length, SLIDE_LIMITS[slide.kind], `${slide.kind}: ${text}`)
   }
-  assert.deepEqual(SLIDE_LIMITS, { cover: 80, study: 160, takeaway: 140, limitations: 160, point: 70, page: 240 })
+  assert.deepEqual(SLIDE_LIMITS, { cover: 80, study: 160, takeaway: 140, limitations: 160, point: 70, page: 240, lead: 80, question: 160, method: 160, result: 140 })
 })
 
 test('every slide fits in every look, at the longest texts and with short and tall crops, numbered up to 12 / 12', () => {
@@ -201,4 +201,86 @@ test('the Carousel style asked of layoutCard is laid out as Headline', () => {
   }
   const space = pageSheetSpace({ card: sample.card, source: sample.source, style: 'carousel' as unknown as 'headline', look: 'ink', size: 'feed' }, measure)
   assert.deepEqual(space, pageSheetSpace({ card: sample.card, source: sample.source, style: 'headline', look: 'ink', size: 'feed' }, measure))
+})
+
+// ── Share the paper (stage 5) ───────────────────────────────────────────────────────────────────────────────────────
+const words = (layout: CardLayout) => texts(layout).filter(t => t.role === 'headline' || t.role === 'emphasis').map(t => t.text).join(' ')
+const short = { ...source, credit: 'Dettmers et al., 2023' }
+
+test('the paper carousels: six slides with two results, five with one, every text at its limit in the long one', () => {
+  assert.deepEqual(PAPER_CAROUSEL.slides.map(s => s.kind), ['lead', 'question', 'method', 'result', 'result', 'takeaway'])
+  assert.deepEqual(PAPER_CAROUSEL_FIVE.slides.map(s => s.kind), ['lead', 'question', 'method', 'result', 'takeaway'])
+  for (const slide of PAPER_CAROUSEL.slides) {
+    const text = slide.kind === 'lead' ? slide.headline : 'text' in slide ? slide.text : ''
+    assert.equal(text.length, SLIDE_LIMITS[slide.kind], `${slide.kind}: ${text}`)
+  }
+  assert.deepEqual(PAPER_CAROUSEL.slides.filter(s => s.kind === 'result').map(s => 'item' in s ? s.item : -1), [0, 1])
+})
+
+test('every paper slide fits in every look, numbered 1 / 6 to 6 / 6 and 1 / 5 to 5 / 5', () => {
+  for (const carousel of [PAPER_CAROUSEL, PAPER_CAROUSEL_FIVE]) for (const look of LOOKS) for (const [index, slide] of carousel.slides.entries()) {
+    for (const crop of slide.kind === 'lead' ? [CROPS.short, CROPS.tall, undefined] : [undefined]) {
+      const count = carousel.slides.length, name = `${count}/${look}/${index + 1}/${slide.kind}${crop ? `/${crop.height}` : ''}`
+      const layout = layoutSlide(slide, { source: short, number: index + 1, count }, { look, crop }, measure)
+      assertSlideFits(layout, name)
+      assert.equal(texts(layout).find(t => t.role === 'slideNumber')!.text, `${index + 1} / ${count}`, name)
+      assert.equal(texts(layout).find(t => t.role === 'kicker')!.text, slide.kicker.toUpperCase(), name)
+      // The lead credits the post's page; the text slides credit the paper alone.
+      assert.equal(texts(layout).find(t => t.role === 'footerCredit')!.text, slide.kind === 'lead' ? 'Dettmers et al., 2023 · p. 4' : 'Dettmers et al., 2023', name)
+      assert.equal(layout.style, slide.kind === 'lead' && crop ? 'headline' : 'idea', name)
+      assert.equal(words(layout), (slide.kind === 'lead' ? slide.headline : 'text' in slide ? slide.text : '').replace(/'/g, '’'), name)
+    }
+  }
+})
+
+test('the lead is the headline above the post\'s own crop, its room the Headline style\'s', () => {
+  const lead = PAPER_CAROUSEL.slides[0]!
+  for (const look of LOOKS) {
+    const space = slideSpace(lead, one(1, 6), { look }, measure)
+    assert.deepEqual(space, pageSheetSpace({ ...slideInput(lead, one(1, 6), { look }), style: 'headline' }, measure))
+    const layout = layoutSlide(lead, one(1, 6), { look, crop: { width: 900, height: 900 * space.height / space.width, marks: MARKS } }, measure)
+    const image = imageOf(layout)!
+    assert.ok(Math.abs(image.height - space.height) < 1e-6 && Math.abs(image.width - space.width) < 1e-6)
+    assert.deepEqual(image.marks.map(m => m.rects), [MARKS[0]!.rects])
+  }
+})
+
+test('without a crop the lead is a cover: its fallback as the pull when it differs and fits, else left out', () => {
+  const lead = (fallback: string): SlideSpec => ({ kind: 'lead', kicker: 'LLM Finetuning', headline: 'QLoRA finetunes a 65B model on one GPU', fallback })
+  for (const look of LOOKS) {
+    const same = layoutSlide(lead('QLoRA finetunes a 65B model on one GPU'), one(1, 6), { look }, measure)
+    assert.equal(same.style, 'idea'); assert.equal(texts(same).some(t => t.role === 'pull'), false)
+    const quote = 'We present QLoRA, an efficient finetuning approach that reduces memory usage enough to finetune a 65B model.'
+    const pulled = layoutSlide(lead(quote), one(1, 6), { look }, measure)
+    assert.equal(texts(pulled).filter(t => t.role === 'pull').map(t => t.text).join(' '), `“${quote}”`)
+    assertSlideFits(pulled, `${look}/pull`)
+    // A fallback too long to fit under the headline is left out rather than refused.
+    const long = layoutSlide(lead(Array(4).fill(longEnglish.quote).join(" ")), one(1, 6), { look }, measure)
+    assert.equal(texts(long).some(t => t.role === 'pull'), false)
+    assertSlideFits(long, `${look}/long`)
+  }
+})
+
+test('a result that starts with its number boxes the number, as a quote\'s emphasis; nothing else is boxed', () => {
+  assert.equal(leadingNumber('41% higher blind-rated scores than praise'), '41%')
+  assert.equal(leadingNumber('99.3% of ChatGPT on Vicuna'), '99.3%')
+  assert.equal(leadingNumber('1,204 sessions were recorded'), '1,204')
+  assert.equal(leadingNumber('2x faster than vanilla attention'), '2x')
+  assert.equal(leadingNumber('3 times fewer errors'), '3 times')
+  assert.equal(leadingNumber('−0.4 points on MMLU'), '−0.4 points')
+  assert.equal(leadingNumber('Guanaco reached 99.3%'), '')
+  assert.equal(leadingNumber('2023 models were weaker'), '2023')
+  for (const look of LOOKS) {
+    const result = (text: string): SlideSpec => ({ kind: 'result', kicker: 'Result 1', text, item: 0 })
+    const boxed = layoutSlide(result('41% higher blind-rated test scores for students given specific comments.'), one(4, 6), { look }, measure)
+    assert.deepEqual(texts(boxed).filter(t => t.role === 'emphasis').map(t => t.text), ['41%'])
+    assert.ok(boxed.commands.some(c => c.kind === 'rect'), look)
+    assertSlideFits(boxed, `${look}/boxed`)
+    const plain = layoutSlide(result('Students given specific comments scored higher.'), one(4, 6), { look }, measure)
+    assert.equal(texts(plain).some(t => t.role === 'emphasis'), false)
+    for (const kind of ['question', 'method'] as const) {
+      const other = layoutSlide({ kind, kicker: 'The method', text: '312 students, two conditions, one semester.' }, one(3, 6), { look }, measure)
+      assert.equal(other.commands.some(c => c.kind === 'rect'), false, `${look}/${kind}`)
+    }
+  }
 })
