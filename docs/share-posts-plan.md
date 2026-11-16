@@ -399,6 +399,40 @@ Settled in T13:
 - [x] **T15 Panel** (on `feat/share-posts`, after T13 and T14): "Share the paper" with one click, the viewer and edits for the new slides, labels, browser tests, README.
 - [x] **G5 Gate** as G1.
 
+### Stage 6: the paper deck's layouts
+
+Owner feedback of 16 November 2026 on preview 2.8.0-posts.3: the paper carousel covers the right content, but every slide after the first is a block of text. It should read like a short deck: numbers shown as numbers, a comparison shown as a small table, and layouts that differ by what the slide says. That was the general pattern, not one example: stage 5 drew the question, method, results and takeaway as the same text slide.
+
+**Behaviour**
+
+- **Method**: when the text states the design in numbers (sample size, groups, duration, datasets, models, sites), the slide shows two to four stat tiles, each a large value over a short label, with the method sentence below. Otherwise it stays a text slide.
+- **Result**: three layouts, chosen by what the assistant returns. A comparison the paper reports (two to four rows of the same measure, such as conditions, groups or models) is drawn as a small table with the values large, the result's sentence above it. A single key number is drawn very large over its label, with the sentence below. Without either, the text slide of stage 5.
+- **Question** and **takeaway** keep their words but get their own quiet treatment, so the deck does not read as five copies of one card.
+- Every value and label on a slide can be edited by the reader, like the slide's sentence.
+- Nothing is drawn that the assistant computed: every value passes the numbers check, and a value must appear in the paper near a word of its label, so a number cannot be attached to the wrong thing unnoticed.
+- The deck stays at five or six slides. Highlight and region posts and the several-highlights carousel are unchanged.
+
+**Contract**
+
+```ts
+// PAPER gains: maxStats 4, statValueMax 12, statLabelMax 48, maxRows 4, rowLabelMax 28, rowValueMax 12.
+export type Stat = { value: string; label: string }      // value: a number with its unit as the text writes it ("312", "24 hours", "65B", "41%")
+export type Row = { label: string; value: string }
+export type PaperResult = { text: string; stat: Stat | null; rows: Row[] }   // rows: [] or 2 to 4, one measure and unit
+export type PaperContent = { question: string; method: string; methodStats: Stat[]; results: PaperResult[] }
+// A stored paper card whose results are strings reads as { text, stat: null, rows: [] }, and without methodStats as [].
+// SlideSpec: the method slide gains `stats: Stat[]`; a result slide gains `stat: Stat | null` and `rows: Row[]`.
+```
+
+Server: the paper prompt asks for `methodStats` and, per result, `stat` and `rows`, with the rule that a comparison never mixes measures and that `[]` and `null` are right when the text gives no such numbers. `PATCH { paper_text }` takes the new fields beside `text` (`stats` for the method; `stat` and `rows` for a result). Renderer: `renderSlide` picks the layout from the slide's fields.
+
+**Tasks**
+
+- [ ] **T16 Server** (`share-posts/server`): the fields, the prompt, the checks (numbers, and a value near its label), the edit, reading older cards, tests.
+- [ ] **T17 Renderer** (`share-posts/renderer`): the stat tiles, the big number, the comparison table, the question and takeaway treatments, sample frames.
+- [ ] **T18 Panel** (on `feat/share-posts`, after T16 and T17): editing values, labels and rows; fakes; browser tests; README.
+- [ ] **G6 Gate** as G1.
+
 ## Acceptance criteria
 
 Stage 1:
