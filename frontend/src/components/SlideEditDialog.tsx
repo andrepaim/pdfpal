@@ -4,7 +4,7 @@
 // count), so a problem shows next to its field; a refusal from the server shows in the dialog too. One Save is one
 // request and one Undo step, except a cover whose headline and number both changed: those are two edits on the
 // server. See "Stage 6" in docs/share-posts-plan.md.
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { CARD, PAPER, SET, collapse, type Row, type SlideSpec, type Stat } from '../../../src/shared/share-card'
 import { slideText } from '../lib/share-card/slides'
 import { Modal, alert, button, faded, field, muted, primary } from './SharePostParts'
@@ -65,7 +65,7 @@ function Field({ id, label, value, max, problem, show, onChange, onBlur, width, 
 }) {
   const invalid = show && !!problem
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: width ?? '1 1 120px', minWidth: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: width ?? '1 1 160px', minWidth: 0 }}>
       <input id={id} data-field={id} value={value} maxLength={max} placeholder={placeholder} aria-label={label} aria-invalid={invalid || undefined}
         aria-describedby={invalid ? `${id}-problem` : undefined} onChange={event => onChange(event.target.value)} onBlur={onBlur} style={input(invalid)} />
       {invalid && <span id={`${id}-problem`} role="alert" style={{ ...alert, fontSize: 11 }}>{problem}</span>}
@@ -104,8 +104,8 @@ export function SlideEditDialog({ open, slide, index, count, title, onSave, onCa
   const [focus, setFocus] = useState<string | null>(null)
   const root = useRef<HTMLDivElement>(null)
 
-  // Fill the fields from the slide each time the dialog opens.
-  useEffect(() => {
+  // Fill the fields from the slide each time the dialog opens, before it is painted, so it never shows the last slide's.
+  useLayoutEffect(() => {
     if (!open || !slide) return
     setText(slideText(slide))
     setStat(slide.kind === 'cover' || slide.kind === 'result' ? slide.stat ? { ...slide.stat } : null : null)

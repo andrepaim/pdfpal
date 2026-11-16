@@ -676,3 +676,64 @@ test.describe('share the paper, for review', () => {
     }
   });
 });
+
+// ── For review: numbers on slides ───────────────────────────────────────────────────────────────────────────────────
+test.describe('numbers on slides, for review', () => {
+  test.beforeEach(async ({ page }) => { await mockAuth(page); });
+
+  test('the deck with numbers, its dialogs, and a deck without numbers at 360 and 480 px, and the dialogs on a phone', async ({ page }) => {
+    test.setTimeout(240_000);
+    const shots = path.resolve('test-results/share-numbers');
+    fs.mkdirSync(shots, { recursive: true });
+    const state = fake();
+    await routePosts(page, state);
+    await page.setViewportSize({ width: 806, height: 1100 });
+    const { project, source, url } = await openPaper(page);
+    const ids = { project: project.id, source: source.id };
+    const dialogShot = async (name: string, number: number, title: RegExp) => {
+      await goTo(page, number);
+      await page.getByRole('button', { name: 'Edit slide' }).click();
+      const dialog = page.getByRole('dialog', { name: title });
+      await expect(dialog).toBeVisible();
+      await page.screenshot({ path: path.join(shots, `${name}.png`) });
+      await dialog.getByRole('button', { name: 'Cancel' }).click();
+    };
+    for (const width of [360, 480]) {
+      const shot = (what: string) => path.join(shots, `${width}-${what}.png`);
+      const viewport = Math.round((width + 5) / 0.45);
+      const panel = page.locator('[data-share-post]');
+      await page.setViewportSize({ width: viewport, height: 2200 });
+      state.numbers = true;
+      await openPost(page, state, url, ids, 'instagram');
+      await expect(slide(page)).toHaveAttribute('data-slide', '1', { timeout: 20_000 });
+      for (let number = 1; number <= 6; number++) {
+        await goTo(page, number);
+        await noSideScroll(page);
+        await panel.screenshot({ path: shot(`slide-${number}`) });
+      }
+      await page.setViewportSize({ width: viewport, height: 900 });
+      await dialogShot(`${width}-dialog-method`, 3, /The method$/);
+      await dialogShot(`${width}-dialog-result-rows`, 5, /Result 2$/);
+      await page.setViewportSize({ width: viewport, height: 2200 });
+      state.numbers = false;
+      await openPost(page, state, url, ids, 'instagram');
+      await expect(slide(page)).toHaveAttribute('data-slide', '1', { timeout: 20_000 });
+      for (const number of [3, 4, 5]) { await goTo(page, number); await panel.screenshot({ path: shot(`no-numbers-${number}`) }); }
+    }
+    // The dialogs on a phone-width window.
+    await page.setViewportSize({ width: 390, height: 844 });
+    state.numbers = true;
+    await openPost(page, state, url, ids, 'instagram');
+    await expect(slide(page)).toHaveAttribute('data-slide', '1', { timeout: 20_000 });
+    await dialogShot('phone-dialog-method', 3, /The method$/);
+    await dialogShot('phone-dialog-result-rows', 5, /Result 2$/);
+    await goTo(page, 5);
+    await page.getByRole('button', { name: 'Edit slide' }).click();
+    const dialog = page.getByRole('dialog', { name: /Result 2$/ });
+    const box = (await dialog.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x + box.width).toBeLessThanOrEqual(390);
+    const overflow = await dialog.locator('[data-slide-edit]').evaluate(element => element.scrollWidth - element.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+    await expect(dialog.getByRole('button', { name: 'Save' })).toBeInViewport();
+  });
+});

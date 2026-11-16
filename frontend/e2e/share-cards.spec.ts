@@ -1254,3 +1254,31 @@ test.describe('the Carousel style, for review', () => {
     }
   });
 });
+
+// ── For review: the hook's key number ───────────────────────────────────────────────────────────────────────────────
+test.describe('the key number, for review', () => {
+  test.beforeEach(async ({ page }) => { await mockAuth(page); });
+
+  test('the hook with its number and its dialog at 360 and 480 px, and on a phone', async ({ page }) => {
+    test.setTimeout(120_000);
+    const shots = path.resolve('test-results/share-numbers');
+    fs.mkdirSync(shots, { recursive: true });
+    const state = fake();
+    await page.setViewportSize({ width: 806, height: 2200 });
+    const { url } = await paper(page, state);
+    for (const width of [360, 480]) {
+      const viewport = Math.round((width + 5) / 0.45);
+      await page.setViewportSize({ width: viewport, height: 2200 });
+      await openPost(page, state, url, { ...written('instagram', ''), destination: 'instagram' });
+      await expect(slide(page)).toHaveAttribute('data-slide', '1', { timeout: 20_000 });
+      await page.locator('[data-share-post]').screenshot({ path: path.join(shots, `${width}-hook-number.png`) });
+      await page.setViewportSize({ width: viewport, height: 900 });
+      await page.getByRole('button', { name: 'Edit slide' }).click();
+      await page.screenshot({ path: path.join(shots, `${width}-dialog-cover.png`) });
+      await page.getByRole('dialog', { name: /Cover$/ }).getByRole('button', { name: 'Cancel' }).click();
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole('button', { name: 'Edit slide' }).click();
+    await page.screenshot({ path: path.join(shots, 'phone-dialog-cover.png') });
+  });
+});

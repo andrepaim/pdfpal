@@ -453,7 +453,7 @@ Settled in T16:
 
 - [ ] **T16 Server** (`share-posts/server`): the fields, the prompt, the checks (numbers, and a value near its label), the edit, reading older cards, tests.
 - [ ] **T17 Renderer** (`share-posts/renderer`): the stat tiles, the big number, the comparison table, the question and takeaway treatments, sample frames.
-- [ ] **T18 Panel** (on `feat/share-posts`, after T16 and T17): editing values, labels and rows; fakes; browser tests; README.
+- [x] **T18 Panel** (on `feat/share-posts`, after T16 and T17): editing values, labels and rows; fakes; browser tests; README.
 - [ ] **G6 Gate** as G1.
 
 ## Acceptance criteria
