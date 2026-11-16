@@ -3,15 +3,16 @@
 // the page holds a hundred-odd small blobs instead of as many full-size canvases.
 //
 // Page and Headline frames (data-frame) crop a made-up paper page drawn here, through the same planCrop that
-// pageCrop uses for a PDF, with the page's lines given as text runs as pdf.js gives them. Text cards (data-sample)
-// are the first build's matrix, unchanged.
+// pageCrop uses for a PDF, with the page's lines given as text runs as pdf.js gives them. Carousel slides
+// (data-slide) do the same for each point. Text cards (data-sample) are the first build's matrix, unchanged.
 import { useEffect, useState } from 'react'
 import { LOOKS, type CardSize, type PageMark, type PageRect, type ShareLook, type ShareStyle } from '../../../src/shared/share-card'
 import { canvasPng, cardSheetSpace, loadCardFonts, renderCard, type PageCrop } from '../lib/share-card'
-import { planCrop, runBox } from '../lib/share-card/crop-box'
-import { PAGE_FRAMES, SAMPLE_PAGE, SAMPLES, type PageFrame } from '../lib/share-card/samples'
+import { boundingBox, planCrop, runBox, type CropPlan } from '../lib/share-card/crop-box'
+import { CAROUSEL_MAX, CAROUSEL_SHORT, PAGE_FRAMES, SAMPLE_PAGE, SAMPLES, type CarouselSample, type PageFrame } from '../lib/share-card/samples'
+import { renderSlide, slideSheetSpace, type SlideContext, type SlideSpec } from '../lib/share-card/slides'
 
-type Result = { kind: 'frame' | 'sample'; name: string; url?: string; size?: string; error?: string }
+type Result = { kind: 'frame' | 'slide' | 'sample'; name: string; url?: string; size?: string; error?: string }
 const STYLES: ShareStyle[] = ['quote', 'idea', 'takeaways']
 const SIZES: CardSize[] = ['feed', 'story']
 /** Canvas pixels per PDF point for the made-up page: sharp at any crop the frames use. */
@@ -118,6 +119,11 @@ async function frameCrop(frame: PageFrame, look: ShareLook, page: SamplePage) {
   const source = { ...frame.source, rects: own.rects, color: own.color }
   const sheet = await cardSheetSpace({ card: frame.card, source }, { style: frame.style, look, size: frame.size })
   const plan = planCrop(own, SAMPLE_PAGE, { sheet, crop: frame.crop, marks, extraLines: frame.extraLines }, frame.crop ? [] : page.runs)
+  return { source, crop: cut(page, plan) }
+}
+
+/** The planned crop cut from the made-up page, as pageCrop renders it from a PDF page. */
+function cut(page: SamplePage, plan: CropPlan | null): PageCrop {
   if (!plan) throw new Error('too-tall')
   const image = document.createElement('canvas')
   image.width = plan.width; image.height = plan.height
@@ -125,8 +131,25 @@ async function frameCrop(frame: PageFrame, look: ShareLook, page: SamplePage) {
   ctx.imageSmoothingQuality = 'high'
   const { box } = plan, w = page.canvas.width, h = page.canvas.height
   ctx.drawImage(page.canvas, box.x1 * w, box.y1 * h, (box.x2 - box.x1) * w, (box.y2 - box.y1) * h, 0, 0, plan.width, plan.height)
-  const crop: PageCrop = { image, width: plan.width, height: plan.height, box: plan.box, marks: plan.marks }
-  return { source, crop }
+  return { image, width: plan.width, height: plan.height, box: plan.box, marks: plan.marks }
+}
+
+/** A carousel's slide context: the strip's fields, its items (all on the made-up page's page 1) and the numbering. */
+const carouselContext = (carousel: CarouselSample, index: number): SlideContext => ({
+  source: { ...carousel.source, color: 'yellow' }, items: carousel.items.map(item => ({ page: 1, rects: [], color: item.mark.color })),
+  number: index + 1, count: carousel.slides.length,
+})
+
+/** A point slide's crop: its highlight on the made-up page, with every highlight of the set as marks. */
+async function slideCrop(carousel: CarouselSample, slide: Extract<SlideSpec, { kind: 'point' }>, context: SlideContext, look: ShareLook, page: SamplePage): Promise<PageCrop> {
+  const item = carousel.items[slide.item]!
+  const rects = page.find(item.mark.phrase)
+  const marks = carousel.items.map(other => ({ rects: page.find(other.mark.phrase), color: other.mark.color }))
+  const sheet = await slideSheetSpace(slide, context, { look })
+  // 'tight': just the highlight's lines across the column, its edges halfway into the gaps to the next lines.
+  const box = boundingBox(rects)
+  const crop = item.crop === 'tight' ? { x1: 0.09, y1: box.y1 - 0.0016, x2: 0.91, y2: box.y2 + 0.0016 } : item.crop
+  return cut(page, planCrop({ rects, color: item.mark.color }, SAMPLE_PAGE, { sheet, crop, marks, extraLines: 3 }, crop ? [] : page.runs))
 }
 
 export default function ShareCardSamples() {
@@ -159,6 +182,18 @@ export default function ShareCardSamples() {
           return canvas
         })
       }
+      // The longest texts in every look; the short ones in Ink.
+      for (const [carousel, looks] of [[CAROUSEL_MAX, LOOKS], [CAROUSEL_SHORT, ['ink']]] as const) for (const look of looks as readonly ShareLook[])
+        for (const [index, slide] of carousel.slides.entries()) {
+          if (cancelled) return
+          await show('slide', `${carousel.name}-${look}-${String(index + 1).padStart(2, '0')}-${slide.kind}`, async () => {
+            const context = carouselContext(carousel, index)
+            const crop = slide.kind === 'point' ? await slideCrop(carousel, slide, context, look, pages[1]) : undefined
+            const canvas = await renderSlide(slide, context, { look, crop })
+            if (canvas.dataset.style !== (slide.kind === 'point' ? 'headline' : 'idea')) throw new Error(`Drawn as ${canvas.dataset.style}.`)
+            return canvas
+          })
+        }
       for (const sample of SAMPLES) for (const style of STYLES) for (const look of LOOKS as readonly ShareLook[]) for (const size of SIZES) {
         if (cancelled) return
         await show('sample', `${sample.name}-${style}-${look}-${size}`, () => renderCard({ card: sample.card, source: sample.source }, { style, look, size }))
@@ -175,7 +210,7 @@ export default function ShareCardSamples() {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
           {items.map(result => {
             // The browser test counts data-sample; the frames are marked apart so its count still holds.
-            const attributes = kind === 'frame' ? { 'data-frame': result.name } : { 'data-sample': result.name }
+            const attributes = kind === 'frame' ? { 'data-frame': result.name } : kind === 'slide' ? { 'data-slide': result.name } : { 'data-sample': result.name }
             return (
               <figure key={result.name} {...attributes} data-fits={result.url ? 'true' : 'false'} style={{ margin: 0, width: 216 }}>
                 {result.url ? <img src={result.url} alt={result.name} style={{ width: 216, display: 'block', borderRadius: 4 }} />
@@ -192,6 +227,7 @@ export default function ShareCardSamples() {
     <main style={{ padding: 24, background: '#202024', minHeight: '100vh', color: '#eee', fontFamily: 'system-ui, sans-serif' }} data-samples-done={done ? 'true' : undefined}>
       <h1 style={{ fontSize: 18, marginBottom: 16 }}>Share card samples ({results.length}{done ? '' : '…'})</h1>
       {section('frame', 'Page and Headline')}
+      {section('slide', 'Carousel slides')}
       {section('sample', 'Text cards')}
     </main>
   )
