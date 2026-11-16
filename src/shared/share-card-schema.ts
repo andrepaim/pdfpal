@@ -3,11 +3,13 @@
 import { z } from 'zod'
 import {
   ANGLES, CARD, DESTINATIONS, HIGHLIGHT_COLORS, LINKS, LOOKS, PAPER, SET, SOURCE_KINDS, STYLES, TAKE_MAX,
-  type Caption, type CardContent, type PageMark, type PageRect, type PaperContent, type SetContent, type SetItem, type ShareCardSource,
+  type Caption, type CardContent, type PageMark, type PageRect, type PaperContent, type PaperResult, type Row, type Stat, type SetContent, type SetItem, type ShareCardSource,
 } from './share-card.js'
 
 const fraction = z.number().finite().min(0).max(1)
 export const pageRectSchema = z.object({ x1: fraction, y1: fraction, x2: fraction, y2: fraction }).strict()
+export const statSchema = z.object({ value: z.string().max(200), label: z.string().max(200) }).strict()
+export const rowSchema = z.object({ label: z.string().max(200), value: z.string().max(200) }).strict()
 
 export const setItemSchema = z.object({
   annotation_id: z.string().max(200).nullable(), passage: z.string().min(CARD.passageMin).max(CARD.passageMax), page: z.number().int().positive(),
@@ -41,13 +43,21 @@ export const shareCardSourceSchema = z.object({
 })
 
 export const setContentSchema = z.object({
-  study: z.string(), points: z.array(z.string()).max(SET.maxItems), takeaway: z.string(), limitations: z.string(),
+  study: z.string(), studyStats: z.array(statSchema).max(PAPER.maxStats).default([]), points: z.array(z.string()).max(SET.maxItems), takeaway: z.string(), limitations: z.string(),
   crops: z.array(pageRectSchema.nullable()).max(SET.maxItems),
 }).strict()
 
 export const cardTakeawaySchema = z.object({ title: z.string(), detail: z.string() }).strict()
 
-export const paperContentSchema = z.object({ question: z.string(), method: z.string(), results: z.array(z.string()).max(PAPER.maxResults) }).strict()
+export const paperResultSchema = z.object({ text: z.string(), stat: statSchema.nullable(), rows: z.array(rowSchema).max(PAPER.maxRows) }).strict()
+/**
+ * A paper post's words. One stored before stage 6 has results as plain sentences and no methodStats: they read as
+ * { text, stat: null, rows: [] } and [].
+ */
+export const paperContentSchema = z.object({
+  question: z.string(), method: z.string(), methodStats: z.array(statSchema).max(PAPER.maxStats).default([]),
+  results: z.array(z.union([paperResultSchema, z.string().transform((text): PaperResult => ({ text, stat: null, rows: [] }))])).max(PAPER.maxResults),
+}).strict()
 
 /** Shape only. Limits and the exact-quote rules are checked by validateCard, whose messages name them. */
 export const cardContentSchema = z.object({
@@ -57,6 +67,7 @@ export const cardContentSchema = z.object({
   set: setContentSchema.nullable().default(null),
   takeaway: z.string().default(''),
   paper: paperContentSchema.nullable().default(null),
+  stat: statSchema.nullable().default(null),
 }).strict()
 
 export const pageMarkSchema = z.object({ rects: z.array(pageRectSchema).max(500), color: z.enum(HIGHLIGHT_COLORS) }).strict()
@@ -87,3 +98,6 @@ same<Same<z.infer<typeof pageMarkSchema>, PageMark>>(true)
 same<Same<z.infer<typeof setItemSchema>, SetItem>>(true)
 same<Same<z.infer<typeof setContentSchema>, SetContent>>(true)
 same<Same<z.infer<typeof paperContentSchema>, PaperContent>>(true)
+same<Same<z.infer<typeof statSchema>, Stat>>(true)
+same<Same<z.infer<typeof rowSchema>, Row>>(true)
+same<Same<z.infer<typeof paperResultSchema>, PaperResult>>(true)

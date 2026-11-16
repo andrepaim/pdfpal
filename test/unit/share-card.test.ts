@@ -3,10 +3,10 @@ import assert from 'node:assert/strict'
 import {
   CARD, DESTINATION_DEFAULTS, DRAFT, REGION_MIN, SET, SET_STYLE_REFUSED, TAKE_MAX, captionText, cardDescription, cleanPassage, creditLine, defaultLook,
   draftLimits, firstCommentText, highlightColor, numbersIn, publicUrl, quoteMatches, regionProblem, setSlides, sourceLine, summaryTitle, unsupportedNumbers,
-  validateCard, postSlides, PAPER, type PaperContent, STYLES, STYLE_NAMES, REGION_STYLES, type Caption, type CardContent, type SetContent, type SetItem, type ShareCardSource,
+  validateCard, postSlides, PAPER, type PaperContent, type PaperResult, type Stat, type Row, STYLES, STYLE_NAMES, REGION_STYLES, type Caption, type CardContent, type SetContent, type SetItem, type ShareCardSource,
 } from '../../src/shared/share-card.js'
 import { captionSchema, cardContentSchema, previousVersionSchema, shareCardSourceSchema } from '../../src/shared/share-card-schema.js'
-import { paperParts, paperText } from '../../src/core/share-cards.js'
+import { paperParts, paperText, valueNearLabel } from '../../src/core/share-cards.js'
 
 const passage = 'Attention lets every position look at every other one. However, the cost grows with the square of the sequence length.'
 const source: ShareCardSource = {
@@ -17,7 +17,7 @@ const source: ShareCardSource = {
 const card: CardContent = {
   quote: 'Attention lets every position look at every other one.', quoteEdited: false, emphasis: 'every other one',
   headline: 'Attention trades cost for reach', pull: 'sparse patterns may reduce this cost', topic: 'Attention',
-  takeawaysTitle: 'What full attention buys', style: 'quote', look: 'ink', crop: null, set: null, takeaway: '', paper: null,
+  takeawaysTitle: 'What full attention buys', style: 'quote', look: 'ink', crop: null, set: null, takeaway: '', paper: null, stat: null,
   takeaways: [{ title: 'Reach is global', detail: 'Every position can use any other.' },
     { title: 'Cost is quadratic', detail: 'Longer inputs cost much more.' }, { title: 'Sparsity may help', detail: 'The authors suspect it.' }],
 }
@@ -269,7 +269,7 @@ const REGION = { x1: 0.1, y1: 0.4, x2: 0.9, y2: 0.7 }
 const regionSource: ShareCardSource = { ...source, kind: 'region', region: REGION, rects: [], passage: 'Accuracy Sequence length', page: 3 }
 const regionCard: CardContent = {
   quote: '', quoteEdited: false, emphasis: '', headline: 'Longer inputs cost more', pull: '', topic: 'Attention', takeawaysTitle: '', takeaways: [],
-  style: 'page', look: 'ink', crop: REGION, set: null, takeaway: '', paper: null,
+  style: 'page', look: 'ink', crop: REGION, set: null, takeaway: '', paper: null, stat: null,
 }
 
 test('a region or paper card has only a headline, a topic and a takeaway, and only the Page, Headline and Carousel styles', () => {
@@ -339,7 +339,7 @@ const setSource: ShareCardSource = {
   ...source, kind: 'set', items, passage: items.map(item => item.passage).join('\n\n'), page: 2, rects: [], color: 'yellow', region: null,
 }
 const set: SetContent = {
-  study: 'The authors describe a model built only on attention.', points: ['Every position sees every other', 'Cost grows with the square', 'Sparsity may cut the cost'],
+  study: 'The authors describe a model built only on attention.', studyStats: [], points: ['Every position sees every other', 'Cost grows with the square', 'Sparsity may cut the cost'],
   takeaway: 'Attention buys reach at a price that grows fast.', limitations: 'The fix for the cost is a suspicion, not a result.', crops: [null, null, null],
 }
 const setCard: CardContent = { ...regionCard, style: 'headline', crop: null, headline: 'Reach has a quadratic price', set }
@@ -390,10 +390,10 @@ test('the source and card schemas read stored values without items or set, and h
 })
 
 test('setSlides lists the cover, the study, one slide per highlight, the takeaway and the limits', () => {
-  const cover = { kind: 'cover', kicker: 'Attention', headline: 'Reach has a quadratic price' }
+  const cover = { kind: 'cover', kicker: 'Attention', headline: 'Reach has a quadratic price', stat: null }
   const points = set.points.map((headline, item) => ({ kind: 'point', kicker: 'Attention', headline, item }))
   const takeaway = { kind: 'takeaway', kicker: 'The takeaway', text: set.takeaway }
-  const study = { kind: 'study', kicker: 'The study', text: set.study }
+  const study = { kind: 'study', kicker: 'The study', text: set.study, stats: [] }
   const limits = { kind: 'limitations', kicker: 'Limits', text: set.limitations }
   assert.deepEqual(setSlides(setCard, setSource), [cover, study, ...points, takeaway, limits])
   assert.deepEqual(setSlides({ ...setCard, set: { ...set, study: '' } }, setSource), [cover, ...points, takeaway, limits])
@@ -477,12 +477,12 @@ test('a card\'s takeaway: within 140 characters, empty for a stored card, refuse
 
 test('postSlides: cover, page and takeaway for a post in the Carousel style; none for a set', () => {
   const withTakeaway = { ...card, takeaway: TAKEAWAY }
-  const cover = { kind: 'cover', kicker: 'Attention', headline: card.headline }
+  const cover = { kind: 'cover', kicker: 'Attention', headline: card.headline, stat: null }
   assert.deepEqual(postSlides(withTakeaway, source), [cover, { kind: 'page', kicker: 'Attention', fallback: card.quote },
     { kind: 'takeaway', kicker: 'The takeaway', text: TAKEAWAY }])
   assert.deepEqual(postSlides(card, source), [cover, { kind: 'page', kicker: 'Attention', fallback: card.quote }])
   // Without a quote (a region or first-page post) the page slide falls back to the headline.
-  assert.deepEqual(postSlides({ ...regionCard, takeaway: TAKEAWAY }, regionSource), [{ kind: 'cover', kicker: 'Attention', headline: regionCard.headline },
+  assert.deepEqual(postSlides({ ...regionCard, takeaway: TAKEAWAY }, regionSource), [{ kind: 'cover', kicker: 'Attention', headline: regionCard.headline, stat: null },
     { kind: 'page', kicker: 'Attention', fallback: regionCard.headline }, { kind: 'takeaway', kicker: 'The takeaway', text: TAKEAWAY }])
   assert.deepEqual(postSlides(setCard, setSource), [])
   assert.equal(cardDescription(withTakeaway, 'carousel', source), 'Carousel of 3 slides: Attention trades cost for reach.')
@@ -494,12 +494,15 @@ test('postSlides: cover, page and takeaway for a post in the Carousel style; non
 const paperSource: ShareCardSource = { ...regionSource, kind: 'paper', page: 1, passage: 'Attention Is All You Need. Vaswani et al. Abstract: We propose a new architecture.' }
 const paperWords: PaperContent = {
   question: 'Can attention alone model a sequence without recurrence?', method: 'The authors train the model on two translation tasks and compare it with earlier systems.',
-  results: ['It translates better than earlier systems at a lower training cost.', 'It also parses English constituency structure well.'],
+  methodStats: [],
+  results: [{ text: 'It translates better than earlier systems at a lower training cost.', stat: null, rows: [] },
+    { text: 'It also parses English constituency structure well.', stat: null, rows: [] }],
 }
+const result = (text: string) => ({ text, stat: null, rows: [] })
 const paperCard: CardContent = { ...regionCard, crop: { x1: 0, y1: 0, x2: 1, y2: 0.5 }, style: 'carousel', headline: 'Recurrence was optional all along', takeaway: TAKEAWAY, paper: paperWords }
 
 test('a paper card holds a question, a method and one or two results within PAPER\'s limits', () => {
-  assert.deepEqual(PAPER, { questionMax: 160, methodMax: 160, resultMax: 140, minResults: 1, maxResults: 2 })
+  assert.deepEqual(PAPER, { questionMax: 160, methodMax: 160, resultMax: 140, minResults: 1, maxResults: 2, maxStats: 4, statValueMax: 12, statLabelMax: 48, maxRows: 4, rowLabelMax: 28, rowValueMax: 12 })
   assert.equal(CARD.paperContextMax, 24_000)
   validateCard(paperCard, paperSource)
   validateCard({ ...paperCard, paper: { ...paperWords, results: paperWords.results.slice(0, 1) } }, paperSource)
@@ -512,9 +515,9 @@ test('a paper card holds a question, a method and one or two results within PAPE
     [withPaper({ question: 'q'.repeat(161) }), /question has 161 characters; allowed 1–160/],
     [withPaper({ method: 'm'.repeat(161) }), /method has 161 characters; allowed 1–160/],
     [withPaper({ results: [] }), /^Error: results has 0 items; allowed 1–2, the main finding first\.$/],
-    [withPaper({ results: ['a', 'b', 'c'] }), /results has 3 items; allowed 1–2/],
-    [withPaper({ results: ['r'.repeat(141)] }), /^Error: results\[0\] has 141 characters; allowed 1–140\.$/],
-    [withPaper({ results: ['a', ''] }), /results\[1\] has 0 characters/],
+    [withPaper({ results: ['a', 'b', 'c'].map(result) }), /results has 3 items; allowed 1–2/],
+    [withPaper({ results: [result('r'.repeat(141))] }), /^Error: results\[0\]\.text has 141 characters; allowed 1–140\.$/],
+    [withPaper({ results: [result('a'), result('')] }), /results\[1\]\.text has 0 characters/],
   ] as Array<[CardContent, RegExp]>) assert.throws(() => validateCard(value, paperSource), message, String(message))
   // Only a paper post has these.
   assert.throws(() => validateCard({ ...card, paper: paperWords }, source), /^Error: paper must be empty for a post from one highlight\.$/)
@@ -532,13 +535,15 @@ test('a paper card holds a question, a method and one or two results within PAPE
 test('postSlides for a paper post: the lead, the question, the method, one or two results and the takeaway', () => {
   const lead = { kind: 'lead', kicker: 'Attention', headline: paperCard.headline, fallback: paperCard.headline }
   const question = { kind: 'question', kicker: 'The question', text: paperWords.question }
-  const method = { kind: 'method', kicker: 'The method', text: paperWords.method }
+  const method = { kind: 'method', kicker: 'The method', text: paperWords.method, stats: [] }
   const takeaway = { kind: 'takeaway', kicker: 'The takeaway', text: TAKEAWAY }
   assert.deepEqual(postSlides(paperCard, paperSource), [lead, question, method,
-    { kind: 'result', kicker: 'Result 1', text: paperWords.results[0], item: 0 }, { kind: 'result', kicker: 'Result 2', text: paperWords.results[1], item: 1 }, takeaway])
+    { kind: 'result', kicker: 'Result 1', text: paperWords.results[0]!.text, item: 0, stat: null, rows: [] },
+    { kind: 'result', kicker: 'Result 2', text: paperWords.results[1]!.text, item: 1, stat: null, rows: [] }, takeaway])
   const one = { ...paperCard, paper: { ...paperWords, results: paperWords.results.slice(0, 1) } }
-  assert.deepEqual(postSlides(one, paperSource), [lead, question, method, { kind: 'result', kicker: 'The result', text: paperWords.results[0], item: 0 }, takeaway])
-  assert.deepEqual(postSlides({ ...one, takeaway: '' }, paperSource), [lead, question, method, { kind: 'result', kicker: 'The result', text: paperWords.results[0], item: 0 }])
+  const only = { kind: 'result', kicker: 'The result', text: paperWords.results[0]!.text, item: 0, stat: null, rows: [] }
+  assert.deepEqual(postSlides(one, paperSource), [lead, question, method, only, takeaway])
+  assert.deepEqual(postSlides({ ...one, takeaway: '' }, paperSource), [lead, question, method, only])
   // A paper post stored before stage 5 keeps the three cards.
   assert.deepEqual(postSlides({ ...paperCard, paper: null }, paperSource).map(slide => slide.kind), ['cover', 'page', 'takeaway'])
   assert.equal(cardDescription(paperCard, 'carousel', paperSource), 'Carousel of 6 slides: Recurrence was optional all along.')
@@ -663,4 +668,100 @@ test('paperParts reads a heading that opens a page, and never joins a page numbe
     `${filler('method', 3000)} 4 Results It works. ${filler('result', 9000)}`)
   assert.deepEqual(paperParts(pages).map(part => [part.part, part.page, part.text.slice(0, 14)]),
     [['start', 1, 'Title. Abstrac'], ['method', 3, '3 Model Design'], ['results', 4, '4 Results It w']])
+})
+
+// Stage 6: the paper deck's layouts.
+const STATS: Stat[] = [{ value: '312', label: 'nurses surveyed' }, { value: '5', label: 'hospitals' }, { value: '24 hours', label: 'observation period' }]
+const ROWS: Row[] = [{ label: 'GPT-4', value: '1348 ± 1' }, { label: 'Guanaco 65B', value: '1022 ± 1' }]
+const statResult: PaperResult = { text: 'Guanaco 65B scores 1022 Elo against GPT-4 at 1348.', stat: { value: '1022', label: 'Elo rating of Guanaco 65B' }, rows: ROWS }
+const deck: PaperContent = { ...paperWords, methodStats: STATS, results: [statResult, result('It also parses English constituency structure well.')] }
+
+test('a paper card holds stats for the method and a stat and rows for each result, within PAPER\'s limits', () => {
+  validateCard({ ...paperCard, paper: deck }, paperSource)
+  // The reader may keep a single stat; a comparison is two to four rows.
+  validateCard({ ...paperCard, paper: { ...deck, methodStats: STATS.slice(0, 1) } }, paperSource)
+  const withDeck = (change: Partial<PaperContent>) => ({ ...paperCard, paper: { ...deck, ...change } })
+  const withResult = (change: Partial<PaperResult>) => withDeck({ results: [{ ...statResult, ...change }] })
+  for (const [value, message] of [
+    [withDeck({ methodStats: [...STATS, ...STATS] }), /^Error: methodStats has 6 items; allowed at most 4\.$/],
+    [withDeck({ methodStats: [{ value: '1234567890123', label: 'x' }] }), /^Error: methodStats\[0\]\.value has 13 characters; allowed 1–12\.$/],
+    [withDeck({ methodStats: [{ value: 'many', label: 'nurses' }] }), /^Error: methodStats\[0\]\.value must contain a digit\.$/],
+    [withDeck({ methodStats: [{ value: '312', label: '' }] }), /methodStats\[0\]\.label has 0 characters; allowed 1–48/],
+    [withDeck({ methodStats: [{ value: '312', label: 'l'.repeat(49) }] }), /methodStats\[0\]\.label has 49 characters/],
+    [withResult({ stat: { value: 'high', label: 'Elo' } }), /^Error: results\[0\]\.stat\.value must contain a digit\.$/],
+    [withResult({ stat: { value: '1022', label: 'l'.repeat(49) } }), /results\[0\]\.stat\.label has 49 characters; allowed 1–48/],
+    [withResult({ rows: ROWS.slice(0, 1) }), /^Error: results\[0\]\.rows has 1 items; allowed none, or 2–4\.$/],
+    [withResult({ rows: [...ROWS, ...ROWS, ROWS[0]!] }), /results\[0\]\.rows has 5 items/],
+    [withResult({ rows: [ROWS[0]!, { label: 'l'.repeat(29), value: '1' }] }), /^Error: results\[0\]\.rows\[1\]\.label has 29 characters; allowed 1–28\.$/],
+    [withResult({ rows: [ROWS[0]!, { label: 'Guanaco', value: '' }] }), /results\[0\]\.rows\[1\]\.value has 0 characters; allowed 1–12/],
+    [withResult({ rows: [ROWS[0]!, { label: 'Guanaco', value: 'n/a' }] }), /results\[0\]\.rows\[1\]\.value must contain a digit/],
+  ] as Array<[CardContent, RegExp]>) assert.throws(() => validateCard(value, paperSource), message, String(message))
+})
+
+test('a stored paper card with string results and no method stats reads in the new shape', () => {
+  const stored = { ...paperCard, paper: { question: deck.question, method: deck.method, results: ['It translates better.', 'It also parses well.'] } }
+  assert.deepEqual(cardContentSchema.parse(stored).paper, { question: deck.question, method: deck.method, methodStats: [], results: [result('It translates better.'), result('It also parses well.')] })
+  assert.deepEqual(cardContentSchema.parse({ ...paperCard, paper: deck }).paper, deck)
+  assert.deepEqual(previousVersionSchema.parse({ card: stored, caption }).card.paper!.results[0], result('It translates better.'))
+})
+
+test('postSlides passes the method\'s stats and each result\'s stat and rows into their slides', () => {
+  const slides = postSlides({ ...paperCard, paper: deck }, paperSource)
+  assert.deepEqual(slides[2], { kind: 'method', kicker: 'The method', text: deck.method, stats: STATS })
+  assert.deepEqual(slides[3], { kind: 'result', kicker: 'Result 1', text: statResult.text, item: 0, stat: statResult.stat, rows: ROWS })
+  assert.deepEqual(slides[4], { kind: 'result', kicker: 'Result 2', text: deck.results[1]!.text, item: 1, stat: null, rows: [] })
+})
+
+// A value must sit near a word of its label in the paper. Text written for the test, in the shapes pdf.js leaves.
+const TABLE = 'Table 6: Elo ratings. Model Size Elo GPT-4 - 1348 ± 1 Guanaco 65B 41 GB 1022 ± 1 Vicuna 13B 26 GB 974 ± 1 ChatGPT - 966 ± 1 Guanaco 7B 5 GB 879 ± 1 Bard - 902 ± 1.'
+const PROSE = 'We recruited 312 nurses from five hospitals in the region. The participants answered a survey twice over 24 hours. ' +
+  `${'Filler sentence about something else entirely. '.repeat(20)}Separately, 41% of the reviewers preferred the new rota, while the fine-tuned models scored 63.4 on the benchmark.`
+
+test('valueNearLabel finds a value beside its label in a flattened table and a sentence apart in prose', () => {
+  // A table row: the label and its value in the same row.
+  assert.equal(valueNearLabel('1022 ± 1', 'Guanaco 65B', TABLE), true)
+  assert.equal(valueNearLabel('879 ± 1', 'Guanaco 7B', TABLE), true)
+  assert.equal(valueNearLabel('1348', 'GPT-4 Elo', TABLE), true)
+  // Prose: the label's word a sentence away; plurals, case and hyphens do not matter.
+  assert.equal(valueNearLabel('312', 'Nurses surveyed', PROSE), true)
+  assert.equal(valueNearLabel('312', 'participant', PROSE), true)
+  assert.equal(valueNearLabel('24 hours', 'Survey period', PROSE), true)
+  assert.equal(valueNearLabel('63.4', 'Score of finetuned models', PROSE), true)
+  assert.equal(valueNearLabel('63.4', 'Fine tuning benchmark', PROSE), true)
+  // A value attached to the wrong thing: its label's words are in the paper, but nowhere near the value.
+  assert.equal(valueNearLabel('312', 'Reviewers preferring the rota', PROSE), false)
+  assert.equal(valueNearLabel('41%', 'Nurses recruited', PROSE), false)
+  assert.equal(valueNearLabel('1022', 'Elo of Bard', 'Bard scored well. ' + 'x '.repeat(400) + 'Guanaco reached 1022.'), false)
+  // Nothing to check against: a label whose words are nowhere in the paper, a label of stopwords only, a value the
+  // text spells out or that is not in it as a numeral. The numbers check decides those.
+  assert.equal(valueNearLabel('312', 'Headcount', PROSE), true)
+  assert.equal(valueNearLabel('312', 'the total number of', PROSE), true)
+  assert.equal(valueNearLabel('5', 'Hospitals', PROSE), true)
+  assert.equal(valueNearLabel('999', 'Nurses', PROSE), true)
+})
+
+// Widened the same day: a key number on every post, and stat tiles for a set's study.
+test('every post may carry a key number; a set\'s study may carry its design\'s numbers', () => {
+  const key: Stat = { value: '1022', label: 'Elo rating' }
+  for (const [value, from] of [[{ ...card, stat: key }, source], [{ ...regionCard, stat: key }, regionSource], [{ ...setCard, stat: key }, setSource],
+    [{ ...paperCard, paper: deck, stat: key }, paperSource]] as Array<[CardContent, ShareCardSource]>) {
+    validateCard(value, from)
+    assert.throws(() => validateCard({ ...value, stat: { value: 'many', label: 'Elo' } }, from), /^Error: stat\.value must contain a digit\.$/)
+    assert.throws(() => validateCard({ ...value, stat: { value: '1022', label: 'l'.repeat(49) } }, from), /^Error: stat\.label has 49 characters; allowed 1–48\.$/)
+  }
+  validateCard({ ...setCard, set: { ...set, studyStats: STATS } }, setSource)
+  assert.throws(() => validateCard({ ...setCard, set: { ...set, studyStats: [...STATS, ...STATS] } }, setSource), /^Error: studyStats has 6 items; allowed at most 4\.$/)
+  assert.throws(() => validateCard({ ...setCard, set: { ...set, studyStats: [{ value: '', label: 'nurses' }] } }, setSource), /studyStats\[0\]\.value has 0 characters/)
+  // Cards and sets stored before read as null and [].
+  const { stat: _stat, ...stored } = card
+  assert.equal(cardContentSchema.parse(stored).stat, null)
+  const { studyStats: _studyStats, ...oldSet } = set
+  assert.deepEqual(cardContentSchema.parse({ ...setCard, set: oldSet }).set!.studyStats, [])
+  // The cover of a single post and of a set draws the key number; a set's study draws its tiles; the paper's lead does not.
+  assert.deepEqual(postSlides({ ...card, stat: key }, source)[0], { kind: 'cover', kicker: 'Attention', headline: card.headline, stat: key })
+  assert.deepEqual(postSlides({ ...regionCard, stat: key }, regionSource)[0], { kind: 'cover', kicker: 'Attention', headline: regionCard.headline, stat: key })
+  const slides = setSlides({ ...setCard, stat: key, set: { ...set, studyStats: STATS } }, setSource)
+  assert.deepEqual(slides[0], { kind: 'cover', kicker: 'Attention', headline: setCard.headline, stat: key })
+  assert.deepEqual(slides[1], { kind: 'study', kicker: 'The study', text: set.study, stats: STATS })
+  assert.equal('stat' in postSlides({ ...paperCard, paper: deck, stat: key }, paperSource)[0]!, false)
 })

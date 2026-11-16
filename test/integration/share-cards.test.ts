@@ -109,7 +109,7 @@ test('a highlight becomes a post in one request built from the passage and its p
     assert.match(record.source.context, /^Page one introduces the model\.\n\nAttention lets every position.*sparse patterns may reduce this cost\.\n\nPage three compares results\.$/)
     assert.doesNotMatch(record.source.context, /Page four/)
     // LinkedIn by default: the Page style, hashtags hidden, the link in the post.
-    assert.deepEqual(record.card, { ...CARD, quoteEdited: false, style: 'page', look: 'ink', crop: null, set: null, paper: null })
+    assert.deepEqual(record.card, { ...CARD, quoteEdited: false, style: 'page', look: 'ink', crop: null, set: null, paper: null, stat: null })
     assert.deepEqual(record.caption, caption())
     assert.equal(record.destination, 'linkedin'); assert.equal(record.take, '')
     assert.deepEqual(record.marks, [{ color: 'green', rects: record.source.rects }])
@@ -699,7 +699,7 @@ const REGION = { x1: 0.1, y1: 0.4, x2: 0.9, y2: 0.75 }
 const REGION_CARD = { headline: 'Longer inputs cost far more', topic: 'Attention', takeaway: 'What a region shows still needs its caption to be read right.' }
 const regionAnswer = (extra: Record<string, unknown> = {}) => JSON.stringify({ ...REGION_CARD, drafts: DRAFTS, hashtags: HASHTAGS, ...extra })
 const regionCard = (extra: Record<string, unknown> = {}) => ({
-  quote: '', quoteEdited: false, emphasis: '', pull: '', takeawaysTitle: '', takeaways: [], style: 'page', look: 'ink', crop: REGION, set: null, paper: null, ...REGION_CARD, ...extra,
+  quote: '', quoteEdited: false, emphasis: '', pull: '', takeawaysTitle: '', takeaways: [], style: 'page', look: 'ink', crop: REGION, set: null, paper: null, stat: null, ...REGION_CARD, ...extra,
 })
 const regionPrompt = (kind: SourceKind, destination: Destination = 'linkedin') => sharePostPrompt(destination, draftLimits(destination, { url: URL }), kind)
 
@@ -757,6 +757,8 @@ const PAPER_WORDS = {
   question: 'Can attention alone model a sequence?', method: 'The authors describe the model and compare results across its pages.',
   results: ['Every position can look at every other one.', 'The cost grows with the square of the sequence length.'],
 }
+/** The same words as the card stores them: results as objects, no numbers in this text. */
+const PAPER_CONTENT = { question: PAPER_WORDS.question, method: PAPER_WORDS.method, methodStats: [], results: PAPER_WORDS.results.map(text => ({ text, stat: null, rows: [] })) }
 const paperAnswer = (extra: Record<string, unknown> = {}) => JSON.stringify({ ...REGION_CARD, headline: 'Attention alone can model a sequence', ...PAPER_WORDS, drafts: DRAFTS, hashtags: HASHTAGS, ...extra })
 
 test('the paper becomes a post about the whole paper: its question, method and results, from a wider text', async () => {
@@ -772,11 +774,11 @@ test('the paper becomes a post about the whole paper: its question, method and r
     // The whole paper fits the budget, so its text is every page, in order.
     assert.match(record.source.context, /^Page one introduces the model\.\n\nAttention lets every position.*\n\nPage three compares results\.\n\nPage four is out of range\.$/s)
     assert.deepEqual(record.card, { quote: '', quoteEdited: false, emphasis: '', pull: '', takeawaysTitle: '', takeaways: [], headline: 'Attention alone can model a sequence',
-      topic: REGION_CARD.topic, takeaway: REGION_CARD.takeaway, style: 'carousel', look: 'ink', crop: top, set: null, paper: PAPER_WORDS })
+      topic: REGION_CARD.topic, takeaway: REGION_CARD.takeaway, style: 'carousel', look: 'ink', crop: top, set: null, paper: PAPER_CONTENT, stat: null })
     assert.equal(record.caption!.showTags, true)
     const sent = s.prompt(1), input = s.input(1)
     assert.ok(sent.startsWith(`${regionPrompt('paper', 'instagram')}\n\n{`))
-    assert.match(sent, /is sharing the paper itself, as a whole/); assert.match(sent, /- question: /); assert.match(sent, /- results: one or two strings/)
+    assert.match(sent, /is sharing the paper itself, as a whole/); assert.match(sent, /- question: /); assert.match(sent, /- results: one or two objects/); assert.match(sent, /- methodStats: /); assert.match(sent, /- stat: /)
     assert.match(sent, /question the paper set out to answer, how it was tested, what it found/); assert.doesNotMatch(sent, /pageText/)
     assert.deepEqual(Object.keys(input).sort(), ['credit', 'paperText', 'regionText', 'title'])
     assert.equal(input.regionText, 'Test Source. Page one introduces the model.'); assert.equal(input.paperText, record.source.context)
@@ -787,8 +789,8 @@ test('the paper becomes a post about the whole paper: its question, method and r
     s.respond(2, paperAnswer({ results: PAPER_WORDS.results.slice(0, 1) }))
     await s.app.inject({ method: 'POST', url: `${s.base}/${record.id}/change`, payload: { instruction: 'One result only' } })
     const changed = await s.settle(record.id)
-    assert.deepEqual(changed.card!.paper, { ...PAPER_WORDS, results: PAPER_WORDS.results.slice(0, 1) })
-    assert.deepEqual(s.input(2).previousCard, { headline: 'Attention alone can model a sequence', topic: REGION_CARD.topic, takeaway: REGION_CARD.takeaway, ...PAPER_WORDS })
+    assert.deepEqual(changed.card!.paper, { ...PAPER_CONTENT, results: PAPER_CONTENT.results.slice(0, 1) })
+    assert.deepEqual(s.input(2).previousCard, { headline: 'Attention alone can model a sequence', topic: REGION_CARD.topic, takeaway: REGION_CARD.takeaway, ...PAPER_CONTENT, stat: null })
 
     // An empty region text is allowed: the paper's text carries the post. A failed one is listed as "Paper".
     s.respond(3, paperAnswer())
@@ -806,24 +808,24 @@ test('a paper answer is checked field by field against the first page and the wi
   const options = { destination: 'linkedin' as const, take: '', changed: false }
   const words = { question: 'Do nurses agree on the new rota?', method: 'A survey of 312 nurses in 2019.', results: ['Most nurses (63%) agreed.'] }
   const answer = (extra: Record<string, unknown> = {}) => paperAnswer({ headline: 'Most nurses back the rota', ...words, ...extra })
-  assert.deepEqual(parseShareCardAnswer(answer(), source, options).card.paper, words)
+  assert.deepEqual(parseShareCardAnswer(answer(), source, options).card.paper, { ...words, methodStats: [], results: words.results.map(text => ({ text, stat: null, rows: [] })) })
   // Extra fields on a region's answer are ignored, and it has no paper.
   assert.equal(parseShareCardAnswer(paperAnswer(), { ...source, kind: 'region' }, options).card.paper, null)
   for (const [raw, reason] of [
     [answer({ question: undefined }), /^Error: question must be a string\.$/],
     [answer({ method: 7 }), /^Error: method must be a string\.$/],
-    [answer({ results: 'Most agreed.' }), /^Error: results must be a list of 1–2 strings, the main finding first\.$/],
+    [answer({ results: 'Most agreed.' }), /^Error: results must be a list of 1–2 objects with text, stat and rows, the main finding first\.$/],
     [answer({ results: [] }), /^Error: results has 0 items; allowed 1–2, the main finding first\.$/],
     [answer({ results: ['a', 'b', 'c'] }), /results has 3 items/],
     [answer({ question: 'q'.repeat(161) }), /question has 161 characters; allowed 1–160/],
-    [answer({ results: ['r'.repeat(141)] }), /results\[0\] has 141 characters; allowed 1–140/],
+    [answer({ results: ['r'.repeat(141)] }), /results\[0\]\.text has 141 characters; allowed 1–140/],
     [answer({ results: ['Most nurses (63%) agreed.', ' most nurses (63%) AGREED '] }), /^Error: results\[1\] must differ from results\[0\]\.$/],
     [answer({ results: ['Most nurses back the rota.'] }), /^Error: results\[0\] must say more than the headline, not repeat it\.$/],
     [answer({ headline: 'A survey of nurses' }), /^Error: headline must be a hook, not the paper's title\.$/],
     [answer({ method: 'A survey of 400 nurses.' }), /^Error: method has numbers that are not in regionText, paperText, title, credit, page or readerTake: 400\. Use only numbers stated there\.$/],
-    [answer({ results: ['Most nurses (64%) agreed.'] }), /results\[0\] has numbers .*: 64\./],
+    [answer({ results: ['Most nurses (64%) agreed.'] }), /results\[0\]\.text has numbers .*: 64\./],
     [answer({ question: 'What does paperText say about rotas?' }), /question must not mention pageText or the supplied text/],
-    [answer({ results: ['My reading: most nurses agreed.'] }), /results\[0\] must not use the first person \("My"\)/],
+    [answer({ results: ['My reading: most nurses agreed.'] }), /results\[0\]\.text must not use the first person \("My"\)/],
     [answer({ method: 'A survey, see example.com.' }), /method must not contain links/],
     [answer({ question: 'The authors ask “whether every nurse in the country prefers the rota” here.' }), /question quotes words that are not in regionText or paperText/],
     [answer({ takeaway: 'Most nurses back the rota.' }), /takeaway must say what follows from the headline, not repeat it/],
@@ -844,8 +846,8 @@ test('the reader edits a paper post\'s question, method and results one at a tim
     assert.equal(question.card!.paper!.question, 'Is attention enough?'); assert.equal(question.can_undo, true)
     assert.equal(((await patch({ paper_text: { field: 'method', text: 'A model, described.' } })).json() as ShareCardRecord).card!.paper!.method, 'A model, described.')
     assert.deepEqual(((await patch({ paper_text: { field: 'result', index: 1, text: 'In 2017 it cost less.' } })).json() as ShareCardRecord).card!.paper!.results,
-      [PAPER_WORDS.results[0], 'In 2017 it cost less.'])
-    await refuse({ paper_text: { field: 'result', index: 1, text: ' ' } }, 'results[1] has 0 characters; allowed 1–140.')
+      [PAPER_CONTENT.results[0], { text: 'In 2017 it cost less.', stat: null, rows: [] }])
+    await refuse({ paper_text: { field: 'result', index: 1, text: ' ' } }, 'results[1].text has 0 characters; allowed 1–140.')
     await refuse({ paper_text: { field: 'question', text: 'q'.repeat(161) } }, 'question has 161 characters; allowed 1–160.')
     await refuse({ paper_text: { field: 'result', text: 'x' } }, 'Name the result to edit with its index.')
     await refuse({ paper_text: { field: 'method', index: 0, text: 'x' } }, 'Only a result has an index.')
@@ -853,7 +855,7 @@ test('the reader edits a paper post\'s question, method and results one at a tim
     for (const bad of [{ paper_text: { field: 'takeaway', text: 'x' } }, { paper_text: { field: 'result', index: -1, text: 'x' } }, { paper_text: { field: 'question' } }])
       assert.equal((await patch(bad)).statusCode, 400)
     const undone = (await s.app.inject({ method: 'POST', url: `${url}/undo`, payload: {} })).json() as ShareCardRecord
-    assert.deepEqual(undone.card!.paper!.results, PAPER_WORDS.results)
+    assert.deepEqual(undone.card!.paper!.results, PAPER_CONTENT.results)
     // A paper post stored before it had a question keeps working, and asks for a rewrite to edit one.
     const card = JSON.parse((s.db.prepare('SELECT card_json FROM share_cards WHERE id=?').get(first.id) as { card_json: string }).card_json)
     delete card.paper
@@ -894,7 +896,7 @@ test('a region post keeps its region as the crop, refuses text cards and quote e
     assert.equal(s.callCount(), 2); assert.equal(changed.status, 'complete')
     assert.deepEqual(changed.card, regionCard({ headline: 'Cost grows with length', crop: moved, style: 'page', look: 'marker' }))
     const input = s.input(2)
-    assert.deepEqual(input.previousCard, { headline: 'My own headline', topic: 'Attention', takeaway: REGION_CARD.takeaway }); assert.equal(input.change, 'Shorter')
+    assert.deepEqual(input.previousCard, { headline: 'My own headline', topic: 'Attention', takeaway: REGION_CARD.takeaway, stat: null }); assert.equal(input.change, 'Shorter')
     assert.ok(s.prompt(2).startsWith(`${regionPrompt('region', 'x')}\n\n{`))
     // Undo returns to LinkedIn and the Headline style; the crop set since stays.
     const undone = (await s.app.inject({ method: 'POST', url: `${url}/undo`, payload: {} })).json() as ShareCardRecord
@@ -977,9 +979,9 @@ const SET_WORDS = {
 }
 const setAnswer = (extra: Record<string, unknown> = {}) => JSON.stringify({ ...SET_WORDS, drafts: DRAFTS, hashtags: HASHTAGS, ...extra })
 const setCard = (extra: Record<string, unknown> = {}, set: Record<string, unknown> = {}) => ({
-  quote: '', quoteEdited: false, emphasis: '', pull: '', takeawaysTitle: '', takeaways: [], style: 'headline', look: 'ink', crop: null, takeaway: '', paper: null,
+  quote: '', quoteEdited: false, emphasis: '', pull: '', takeawaysTitle: '', takeaways: [], style: 'headline', look: 'ink', crop: null, takeaway: '', paper: null, stat: null,
   headline: SET_WORDS.headline, topic: SET_WORDS.topic, ...extra,
-  set: { study: SET_WORDS.study, points: POINTS, takeaway: SET_WORDS.takeaway, limitations: SET_WORDS.limitations, crops: [null, null, null], ...set },
+  set: { study: SET_WORDS.study, studyStats: [], points: POINTS, takeaway: SET_WORDS.takeaway, limitations: SET_WORDS.limitations, crops: [null, null, null], ...set },
 })
 const PAGE_THREE = 'Page three compares results.', PAGE_FOUR = 'Page four is out of range.'
 const BOX = (y: number) => [{ x1: 0.1, y1: y, x2: 0.8, y2: y + 0.02 }]
@@ -1085,7 +1087,7 @@ test('a carousel\'s slide words and crops are edited one at a time; text cards a
     assert.equal(s.callCount(), 2); assert.equal(moved.status, 'complete')
     assert.deepEqual(moved.card, setCard({ headline: 'Reach, priced', look: 'paper' }, { crops: [null, null, crop] }))
     assert.deepEqual(s.input(2).previousCard, { headline: 'My own cover', topic: 'Attention', study: '', points: [POINTS[0], 'Results are compared', POINTS[2]],
-      takeaway: SET_WORDS.takeaway, limitations: 'Untested at scale.' })
+      takeaway: SET_WORDS.takeaway, limitations: 'Untested at scale.', studyStats: [], stat: null })
 
     // A single post has no slides.
     const single = await s.post(s.ids[0])
@@ -1365,5 +1367,140 @@ test('the reader edits the takeaway behind Undo; the Carousel style is a single 
     const refused = await t.app.inject({ method: 'PATCH', url: `${t.base}/${set.id}`, payload: { takeaway: 'Mine.' } })
     assert.equal(refused.statusCode, 400)
     assert.equal(refused.json().detail, 'A carousel of several highlights keeps its takeaway on its own slide; edit it with { set_text: { field: \'takeaway\' } }.')
+  } finally { await t.close() }
+})
+
+// Stage 6: numbers as numbers. Text written for the tests, in the shapes pdf.js leaves.
+const FILLER = 'This sentence is about something else entirely. '.repeat(8)
+const NURSES = `We recruited 312 nurses from 5 hospitals over 24 weeks. ${FILLER}Table 2: Agreement by shift. Shift Agreement Day shift 63% Night shift 41% Weekend 38%. ` +
+  `${FILLER}Most nurses (63%) agreed with the new rota.`
+const nurseSource = { kind: 'paper' as const, passage: 'Rotas and Nurses. Abstract We surveyed nurses about a new rota.', context: NURSES, title: 'Rotas and Nurses', credit: '', page: 1, url: URL }
+const NURSE_STATS = [{ value: '312', label: 'Nurses recruited' }, { value: '5', label: 'Hospitals' }, { value: '24 weeks', label: 'Length of the study' }]
+const NURSE_ROWS = [{ label: 'Day shift', value: '63%' }, { label: 'Night shift', value: '41%' }, { label: 'Weekend', value: '38%' }]
+const NURSE_RESULT = { text: 'Most nurses (63%) agreed with the new rota.', stat: { value: '63%', label: 'Nurses who agreed' }, rows: NURSE_ROWS }
+const nurseAnswer = (extra: Record<string, unknown> = {}, result: Record<string, unknown> = {}) => paperAnswer({
+  headline: 'The new rota won most nurses over', question: 'Do nurses accept the new rota?', method: 'A survey of nurses in several hospitals.',
+  methodStats: NURSE_STATS, results: [{ ...NURSE_RESULT, ...result }], stat: null, ...extra,
+})
+
+test('a paper answer carries the design in numbers and, per result, its key number and the comparison the text reports', () => {
+  const options = { destination: 'linkedin' as const, take: '', changed: false }
+  const parsed = parseShareCardAnswer(nurseAnswer(), nurseSource, options)
+  assert.deepEqual(parsed.card.paper, { question: 'Do nurses accept the new rota?', method: 'A survey of nurses in several hospitals.', methodStats: NURSE_STATS, results: [NURSE_RESULT] })
+  // The post's key number is the first result's, copied whatever the answer said.
+  assert.deepEqual(parsed.card.stat, NURSE_RESULT.stat)
+  assert.deepEqual(parseShareCardAnswer(nurseAnswer({ stat: { value: '312', label: 'Nurses recruited' } }), nurseSource, options).card.stat, NURSE_RESULT.stat)
+  // Without a result stat, the answer's own key number stands, checked.
+  assert.deepEqual(parseShareCardAnswer(nurseAnswer({ stat: { value: '312', label: 'Nurses recruited' } }, { stat: null }), nurseSource, options).card.stat, { value: '312', label: 'Nurses recruited' })
+  // No numbers at all is right when the text gives none, and a plain sentence is a result without a number.
+  assert.deepEqual(parseShareCardAnswer(nurseAnswer({ methodStats: [], results: ['Most nurses (63%) agreed with the new rota.'] }), nurseSource, options).card.paper!.results,
+    [{ text: 'Most nurses (63%) agreed with the new rota.', stat: null, rows: [] }])
+  for (const [raw, reason] of [
+    [nurseAnswer({ methodStats: NURSE_STATS.slice(0, 1) }), /^Error: methodStats has 1 items; allowed none, or 2–4 when the text states that many numbers about the design\.$/],
+    [nurseAnswer({ methodStats: [NURSE_STATS[0], { value: ' 312 ', label: 'nurses  recruited' }] }), /^Error: methodStats\[1\] repeats methodStats\[0\]\.$/],
+    [nurseAnswer({ methodStats: [NURSE_STATS[0], { value: '400', label: 'Hospitals' }] }), /^Error: methodStats\[1\]\.value has numbers that are not in regionText, paperText, title, credit, page or readerTake: 400\./],
+    [nurseAnswer({ methodStats: [NURSE_STATS[0], { value: 'many', label: 'Hospitals' }] }), /^Error: methodStats\[1\]\.value must contain a digit\.$/],
+    [nurseAnswer({ methodStats: 'two' }), /^Error: methodStats must be a list of objects with value and label, or \[\]\.$/],
+    [nurseAnswer({ methodStats: [NURSE_STATS[0], 7] }), /^Error: methodStats\[1\] must be null or an object with a string value and label\.$/],
+    // A real number from the paper, attached to the wrong thing.
+    [nurseAnswer({ methodStats: [NURSE_STATS[0], { value: '312', label: 'Weekend shifts' }] }), /^Error: methodStats\[1\]: "312" does not appear near "Weekend shifts" in regionText or paperText; give the value the text states for that label, or leave it out\.$/],
+    [nurseAnswer({ methodStats: [NURSE_STATS[0], { value: '5', label: 'See pageText' }] }), /methodStats\[1\]\.label must not mention pageText/],
+    [nurseAnswer({}, { stat: 'high' }), /^Error: results\[0\]\.stat must be null or an object with a string value and label\.$/],
+    [nurseAnswer({}, { stat: { value: '41%', label: 'Night shift agreement' } }), /^Error: results\[0\]\.stat\.value must also appear in results\[0\]\.text\.$/],
+    [nurseAnswer({}, { rows: NURSE_ROWS.slice(0, 1) }), /^Error: results\[0\]\.rows has 1 items; allowed none, or 2–4\.$/],
+    [nurseAnswer({}, { rows: 'none' }), /^Error: results\[0\]\.rows must be a list of objects with label and value, or \[\]\.$/],
+    [nurseAnswer({}, { rows: [NURSE_ROWS[0], 3] }), /^Error: results\[0\]\.rows\[1\] must be an object with a string label and value\.$/],
+    [nurseAnswer({}, { rows: [NURSE_ROWS[0], { label: 'Night shift', value: '41' }] }), /^Error: results\[0\]\.rows mix units \("%" and ""\); a comparison has one measure and one unit, or rows is \[\]\.$/],
+    [nurseAnswer({}, { rows: [NURSE_ROWS[0], { label: ' day  SHIFT ', value: '41%' }] }), /^Error: results\[0\]\.rows\[1\] repeats the label of results\[0\]\.rows\[0\]\.$/],
+    [nurseAnswer({}, { rows: [NURSE_ROWS[0], { label: 'Night shift', value: '24%' }] }), /^Error: results\[0\]\.rows\[1\]: "24%" does not appear near "Night shift" in regionText or paperText; give the value the text reports for that row, or leave rows \[\]\.$/],
+    [nurseAnswer({}, { rows: [NURSE_ROWS[0], { label: 'Night shift', value: '47%' }] }), /^Error: results\[0\]\.rows\[1\]\.value has numbers .*: 47\./],
+    [nurseAnswer({}, { rows: [NURSE_ROWS[0], { label: 'My shift', value: '41%' }] }), /results\[0\]\.rows\[1\]\.label must not use the first person/],
+  ] as Array<[string, RegExp]>) assert.throws(() => parseShareCardAnswer(raw, nurseSource, options), reason, String(reason))
+})
+
+test('every kind\'s key number comes from its own text and sits near its label', () => {
+  const options = { destination: 'linkedin' as const, take: '', changed: false }
+  const key = { value: '63%', label: 'Nurses who agreed' }
+  // A highlight: the number must be in the highlight itself, not only on its page.
+  const highlightSource = { passage: 'Most nurses (63%) agreed with the new rota, the survey found.', context: NURSES, title: 'Rotas', credit: '', page: 2, url: URL }
+  const highlight = (stat: unknown) => answer({ quote: 'Most nurses (63%) agreed with the new rota', emphasis: 'agreed', pull: '', stat })
+  assert.deepEqual(parseShareCardAnswer(highlight(key), highlightSource, options).card.stat, key)
+  assert.equal(parseShareCardAnswer(highlight(null), highlightSource, options).card.stat, null)
+  assert.equal(parseShareCardAnswer(highlight(undefined), highlightSource, options).card.stat, null)
+  assert.throws(() => parseShareCardAnswer(highlight({ value: '312', label: 'Nurses recruited' }), highlightSource, options),
+    /^Error: stat\.value must be a number that the highlight itself gives: 312\. Use null when there is none\.$/)
+  assert.throws(() => parseShareCardAnswer(highlight({ value: 'most', label: 'Nurses' }), highlightSource, options), /^Error: stat\.value must contain a digit\.$/)
+  assert.throws(() => parseShareCardAnswer(highlight({ value: '63%', label: 'l'.repeat(49) }), highlightSource, options), /stat\.label has 49 characters/)
+  // A region: its text or its page.
+  const region = { ...highlightSource, kind: 'region' as const, passage: 'Shift Agreement Day shift 63% Night shift 41%' }
+  assert.deepEqual(parseShareCardAnswer(regionAnswer({ stat: { value: '312', label: 'Nurses recruited' } }), region, options).card.stat, { value: '312', label: 'Nurses recruited' })
+  assert.throws(() => parseShareCardAnswer(regionAnswer({ stat: { value: '312', label: 'Weekend' } }), region, options), /^Error: stat: "312" does not appear near "Weekend"/)
+  // A set: one of its highlights, not their pages.
+  const items = [{ annotation_id: 'a', passage: 'Most nurses (63%) agreed with the new rota.', page: 2, rects: [], color: 'yellow' as const },
+    { annotation_id: 'b', passage: 'Night shifts agreed least, the authors note.', page: 3, rects: [], color: 'yellow' as const }]
+  const set = { kind: 'set' as const, items, passage: items.map(item => item.passage).join('\n\n'), context: NURSES, title: 'Rotas', credit: '', page: 2, url: URL }
+  const setWords = { points: ['Most nurses agreed', 'Night shifts agreed least'], limitations: '' }
+  const parsed = parseShareCardAnswer(setAnswer({ ...setWords, stat: key, studyStats: [{ value: '312', label: 'Nurses recruited' }, { value: '5', label: 'Hospitals' }] }), set, options)
+  assert.deepEqual(parsed.card.stat, key); assert.deepEqual(parsed.card.set!.studyStats, [{ value: '312', label: 'Nurses recruited' }, { value: '5', label: 'Hospitals' }])
+  assert.throws(() => parseShareCardAnswer(setAnswer({ ...setWords, stat: { value: '312', label: 'Nurses' } }), set, options), /stat\.value must be a number that one of the highlights gives: 312/)
+  assert.throws(() => parseShareCardAnswer(setAnswer({ ...setWords, studyStats: [{ value: '312', label: 'Nurses recruited' }] }), set, options), /^Error: studyStats has 1 items/)
+  assert.throws(() => parseShareCardAnswer(setAnswer({ ...setWords, studyStats: [{ value: '312', label: 'Nurses' }, { value: '5', label: 'Weekend' }] }), set, options),
+    /^Error: studyStats\[1\]: "5" does not appear near "Weekend"/)
+})
+
+test('the reader edits the numbers: the key number on every post, the method\'s and study\'s stats, a result\'s stat and rows', async () => {
+  const s = await regionSetup()
+  try {
+    s.db.prepare('UPDATE sources SET pdf_text=? WHERE id=?').run(`[Page 1]\n${NURSES}`, s.source)
+    s.db.prepare('DELETE FROM source_chunks WHERE source_id=?').run(s.source)
+    s.respond(1, nurseAnswer())
+    const top = { x1: 0, y1: 0, x2: 1, y2: 0.5 }
+    const first = await s.settle(((await s.start({ kind: 'paper', page: 1, region: top, text: 'Rotas and Nurses.' })).json() as ShareCardRecord).id)
+    assert.equal(first.status, 'complete', first.error ?? ''); assert.deepEqual(first.card!.stat, NURSE_RESULT.stat)
+    const url = `${s.base}/${first.id}`, patch = (payload: unknown) => s.app.inject({ method: 'PATCH', url, payload })
+    const refuse = async (payload: unknown, detail: string) => {
+      const response = await patch(payload); assert.equal(response.statusCode, 400, JSON.stringify(payload)); assert.equal(response.json().detail, detail)
+    }
+    // The method's stats without its text; the reader's values are not held to the numbers check.
+    const method = (await patch({ paper_text: { field: 'method', stats: [{ value: ' 9999 ', label: ' Nurses  asked ' }] } })).json() as ShareCardRecord
+    assert.deepEqual(method.card!.paper!.methodStats, [{ value: '9999', label: 'Nurses asked' }]); assert.equal(method.card!.paper!.method, 'A survey of nurses in several hospitals.')
+    // A result's stat and rows, its text kept; then its text, its stat and rows kept.
+    const rows = [{ label: 'Day', value: '63%' }, { label: 'Night', value: '41%' }]
+    const result = (await patch({ paper_text: { field: 'result', index: 0, stat: null, rows } })).json() as ShareCardRecord
+    assert.deepEqual(result.card!.paper!.results[0], { text: NURSE_RESULT.text, stat: null, rows })
+    assert.deepEqual(((await patch({ paper_text: { field: 'result', index: 0, text: 'Most agreed.' } })).json() as ShareCardRecord).card!.paper!.results[0], { text: 'Most agreed.', stat: null, rows })
+    await refuse({ paper_text: { field: 'result', index: 0, rows: rows.slice(0, 1) } }, 'results[0].rows has 1 items; allowed none, or 2–4.')
+    await refuse({ paper_text: { field: 'method', stats: Array.from({ length: 5 }, () => NURSE_STATS[0]) } }, 'methodStats has 5 items; allowed at most 4.')
+    await refuse({ paper_text: { field: 'result', index: 0, stat: { value: 'most', label: 'x' } } }, 'results[0].stat.value must contain a digit.')
+    await refuse({ paper_text: { field: 'result', index: 0, stats: NURSE_STATS } }, 'Only the method has stats.')
+    await refuse({ paper_text: { field: 'method', rows } }, 'Only a result has a stat and rows.')
+    await refuse({ paper_text: { field: 'question', stat: null } }, 'Only a result has a stat and rows.')
+    await refuse({ paper_text: { field: 'method' } }, 'Send the text, or the stats, stat or rows to change.')
+    // One Undo step per edit.
+    assert.equal(((await s.app.inject({ method: 'POST', url: `${url}/undo`, payload: {} })).json() as ShareCardRecord).card!.paper!.results[0]!.text, NURSE_RESULT.text)
+    // The key number, on any post.
+    const keyed = (await patch({ stat: { value: '41%', label: 'Night shift' } })).json() as ShareCardRecord
+    assert.deepEqual(keyed.card!.stat, { value: '41%', label: 'Night shift' }); assert.equal(keyed.can_undo, true)
+    assert.equal(((await patch({ stat: null })).json() as ShareCardRecord).card!.stat, null)
+    await refuse({ stat: { value: '', label: 'x' } }, 'stat.value has 0 characters; allowed 1–12.')
+    assert.equal((await patch({ stat: { value: '1' } })).statusCode, 400)
+    // A change sends the numbers with the previous version.
+    s.respond(2, nurseAnswer())
+    await s.app.inject({ method: 'POST', url: `${url}/change`, payload: { instruction: 'Shorter' } })
+    await s.settle(first.id)
+    assert.deepEqual(s.input(2).previousCard.methodStats, [{ value: '9999', label: 'Nurses asked' }]); assert.equal(s.input(2).previousCard.stat, null)
+    assert.equal(s.callCount(), 2)
+  } finally { await s.close() }
+  const t = await setSetup()
+  try {
+    const set = await t.settle(((await t.start()).json() as ShareCardRecord).id), url = `${t.base}/${set.id}`
+    const stats = [{ value: '3', label: 'Pages' }, { value: '4', label: 'Sections' }]
+    const study = (await t.app.inject({ method: 'PATCH', url, payload: { set_text: { field: 'study', stats } } })).json() as ShareCardRecord
+    assert.deepEqual(study.card!.set!.studyStats, stats); assert.equal(study.card!.set!.study, SET_WORDS.study)
+    for (const [payload, detail] of [[{ set_text: { field: 'point', index: 0, stats } }, 'Only the study has stats.'], [{ set_text: { field: 'takeaway' } }, 'Send the text, or the study\'s stats, to change.'],
+      [{ set_text: { field: 'point', index: 0 } }, 'Send the text, or the study\'s stats, to change.']] as const) {
+      const response = await t.app.inject({ method: 'PATCH', url, payload }); assert.equal(response.statusCode, 400); assert.equal(response.json().detail, detail)
+    }
+    assert.deepEqual(((await t.app.inject({ method: 'PATCH', url, payload: { stat: { value: '3', label: 'Highlights' } } })).json() as ShareCardRecord).card!.stat, { value: '3', label: 'Highlights' })
   } finally { await t.close() }
 })

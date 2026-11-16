@@ -8,9 +8,9 @@ import { digest } from './extension-auth.js'
 import { joinOverlapping, splitPages } from './retrieval.js'
 import {
   ANGLES, CARD, DESTINATIONS, PAPER, SET, DESTINATION_DEFAULTS, LOOKS, STYLES, TAKE_MAX, cleanPassage, collapse, defaultLook, draftLimits, highlightColor, isActive,
-  PAPER_STYLE_REFUSED, REGION_STYLES, REGION_STYLE_REFUSED, SET_STYLE_REFUSED, publicUrl, quoteMatches, regionProblem, summaryTitle, unsupportedNumbers, validateCard,
+  PAPER_STYLE_REFUSED, REGION_STYLES, REGION_STYLE_REFUSED, SET_STYLE_REFUSED, numbersIn, numeralPositions, publicUrl, quoteMatches, regionProblem, summaryTitle, unsupportedNumbers, validateCard,
   type Angle, type Caption, type CardContent, type Destination, type DraftLimits, type LinkPlacement, type PageMark, type PageRect, type ShareCardRecord,
-  type ShareCardSource, type ShareCardStatus, type ShareCardSummary, type ShareLook, type ShareStyle, type SourceKind, type SetContent, type SetItem, type PaperContent,
+  type ShareCardSource, type ShareCardStatus, type ShareCardSummary, type ShareLook, type ShareStyle, type SourceKind, type SetContent, type SetItem, type PaperContent, type PaperResult, type Row as ComparisonRow, type Stat,
 } from '../shared/share-card.js'
 import { captionSchema, cardContentSchema, pageRectSchema, previousVersionSchema, shareCardSourceSchema } from '../shared/share-card-schema.js'
 
@@ -42,7 +42,7 @@ const WORDING: Record<SourceKind, Wording> = {
   highlight: { words: 'text cards', states: 'the passage states', numbered: ', the headline, the takeaway, takeawaysTitle or one of the takeaways', mention: 'the highlight, the selection, pageText',
     language: 'highlight', quotes: ' quote and pull always stay in their original language.' },
   region: REGION_WORDING,
-  paper: { words: 'headline, takeaway, question, method and results', states: 'the paper found', numbered: ', the headline, the takeaway, the question, the method or a result',
+  paper: { words: 'headline, takeaway, question, method and results', states: 'the paper found', numbered: ', the headline, the takeaway, the question, the method, a result, a stat or a row',
     mention: 'the first page, the selection, regionText, paperText', language: 'the paper', quotes: '' },
   set: { words: "carousel's slides", states: 'the highlights together state', numbered: ', the headline, study, a point, takeaway or limitations',
     mention: 'the highlights, the selection, pageText', language: 'highlights', quotes: '' },
@@ -82,27 +82,37 @@ const KIND: Record<SourceKind, { opening: (platform: string) => string; rules: s
 }
 
 /** The words for the text cards, which only a highlight's post has; a region's post has a headline and a topic. */
+/** The line asking for the post's key number; `where` names the text the value must come from. */
+const statLine = (where: string, none = `${where} gives no number`) => `- stat: the one number that carries the finding, as an object { value, label }: value is the number with its unit exactly as ${where} writes it (at most 12 characters, with a digit; for example "312", "24 hours" or "41%"), and label says what it measures, in your own words (at most 48 characters). null when ${none}.`
+/** The line asking for a study's design in numbers; `name` is the field and `where` the text they come from. */
+const designStatsLine = (name: string, where: string, verb = 'states') => `- ${name}: two to four facts of the study's design that ${where} ${verb} as numbers (the sample size, groups or conditions, duration, number of datasets, models, sites or trials), each { value, label }: value is the number with its unit exactly as the text writes it (at most 12 characters, with a digit), and label says what it counts, in your own words, with no number unless it is part of a name (at most 48 characters). [] when the text states fewer than two such numbers. Never the same fact twice.`
+
 function cardFields(kind: SourceKind, text: string): string {
   if (kind === 'paper') return `- headline: the hook that makes someone stop for this paper, at most 80 characters: a sharp claim worth sharing, not the paper's title. It must follow from regionText and paperText and keep the authors' degree of certainty.
 - topic: one or two words naming the subject, at most 24 characters, letters, digits and spaces only. For example "Attention" or "Tomada de decisão".
 - question: what the paper set out to test or answer: its hypothesis or research question, in one sentence of at most 160 characters.
 - method: how it was tested: the design, the data, the sample and its size when regionText or paperText states them, at most 160 characters.
-- results: one or two strings, the main finding first, each one sentence of at most 140 characters, with its number when the text gives one, keeping the authors' hedges. A second result only when the paper reports another finding worth its own slide. Never the headline again, and never the same finding twice.
-- takeaway: one sentence of at most 140 characters saying why the paper matters: what follows from its results for how people work, build, research or decide, not a result again in other words. Ground it in regionText and paperText and keep the authors' degree of certainty. No first person, no question, and no instruction to the reader.`
+${designStatsLine('methodStats', 'regionText or paperText')}
+- results: one or two objects, the main finding first, each { text, stat, rows }. text is one sentence of at most 140 characters, with its number when the text gives one, keeping the authors' hedges. stat is the one number that carries that result, { value, label } as for stat below, and its value also appears in text; null when the result has no number. rows is a comparison the text itself reports for that result: two to four { label, value } (label at most 28 characters: a condition, group or model; value at most 12 characters), the same measure and the same unit in every row, in the order the text gives them or from best to worst; [] when the text reports no such comparison. Never assemble a comparison from numbers that measure different things, and never give a row a value the text does not give for that label. A second result only when the paper reports another finding worth its own slide. Never the headline again, and never the same finding twice.
+- takeaway: one sentence of at most 140 characters saying why the paper matters: what follows from its results for how people work, build, research or decide, not a result again in other words. Ground it in regionText and paperText and keep the authors' degree of certainty. No first person, no question, and no instruction to the reader.
+${statLine('regionText or paperText')}`
   const headline = `- headline: the idea as a sharp claim worth sharing, at most 80 characters. It must follow from ${text} and pageText and keep the authors' degree of certainty.
 - topic: one or two words naming the subject, at most 24 characters, letters, digits and spaces only. For example "Attention" or "Tomada de decisão".`
   if (kind === 'set') return `${headline.replace('- headline: the idea as a sharp claim worth sharing', "- headline: the cover's headline and the carousel's hook: a sharp claim worth sharing")}
 - study: one sentence of at most 160 characters saying what was studied and how (the design, the sample and its size) as highlights or pageText state it, or "" when they do not say what was studied.
+${designStatsLine('studyStats', 'highlights or pageText', 'state')}
 - points: one string per entry in highlights, in the same order, each at most 70 characters: the claim that highlight's own text supports, and nothing more. Never merge two highlights or move a claim to another highlight's point.
 - takeaway: at most 140 characters: what the highlights add up to, grounded in them.
-- limitations: at most 160 characters: the limitations that highlights or pageText state, or "" when they state none. Never repeat what a point already says: when a highlight is itself the limitation, its point carries it and limitations is "".`
+- limitations: at most 160 characters: the limitations that highlights or pageText state, or "" when they state none. Never repeat what a point already says: when a highlight is itself the limitation, its point carries it and limitations is "".
+${statLine('one of the highlights', 'no highlight gives a number')}`
   // The third slide of the Carousel style. The headline is the claim; the takeaway is its consequence.
   const takeaway = `- takeaway: one sentence of at most 140 characters saying why the finding matters: what follows from the headline's claim for how people work, build, research or decide, not the claim again in other words. Ground it in ${text} and pageText and keep the authors' degree of certainty. No first person, no question, and no instruction to the reader.`
-  if (kind !== 'highlight') return `${headline}\n${takeaway}`
+  if (kind !== 'highlight') return `${headline}\n${takeaway}\n${statLine('regionText or pageText')}`
   return `- quote: words copied exactly from highlight, one continuous run of 1–240 characters. When fixedQuote is present, return it unchanged. Otherwise choose the sentence that is most striking on its own, ideally under 120 characters. Prefer a complete sentence; you may leave out a leading connective such as "However" or "Thus", and the card capitalises the first letter. Avoid one that leans on an unexplained "this" or "they", or that contains a formula or a citation marker. Never splice, correct, complete or translate it.
 - emphasis: 1–4 consecutive words copied exactly from quote, at most 40 characters, or "". Choose the words that carry the point.
 ${headline}
 ${takeaway}
+${statLine('highlight')}
 - pull: a second short quote copied exactly from highlight or pageText, at most 140 characters, or "". It should back up the headline and differ from quote.
 - takeawaysTitle: a title for three takeaways, at most 48 characters, phrased as the question or lesson they answer.
 - takeaways: exactly 3 objects, each with title (at most 32 characters) and detail (at most 72 characters). Each is an idea a reader can think with or apply, grounded in highlight or pageText. The title is a short claim and the detail says why or how.`
@@ -334,14 +344,17 @@ export function parseShareCardAnswer(raw: string,
   const card: CardContent = highlight ? {
     quote: fixed ? fixed.quote : text('quote'), quoteEdited: fixed?.edited ?? false, emphasis: text('emphasis', true), headline: text('headline'),
     pull: text('pull', true), topic: collapse(text('topic')), takeawaysTitle: text('takeawaysTitle'), takeaways, style: 'quote', look: 'ink', crop: null, set: null,
-    takeaway: collapse(text('takeaway')), paper: null,
+    takeaway: collapse(text('takeaway')), paper: null, stat: readStat(j.stat, 'stat'),
   } : {
     quote: '', quoteEdited: false, emphasis: '', headline: text('headline'), pull: '', topic: collapse(text('topic')), takeawaysTitle: '', takeaways: [],
     style: kind === 'set' ? 'headline' : 'page', look: 'ink', crop: null, set: kind === 'set' ? setWords(j, text, items.length) : null,
     // A set's answer carries its takeaway for its own slide; the card's stays ''.
     takeaway: kind === 'set' ? '' : collapse(text('takeaway')),
     paper: kind === 'paper' ? paperWords(j, text) : null,
+    stat: readStat(j.stat, 'stat'),
   }
+  // A paper post's key number is its first result's, when that result has one: copied, not asked for twice.
+  if (card.paper?.results[0]?.stat) card.stat = { ...card.paper.results[0].stat }
   // A stored card may have no takeaway; a new answer for one highlight, region or first page must.
   if (!card.set && (card.takeaway.length < 1 || card.takeaway.length > CARD.takeawayMax))
     throw new AnswerError(`takeaway has ${card.takeaway.length} characters; allowed 1–${CARD.takeawayMax}.`)
@@ -354,11 +367,30 @@ export function parseShareCardAnswer(raw: string,
   const allowed = [source.passage, source.context, source.title, source.credit, String(source.page), ...items.map(item => String(item.page)), take]
   const quotable = quotableText(`${source.passage} ${source.context} ${source.title}`)
   if (card.paper && sameWords(card.headline, source.title)) throw new AnswerError("headline must be a hook, not the paper's title.")
+  const own = { allowed, quotable, named, pageName }
+  // The text a number is placed against: the paper and the region with their page text, a highlight alone, a set's highlights.
+  const numbersText = kind === 'highlight' || kind === 'set' ? source.passage : `${source.passage} ${source.context}`
+  const statsCheck = (name: string, stats: Stat[]) => {
+    if (stats.length === 1) throw new AnswerError(`${name} has 1 items; allowed none, or 2–${PAPER.maxStats} when the text states that many numbers about the design.`)
+    stats.forEach((stat, index) => {
+      const earlier = stats.findIndex(other => sameWords(other.value, stat.value) && sameWords(other.label, stat.label))
+      if (earlier < index) throw new AnswerError(`${name}[${index}] repeats ${name}[${earlier}].`)
+      checkStat(`${name}[${index}]`, stat, stat.label, `${source.passage} ${source.context}`, own)
+    })
+  }
+  if (card.stat && !(card.paper?.results[0]?.stat)) {
+    // The post's key number comes from the highlight itself, the region and its page, one of a set's highlights, or the paper.
+    const where = { highlight: 'the highlight itself', region: 'regionText or pageText', paper: 'regionText or paperText', set: 'one of the highlights' }[kind]
+    const missing = unsupportedNumbers(card.stat.value, [numbersText])
+    if (missing.length) throw new AnswerError(`stat.value must be a number that ${where} gives: ${missing.join(', ')}. Use null when there is none.`)
+    checkStat('stat', card.stat, card.stat.label, numbersText, own)
+  }
   if (card.set) {
     // Every word on a carousel's slides is the assistant's own and passes a draft's checks for them.
     const slides: Array<[string, string]> = [['headline', card.headline], ['study', card.set.study], ...card.set.points.map((point, index): [string, string] => [`points[${index}]`, point]),
       ['takeaway', card.set.takeaway], ['limitations', card.set.limitations]]
-    for (const [name, value] of slides) checkOwnWords(name, value, { allowed, quotable, named, pageName })
+    for (const [name, value] of slides) checkOwnWords(name, value, own)
+    statsCheck('studyStats', card.set.studyStats)
     // When a highlight is itself the limitation, its point carries it: the limits slide must not say it again.
     const repeated = card.set.limitations ? card.set.points.findIndex(point => sameWords(point, card.set!.limitations)) : -1
     if (repeated >= 0) throw new AnswerError(`limitations repeats points[${repeated}]; when a highlight is itself the limitation, its point carries it and limitations is "".`)
@@ -372,12 +404,20 @@ export function parseShareCardAnswer(raw: string,
     for (const [name, value] of leaks) checkNumbers(name, value, allowed, named, pageName)
     if (card.paper) {
       // A post about the whole paper: every slide's words are the assistant's own, and each result says something new.
-      const { question, method, results } = card.paper
-      const words: Array<[string, string]> = [['question', question], ['method', method], ...results.map((result, index): [string, string] => [`results[${index}]`, result])]
-      for (const [name, value] of words) checkOwnWords(name, value, { allowed, quotable, named, pageName })
+      const { question, method, methodStats, results } = card.paper
+      const words: Array<[string, string]> = [['question', question], ['method', method], ...results.map((result, index): [string, string] => [`results[${index}].text`, result.text])]
+      for (const [name, value] of words) checkOwnWords(name, value, own)
+      statsCheck('methodStats', methodStats)
       results.forEach((result, index) => {
-        if (sameWords(result, card.headline)) throw new AnswerError(`results[${index}] must say more than the headline, not repeat it.`)
-        if (index > 0 && sameWords(result, results[0]!)) throw new AnswerError(`results[${index}] must differ from results[0].`)
+        const name = `results[${index}]`
+        if (sameWords(result.text, card.headline)) throw new AnswerError(`${name} must say more than the headline, not repeat it.`)
+        if (index > 0 && sameWords(result.text, results[0]!.text)) throw new AnswerError(`${name} must differ from results[0].`)
+        if (result.stat) {
+          if (unsupportedNumbers(result.stat.value, [result.text]).length) throw new AnswerError(`${name}.stat.value must also appear in ${name}.text.`)
+          // A result's number may sit near a word of its label or of its sentence.
+          checkStat(`${name}.stat`, result.stat, `${result.stat.label} ${result.text}`, `${source.passage} ${source.context}`, own)
+        }
+        checkRows(name, result.rows, `${source.passage} ${source.context}`, own)
       })
     }
   }
@@ -409,17 +449,116 @@ function setWords(j: Record<string, unknown>, text: (name: string, optional?: bo
   const points = j.points
   if (!Array.isArray(points) || points.some(point => typeof point !== 'string')) throw new AnswerError('points must be a list of strings, one per highlight in order.')
   return {
-    study: collapse(text('study', true)), points: (points as string[]).map(point => collapse(point)), takeaway: collapse(text('takeaway')),
+    study: collapse(text('study', true)), studyStats: readStats(j.studyStats, 'studyStats'), points: (points as string[]).map(point => collapse(point)), takeaway: collapse(text('takeaway')),
     limitations: collapse(text('limitations', true)), crops: Array.from({ length: count }, () => null),
   }
+}
+
+/** Characters on each side of a value within which a word of its label must occur: about two sentences. */
+const NEAR_WINDOW = 150
+/** Words that say nothing about what a number measures. */
+const STOPWORDS = new Set(['the', 'a', 'an', 'of', 'and', 'or', 'in', 'on', 'for', 'with', 'to', 'by', 'at', 'per', 'from', 'vs', 'versus', 'than', 'as', 'is',
+  'are', 'was', 'were', 'be', 'it', 'its', 'their', 'this', 'that', 'these', 'those', 'each', 'all', 'total', 'number', 'mean', 'average', 'over', 'under'])
+/** A word without case and a plural "s" ("nurses" is "nurse", "studies" is "study"). */
+const stem = (word: string) => word.length > 4 && word.endsWith('ies') ? `${word.slice(0, -3)}y` : word.length > 3 && word.endsWith('s') && !word.endsWith('ss') ? word.slice(0, -1) : word
+/**
+ * The content words of a text: words with a letter, two characters or more, not stopwords, without case or plural.
+ * A hyphenated word counts whole, joined and by its parts, so "fine-tuned", "finetuned" and "fine tuned" meet.
+ */
+function contentWords(text: string): Set<string> {
+  const out = new Set<string>()
+  for (const [token] of text.toLowerCase().matchAll(/[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*/gu))
+    for (const word of [token.replaceAll('-', ''), ...token.split('-')]) if (/\p{L}/u.test(word) && word.length >= 2 && !STOPWORDS.has(word)) out.add(stem(word))
+  return out
+}
+
+/**
+ * Whether `value` sits in `source` near a word of `label`: within NEAR_WINDOW characters of a place where the source
+ * writes the value's first number, one of the label's content words occurs. The numbers check proves a number is in
+ * the paper; this one that it belongs to its label. It prefers letting a legitimate pair through: it passes when the
+ * value has no numeral, the label no content word, none of the label's words is anywhere in the source, or the source
+ * never writes the number as a numeral (a number word, a rounded decimal), which the numbers check decides alone.
+ */
+export function valueNearLabel(value: string, label: string, source: string): boolean {
+  const numeral = numbersIn(value)[0], wanted = [...contentWords(label)]
+  if (!numeral || !wanted.length) return true
+  const everywhere = contentWords(source)
+  if (!wanted.some(word => everywhere.has(word))) return true
+  const places = numeralPositions(numeral, source)
+  if (!places.length) return true
+  return places.some(at => {
+    const near = contentWords(source.slice(Math.max(0, at - NEAR_WINDOW), at + numeral.length + NEAR_WINDOW))
+    return wanted.some(word => near.has(word))
+  })
+}
+
+/** A stat from an answer: null, or { value, label } with whitespace collapsed. A missing field is null. */
+function readStat(value: unknown, name: string): Stat | null {
+  if (value === null || value === undefined) return null
+  const { value: number, label } = (value && typeof value === 'object' && !Array.isArray(value) ? value : {}) as Record<string, unknown>
+  if (typeof number !== 'string' || typeof label !== 'string') throw new AnswerError(`${name} must be null or an object with a string value and label.`)
+  return { value: collapse(number), label: collapse(label) }
+}
+
+/** A list of stats from an answer; a missing list is []. */
+function readStats(value: unknown, name: string): Stat[] {
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value)) throw new AnswerError(`${name} must be a list of objects with value and label, or [].`)
+  return value.map((stat, index) => readStat(stat, `${name}[${index}]`) ?? (() => { throw new AnswerError(`${name}[${index}] must be an object with value and label.`) })())
+}
+
+/** A comparison from an answer; a missing list is []. */
+function readRows(value: unknown, name: string): ComparisonRow[] {
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value)) throw new AnswerError(`${name} must be a list of objects with label and value, or [].`)
+  return value.map((row, index) => {
+    const { label, value: number } = (row && typeof row === 'object' && !Array.isArray(row) ? row : {}) as Record<string, unknown>
+    if (typeof label !== 'string' || typeof number !== 'string') throw new AnswerError(`${name}[${index}] must be an object with a string label and value.`)
+    return { label: collapse(label), value: collapse(number) }
+  })
+}
+
+type OwnWords = Pick<DraftContext, 'allowed' | 'quotable' | 'named' | 'pageName'>
+
+/** A stat's value passes the numbers check and sits near a word of `words`; its label is the assistant's own words. */
+function checkStat(name: string, stat: Stat, words: string, near: string, own: OwnWords) {
+  checkNumbers(`${name}.value`, stat.value, own.allowed, own.named, own.pageName)
+  checkOwnWords(`${name}.label`, stat.label, own)
+  if (!valueNearLabel(stat.value, words, near))
+    throw new AnswerError(`${name}: "${stat.value}" does not appear near "${stat.label}" in ${own.named} or ${own.pageName}; give the value the text states for that label, or leave it out.`)
+}
+
+/** The trailing unit of a value: "%" in "41%", "hours" in "24 hours", "" in "1348 ± 1". */
+const unitOf = (value: string) => value.replace(/^[\s\S]*\d/u, '').trim().toLowerCase()
+
+/** A comparison: one measure and one unit, distinct labels, every value from the source and near its label. */
+function checkRows(name: string, rows: ComparisonRow[], near: string, own: OwnWords) {
+  const units = [...new Set(rows.map(row => unitOf(row.value)))]
+  if (units.length > 1) throw new AnswerError(`${name}.rows mix units (${units.map(unit => `"${unit}"`).join(' and ')}); a comparison has one measure and one unit, or rows is [].`)
+  rows.forEach((row, index) => {
+    const earlier = rows.findIndex(other => sameWords(other.label, row.label))
+    if (earlier < index) throw new AnswerError(`${name}.rows[${index}] repeats the label of ${name}.rows[${earlier}].`)
+    checkNumbers(`${name}.rows[${index}].value`, row.value, own.allowed, own.named, own.pageName)
+    checkOwnWords(`${name}.rows[${index}].label`, row.label, own)
+    if (!valueNearLabel(row.value, row.label, near))
+      throw new AnswerError(`${name}.rows[${index}]: "${row.value}" does not appear near "${row.label}" in ${own.named} or ${own.pageName}; give the value the text reports for that row, or leave rows [].`)
+  })
 }
 
 /** A paper post's question, method and results from an answer; their limits are validateCard's. */
 function paperWords(j: Record<string, unknown>, text: (name: string, optional?: boolean) => string): PaperContent {
   const question = collapse(text('question')), method = collapse(text('method')), results = j.results
-  if (!Array.isArray(results) || results.some(result => typeof result !== 'string'))
-    throw new AnswerError(`results must be a list of ${PAPER.minResults}–${PAPER.maxResults} strings, the main finding first.`)
-  return { question, method, results: (results as string[]).map(result => collapse(result)) }
+  if (!Array.isArray(results)) throw new AnswerError(`results must be a list of ${PAPER.minResults}–${PAPER.maxResults} objects with text, stat and rows, the main finding first.`)
+  return {
+    question, method, methodStats: readStats(j.methodStats, 'methodStats'),
+    results: results.map((result, index): PaperResult => {
+      // A plain sentence is a result without a number.
+      if (typeof result === 'string') return { text: collapse(result), stat: null, rows: [] }
+      const { text: sentence, stat, rows } = (result && typeof result === 'object' && !Array.isArray(result) ? result : {}) as Record<string, unknown>
+      if (typeof sentence !== 'string') throw new AnswerError(`results[${index}] must be an object with text, stat and rows.`)
+      return { text: collapse(sentence), stat: readStat(stat, `results[${index}].stat`), rows: readRows(rows, `results[${index}].rows`) }
+    }),
+  }
 }
 
 /** The highlight's per-line boxes, clamped to the page; the single bounding box for highlights made before per-line boxes. */
@@ -569,6 +708,12 @@ export function pageContext(pages: Map<number, string>, page: number, max = CARD
 function readVersion(json: string): Version {
   try { return previousVersionSchema.parse(JSON.parse(json)) } catch { throw new ShareCardError(422, UNREADABLE) }
 }
+
+/** What PATCH { set_text } and { paper_text } carry; an omitted field keeps what is stored. */
+export type SetTextEdit = { field: 'study' | 'takeaway' | 'limitations' | 'point'; index?: number; text?: string; stats?: Stat[] }
+export type PaperTextEdit = { field: 'question' | 'method' | 'result'; index?: number; text?: string; stats?: Stat[]; stat?: Stat | null; rows?: ComparisonRow[] }
+/** A reader's stat with its whitespace collapsed. */
+const readerStat = (stat: Stat): Stat => ({ value: collapse(stat.value), label: collapse(stat.label) })
 
 /** The reader's take as it is stored and sent: one line, at most TAKE_MAX characters, or ''. */
 function readTake(take: string | undefined): string {
@@ -915,13 +1060,19 @@ export class ShareCardService {
    * One carousel slide's words, behind Undo. `index` names a point and only a point. An empty study or limitations
    * removes that slide; the takeaway and the points keep at least one character (validateCard's limits).
    */
-  editSetText(projectId: string, id: string, field: 'study' | 'takeaway' | 'limitations' | 'point', text: string, index?: number) {
+  editSetText(projectId: string, id: string, edit: SetTextEdit) {
+    const { field, index, stats } = edit
     if (field === 'point' && index === undefined) throw new ShareCardError(400, 'Name the point to edit with its index.')
     if (field !== 'point' && index !== undefined) throw new ShareCardError(400, 'Only a point has an index.')
-    const words = collapse(text)
+    if (stats !== undefined && field !== 'study') throw new ShareCardError(400, 'Only the study has stats.')
+    if (edit.text === undefined && stats === undefined) throw new ShareCardError(400, 'Send the text, or the study\'s stats, to change.')
     return this.edit(projectId, id, (version, source) => {
       const set = version.card.set
       if (source.kind !== 'set' || !set) throw new ShareCardError(400, 'Only a carousel has slide text.')
+      const words = edit.text === undefined ? undefined : collapse(edit.text)
+      // The reader's values are theirs: shape and limits only (validateCard), no numbers check.
+      if (field === 'study') return { ...version, card: { ...version.card, set: { ...set, study: words ?? set.study, studyStats: stats ? stats.map(readerStat) : set.studyStats } } }
+      if (words === undefined) throw new ShareCardError(400, 'Send the text to change.')
       if (field !== 'point') return { ...version, card: { ...version.card, set: { ...set, [field]: words } } }
       if (index! >= set.points.length) throw new ShareCardError(400, `This carousel has no point ${index! + 1}.`)
       return { ...version, card: { ...version.card, set: { ...set, points: set.points.map((point, position) => position === index ? words : point) } } }
@@ -955,18 +1106,34 @@ export class ShareCardService {
    * One of a paper post's question, method or results, behind Undo. `index` names a result and only a result; a
    * result may not be emptied (validateCard's limits), and a second one cannot be added here.
    */
-  editPaperText(projectId: string, id: string, field: 'question' | 'method' | 'result', text: string, index?: number) {
+  editPaperText(projectId: string, id: string, edit: PaperTextEdit) {
+    const { field, index, stats, stat, rows } = edit
     if (field === 'result' && index === undefined) throw new ShareCardError(400, 'Name the result to edit with its index.')
     if (field !== 'result' && index !== undefined) throw new ShareCardError(400, 'Only a result has an index.')
-    const words = collapse(text)
+    if (stats !== undefined && field !== 'method') throw new ShareCardError(400, 'Only the method has stats.')
+    if ((stat !== undefined || rows !== undefined) && field !== 'result') throw new ShareCardError(400, 'Only a result has a stat and rows.')
+    if (edit.text === undefined && stats === undefined && stat === undefined && rows === undefined)
+      throw new ShareCardError(400, 'Send the text, or the stats, stat or rows to change.')
     return this.edit(projectId, id, (version, source) => {
       if (source.kind !== 'paper') throw new ShareCardError(400, 'Only a post about the paper has a question, method and results.')
       const paper = version.card.paper
       if (!paper) throw new ShareCardError(400, 'This post has no question, method and results yet; rewrite it to add them.')
-      if (field !== 'result') return { ...version, card: { ...version.card, paper: { ...paper, [field]: words } } }
+      const words = edit.text === undefined ? undefined : collapse(edit.text)
+      // What is not sent stays as stored. The reader's values are theirs: shape and limits only (validateCard).
+      if (field === 'question') return { ...version, card: { ...version.card, paper: { ...paper, question: words ?? paper.question } } }
+      if (field === 'method') return { ...version, card: { ...version.card, paper: { ...paper, method: words ?? paper.method, methodStats: stats ? stats.map(readerStat) : paper.methodStats } } }
       if (index! >= paper.results.length) throw new ShareCardError(400, `This post has no result ${index! + 1}.`)
-      return { ...version, card: { ...version.card, paper: { ...paper, results: paper.results.map((result, position) => position === index ? words : result) } } }
+      const results = paper.results.map((result, position): PaperResult => position !== index ? result : {
+        text: words ?? result.text, stat: stat === undefined ? result.stat : stat && readerStat(stat),
+        rows: rows === undefined ? result.rows : rows.map(row => ({ label: collapse(row.label), value: collapse(row.value) })),
+      })
+      return { ...version, card: { ...version.card, paper: { ...paper, results } } }
     })
+  }
+
+  /** The post's key number, or null: the reader's value (shape and limits only), behind Undo. Every kind has one. */
+  editStat(projectId: string, id: string, stat: Stat | null) {
+    return this.edit(projectId, id, version => ({ ...version, card: { ...version.card, stat: stat && readerStat(stat) } }))
   }
 
   /** The reader's own takeaway: 1–140 characters, kept behind Undo, and not held to the numbers check. A set keeps its own slide. */
@@ -1075,8 +1242,9 @@ export class ShareCardService {
     if (fixedQuote) input.fixedQuote = fixedQuote.quote
     if (previous) {
       const { style: _style, look: _look, quoteEdited: _edited, crop: _crop, set, paper, ...words } = previous.card
-      const card = highlight ? words : set ? { headline: words.headline, topic: words.topic, study: set.study, points: set.points, takeaway: set.takeaway, limitations: set.limitations }
-        : { headline: words.headline, topic: words.topic, takeaway: words.takeaway, ...paper }
+      const card = highlight ? words : set ? { headline: words.headline, topic: words.topic, study: set.study, studyStats: set.studyStats, points: set.points,
+        takeaway: set.takeaway, limitations: set.limitations, stat: words.stat }
+        : { headline: words.headline, topic: words.topic, takeaway: words.takeaway, ...paper, stat: words.stat }
       Object.assign(input, { previousCard: card, previousDrafts: previous.caption.drafts, previousHashtags: previous.caption.hashtags, previousDestination: previous.caption.destination })
     }
     if (row.instruction) input.change = row.instruction
