@@ -308,6 +308,42 @@ Renderer (`frontend/src/lib/share-card/slides.ts`): `renderSlide(slide, context,
 - [x] **T9 Carousel, panel** (on `feat/share-posts`, after T7 and T8): choosing and ordering highlights, the slide viewer, per-slide edits and crops, export, browser tests, README.
 - [x] **G3 Gate** as G1.
 
+### Stage 4: three cards for Instagram
+
+Owner decision of 16 November 2026, after the live check: on Instagram a post from one highlight, region or first page is a small carousel, not one card.
+
+**Behaviour**
+
+- A new style, **Carousel**, draws the post as three slides of 1080 x 1350: the hook (topic and headline), the evidence (the page crop with the reader's highlights, no headline), and the takeaway (one sentence on why the finding matters). Each slide carries the credit strip and its number ("2 / 3").
+- Carousel is the default style for Instagram. The reader can still choose Headline, Page or a text card there, and can choose Carousel for LinkedIn and X.
+- The takeaway is written by the same single request, for every post. A post made before this has none and shows two slides until it is rewritten or the reader types one.
+- The reader edits the headline, the crop and the takeaway; export is the slide in view, all slides as a ZIP, or one PDF, as for a carousel of several highlights.
+- When the PDF file is gone, the evidence slide is drawn from the quote, or from the headline when there is no quote.
+- In a carousel of several highlights, the limits slide never repeats a highlight's own point: when a highlight is itself the limitation, `limitations` is empty.
+
+**Contract**
+
+```ts
+export const STYLES = ['page', 'headline', 'carousel', 'quote', 'idea', 'takeaways'] as const
+// DESTINATION_DEFAULTS.instagram.style is 'carousel'. STYLE_NAMES.carousel is 'Carousel'. CARD.takeawayMax is 140.
+// CardContent gains `takeaway: string`: one sentence, 1 to 140 characters, or '' for a post stored before it
+// existed and for a set (which keeps its own in set.takeaway).
+export type SlideSpec = /* as before */ | { kind: 'page'; kicker: string; fallback: string }
+/** The slides of a post drawn in the Carousel style; [] for a set. */
+export function postSlides(card: CardContent, source: ShareCardSource): SlideSpec[]
+// cover { kicker: topic, headline }, page { kicker: topic, fallback: quote or, without one, headline },
+// takeaway { kicker: 'The takeaway', text } when card.takeaway is not ''.
+```
+
+Server: every answer carries `takeaway` (the take rule, numbers check, leak checks and the repair apply to it); `PATCH { takeaway }` edits it and keeps an Undo step; `{ style: 'carousel' }` is allowed for highlight, region and first-page posts and refused for a set. Renderer: `renderSlide` draws a `page` slide as the Page style at Feed with the slide's number; without a crop it draws `fallback` as a text slide.
+
+**Tasks**
+
+- [ ] **T10 Server** (`share-posts/server`): the contract, the prompt and checks for `takeaway`, the edit, `postSlides`, the rule for a set's limitations, tests.
+- [ ] **T11 Renderer** (`share-posts/renderer`): the `page` slide, its fallback, sample frames.
+- [ ] **T12 Panel** (on `feat/share-posts`, after T10 and T11): the slide viewer for the Carousel style, the style choice, the takeaway edit, export, browser tests, README.
+- [ ] **G4 Gate** as G1.
+
 ## Acceptance criteria
 
 Stage 1:
@@ -414,3 +450,16 @@ Still unchecked, beyond the list under G1 and G2:
 - The exported PDF as a real LinkedIn document, and the ZIP opened in Windows Explorer or macOS Finder.
 - Export time and memory for an eight-slide carousel on long pages.
 - The status-check retry against a real backend restart.
+
+### Live check, round 2 (16 November 2026)
+
+Revision `250c5d1`, with the owner's go-ahead: 14 requests to Codex against a temporary library with two arXiv papers (Mistral 7B, QLoRA). All 14 completed in 12 to 51 seconds; the number of repairs is not recorded anywhere and could not be measured. The answers and the cards drawn from them are kept outside the repository, in the owner's study folder (`live-round-2`).
+
+Covered: a highlight for each destination (one post rewritten for all three), a take, a figure caption with a hedge, a stated limitation, two regions (a figure, a table), two first pages and two carousels of three highlights.
+
+- Numbers lead the drafts and are the paper's own; one checked by hand against its table was right. Hedges are kept. The take appears word for word. `contrast` came back empty in the three cases where the text states no assumption. Region posts used the caption and the page text and described no visual detail. The stock ending of the first round is gone.
+- Seen and left as they are (the owner asked for one change only, stage 4): a caveat built from "the scope of the comparison" when the text states no limitation (4 of 14); LinkedIn drafts that close on "the paper's central result is…"; LinkedIn drafts of 131 to 175 words, the low end of the range.
+- Seen and fixed: in a carousel, the limits slide repeated a highlight's own point (stage 4); a four-line highlight in an abstract with tight leading was refused as too tall for an automatic crop, because line boxes that overlap by a sliver chained into the whole abstract (fixed in `crop-box.ts` with a unit test and a property test over 400 random layouts; revision `afdc983` passes the whole gate: 400 unit tests, 168 browser tests).
+- Real pages drew as intended after that fix: abstracts, a figure, a table, a caption, a page with a table beside the text.
+
+A Windows preview `2.8.0-posts.1` built from `250c5d1` was installed beside the released app (it does not have the crop fix).
