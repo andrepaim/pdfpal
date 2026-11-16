@@ -352,6 +352,45 @@ Settled in T10:
 - [x] **T12 Panel** (on `feat/share-posts`, after T10 and T11): the slide viewer for the Carousel style, the style choice, the takeaway edit, export, browser tests, README.
 - [x] **G4 Gate** as G1.
 
+### Stage 5: share the paper
+
+Owner decision of 16 November 2026, after trying the preview: "Share the first page" is not what a reader wants. It becomes **Share the paper**: a post about the paper as a whole, giving its question or hypothesis, its method and its results. As a carousel it has five or six slides; three are not enough for a paper. Posts from one highlight or a region keep their three cards.
+
+**Behaviour**
+
+- "Share the paper" starts the post with one click. The image crop is still the first page's title, authors and abstract, worked out from the text; the reader can adjust it afterwards.
+- The assistant gets more of the paper than the first page: the first pages, the start of the method and results sections when their headings are found, and the conclusion or discussion, within a budget of 24,000 characters. The picture is still never sent.
+- The answer has, besides the headline, topic, takeaway, drafts and hashtags: the **question** (what the paper set out to test or answer), the **method** (design, data, sample and its size when stated) and one or two **results** (each with its number when the text gives one).
+- The drafts give the general view in that order: question, method, results. On X, as much of it as the limit allows: the question and the main result.
+- In the Carousel style a paper post has five or six slides: the lead (the headline above the first page), the question, the method, one or two results, the takeaway. Limitations stay in the caveat draft. On Instagram that is its default; on LinkedIn and X the default stays the Page style, with Carousel one click away.
+- The reader can edit every slide's words. A paper post stored before this has no question, method or results and keeps its three cards until it is rewritten.
+
+**Contract**
+
+```ts
+export const PAPER = { questionMax: 160, methodMax: 160, resultMax: 140, minResults: 1, maxResults: 2 } as const
+// CARD.paperContextMax is 24000.
+export type PaperContent = { question: string; method: string; results: string[] }
+// CardContent gains `paper: PaperContent | null`: set for a paper post written from now on, null for every other
+// kind and for a paper post stored before it existed.
+export type SlideSpec = /* as before */
+  | { kind: 'lead'; kicker: string; headline: string; fallback: string }          // headline above the post's own page crop
+  | { kind: 'question' | 'method' | 'result'; kicker: string; text: string; item?: number }   // item: which result
+// postSlides for a paper post with card.paper: lead { kicker: topic, headline, fallback: headline },
+// question { kicker: 'The question' }, method { kicker: 'The method' }, one result { kicker: 'The result' } or two
+// { kicker: 'Result 1' }, { kicker: 'Result 2' } with item 0 and 1, takeaway { kicker: 'The takeaway' }.
+// Without card.paper it is the three cards of stage 4.
+```
+
+Server: for kind `paper` the prompt's input is `regionText` (the first page) and `paperText` (the wider text) in place of `pageText`; every new field passes the checks on the assistant's own words and the numbers check against that wider text. `PATCH { paper_text: { field: 'question' | 'method' | 'result', index?, text } }` edits one slide's words and keeps an Undo step. Summaries and labels call the kind "Paper". Renderer: `renderSlide` draws `lead` as the Headline style with the slide's number (without a crop, as a cover) and `question`, `method` and `result` as text slides.
+
+**Tasks**
+
+- [ ] **T13 Server** (`share-posts/server`): the wider text, the prompt variant, the fields and their checks, the edit, `postSlides`, tests.
+- [ ] **T14 Renderer** (`share-posts/renderer`): the `lead`, `question`, `method` and `result` slides, sample frames.
+- [ ] **T15 Panel** (on `feat/share-posts`, after T13 and T14): "Share the paper" with one click, the viewer and edits for the new slides, labels, browser tests, README.
+- [ ] **G5 Gate** as G1.
+
 ## Acceptance criteria
 
 Stage 1:
