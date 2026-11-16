@@ -15,6 +15,7 @@ const patch = z.union([
   z.object({ show_tags: z.boolean() }).strict(),
   z.object({ link: z.enum(LINKS) }).strict(),
   z.object({ headline: z.string().max(1_000) }).strict(),
+  z.object({ takeaway: z.string().max(1_000) }).strict(),
   z.object({ caption: z.string().max(16_000) }).strict(),
   z.object({ quote: z.string().max(1_000) }).strict(),
   z.object({ credit: z.string().max(1_000) }).strict(),
@@ -47,6 +48,7 @@ export function registerShareCardRoutes(app: FastifyInstance, cards: ShareCardSe
     if ('show_tags' in body) return cards.showTags(projectId, id, body.show_tags)
     if ('link' in body) return cards.link(projectId, id, body.link)
     if ('headline' in body) return cards.editHeadline(projectId, id, body.headline)
+    if ('takeaway' in body) return cards.editTakeaway(projectId, id, body.takeaway)
     if ('caption' in body) return cards.editCaption(projectId, id, body.caption)
     if ('quote' in body) return cards.editQuote(projectId, id, body.quote)
     return cards.editCredit(projectId, id, body.credit)

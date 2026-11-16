@@ -34,10 +34,10 @@ const TEXT_NAME: Record<SourceKind, string> = { highlight: 'highlight', region: 
 /** The phrases of the shared rules that differ by kind. */
 type Wording = { words: string; states: string; numbered: string; mention: string; language: string; quotes: string }
 const REGION_WORDING: Wording = {
-  words: 'headline', states: 'the text states', numbered: ' or the headline', mention: 'the region, the selection, regionText, pageText', language: 'the paper', quotes: '',
+  words: 'headline and takeaway', states: 'the text states', numbered: ', the headline or the takeaway', mention: 'the region, the selection, regionText, pageText', language: 'the paper', quotes: '',
 }
 const WORDING: Record<SourceKind, Wording> = {
-  highlight: { words: 'text cards', states: 'the passage states', numbered: ', the headline, takeawaysTitle or a takeaway', mention: 'the highlight, the selection, pageText',
+  highlight: { words: 'text cards', states: 'the passage states', numbered: ', the headline, the takeaway, takeawaysTitle or one of the takeaways', mention: 'the highlight, the selection, pageText',
     language: 'highlight', quotes: ' quote and pull always stay in their original language.' },
   region: REGION_WORDING,
   paper: REGION_WORDING,
@@ -84,11 +84,14 @@ function cardFields(kind: SourceKind, text: string): string {
 - study: one sentence of at most 160 characters saying what was studied and how (the design, the sample and its size) as highlights or pageText state it, or "" when they do not say what was studied.
 - points: one string per entry in highlights, in the same order, each at most 70 characters: the claim that highlight's own text supports, and nothing more. Never merge two highlights or move a claim to another highlight's point.
 - takeaway: at most 140 characters: what the highlights add up to, grounded in them.
-- limitations: at most 160 characters: the limitations that highlights or pageText state, or "" when they state none.`
-  if (kind !== 'highlight') return headline
+- limitations: at most 160 characters: the limitations that highlights or pageText state, or "" when they state none. Never repeat what a point already says: when a highlight is itself the limitation, its point carries it and limitations is "".`
+  // The third slide of the Carousel style. The headline is the claim; the takeaway is its consequence.
+  const takeaway = `- takeaway: one sentence of at most 140 characters saying why the finding matters: what follows from the headline's claim for how people work, build, research or decide, not the claim again in other words. Ground it in ${text} and pageText and keep the authors' degree of certainty. No first person, no question, and no instruction to the reader.`
+  if (kind !== 'highlight') return `${headline}\n${takeaway}`
   return `- quote: words copied exactly from highlight, one continuous run of 1–240 characters. When fixedQuote is present, return it unchanged. Otherwise choose the sentence that is most striking on its own, ideally under 120 characters. Prefer a complete sentence; you may leave out a leading connective such as "However" or "Thus", and the card capitalises the first letter. Avoid one that leans on an unexplained "this" or "they", or that contains a formula or a citation marker. Never splice, correct, complete or translate it.
 - emphasis: 1–4 consecutive words copied exactly from quote, at most 40 characters, or "". Choose the words that carry the point.
 ${headline}
+${takeaway}
 - pull: a second short quote copied exactly from highlight or pageText, at most 140 characters, or "". It should back up the headline and differ from quote.
 - takeawaysTitle: a title for three takeaways, at most 48 characters, phrased as the question or lesson they answer.
 - takeaways: exactly 3 objects, each with title (at most 32 characters) and detail (at most 72 characters). Each is an idea a reader can think with or apply, grounded in highlight or pageText. The title is a short claim and the detail says why or how.`
@@ -225,6 +228,11 @@ const QUOTE_CHECK_WORDS = 6
 
 const words = (text: string) => text.split(/\s+/u).filter(Boolean).length
 const plain = (text: string) => collapse(text.replace(/[‘’]/gu, "'").toLowerCase())
+/** The same words, ignoring case, whitespace and final punctuation. */
+const sameWords = (a: string, b: string) => {
+  const bare = (text: string) => plain(text).replace(/[\s.,;:!?…"”'’)]+$/u, '')
+  return bare(a) === bare(b)
+}
 /** Words broken at a line-end hyphen joined, as cleanPassage does, also where the line break became a space. */
 const joinBroken = (text: string) => text.replace(/(\p{Ll})[-‐][^\S\n]*\r?\n\s*(?=\p{Ll})/gu, '$1').replace(/(\p{Ll})[-‐]\s+(?=\p{Ll})/gu, '$1')
 /** What a quotation may be copied from: the text as given and with broken words joined, so either form matches. */
@@ -315,10 +323,16 @@ export function parseShareCardAnswer(raw: string,
   const card: CardContent = highlight ? {
     quote: fixed ? fixed.quote : text('quote'), quoteEdited: fixed?.edited ?? false, emphasis: text('emphasis', true), headline: text('headline'),
     pull: text('pull', true), topic: collapse(text('topic')), takeawaysTitle: text('takeawaysTitle'), takeaways, style: 'quote', look: 'ink', crop: null, set: null,
+    takeaway: collapse(text('takeaway')),
   } : {
     quote: '', quoteEdited: false, emphasis: '', headline: text('headline'), pull: '', topic: collapse(text('topic')), takeawaysTitle: '', takeaways: [],
     style: kind === 'set' ? 'headline' : 'page', look: 'ink', crop: null, set: kind === 'set' ? setWords(j, text, items.length) : null,
+    // A set's answer carries its takeaway for its own slide; the card's stays ''.
+    takeaway: kind === 'set' ? '' : collapse(text('takeaway')),
   }
+  // A stored card may have no takeaway; a new answer for one highlight, region or first page must.
+  if (!card.set && (card.takeaway.length < 1 || card.takeaway.length > CARD.takeawayMax))
+    throw new AnswerError(`takeaway has ${card.takeaway.length} characters; allowed 1–${CARD.takeawayMax}.`)
   try { validateCard(card, source) } catch (error) { throw new AnswerError((error as Error).message) }
   // Stored cards may lack a topic; a new answer must name one.
   if (!card.topic) throw new AnswerError('topic must name the subject in one or two words.')
@@ -332,7 +346,13 @@ export function parseShareCardAnswer(raw: string,
     const slides: Array<[string, string]> = [['headline', card.headline], ['study', card.set.study], ...card.set.points.map((point, index): [string, string] => [`points[${index}]`, point]),
       ['takeaway', card.set.takeaway], ['limitations', card.set.limitations]]
     for (const [name, value] of slides) checkOwnWords(name, value, { allowed, quotable, named })
+    // When a highlight is itself the limitation, its point carries it: the limits slide must not say it again.
+    const repeated = card.set.limitations ? card.set.points.findIndex(point => sameWords(point, card.set!.limitations)) : -1
+    if (repeated >= 0) throw new AnswerError(`limitations repeats points[${repeated}]; when a highlight is itself the limitation, its point carries it and limitations is "".`)
   } else {
+    checkOwnWords('takeaway', card.takeaway, { allowed, quotable, named })
+    if (/\?["”»)]*$/u.test(card.takeaway)) throw new AnswerError('takeaway must say why the finding matters, not ask a question.')
+    if (sameWords(card.takeaway, card.headline)) throw new AnswerError('takeaway must say what follows from the headline, not repeat it.')
     const leaks: Array<[string, string]> = [['headline', card.headline], ...highlight ? [['takeawaysTitle', card.takeawaysTitle] as [string, string]] : [],
       ...card.takeaways.map((item, index): [string, string] => [`takeaways[${index}]`, `${item.title} ${item.detail}`])]
     for (const [name, value] of leaks) if (SOURCE_WORDS.test(value)) throw new AnswerError(`${name} must not mention pageText or the supplied text; state the idea directly.`)
@@ -798,6 +818,16 @@ export class ShareCardService {
     return this.place(projectId, id, apply, apply)
   }
 
+  /** The reader's own takeaway: 1–140 characters, kept behind Undo, and not held to the numbers check. A set keeps its own slide. */
+  editTakeaway(projectId: string, id: string, takeaway: string) {
+    const text = collapse(takeaway)
+    if (!text || text.length > CARD.takeawayMax) throw new ShareCardError(400, `A takeaway needs 1–${CARD.takeawayMax} characters.`)
+    return this.edit(projectId, id, (version, source) => {
+      if (source.kind === 'set') throw new ShareCardError(400, "A carousel of several highlights keeps its takeaway on its own slide; edit it with { set_text: { field: 'takeaway' } }.")
+      return { card: { ...version.card, takeaway: text }, caption: version.caption }
+    })
+  }
+
   /** The reader's own headline: 1–80 characters, kept behind Undo, and not held to the numbers check. */
   editHeadline(projectId: string, id: string, headline: string) {
     const text = collapse(headline)
@@ -893,7 +923,7 @@ export class ShareCardService {
     if (previous) {
       const { style: _style, look: _look, quoteEdited: _edited, crop: _crop, set, ...words } = previous.card
       const card = highlight ? words : set ? { headline: words.headline, topic: words.topic, study: set.study, points: set.points, takeaway: set.takeaway, limitations: set.limitations }
-        : { headline: words.headline, topic: words.topic }
+        : { headline: words.headline, topic: words.topic, takeaway: words.takeaway }
       Object.assign(input, { previousCard: card, previousDrafts: previous.caption.drafts, previousHashtags: previous.caption.hashtags, previousDestination: previous.caption.destination })
     }
     if (row.instruction) input.change = row.instruction

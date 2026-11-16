@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   CARD, DESTINATION_DEFAULTS, DRAFT, REGION_MIN, SET, SET_STYLE_REFUSED, TAKE_MAX, captionText, cardDescription, cleanPassage, creditLine, defaultLook,
   draftLimits, firstCommentText, highlightColor, numbersIn, publicUrl, quoteMatches, regionProblem, setSlides, sourceLine, summaryTitle, unsupportedNumbers,
-  validateCard, type Caption, type CardContent, type SetContent, type SetItem, type ShareCardSource,
+  validateCard, postSlides, STYLES, STYLE_NAMES, REGION_STYLES, type Caption, type CardContent, type SetContent, type SetItem, type ShareCardSource,
 } from '../../src/shared/share-card.js'
 import { captionSchema, cardContentSchema, previousVersionSchema, shareCardSourceSchema } from '../../src/shared/share-card-schema.js'
 
@@ -16,7 +16,7 @@ const source: ShareCardSource = {
 const card: CardContent = {
   quote: 'Attention lets every position look at every other one.', quoteEdited: false, emphasis: 'every other one',
   headline: 'Attention trades cost for reach', pull: 'sparse patterns may reduce this cost', topic: 'Attention',
-  takeawaysTitle: 'What full attention buys', style: 'quote', look: 'ink', crop: null, set: null,
+  takeawaysTitle: 'What full attention buys', style: 'quote', look: 'ink', crop: null, set: null, takeaway: '',
   takeaways: [{ title: 'Reach is global', detail: 'Every position can use any other.' },
     { title: 'Cost is quadratic', detail: 'Longer inputs cost much more.' }, { title: 'Sparsity may help', detail: 'The authors suspect it.' }],
 }
@@ -172,7 +172,7 @@ test('draftLimits follow the destination, the take, a change and a link on X', (
   assert.deepEqual(draftLimits('x', { take: 'Short take.' }), { ...DRAFT.x, minParagraphs: 2 })
   assert.deepEqual(draftLimits('linkedin', { take }), DRAFT.linkedin)
   assert.equal(TAKE_MAX, 400)
-  assert.deepEqual(DESTINATION_DEFAULTS.instagram, { style: 'headline', size: 'feed', extraLines: 3, showTags: true })
+  assert.deepEqual(DESTINATION_DEFAULTS.instagram, { style: 'carousel', size: 'feed', extraLines: 3, showTags: true })
 })
 
 test('cardDescription reads the words drawn in each style', () => {
@@ -268,10 +268,10 @@ const REGION = { x1: 0.1, y1: 0.4, x2: 0.9, y2: 0.7 }
 const regionSource: ShareCardSource = { ...source, kind: 'region', region: REGION, rects: [], passage: 'Accuracy Sequence length', page: 3 }
 const regionCard: CardContent = {
   quote: '', quoteEdited: false, emphasis: '', headline: 'Longer inputs cost more', pull: '', topic: 'Attention', takeawaysTitle: '', takeaways: [],
-  style: 'page', look: 'ink', crop: REGION, set: null,
+  style: 'page', look: 'ink', crop: REGION, set: null, takeaway: '',
 }
 
-test('a region or paper card has only a headline and a topic, and only the Page and Headline styles', () => {
+test('a region or paper card has only a headline, a topic and a takeaway, and only the Page, Headline and Carousel styles', () => {
   for (const kind of ['region', 'paper'] as const) {
     const from = { ...regionSource, kind }
     validateCard(regionCard, from)
@@ -282,8 +282,8 @@ test('a region or paper card has only a headline and a topic, and only the Page 
       [{ pull: 'Accuracy' }, /pull must be empty/],
       [{ takeawaysTitle: 'Three lessons' }, /takeawaysTitle must be empty/],
       [{ takeaways: card.takeaways }, /takeaways must be empty for a post made from a region/],
-      [{ style: 'quote' }, /^Error: A post made from a region has no quote or takeaways, so it uses the Page or Headline style\.$/],
-      [{ style: 'takeaways' }, /uses the Page or Headline style/],
+      [{ style: 'quote' }, /^Error: A post made from a region has no quote or takeaways, so it uses the Page, Headline or Carousel style\.$/],
+      [{ style: 'takeaways' }, /uses the Page, Headline or Carousel style/],
       [{ headline: '' }, /headline has 0 characters; allowed 1–80/],
       [{ topic: 't'.repeat(25) }, /topic has 25 characters/],
     ] as Array<[Partial<CardContent>, RegExp]>) assert.throws(() => validateCard({ ...regionCard, ...change }, from), message, String(message))
@@ -448,4 +448,42 @@ test('review: a take always leaves room for words of the assistant\'s own, even 
   assert.equal(draftLimits('linkedin', { take: 'My take.', changed: true }).minParagraphs, 2)
   assert.equal(draftLimits('x', { take: 'My take.', changed: true }).minParagraphs, 2)
   assert.equal(draftLimits('linkedin', { changed: true }).minParagraphs, 1)
+})
+
+// Stage 4: three cards for Instagram.
+const TAKEAWAY = 'Long inputs stay costly until a cheaper pattern is proven.'
+
+test('the Carousel style, its name, the Instagram default and the takeaway limit', () => {
+  assert.deepEqual(STYLES, ['page', 'headline', 'carousel', 'quote', 'idea', 'takeaways'])
+  assert.equal(STYLE_NAMES.carousel, 'Carousel'); assert.equal(DESTINATION_DEFAULTS.instagram.style, 'carousel')
+  assert.equal(CARD.takeawayMax, 140)
+  assert.deepEqual(REGION_STYLES, ['page', 'headline', 'carousel'])
+})
+
+test('a card\'s takeaway: within 140 characters, empty for a stored card, refused on a set', () => {
+  validateCard({ ...card, takeaway: TAKEAWAY, style: 'carousel' }, source)
+  validateCard({ ...card, takeaway: 't'.repeat(140) }, source)
+  assert.throws(() => validateCard({ ...card, takeaway: 't'.repeat(141) }, source), /^Error: takeaway has 141 characters; allowed 0–140\.$/)
+  validateCard({ ...regionCard, takeaway: TAKEAWAY, style: 'carousel' }, regionSource)
+  assert.throws(() => validateCard({ ...regionCard, takeaway: 't'.repeat(141) }, regionSource), /takeaway has 141 characters/)
+  assert.throws(() => validateCard({ ...setCard, takeaway: TAKEAWAY }, setSource), /^Error: A carousel of several highlights keeps its takeaway on its own slide \(set\.takeaway\)\.$/)
+  assert.throws(() => validateCard({ ...setCard, style: 'carousel' }, setSource), /only the look can change/)
+  // A card stored before the takeaway existed reads as ''.
+  const { takeaway: _takeaway, ...stored } = card
+  assert.deepEqual(cardContentSchema.parse(stored), card)
+})
+
+test('postSlides: cover, page and takeaway for a post in the Carousel style; none for a set', () => {
+  const withTakeaway = { ...card, takeaway: TAKEAWAY }
+  const cover = { kind: 'cover', kicker: 'Attention', headline: card.headline }
+  assert.deepEqual(postSlides(withTakeaway, source), [cover, { kind: 'page', kicker: 'Attention', fallback: card.quote },
+    { kind: 'takeaway', kicker: 'The takeaway', text: TAKEAWAY }])
+  assert.deepEqual(postSlides(card, source), [cover, { kind: 'page', kicker: 'Attention', fallback: card.quote }])
+  // Without a quote (a region or first-page post) the page slide falls back to the headline.
+  assert.deepEqual(postSlides({ ...regionCard, takeaway: TAKEAWAY }, regionSource), [{ kind: 'cover', kicker: 'Attention', headline: regionCard.headline },
+    { kind: 'page', kicker: 'Attention', fallback: regionCard.headline }, { kind: 'takeaway', kicker: 'The takeaway', text: TAKEAWAY }])
+  assert.deepEqual(postSlides(setCard, setSource), [])
+  assert.equal(cardDescription(withTakeaway, 'carousel', source), 'Carousel of 3 slides: Attention trades cost for reach.')
+  assert.equal(cardDescription(card, 'carousel'), 'Carousel of 2 slides: Attention trades cost for reach.')
+  assert.equal(cardDescription({ ...regionCard, takeaway: TAKEAWAY }, 'carousel', regionSource), 'Carousel of 3 slides: Longer inputs cost more.')
 })

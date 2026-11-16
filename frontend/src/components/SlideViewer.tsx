@@ -3,7 +3,7 @@
 // its neighbours, and kept per slide, look and crop, so stepping through is instant and nothing is drawn twice. A slow
 // drawing never replaces a newer one. See "Stage 3" in docs/share-posts-plan.md.
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { CARD, SET, collapse, setSlides, type PageRect, type ShareCardRecord, type ShareLook, type SlideSpec } from '../../../src/shared/share-card'
+import { CARD, SET, collapse, setSlides, type PageRect, type ShareCardRecord, type ShareLook, type SetSlideSpec as SlideSpec } from '../../../src/shared/share-card'
 import { canvasPng } from '../lib/share-card'
 import { PAGE_UNAVAILABLE, pageCrop, type PageCrop, type PageUnavailable } from '../lib/share-card/page-crop'
 import { itemSource, renderSlide, slideSheetSpace, slideText, type SlideContext } from '../lib/share-card/slides'

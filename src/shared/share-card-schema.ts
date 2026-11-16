@@ -52,6 +52,7 @@ export const cardContentSchema = z.object({
   topic: z.string(), takeawaysTitle: z.string(), takeaways: z.array(cardTakeawaySchema),
   style: z.enum(STYLES), look: z.enum(LOOKS), crop: pageRectSchema.nullable(),
   set: setContentSchema.nullable().default(null),
+  takeaway: z.string().default(''),
 }).strict()
 
 export const pageMarkSchema = z.object({ rects: z.array(pageRectSchema).max(500), color: z.enum(HIGHLIGHT_COLORS) }).strict()
