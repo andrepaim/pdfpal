@@ -276,8 +276,8 @@ test.describe('region and first-page posts in the reader', () => {
       await expect(page.getByRole('heading', { name: 'Posts' })).toBeVisible();
     }
     expect(state.starts).toHaveLength(2);
-    // The same region asks again with the same request ID: the first never reached a post.
-    expect(state.starts[1]!.request_id).toBe(state.starts[0]!.request_id);
+    // A refusal is final, so its request ID is forgotten: asking again is a new request.
+    expect(state.starts[1]!.request_id).not.toBe(state.starts[0]!.request_id);
   });
 
   test('a region post has no text cards or quote edit, and its crop resets to the region it started from', async ({ page }) => {

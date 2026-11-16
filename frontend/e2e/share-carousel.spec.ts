@@ -7,6 +7,8 @@ import {
 } from '../../src/shared/share-card';
 import { carouselFileName, slideFileName } from '../src/lib/share-card/export';
 import { mockAuth, createProjectViaApi } from './helpers';
+import { tallPdf } from './tall-pdf';
+import { cropBox } from '../src/lib/share-card/crop-box';
 
 // Carousels in the reader: several highlights of one PDF become one post. The project, the PDF
 // (test/fixtures/share-cards.pdf, three pages) and the highlights are real; the share-card routes are answered by the
@@ -111,6 +113,12 @@ async function routePosts(page: Page, state: Fake) {
         keep = true;
       } else if ('headline' in body) { next = { ...next, card: { ...card, headline: body.headline } }; keep = true; }
       else return json(400, { detail: 'Not expected in this test.' });
+      // As the server does: the look and the slides' crops also change the version behind Undo, so they survive it.
+      if (!keep && state.previous) {
+        const behind = state.previous.card;
+        state.previous = { ...state.previous, card: 'style' in body ? { ...behind, look: body.look }
+          : { ...behind, set: { ...behind.set!, crops: behind.set!.crops.map((crop, index) => index === body.slide ? body.crop : crop) } } };
+      }
       if (keep) state.previous = { card, caption: post.caption! };
       state.current = { ...post, ...next, can_undo: !!state.previous, updated_at: new Date().toISOString() };
       return json(200, state.current);
@@ -336,8 +344,9 @@ test.describe('carousels in the reader', () => {
     await dialog.getByRole('button', { name: 'Create carousel' }).click();
     await expect(slide(page)).toHaveAttribute('data-slide', '1', { timeout: 20_000 });
     expect(state.starts.map(start => start.annotation_ids)).toEqual([[ids.first, ids.second], [ids.first, ids.second]]);
-    // The try again reuses the request ID: the refused request started nothing.
-    expect(state.starts[0]!.request_id).toBe(state.starts[1]!.request_id);
+    // A refusal is final, so its request ID is forgotten: the try again is a new request.
+    expect(state.starts[1]!.request_id).not.toBe(state.starts[0]!.request_id);
+    expect(await page.evaluate(() => Object.keys(sessionStorage).filter(key => key.startsWith('pdfpal:share-card-request:')))).toEqual([]);
   });
 
   test('stepping through the slides with buttons and keys, with and without the study and the limits', async ({ page }) => {
@@ -569,6 +578,75 @@ test.describe('a carousel whose PDF was removed', () => {
 });
 
 // ── For review: the carousel in a narrow and a wider side column ────────────────────────────────────────────────────
+test.describe('carousels: fixes from the review', () => {
+  test.beforeEach(async ({ page }) => { await mockAuth(page); });
+
+  test('a highlight slide too tall for an automatic crop can be given a crop', async ({ page }) => {
+    test.setTimeout(60_000);
+    const state = fake();
+    await routePosts(page, state);
+    const project = await createProjectViaApi(page, 'Tall carousel');
+    const source = (await (await page.request.post(`/api/projects/${project.id}/sources`, { data: { url: tallPdf(), title: TITLE } })).json()) as { id: string };
+    const readerUrl = `/projects/${project.id}/sources/${source.id}`;
+    await page.goto(readerUrl);
+    const layer = page.locator('[data-pdf-page="1"]');
+    await expect(layer.locator('.textLayer span').first()).toBeVisible();
+    const rects: PageRect[] = await layer.evaluate(element => {
+      const box = element.querySelector('.react-pdf__Page')!.getBoundingClientRect();
+      return [...element.querySelectorAll('.textLayer span')].filter(span => span.textContent!.trim()).map(span => {
+        const r = span.getBoundingClientRect();
+        return { x1: (r.left - box.left) / box.width, y1: (r.top - box.top) / box.height, x2: (r.right - box.left) / box.width, y2: (r.bottom - box.top) / box.height };
+      });
+    });
+    // One highlight over the whole page, and one over its first line.
+    const tall = await highlight(page, state, project.id, source.id, 1, 'Every line of a page full of text, from the top to the bottom.', rects);
+    const short = await highlight(page, state, project.id, source.id, 1, 'The first line of the page, on its own.', [rects[0]!], 'green');
+    await openCarousel(page, state, readerUrl, [short, tall], project.id, source.id);
+    await goTo(page, 4);
+    await expect(slide(page)).toHaveAttribute('data-slide-kind', 'point');
+    await expect(slide(page)).toHaveAttribute('data-share-card', 'idea/ink');
+    await expect(page.getByText('This highlight is too tall for an automatic crop. Adjust the crop to show part of it.')).toBeVisible();
+    await page.getByRole('button', { name: 'Adjust crop' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Adjust crop: highlight 2' });
+    await expect(dialog).toHaveAttribute('data-state', 'ready');
+    const start = cropBox(rects, 0);
+    const shown = (await page.locator('[data-crop-box]').getAttribute('data-crop'))!.split(',').map(Number);
+    [start.x1, start.y1, start.x2, start.y2].forEach((value, index) => expect(Math.abs(value - shown[index]!)).toBeLessThan(0.002));
+    await dialog.getByRole('button', { name: 'Bottom edge' }).focus();
+    for (let i = 0; i < 12; i++) await page.keyboard.press('Shift+ArrowUp');
+    const chosen = (await page.locator('[data-crop-box]').getAttribute('data-crop'))!;
+    await dialog.getByRole('button', { name: 'Apply' }).click();
+    await expect(page.getByText('Crop saved.')).toBeVisible();
+    expect(state.patches.at(-1)!.slide).toBe(1);
+    await expect(slide(page)).toHaveAttribute('data-share-card', 'headline/ink');
+    await expect(slide(page)).toHaveAttribute('data-share-crop', chosen);
+    await expect(page.getByText(/too tall for an automatic crop/)).toHaveCount(0);
+  });
+
+  test('closing a carousel while its slides are drawn leaves no picture behind', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.addInitScript(() => {
+      const w = window as unknown as { __urls: Set<string> };
+      w.__urls = new Set();
+      const create = URL.createObjectURL.bind(URL), revoke = URL.revokeObjectURL.bind(URL);
+      URL.createObjectURL = (object: Blob | MediaSource) => { const url = create(object); w.__urls.add(url); return url; };
+      URL.revokeObjectURL = (url: string) => { w.__urls.delete(url); revoke(url); };
+    });
+    const state = fake();
+    const { ids, project, source, readerUrl } = await paper(page, state);
+    let fonts = 0;
+    await page.route('**/fonts/**', async route => { fonts++; await new Promise(resolve => setTimeout(resolve, 2500)); await route.continue(); });
+    state.current = setRecord(state, project.id, source.id, [ids.first, ids.second]);
+    await page.goto(`${readerUrl}?post=${POST_ID}`);
+    await expect(position(page)).toHaveText('1 of 6 · Cover');
+    await expect.poll(() => fonts).toBeGreaterThan(0);
+    await page.getByRole('button', { name: 'All posts' }).click();
+    await expect(page.getByRole('heading', { name: 'Posts' })).toBeVisible();
+    await page.waitForTimeout(5000);
+    expect(await page.evaluate(() => (window as unknown as { __urls: Set<string> }).__urls.size)).toBe(0);
+  });
+});
+
 test.describe('carousels, for review', () => {
   test.beforeEach(async ({ page }) => { await mockAuth(page); });
 

@@ -6,6 +6,8 @@ import {
   type Angle, type CardContent, type Caption, type Destination, type PageMark, type PageRect, type ShareCardRecord,
 } from '../../src/shared/share-card';
 import { PAGE_FRAMES, SAMPLES as TEXT_SAMPLES } from '../src/lib/share-card/samples';
+import { cropBox } from '../src/lib/share-card/crop-box';
+import { tallPdf } from './tall-pdf';
 import { mockAuth, createProjectViaApi } from './helpers';
 
 const SAMPLES = path.resolve('test-results/share-card-samples');
@@ -59,7 +61,7 @@ const TAKE = 'Long context is a budget question before it is a modelling one.';
 const CARD: CardContent = {
   quote: 'the cost grows with the square of the sequence length', quoteEdited: false, emphasis: 'the square',
   headline: 'Reach has a quadratic price', pull: 'long documents become expensive', topic: 'Attention',
-  takeawaysTitle: 'What full attention costs', style: 'page', look: 'ink', crop: null,
+  takeawaysTitle: 'What full attention costs', style: 'page', look: 'ink', crop: null, set: null,
   takeaways: [{ title: 'Reach is global', detail: 'Every position can use every other one.' },
     { title: 'Cost grows fast', detail: 'Doubling the input quadruples the work.' }, { title: 'Long inputs hurt', detail: 'Documents become expensive quickly.' }],
 };
@@ -91,11 +93,19 @@ type Fake = {
   hold: boolean
   /** When set, the next generation fails with this message. */
   failNext?: string
-  calls: { start: number; change: number; retry: number; cancel: number; undo: number; patch: number }
+  /** How the next starts are answered, in order: a lost answer (the connection drops) or a refusal. Then as usual. */
+  startPlan: Array<'abort' | { status: number; detail: string }>
+  /** How many of the next GETs of the post fail, and with what status. */
+  failGets: number; failStatus: number
+  /** When set, the post is a row an earlier build saved: every request but DELETE answers 422. */
+  unreadable: boolean
+  calls: { start: number; change: number; retry: number; cancel: number; undo: number; patch: number; get: number; delete: number }
   bodies: { start: Record<string, unknown>[]; change: Record<string, unknown>[]; patch: Record<string, unknown>[] }
 };
 
-const fake = (): Fake => ({ current: null, previous: null, hold: false, calls: { start: 0, change: 0, retry: 0, cancel: 0, undo: 0, patch: 0 }, bodies: { start: [], change: [], patch: [] } });
+const UNREADABLE = 'This post was saved by an earlier build of pdfpal and can no longer be opened. Delete it.';
+const fake = (): Fake => ({ current: null, previous: null, hold: false, startPlan: [], failGets: 0, failStatus: 500, unreadable: false,
+  calls: { start: 0, change: 0, retry: 0, cancel: 0, undo: 0, patch: 0, get: 0, delete: 0 }, bodies: { start: [], change: [], patch: [] } });
 
 /** Answers the share-card routes as the server does, from `state`. */
 async function routePosts(page: Page, state: Fake) {
@@ -113,6 +123,9 @@ async function routePosts(page: Page, state: Fake) {
     const body = (request.postDataJSON() ?? {}) as Record<string, any>;
     if (request.method() === 'POST' && tail === '') {
       state.calls.start++; state.bodies.start.push(body);
+      const planned = state.startPlan.shift();
+      if (planned === 'abort') return route.abort('connectionreset');
+      if (planned) return json(planned.status, { detail: planned.detail });
       state.current = { ...state.template!, status: 'running', card: null, caption: null, destination: body.destination ?? 'linkedin', take: body.take ?? '' };
       return json(202, state.current);
     }
@@ -122,7 +135,11 @@ async function routePosts(page: Page, state: Fake) {
     }
     if (!state.current || tail.split('/')[1] !== state.current.id) return json(404, { detail: 'Post not found.' });
     const post = state.current, active = post.status === 'running' || post.status === 'pending';
+    if (request.method() === 'DELETE') { state.calls.delete++; state.current = null; return route.fulfill({ status: 204 }); }
+    if (state.unreadable) return json(422, { detail: UNREADABLE });
     if (request.method() === 'GET') {
+      state.calls.get++;
+      if (state.failGets > 0) { state.failGets--; return json(state.failStatus, { detail: 'The server is restarting.' }); }
       if (active && !state.hold) finish();
       return json(200, state.current);
     }
@@ -152,6 +169,14 @@ async function routePosts(page: Page, state: Fake) {
       else if ('link' in body) next = { card, caption: { ...caption, link: body.link } };
       else if ('headline' in body) { next = { card: { ...card, headline: body.headline }, caption }; keep = true; }
       else if ('caption' in body) { next = { card, caption: { ...caption, edited: body.caption } }; keep = true; }
+      // As the server does: look, style, crop, hashtags and link also change the version behind Undo, so they survive it.
+      if (state.previous && !keep && !('angle' in body)) {
+        const behind = state.previous;
+        if ('style' in body) state.previous = { ...behind, card: { ...behind.card, style: body.style, look: body.look } };
+        else if ('crop' in body) state.previous = { ...behind, card: { ...behind.card, crop: body.crop } };
+        else if ('show_tags' in body) state.previous = { ...behind, caption: { ...behind.caption, showTags: body.show_tags } };
+        else if ('link' in body) state.previous = { ...behind, caption: { ...behind.caption, link: body.link } };
+      }
       if (keep) state.previous = { card, caption };
       state.current = { ...post, ...next, can_undo: !!state.previous, updated_at: new Date().toISOString() };
       return json(200, state.current);
@@ -191,7 +216,8 @@ function record(projectId: string, sourceId: string | null, annotationId: string
   return {
     id: POST_ID, project_id: projectId, source_id: sourceId, annotation_id: annotationId, status: 'complete', can_undo: false, instruction: '', error: null,
     created_at: '2026-11-15T10:00:00.000Z', updated_at: '2026-11-15T10:00:01.000Z', ...written('linkedin', ''), destination: 'linkedin', take: '', marks,
-    source: { version: 1, passage, page: 2, rects, color: 'yellow', context: passage, title: 'Share card paper', credit: 'Vaswani et al., 2017', url: URL_LINK },
+    source: { version: 1, kind: 'highlight', passage, page: 2, rects, color: 'yellow', region: null, items: [], context: passage, title: 'Share card paper', credit: 'Vaswani et al., 2017', url: URL_LINK },
+    set_marks: [],
     ...extra,
   };
 }
@@ -678,5 +704,196 @@ test.describe('the post panel, for review', () => {
         }
       }
     }
+  });
+});
+
+// ── Fixes from the review ────────────────────────────────────────────────────────────────────────────────────────────
+// Counts blob URLs that were made and never revoked, and canvases that a page crop draws on.
+const INSTRUMENT = () => {
+  const w = window as unknown as { __urls: Set<string>; __cropCanvases: number };
+  w.__urls = new Set(); w.__cropCanvases = 0;
+  const create = URL.createObjectURL.bind(URL), revoke = URL.revokeObjectURL.bind(URL);
+  URL.createObjectURL = (object: Blob | MediaSource) => { const url = create(object); w.__urls.add(url); return url; };
+  URL.revokeObjectURL = (url: string) => { w.__urls.delete(url); revoke(url); };
+  const getContext = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, ...args: unknown[]) {
+    // A page crop draws on a canvas off the page (the reader's pages are on it), neither 1080 wide like a card nor the
+    // default 300 × 150 of the measuring canvas.
+    if (args[0] === '2d' && !this.isConnected && this.width !== 1080 && this.width > 300) w.__cropCanvases++;
+    return (getContext as (...a: unknown[]) => unknown).apply(this, args);
+  } as typeof getContext;
+};
+const outstandingUrls = (page: Page) => page.evaluate(() => (window as unknown as { __urls: Set<string> }).__urls.size);
+const cropCanvases = (page: Page) => page.evaluate(() => (window as unknown as { __cropCanvases: number }).__cropCanvases);
+
+test.describe('share posts: fixes from the review', () => {
+  test.beforeEach(async ({ page }) => { await mockAuth(page); });
+
+  test('a highlight too tall for an automatic crop can still be given a crop by the reader', async ({ page }) => {
+    test.setTimeout(60_000);
+    const state = fake();
+    await routePosts(page, state);
+    // A page full of text, highlighted from top to bottom.
+    const { project, source, lines } = await openPdf(page, tallPdf(), 1);
+    const rects = lines.map(line => line.rect);
+    expect(rects.length).toBeGreaterThanOrEqual(45);
+    const annotation = await highlight(page, project.id, source.id, 1, lines.map(line => line.text).join('\n').slice(0, 5000), rects);
+    state.template = record(project.id, source.id, annotation, lines.map(line => line.text).join(' ').slice(0, 5000), rects, [{ rects, color: 'yellow' }]);
+    state.template = { ...state.template, source: { ...state.template.source, page: 1 } };
+    await openPost(page, state, `/projects/${project.id}/sources/${source.id}`);
+    // Drawn as its fallback text card, with a line that says why and how to show the page.
+    await expect(card(page)).toHaveAttribute('data-share-card', 'quote/ink', { timeout: 20_000 });
+    await expect(page.getByText('This highlight is too tall for an automatic crop. Adjust the crop to show part of it.')).toBeVisible();
+    await page.getByRole('button', { name: 'Adjust crop' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Adjust crop' });
+    await expect(dialog).toHaveAttribute('data-state', 'ready');
+    // The editor starts from the box around the highlight's own lines.
+    const start = cropBox(rects, 0);
+    const shown = (await page.locator('[data-crop-box]').getAttribute('data-crop'))!.split(',').map(Number);
+    [start.x1, start.y1, start.x2, start.y2].forEach((value, index) => expect(Math.abs(value - shown[index]!)).toBeLessThan(0.002));
+    // Keep its top part, and apply: a reader's crop is never too tall.
+    await dialog.getByRole('button', { name: 'Bottom edge' }).focus();
+    for (let i = 0; i < 12; i++) await page.keyboard.press('Shift+ArrowUp');
+    const chosen = (await page.locator('[data-crop-box]').getAttribute('data-crop'))!;
+    await dialog.getByRole('button', { name: 'Apply' }).click();
+    await expect(page.getByText('Crop saved.')).toBeVisible();
+    await expect(card(page)).toHaveAttribute('data-share-card', 'page/ink');
+    await expect(card(page)).toHaveAttribute('data-share-crop', chosen);
+    await expect(page.getByText(/too tall for an automatic crop/)).toHaveCount(0);
+  });
+
+  test('updates that fail are retried while the post is being written, and the reader is told when they keep failing', async ({ page }) => {
+    test.setTimeout(60_000);
+    const state = fake();
+    const { url } = await paper(page, state);
+    await openPost(page, state, url);
+    await expect(card(page)).toHaveAttribute('data-share-card', 'page/ink', { timeout: 20_000 });
+
+    // Two failed checks during a rewrite: the panel says it is trying again and then shows the new version.
+    state.hold = true;
+    await page.getByRole('radio', { name: DESTINATION_NAMES.x }).click();
+    await expect(page.getByText('Rewriting for X · Bluesky · Threads…')).toBeVisible();
+    state.failGets = 2;
+    await expect(page.getByText(/Couldn’t reach pdfpal to check on this post\. Trying again…/)).toBeVisible();
+    state.hold = false;
+    await expect(page.locator('[data-x-count]')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/Couldn’t reach pdfpal/)).toHaveCount(0);
+
+    // Checks that keep failing stop after a few tries and offer Check again; the rewrite is not shown as finished.
+    state.hold = true;
+    await page.getByRole('radio', { name: DESTINATION_NAMES.linkedin }).click();
+    await expect(page.getByText('Rewriting for LinkedIn…')).toBeVisible();
+    state.failGets = 1000;
+    const stopped = page.getByText('pdfpal stopped checking on this post: The server is restarting.');
+    await expect(stopped).toBeVisible({ timeout: 20_000 });
+    const tries = state.calls.get;
+    await page.waitForTimeout(2500);
+    expect(state.calls.get).toBe(tries);
+    state.failGets = 0; state.hold = false;
+    await page.getByRole('button', { name: 'Check again' }).click();
+    await expect(page.locator('[data-x-count]')).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.getByText('Your post was rewritten.')).toBeVisible();
+    await expect(stopped).toHaveCount(0);
+  });
+
+  test('a post that is gone stops the checks at once', async ({ page }) => {
+    const state = fake();
+    const { url } = await paper(page, state);
+    state.hold = true;
+    await openPost(page, state, url, { status: 'running' });
+    await expect(page.getByText('Rewriting your post…')).toBeVisible({ timeout: 20_000 });
+    state.failGets = 1000; state.failStatus = 404;
+    await expect(page.getByText('pdfpal stopped checking on this post: The server is restarting.')).toBeVisible({ timeout: 10_000 });
+    const tries = state.calls.get;
+    await page.waitForTimeout(2500);
+    expect(state.calls.get).toBe(tries);
+  });
+
+  test('a page crop is not started again by the checks that run while the post is rewritten', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.addInitScript(INSTRUMENT);
+    const state = fake();
+    const { url } = await paper(page, state);
+    // The PDF arrives after three checks; meanwhile the post is being rewritten.
+    await page.route('**/sources/*/file', async route => { await new Promise(resolve => setTimeout(resolve, 3500)); await route.continue(); });
+    state.hold = true;
+    await openPost(page, state, url, { status: 'running' });
+    await expect(page.getByText('Rewriting your post…')).toBeVisible({ timeout: 20_000 });
+    // The preview appears while the rewrite still runs, from one crop.
+    await expect(card(page)).toHaveAttribute('data-share-card', 'page/ink', { timeout: 20_000 });
+    await expect(page.getByText('Rewriting your post…')).toBeVisible();
+    expect(state.calls.get).toBeGreaterThanOrEqual(3);
+    expect(await cropCanvases(page)).toBe(1);
+  });
+
+  test('closing a post while its picture is drawn leaves no picture behind', async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.addInitScript(INSTRUMENT);
+    const state = fake();
+    const { url } = await paper(page, state);
+    // The card's fonts arrive late, so the picture is still being drawn when the post closes.
+    let fonts = 0;
+    await page.route('**/fonts/**', async route => { fonts++; await new Promise(resolve => setTimeout(resolve, 2500)); await route.continue(); });
+    await openPost(page, state, url, { card: { ...state.template!.card!, style: 'quote' } });
+    await expect(page.getByRole('heading', { name: 'Reach has a quadratic price' })).toBeVisible();
+    await expect.poll(() => fonts).toBeGreaterThan(0);
+    await page.getByRole('button', { name: 'All posts' }).click();
+    await expect(page.getByRole('heading', { name: 'Posts' })).toBeVisible();
+    await page.waitForTimeout(5000);
+    expect(await outstandingUrls(page)).toBe(0);
+  });
+
+  test('a refused start forgets its request ID; a start whose answer was lost keeps it', async ({ page }) => {
+    test.setTimeout(60_000);
+    const state = fake();
+    const { annotation } = await paper(page, state);
+    await page.reload();
+    const box = page.locator(`[data-annotation-id="${annotation}"]`).first();
+    const create = async () => { await box.click(); await page.getByRole('menuitem', { name: /Create post/ }).click(); };
+    state.startPlan = ['abort', { status: 409, detail: 'This request ID was already used for another post.' }];
+    await create();
+    await expect.poll(() => state.bodies.start.length).toBe(1);
+    await expect(page.getByRole('alert')).toBeVisible();
+    // The lost answer may have started the post: the same ID is sent again, and is refused.
+    await create();
+    await expect(page.getByText('This request ID was already used for another post.')).toBeVisible();
+    expect(state.bodies.start[1]!.request_id).toBe(state.bodies.start[0]!.request_id);
+    // Refused for good: the next try is a new request, and it starts the post.
+    await create();
+    await expect(card(page)).toHaveAttribute('data-share-card', 'page/ink', { timeout: 20_000 });
+    expect(state.bodies.start).toHaveLength(3);
+    expect(state.bodies.start[2]!.request_id).not.toBe(state.bodies.start[1]!.request_id);
+    expect(await page.evaluate(() => Object.keys(sessionStorage).filter(key => key.startsWith('pdfpal:share-card-request:')))).toEqual([]);
+  });
+
+  test('a post an earlier build saved says so and can still be deleted', async ({ page }) => {
+    const state = fake();
+    const { url } = await paper(page, state);
+    state.unreadable = true;
+    await openPost(page, state, url);
+    await expect(page.getByRole('alert')).toHaveText(UNREADABLE);
+    await page.getByRole('button', { name: 'Delete post' }).click();
+    await page.getByRole('dialog', { name: 'Delete this post?' }).getByRole('button', { name: 'Delete' }).click();
+    await expect.poll(() => state.calls.delete).toBe(1);
+    await expect(page.getByRole('heading', { name: 'Posts' })).toBeVisible();
+    expect(page.url()).not.toContain('post=');
+  });
+
+  test('a look set after an edit survives Undo, as the server keeps it', async ({ page }) => {
+    const state = fake();
+    const { url } = await paper(page, state);
+    await openPost(page, state, url);
+    await expect(card(page)).toHaveAttribute('data-share-card', 'page/ink', { timeout: 20_000 });
+    await page.getByRole('switch', { name: 'Hashtags' }).click();
+    await page.getByRole('button', { name: 'Edit caption' }).click();
+    await page.getByRole('dialog', { name: 'Edit caption' }).getByRole('textbox', { name: 'Caption' }).fill('My own words.');
+    await page.getByRole('dialog', { name: 'Edit caption' }).getByRole('button', { name: 'Save' }).click();
+    await expect(caption(page)).toHaveText('My own words.');
+    await page.getByRole('radio', { name: 'Marker look' }).click();
+    await expect(card(page)).toHaveAttribute('data-share-card', 'page/marker');
+    await page.getByRole('button', { name: 'Undo last change' }).click();
+    await expect(caption(page)).toHaveText(shownText(state));
+    await expect(card(page)).toHaveAttribute('data-share-card', 'page/marker');
+    await expect(page.getByRole('switch', { name: 'Hashtags' })).toHaveAttribute('aria-checked', 'true');
   });
 });
