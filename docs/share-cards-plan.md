@@ -12,8 +12,8 @@ This is a port of DistillPod's share cards, adapted to PDFs. DistillPod is the r
 
 | Read this | For |
 | --- | --- |
-| `/home/andrepaim/src/distillpod/docs/android/social-share-cards.md` | The design, its reasons, and what two rounds of real output taught. Read it first. |
-| `/home/andrepaim/src/distillpod/app/src/main/java/dev/distillpod/android/data/ShareCard.kt` | Content object, limits, validation |
+| `~/src/distillpod/docs/android/social-share-cards.md` | The design, its reasons, and what two rounds of real output taught. Read it first. |
+| `~/src/distillpod/app/src/main/java/dev/distillpod/android/data/ShareCard.kt` | Content object, limits, validation |
 | `…/data/SocialComposer.kt` | Prompt, parsing, the single repair |
 | `…/data/SocialResult.kt` | Repository: change, undo, restyle, cancel, attempt tokens |
 | `…/sharing/ShareCardRenderer.kt` | Text layout and fitting. The numbers port; the code does not |
@@ -37,7 +37,7 @@ In pdfpal, read `CLAUDE.md`, then `src/core/visual-explanations.ts`, `src/server
 ## Ground rules
 
 - Work in a new worktree on a new branch from `master`, so the owner's current checkout is untouched:
-  `git -C /home/andrepaim/src/pdfpal worktree add ../pdfpal-share-cards -b feat/share-cards master`
+  `git -C ~/src/pdfpal worktree add ../pdfpal-share-cards -b feat/share-cards master`
 - Commit in small steps on `feat/share-cards`. Do not push, open a pull request, or edit `desktop/version.json` (a version change there triggers a release).
 - `feat/mac-desktop` is 14 commits ahead of `master` and unmerged. It changes `desktop/src/main.mjs`, `desktop/src/preload.cjs` and `frontend/src/desktop.d.ts`. Keep edits to those three files minimal (package E) so the later merge is easy. The reader, server and database files are identical on both branches.
 - Keep every product constraint in `CLAUDE.md`. In particular: assistants run with tools disabled, PDF text is untrusted data, AI is mocked in automated tests, tests never touch the real home database, telemetry carries no content. Add no telemetry events in this work.
