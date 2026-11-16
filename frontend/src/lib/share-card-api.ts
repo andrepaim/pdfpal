@@ -36,6 +36,8 @@ const patch = (projectId: string, id: string, body: object) => request<ShareCard
 
 /** What a carousel starts from: highlights of one PDF, in the order of their slides. */
 export type SetStart = { sourceId: string; annotationIds: string[] }
+/** One of a paper post's slides: `index` names a result, and only a result. */
+export type PaperTextEdit = { field: 'question' | 'method' | 'result'; index?: number; text: string }
 /** One carousel slide's words: `index` names a point, and only a point. */
 export type SetTextEdit = { field: 'study' | 'takeaway' | 'limitations' | 'point'; index?: number; text: string }
 
@@ -118,6 +120,8 @@ export const shareCardApi = {
   showTags: (projectId: string, id: string, showTags: boolean) => patch(projectId, id, { show_tags: showTags }),
   link: (projectId: string, id: string, link: LinkPlacement) => patch(projectId, id, { link }),
   editHeadline: (projectId: string, id: string, headline: string) => patch(projectId, id, { headline }),
+  /** One of a paper post's slides: its question, method, or a result (`index` 0 or 1, for a result only); behind Undo. */
+  editPaperText: (projectId: string, id: string, edit: PaperTextEdit) => patch(projectId, id, { paper_text: edit }),
   /** A single post's takeaway, the third card of the Carousel style: 1 to 140 characters, behind Undo. */
   editTakeaway: (projectId: string, id: string, takeaway: string) => patch(projectId, id, { takeaway }),
   editCaption: (projectId: string, id: string, caption: string) => patch(projectId, id, { caption }),

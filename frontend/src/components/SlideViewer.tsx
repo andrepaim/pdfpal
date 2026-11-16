@@ -4,26 +4,31 @@
 // its neighbours, and kept per slide, look and crop, so stepping through is instant and nothing is drawn twice. A slow
 // drawing never replaces a newer one.
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { CARD, SET, collapse, postSlides, setSlides, type PageRect, type ShareCardRecord, type ShareLook, type SlideSpec as SharedSlideSpec } from '../../../src/shared/share-card'
-/** The slide kinds this viewer shows; a paper post's own kinds (stage 5) arrive with T15. */
-type SlideSpec = Exclude<SharedSlideSpec, { kind: 'lead' | 'question' | 'method' | 'result' }>
+import { CARD, PAPER, SET, collapse, postSlides, setSlides, type PageRect, type ShareCardRecord, type ShareLook, type SlideSpec } from '../../../src/shared/share-card'
 import { canvasPng } from '../lib/share-card'
 import { PAGE_UNAVAILABLE, pageCrop, type PageCrop, type PageUnavailable } from '../lib/share-card/page-crop'
 import { itemSource, renderSlide, slideSheetSpace, slideText, type SlideContext } from '../lib/share-card/slides'
 import { Modal, button, faded, field, muted, primary } from './SharePostParts'
 
 /** What each kind of slide is called in the viewer and the edit dialog. */
-export const SLIDE_NAMES: Record<SlideSpec['kind'], string> = { cover: 'Cover', study: 'The study', point: 'Highlight', page: 'The page', takeaway: 'The takeaway', limitations: 'Limits' }
+export const SLIDE_NAMES: Record<SlideSpec['kind'], string> = {
+  cover: 'Cover', study: 'The study', point: 'Highlight', page: 'The page', takeaway: 'The takeaway', limitations: 'Limits',
+  lead: 'The paper', question: 'The question', method: 'The method', result: 'The result',
+}
 
-/** A slide's name: "Cover", "Highlight 2", "The study"… */
-export const slideName = (slide: SlideSpec) => slide.kind === 'point' ? `Highlight ${slide.item + 1}` : SLIDE_NAMES[slide.kind]
+/** A slide's name: "Cover", "Highlight 2", "The study", "Result 1"… A result is named by its kicker ("The result" alone). */
+export const slideName = (slide: SlideSpec) => slide.kind === 'point' ? `Highlight ${slide.item + 1}` : slide.kind === 'result' ? slide.kicker || SLIDE_NAMES.result : SLIDE_NAMES[slide.kind]
 
 /** What a screen reader hears for a slide: its place, its kind and its words. */
 export const slideAlt = (slide: SlideSpec, index: number, count: number) => `Slide ${index + 1} of ${count}, ${slideName(slide).toLowerCase()}: ${slideText(slide)}`
 
 /** The longest text a slide holds, and whether emptying it removes the slide. A page slide's words are not edited here. */
-export const SLIDE_FIELDS: Record<Exclude<SlideSpec['kind'], 'page'>, { label: string; max: number; removable: boolean }> = {
+export const SLIDE_FIELDS: Record<Exclude<SlideSpec['kind'], 'page'>, { label: string; max: number; removable: boolean; required?: string }> = {
   cover: { label: 'Headline', max: CARD.headlineMax, removable: false },
+  lead: { label: 'Headline', max: CARD.headlineMax, removable: false },
+  question: { label: 'The question', max: PAPER.questionMax, removable: false },
+  method: { label: 'The method', max: PAPER.methodMax, removable: false },
+  result: { label: 'The result', max: PAPER.resultMax, removable: false, required: 'A result cannot be empty: a paper post keeps at least one.' },
   study: { label: 'The study', max: SET.studyMax, removable: true },
   point: { label: 'Claim', max: SET.pointMax, removable: false },
   takeaway: { label: 'The takeaway', max: Math.min(SET.takeawayMax, CARD.takeawayMax), removable: false },
@@ -44,7 +49,7 @@ export function useSlides(record: ShareCardRecord | null, look: ShareLook, fileU
   const isSet = record?.source.kind === 'set' && !!record.card?.set
   const card = record?.card && (isSet || carousel) ? record.card : null
   const source = record?.source ?? null
-  const slides = useMemo<SlideSpec[]>(() => !card || !source ? [] : isSet ? setSlides(card, source) : postSlides(card, source) as SlideSpec[], [card, source, isSet])
+  const slides = useMemo<SlideSpec[]>(() => !card || !source ? [] : isSet ? setSlides(card, source) : postSlides(card, source), [card, source, isSet])
   const [index, setIndex] = useState(0)
   const [shown, setShown] = useState<DrawnSlide | null>(null)
   const [drawError, setDrawError] = useState('')
@@ -78,7 +83,7 @@ export function useSlides(record: ShareCardRecord | null, look: ShareLook, fileU
     if (!slide || !card || !source || !record) return ''
     if (slide.kind === 'point')
       return JSON.stringify([slide, at, count, look, source.title, source.credit, source.items[slide.item], card.set!.crops[slide.item] ?? null, record.set_marks[slide.item] ?? [], fileUrl])
-    if (slide.kind === 'page')
+    if (slide.kind === 'page' || slide.kind === 'lead')
       return JSON.stringify([slide, at, count, look, source.title, source.credit, source.page, source.rects, source.region, card.crop, record.marks, fileUrl])
     return ''
   }, [slides, card, source, record, count, look, fileUrl])
@@ -91,7 +96,7 @@ export function useSlides(record: ShareCardRecord | null, look: ShareLook, fileU
 
   const cropFor = useCallback((at: number): Promise<CropResult> => {
     const slide = slides[at], key = cropKey(at)
-    if (!slide || (slide.kind !== 'point' && slide.kind !== 'page') || !key || !card || !source || !record) return Promise.resolve({})
+    if (!slide || (slide.kind !== 'point' && slide.kind !== 'page' && slide.kind !== 'lead') || !key || !card || !source || !record) return Promise.resolve({})
     let result = crops.current.get(key)
     if (!result) {
       const crop = (sheet: Awaited<ReturnType<typeof slideSheetSpace>>) => slide.kind === 'point'
@@ -177,7 +182,7 @@ export function useSlides(record: ShareCardRecord | null, look: ShareLook, fileU
   }, [count, draw])
 
   const slide = slides[current] ?? null
-  const reason = slide?.kind === 'point' || slide?.kind === 'page' ? reasons[cropKey(current)] ?? null : null
+  const reason = slide?.kind === 'point' || slide?.kind === 'page' || slide?.kind === 'lead' ? reasons[cropKey(current)] ?? null : null
   return {
     slides, index: current, setIndex, slide, shown,
     drawError, draw, drawAll, reason, cropOf: cropFor,
@@ -247,6 +252,7 @@ export function SlideEditDialog({ open, slide, index, count, title, onSave, onCa
         <p id="slide-edit-hint" style={{ ...muted, margin: '0 0 8px' }}>
           Up to {spec.max} characters.{spec.removable ? ' Leave it empty to remove this slide; Undo brings it back.' : ''}
         </p>
+        {empty && spec.required && <p role="note" style={{ fontSize: 12, color: '#fca5a5', margin: '0 0 8px' }}>{spec.required}</p>}
         <textarea value={text} onChange={event => setText(event.target.value.slice(0, spec.max))} maxLength={spec.max} rows={spec.max > 100 ? 4 : 2} autoFocus
           aria-label={spec.label} aria-describedby="slide-edit-hint" style={field} />
         <div style={{ ...muted, textAlign: 'right' }}>{text.length}/{spec.max}</div>

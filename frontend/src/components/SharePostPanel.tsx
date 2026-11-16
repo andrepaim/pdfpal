@@ -1,5 +1,5 @@
-// The Post tab: one post, or the list of this source's posts with "Share a region" and "Share the first page". A post
-// starts from a highlight, a region of a page or the first page. Its image is the PDF's own page with the reader's
+// The Post tab: one post, or the list of this source's posts with "Share a region" and "Share the paper". A post
+// starts from a highlight, a region of a page, or the paper as a whole. Its image is the PDF's own page with the reader's
 // highlights, and its text is built around the reader's take, written for one destination.
 // Top to bottom: destination, image, take, text, actions. Only the destination, the take and "Ask for a change"
 // call the assistant; everything else is drawn locally or saved as a setting. See docs/share-posts-plan.md.
@@ -14,7 +14,7 @@ import { cardSheetSpace, canvasPng, renderCard, palette } from '../lib/share-car
 import { PAGE_UNAVAILABLE, pageCrop, type PageCrop, type PageUnavailable } from '../lib/share-card/page-crop'
 import { cropBox } from '../lib/share-card/crop-box'
 import CropEditor from './CropEditor'
-import RegionPicker, { type RegionKind } from './RegionPicker'
+import RegionPicker, { readFirstPage, type RegionChoice } from './RegionPicker'
 import HighlightChooser, { eligibleHighlights, type ChooserHighlight } from './HighlightChooser'
 import { SlideEditDialog, SlideViewer, slideName, useSlides } from './SlideViewer'
 import { carouselFileName, slideFileName, slidesPdf, slidesZip } from '../lib/share-card/export'
@@ -39,7 +39,7 @@ type Props = {
   sourceId?: string
   /** A message from starting a post that did not begin, such as a passage that is too short. */
   notice?: string | null
-  /** The page being read. With `sourceId`, the post list offers "Share a region" on it and "Share the first page". */
+  /** The page being read. With `sourceId`, the post list offers "Share a region" on it and "Share the paper". */
   currentPage?: number
   /** The reader's highlights on a page, shown while choosing a region. */
   marksOn?: (page: number) => PageMark[]
@@ -69,7 +69,7 @@ const startingCrop = (rects: PageRect[]) => rects.length ? cropBox(rects, 0) : W
 /** True for a post made from a region or the first page; a stored source without a kind is a highlight's. */
 const fromRegion = (kind: string | undefined) => kind === 'region' || kind === 'paper'
 /** What a post without a highlight started from, in the post lists. */
-export const KIND_LABELS: Record<'region' | 'paper' | 'set', string> = { region: 'Region', paper: 'First page', set: 'Carousel' }
+export const KIND_LABELS: Record<'region' | 'paper' | 'set', string> = { region: 'Region', paper: 'Paper', set: 'Carousel' }
 /** The label a post list shows for what a post started from, or '' for a highlight. */
 export const kindLabel = (kind: string | undefined) => kind === 'region' || kind === 'paper' || kind === 'set' ? KIND_LABELS[kind] : ''
 /** What Page and Headline are drawn as without the PDF page. */
@@ -111,7 +111,9 @@ type ListProps = {
 function PostList({ projectId, sourceId, notice, currentPage, marksOn, highlights = [], onOpen, onChanged }: ListProps) {
   const [posts, setPosts] = useState<ShareCardSummary[] | null>(null)
   const [error, setError] = useState('')
-  const [choosing, setChoosing] = useState<RegionKind | null>(null)
+  const [choosing, setChoosing] = useState(false)
+  // Set at once on a click, before React re-renders, so a double click starts one post.
+  const startingRef = useRef(false)
   const [choosingSet, setChoosingSet] = useState(false)
   const [chosen, setChosen] = useState<string[]>([])
   const [starting, setStarting] = useState(false)
@@ -125,8 +127,11 @@ function PostList({ projectId, sourceId, notice, currentPage, marksOn, highlight
   const canChoose = !!fileUrl && !!sourceId && !!currentPage
   const eligible = useMemo(() => eligibleHighlights(highlights), [highlights])
   const canSet = !!fileUrl && !!sourceId && eligible.length >= 2
-  const choose = (kind: RegionKind) => { if (!choosing && !starting) { setFailure(''); setChoosing(kind) } }
+  const busy = starting || choosing
+  const chooseRegion = () => { if (!busy && !startingRef.current) { setFailure(''); setChoosing(true) } }
   const createSet = async (ids: string[]) => {
+    if (startingRef.current) return
+    startingRef.current = true
     setChoosingSet(false); setStarting(true); setFailure('')
     try {
       const record = await shareCardApi.startSet(projectId, { sourceId: sourceId!, annotationIds: ids })
@@ -134,16 +139,20 @@ function PostList({ projectId, sourceId, notice, currentPage, marksOn, highlight
       onChanged?.()
       onOpen(record.id)
     } catch (e) { setFailure((e as Error).message) }
-    finally { setStarting(false) }
+    finally { startingRef.current = false; setStarting(false) }
   }
-  const create = async (kind: RegionKind, choice: { page: number; region: PageRect; text: string }) => {
-    setChoosing(null); setStarting(true); setFailure('')
+  /** Starts a region post from the chosen box, or a paper post from the first page's box, worked out with no modal. */
+  const create = async (kind: 'region' | 'paper', choice?: RegionChoice) => {
+    if (startingRef.current) return
+    startingRef.current = true
+    setChoosing(false); setStarting(true); setFailure('')
     try {
-      const record = await shareCardApi.startRegion(projectId, { sourceId: sourceId!, kind, ...choice })
+      const from = choice ?? await readFirstPage(fileUrl!)
+      const record = await shareCardApi.startRegion(projectId, { sourceId: sourceId!, kind, ...from })
       onChanged?.()
       onOpen(record.id)
     } catch (e) { setFailure((e as Error).message) }
-    finally { setStarting(false) }
+    finally { startingRef.current = false; setStarting(false) }
   }
   return (
     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -151,22 +160,24 @@ function PostList({ projectId, sourceId, notice, currentPage, marksOn, highlight
       {(canChoose || canSet) && (
         <div role="group" aria-label="Start a post" aria-describedby="share-region-hint" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {canChoose && <button type="button" onClick={() => choose('region')} aria-disabled={starting || !!choosing} style={faded({ ...button, flex: '1 1 140px' }, starting || !!choosing)}>Share a region</button>}
-            {canChoose && <button type="button" onClick={() => choose('paper')} aria-disabled={starting || !!choosing} style={faded({ ...button, flex: '1 1 140px' }, starting || !!choosing)}>Share the first page</button>}
-            {canSet && <button type="button" onClick={() => { if (!starting && !choosing) { setFailure(''); setChoosingSet(true) } }} aria-disabled={starting || !!choosing}
-              style={faded({ ...button, flex: '1 1 140px' }, starting || !!choosing)}>Share several highlights</button>}
+            {canChoose && <button type="button" onClick={chooseRegion} aria-disabled={busy} style={faded({ ...button, flex: '1 1 140px' }, busy)}>Share a region</button>}
+            {canChoose && <button type="button" onClick={() => { if (!busy) void create('paper') }} aria-disabled={busy} aria-busy={starting}
+              style={faded({ ...button, flex: '1 1 140px' }, busy)}>Share the paper</button>}
+            {canSet && <button type="button" onClick={() => { if (!busy && !startingRef.current) { setFailure(''); setChoosingSet(true) } }} aria-disabled={busy}
+              style={faded({ ...button, flex: '1 1 140px' }, busy)}>Share several highlights</button>}
           </div>
           <span id="share-region-hint" style={muted}>{[
-            canChoose ? `A figure or passage on page ${currentPage}, or the title and abstract` : '',
-            canSet ? 'or a carousel of your highlights' : '',
-          ].filter(Boolean).join(', ').replace(/^or a/u, 'A')}.</span>
+            canChoose ? `A figure or passage on page ${currentPage}` : '',
+            canChoose ? 'the paper: its question, method and results' : '',
+            canSet ? 'a carousel of your highlights' : '',
+          ].filter(Boolean).map((part, index, parts) => index && index === parts.length - 1 ? `or ${part}` : part).join('; ').replace(/^a/u, 'A')}.</span>
           {canSet && <HighlightChooser open={choosingSet} highlights={eligible} chosen={chosen} onChange={setChosen}
             onCancel={() => setChoosingSet(false)} onCreate={ids => void createSet(ids)} />}
           {starting && <span role="status" style={{ ...muted, display: 'flex', alignItems: 'center', gap: 8 }}><span className="spinner" aria-hidden="true" /> Starting your post…</span>}
           {choosing && fileUrl && (
-            <RegionPicker fileUrl={fileUrl} page={currentPage!} kind={choosing} marks={marksOn?.(choosing === 'paper' ? 1 : currentPage!)}
-              onCancel={() => setChoosing(null)} onError={message => { setChoosing(null); setFailure(message) }}
-              onCreate={choice => void create(choosing, choice)} />
+            <RegionPicker fileUrl={fileUrl} page={currentPage!} marks={marksOn?.(currentPage!)}
+              onCancel={() => setChoosing(false)} onError={message => { setChoosing(false); setFailure(message) }}
+              onCreate={choice => void create('region', choice)} />
           )}
           {failure && <p role="alert" style={alert}>{failure}</p>}
         </div>
@@ -444,10 +455,16 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
     if (!record || !slide) return
     const removed = !text && (slide.kind === 'study' || slide.kind === 'limitations')
     const done = removed ? { text: `The ${slideName(slide).toLowerCase().replace(/^the /u, '')} slide was removed.`, undo: true } : { text: 'Slide saved.' }
-    if (slide.kind === 'cover') void act(() => shareCardApi.editHeadline(projectId, record.id, text), { done })
+    if (slide.kind === 'cover' || slide.kind === 'lead') void act(() => shareCardApi.editHeadline(projectId, record.id, text), { done })
     else if (slide.kind === 'page') return
+    else if (slide.kind === 'question' || slide.kind === 'method') void act(() => shareCardApi.editPaperText(projectId, record.id, { field: slide.kind, text }), { done })
+    else if (slide.kind === 'result') void act(() => shareCardApi.editPaperText(projectId, record.id, { field: 'result', index: slide.item ?? 0, text }), { done })
     else if (!isSet && slide.kind === 'takeaway') void act(() => shareCardApi.editTakeaway(projectId, record.id, text), { done })
-    else void act(() => shareCardApi.editSetText(projectId, record.id, slide.kind === 'point' ? { field: 'point', index: slide.item, text } : { field: slide.kind, text }), { done })
+    else if (slide.kind === 'point') void act(() => shareCardApi.editSetText(projectId, record.id, { field: 'point', index: slide.item, text }), { done })
+    else if (slide.kind === 'study' || slide.kind === 'takeaway' || slide.kind === 'limitations') {
+      const field = slide.kind
+      void act(() => shareCardApi.editSetText(projectId, record.id, { field, text }), { done })
+    }
   }
 
   const saveImage = (exportSize: CardSize) => act(async () => {
@@ -601,22 +618,34 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
   ) : null
 
   // ── A single post in the Carousel style: the hook, the page, the takeaway ──
-  const pageShown = postCarousel && slide?.kind === 'page' && slideShown ? slideShown : null
-  const pageReason = postCarousel && slide?.kind === 'page' ? carousel.reason : null
-  const canAdjustPage = postCarousel && slide?.kind === 'page' && !!fileUrl && (!!pageShown?.crop || pageReason === 'too-tall') && !active
+  // The page card, or a paper's lead (its headline above the first page), shows the post's own crop.
+  const onPage = slide?.kind === 'page' || slide?.kind === 'lead'
+  const pageShown = postCarousel && onPage && slideShown ? slideShown : null
+  const pageReason = postCarousel && onPage ? carousel.reason : null
+  const canAdjustPage = postCarousel && onPage && !!fileUrl && (!!pageShown?.crop || pageReason === 'too-tall') && !active
   const pageStart = card ? card.crop ?? pageShown?.crop?.box ?? startingCrop(record.source.rects) : WHOLE_PAGE
-  const fallbackWords = card?.quote ? 'the quote' : 'the headline'
+  const paperSlides = carousel.slides.some(each => each.kind === 'lead')
+  const instead = paperSlides ? 'The first slide shows the headline without the page.' : `The page slide shows ${card?.quote ? 'the quote' : 'the headline'} instead.`
+  const regionLabel = record.source.kind === 'paper' ? 'The title and abstract' : 'The region you chose'
+  // A paper post stored before papers had their own slides: three cards, and one request to write them.
+  const olderPaper = postCarousel && record.source.kind === 'paper' && !!card && !card.paper
   const postCarouselView = postCarousel && card ? <>
     <SlideViewer slides={carousel.slides} index={carousel.index} onIndex={carousel.setIndex} shown={carousel.shown} label={cardDescription(card, 'carousel', record.source)} />
     {carousel.drawError && <p role="alert" style={alert}>{carousel.drawError}</p>}
-    {!fileUrl && <div style={{ ...muted, textAlign: 'center' }}>{PAGE_UNAVAILABLE['no-source']} The page slide shows {fallbackWords} instead.</div>}
-    {fileUrl && pageReason && <div style={{ ...muted, textAlign: 'center' }}>{pageReason === 'too-tall' ? TOO_TALL_HINT : `${PAGE_UNAVAILABLE[pageReason]} The page slide shows ${fallbackWords} instead.`}</div>}
+    {!fileUrl && <div style={{ ...muted, textAlign: 'center' }}>{PAGE_UNAVAILABLE['no-source']} {instead}</div>}
+    {fileUrl && pageReason && <div style={{ ...muted, textAlign: 'center' }}>{pageReason === 'too-tall' ? TOO_TALL_HINT : `${PAGE_UNAVAILABLE[pageReason]} ${instead}`}</div>}
+    {olderPaper && !active && (
+      <div data-older-paper style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+        <span style={{ ...muted, flex: '1 1 200px' }}>This post was made before papers got their own slides. Rewrite it to add the question, method and results.</span>
+        <button type="button" onClick={() => rewrite({})} disabled={busy} style={faded({ ...button, padding: '3px 10px' }, busy)}>Rewrite</button>
+      </div>
+    )}
   </> : null
   const postCarouselButtons = postCarousel && card && !active ? (
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
       {slide && slide.kind !== 'page' && <button type="button" onClick={() => setEditingSlide(true)} style={button}>Edit slide</button>}
       {canAdjustPage && <button type="button" onClick={() => setEditingCrop(true)} style={button}>Adjust crop</button>}
-      {canAdjustPage && pageReason !== 'too-tall' && <span style={muted}>{regionPost ? (sameBox(card.crop, record.source.region) ? 'The region you chose' : 'Your crop') : card.crop ? 'Your crop' : 'Automatic crop'}</span>}
+      {canAdjustPage && pageReason !== 'too-tall' && <span style={muted}>{regionPost ? (sameBox(card.crop, record.source.region) ? regionLabel : 'Your crop') : card.crop ? 'Your crop' : 'Automatic crop'}</span>}
       {!card.takeaway && <button type="button" onClick={() => setAddingTakeaway(true)}
         style={{ background: 'none', border: 'none', padding: '4px 0', color: '#a5b4fc', fontSize: 12, cursor: 'pointer', textDecoration: 'underline' }}>Add a takeaway</button>}
     </div>
@@ -690,7 +719,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
               {hasHeadline && !active && <button type="button" onClick={() => open('headline')} style={button}>Edit headline</button>}
               {canAdjust && <button type="button" onClick={() => setEditingCrop(true)} style={button}>Adjust crop</button>}
-              {canAdjust && !tooTall && <span style={muted}>{regionPost ? (sameBox(card.crop, record.source.region) ? 'The region you chose' : 'Your crop') : card.crop ? 'Your crop' : 'Automatic crop'}</span>}
+              {canAdjust && !tooTall && <span style={muted}>{regionPost ? (sameBox(card.crop, record.source.region) ? regionLabel : 'Your crop') : card.crop ? 'Your crop' : 'Automatic crop'}</span>}
             </div>
           )}
           {!regionPost && (
