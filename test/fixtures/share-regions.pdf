@@ -1,0 +1,80 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [6 0 R 8 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>
+endobj
+5 0 obj
+<< /Length 1412 >>
+stream
+BT /F2 20 Tf 118 760 Td (Sparse Attention at a Fraction of the Cost) Tj ET
+BT /F1 12 Tf 222 732 Td (Ada Lovelace and Alan Turing) Tj ET
+BT /F1 10 Tf 232 716 Td (Analytical Engine Institute) Tj ET
+BT /F2 11 Tf 278 684 Td (Abstract) Tj ET
+BT /F1 10 Tf 90 664 Td (Full attention lets every position look at every other position, but its cost grows) Tj ET
+BT /F1 10 Tf 90 650 Td (with the square of the sequence length. We propose a sparse pattern that attends to) Tj ET
+BT /F1 10 Tf 90 636 Td (a fixed window and a few global positions. On three long-document benchmarks it) Tj ET
+BT /F1 10 Tf 90 622 Td (keeps 98% of the quality of full attention at a third of the cost, and it trains) Tj ET
+BT /F1 10 Tf 90 608 Td (without changes to the optimiser or the learning-rate schedule.) Tj ET
+BT /F2 12 Tf 72 580 Td (1 Introduction) Tj ET
+BT /F1 10 Tf 72 560 Td (Transformers read long documents poorly because attention compares every pair of) Tj ET
+BT /F1 10 Tf 72 546 Td (positions. Doubling the length of the input quadruples the work, so a model that) Tj ET
+BT /F1 10 Tf 72 532 Td (reads a paper in one pass must either truncate it or pay for the whole square.) Tj ET
+BT /F1 10 Tf 72 518 Td (Earlier work replaced attention with recurrence or with low-rank approximations;) Tj ET
+BT /F1 10 Tf 72 504 Td (both lose quality on tasks that need exact recall of distant positions.) Tj ET
+BT /F1 10 Tf 295 40 Td (1) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Contents 5 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>
+endobj
+7 0 obj
+<< /Length 1213 >>
+stream
+BT /F1 10 Tf 72 760 Td (We train each model for one hundred thousand steps on the same data and report the) Tj ET
+BT /F1 10 Tf 72 746 Td (accuracy on held-out documents. Figure 1 shows how accuracy changes during training) Tj ET
+BT /F1 10 Tf 72 732 Td (for the sparse pattern; the full-attention curve is almost identical and is omitted.) Tj ET
+0.92 g 150 430 300 210 re f
+0.75 g 170 430 30 50 re f 230 430 30 95 re f 290 430 30 130 re f 350 430 30 150 re f 410 430 30 160 re f
+0 G 1.5 w 150 445 m 200 500 l 260 560 l 330 600 l 440 625 l S
+0 g 0.8 w 150 430 m 150 640 l S 150 430 m 450 430 l S
+BT /F1 9 Tf 155 628 Td (Accuracy) Tj ET
+BT /F1 8 Tf 128 426 Td (0) Tj ET
+BT /F1 8 Tf 122 532 Td (50) Tj ET
+BT /F1 8 Tf 118 634 Td (100) Tj ET
+BT /F1 8 Tf 148 418 Td (0) Tj ET
+BT /F1 8 Tf 292 418 Td (50) Tj ET
+BT /F1 8 Tf 440 418 Td (100) Tj ET
+BT /F1 9 Tf 280 405 Td (Steps) Tj ET
+BT /F1 10 Tf 150 380 Td (Figure 1: Accuracy rises with training steps.) Tj ET
+BT /F1 10 Tf 72 340 Td (The curve flattens after about sixty thousand steps. Longer training does not close) Tj ET
+BT /F1 10 Tf 72 326 Td (the remaining gap, which suggests the window, not the schedule, limits the model.) Tj ET
+BT /F1 10 Tf 295 40 Td (2) Tj ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Contents 7 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000218 00000 n 
+0000000320 00000 n 
+0000001784 00000 n 
+0000001926 00000 n 
+0000003191 00000 n 
+trailer
+<< /Size 9 /Root 1 0 R >>
+startxref
+3333
+%%EOF
