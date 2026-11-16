@@ -5,6 +5,7 @@ import {
   DESTINATION_DEFAULTS, DESTINATION_NAMES, FIT, captionText, firstCommentText,
   type Angle, type CardContent, type Caption, type Destination, type PageMark, type PageRect, type ShareCardRecord,
 } from '../../src/shared/share-card';
+import { PAGE_FRAMES, SAMPLES as TEXT_SAMPLES } from '../src/lib/share-card/samples';
 import { mockAuth, createProjectViaApi } from './helpers';
 
 const SAMPLES = path.resolve('test-results/share-card-samples');
@@ -17,9 +18,11 @@ test.describe('share card samples', () => {
     test.setTimeout(150_000);
     await page.goto('/dev/share-cards');
     await expect(page.locator('main[data-samples-done="true"]')).toBeVisible({ timeout: 130_000 });
-    // Text cards: 7 samples × 3 styles × 3 looks × 2 sizes. Frames: 12 Page and Headline frames × 3 looks.
-    await expect(page.locator('[data-sample]')).toHaveCount(126);
-    await expect(page.locator('[data-frame]')).toHaveCount(36);
+    // Text cards: each sample × 3 styles × 3 looks × 2 sizes. Frames: each Page and Headline frame × 3 looks.
+    const textCards = TEXT_SAMPLES.length * 3 * 3 * 2, frames = PAGE_FRAMES.length * 3;
+    expect(textCards).toBe(126); expect(frames).toBe(42);
+    await expect(page.locator('[data-sample]')).toHaveCount(textCards);
+    await expect(page.locator('[data-frame]')).toHaveCount(frames);
     const failed = await page.locator('[data-fits="false"]').evaluateAll(nodes => nodes.map(node => `${node.getAttribute('data-sample') ?? node.getAttribute('data-frame')}: ${node.textContent}`));
     expect(failed).toEqual([]);
     const images = await page.locator('[data-sample] img, [data-frame] img').evaluateAll(async nodes => Promise.all(nodes.map(async node => {
@@ -38,7 +41,7 @@ test.describe('share card samples', () => {
       } else expect(image.height, image.name).toBe(image.name.includes('-story') ? 1920 : 1350);
       fs.writeFileSync(path.join(SAMPLES, `${image.name}.png`), Buffer.from(image.png, 'base64'));
     }
-    expect(images).toHaveLength(162);
+    expect(images).toHaveLength(textCards + frames);
     // Fit frames really vary in height: the X frame (one line of context) is shorter than the whole page.
     const heights = Object.fromEntries(images.map(image => [image.name, image.height]));
     expect(heights['page-fit-x-ink']!).toBeLessThan(heights['page-fit-whole-ink']!);
@@ -193,18 +196,24 @@ function record(projectId: string, sourceId: string | null, annotationId: string
   };
 }
 
+/** A highlight in the lower half of page 2, far below the text the post's crops are made from. */
+const FAR: PageRect = { x1: 0.121, y1: 0.6, x2: 0.5, y2: 0.6142 };
+
 /**
- * The paper on page 2 of test/fixtures/share-cards.pdf with four highlights: the post's own (lines 2–3, yellow), one
- * line above it (blue), one below it (green), and the last paragraph (pink), which no automatic crop reaches.
+ * The paper on page 2 of test/fixtures/share-cards.pdf with five highlights: the post's own (lines 2–3, yellow), one
+ * line above it (blue), one below it (green), the last paragraph (pink), which only a crop with three lines of context
+ * reaches, and one far down the page (blue), which no automatic crop reaches.
  */
 async function paper(page: Page, state: Fake) {
   await routePosts(page, state);
   const { project, source, lines } = await openPdf(page, 'test/fixtures/share-cards.pdf', 2);
   const own = [lines[1]!.rect, lines[2]!.rect];
   const annotation = await highlight(page, project.id, source.id, 2, `${lines[1]!.text}\n${lines[2]!.text}`, own);
-  const others: Array<[number, PageMark['color']]> = [[0, 'blue'], [3, 'green'], [5, 'pink']];
-  for (const [index, color] of others) await highlight(page, project.id, source.id, 2, lines[index]!.text, [lines[index]!.rect], color);
-  const marks: PageMark[] = [{ rects: own, color: 'yellow' }, ...others.map(([index, color]) => ({ rects: [lines[index]!.rect], color }))];
+  const others: Array<[PageRect, string, PageMark['color']]> = [
+    [lines[0]!.rect, lines[0]!.text, 'blue'], [lines[3]!.rect, lines[3]!.text, 'green'], [lines[5]!.rect, lines[5]!.text, 'pink'], [FAR, 'A note far down the page.', 'blue'],
+  ];
+  for (const [rect, text, color] of others) await highlight(page, project.id, source.id, 2, text, [rect], color);
+  const marks: PageMark[] = [{ rects: own, color: 'yellow' }, ...others.map(([rect, , color]) => ({ rects: [rect], color }))];
   const passage = 'the sequence. However, the cost grows with the square of the sequence length, so long documents become expensive. We suspect';
   state.template = record(project.id, source.id, annotation, passage, own, marks);
   return { project, source, annotation, lines, marks, url: `/projects/${project.id}/sources/${source.id}` };
@@ -255,8 +264,9 @@ test.describe('share posts in the reader', () => {
       await expect(card(page)).toHaveAttribute('data-share-card', `${style}/ink`, { timeout: 20_000 });
       expect(page.url()).toContain(`post=${POST_ID}`);
       await expect(page.getByRole('radio', { name: style === 'page' ? 'Page' : 'Headline' })).toHaveAttribute('aria-checked', 'true');
-      // Own, blue and green are inside the automatic crop; pink, two paragraphs away, is not.
-      await expect(card(page)).toHaveAttribute('data-share-marks', '3');
+      // Every highlight inside the automatic crop is drawn: own, blue and green always, pink with three lines of
+      // context. The one far down the page is outside every automatic crop and is not drawn.
+      await expect(card(page)).toHaveAttribute('data-share-marks', destination === 'x' ? '3' : '4');
       const height = await fitHeight(page);
       if (destination === 'instagram') expect(height).toBe(1350);
       else { expect(height).toBeGreaterThanOrEqual(FIT.minHeight); expect(height).toBeLessThan(FIT.maxHeight); }
@@ -440,9 +450,9 @@ test.describe('share posts in the reader', () => {
   test('adjust crop with the pointer and the keyboard, then reset it to automatic', async ({ page }) => {
     test.setTimeout(60_000);
     const state = fake();
-    const { url } = await paper(page, state);
+    const { url, lines } = await paper(page, state);
     await openPost(page, state, url);
-    await expect(card(page)).toHaveAttribute('data-share-marks', '3', { timeout: 20_000 });
+    await expect(card(page)).toHaveAttribute('data-share-marks', '4', { timeout: 20_000 });
     const automatic = (await card(page).getAttribute('data-share-crop'))!;
     await expect(page.getByText('Automatic crop')).toBeVisible();
 
@@ -453,25 +463,29 @@ test.describe('share posts in the reader', () => {
     // The editor starts from the automatic crop, with every highlight on the page.
     const start = (await box.getAttribute('data-crop'))!.split(',').map(Number);
     automatic.split(',').map(Number).forEach((value, index) => expect(Math.abs(value - start[index]!)).toBeLessThan(0.002));
-    await expect(page.locator('[data-crop-mark]')).toHaveCount(5);
-    // Down by a tenth of the page with the pointer; the bottom edge a step lower with the keyboard.
+    await expect(page.locator('[data-crop-mark]')).toHaveCount(6);
+    // Down by a tenth of the page with the pointer, which leaves the post's own highlight and the lines around it above
+    // the crop; then the bottom edge down with the keyboard until the highlight far down the page is inside it.
     const frame = (await page.locator('[data-crop-page]').boundingBox())!, from = (await box.boundingBox())!;
     await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
     await page.mouse.down();
     await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2 + 0.1 * frame.height, { steps: 8 });
     await page.mouse.up();
     await dialog.getByRole('button', { name: 'Bottom edge' }).focus();
-    await page.keyboard.press('Shift+ArrowDown');
+    for (let i = 0; i < 7; i++) await page.keyboard.press('Shift+ArrowDown');
     const chosen = (await box.getAttribute('data-crop'))!.split(',').map(Number);
     expect(chosen[1]!).toBeGreaterThan(start[1]! + 0.08);
-    expect(chosen[3]! - chosen[1]!).toBeGreaterThan(start[3]! - start[1]! + 0.04);
+    expect(chosen[1]!).toBeGreaterThan(lines[3]!.rect.y2);
+    expect(chosen[3]!).toBeGreaterThan(FAR.y2);
     await dialog.getByRole('button', { name: 'Apply' }).click();
     await expect(dialog).toBeHidden();
     await expect(page.getByText('Crop saved.')).toBeVisible();
     const saved = state.bodies.patch.at(-1)!.crop as PageRect;
     expect([saved.x1, saved.y1, saved.x2, saved.y2].map(value => value.toFixed(4)).join(',')).toBe(chosen.map(value => value.toFixed(4)).join(','));
-    // The preview uses the reader's crop.
+    // The preview uses the reader's crop: it draws the two highlights inside it (pink and the far one) and not the
+    // three above it.
     await expect(card(page)).toHaveAttribute('data-share-crop', chosen.map(value => value.toFixed(4)).join(','));
+    await expect(card(page)).toHaveAttribute('data-share-marks', '2');
     await expect(page.getByText('Your crop')).toBeVisible();
 
     await page.getByRole('button', { name: 'Adjust crop' }).click();
@@ -480,6 +494,7 @@ test.describe('share posts in the reader', () => {
     await expect(page.getByText('Back to the automatic crop.')).toBeVisible();
     expect(state.bodies.patch.at(-1)).toEqual({ crop: null });
     await expect(card(page)).toHaveAttribute('data-share-crop', automatic);
+    await expect(card(page)).toHaveAttribute('data-share-marks', '4');
     expect(state.calls.change).toBe(0);
   });
 
