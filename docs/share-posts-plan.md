@@ -121,6 +121,45 @@ Base `/api/projects/:projectId/share-cards`.
 | `PATCH /:id` | exactly one of `{ style, look }`, `{ crop }` (a `PageRect` or `null`), `{ angle }`, `{ show_tags }`, `{ link }`, `{ headline }`, `{ caption }`, `{ quote }`, `{ credit }` | `caption`, `quote` and `headline` keep an Undo step; the others are written in place. `angle` is refused when that draft is empty; choosing an angle clears `edited` |
 | `GET`, `retry`, `cancel`, `undo`, `DELETE` | as today | Undo also restores the destination and take of the version it returns to |
 
+### Region and first-page posts (T5)
+
+A post can start from a box the reader draws on a page (a figure, a table, an equation, a passage) or from the first page (title, authors and abstract). The image is that region of the PDF; the assistant sees only text.
+
+```ts
+export const SOURCE_KINDS = ['highlight', 'region', 'paper'] as const
+export type SourceKind = (typeof SOURCE_KINDS)[number]
+export const REGION_MIN = 0.05                 // of the page, in each direction
+export const REGION_STYLES = ['page', 'headline'] as const
+export const REGION_STYLE_REFUSED = 'A post made from a region has no quote or takeaways, so it uses the Page or Headline style.'
+
+export type ShareCardSource = {
+  // as before, plus:
+  kind: SourceKind                             // a stored source without one is a highlight
+  /** The box a region or first-page post started from; null for a highlight. */
+  region: PageRect | null
+  // For 'region' and 'paper': rects is [], color is 'yellow', and passage is the cleaned text read inside the region,
+  // 0..CARD.passageMax characters (passageMin applies to highlights only).
+}
+export type ShareCardSummary = { /* as before, plus: */ kind: SourceKind }   // title: summaryTitle(source, headline)
+
+regionProblem(region: PageRect): string | null  // null when ordered, inside the page and at least REGION_MIN each way
+summaryTitle(source, headline): string          // the headline, else the passage's start, "Region on p. N", "First page" ("Paper on p. N" off page 1)
+validateCard(card, source)                      // source.kind decides: a region card has only headline and topic
+cardDescription(card, style, source?)           // "Page card: a region of page 3", "Page card: the first page of the paper", "Headline card: <headline>."
+sharePostPrompt(destination, limits, kind = 'highlight')
+```
+
+| Call | Body | Notes |
+| --- | --- | --- |
+| `POST` base | `{ request_id, source_id, page, region, text, kind: 'region' \| 'paper', destination?, take?, agent?, model? }` | `region` is a `PageRect` (400 unless x1<x2, y1<y2 and at least 5% of the page each way); `page` must be in the PDF (422; without a stored page count the extracted text's pages decide); the source must be a PDF in this project (404 not found, 422 not a PDF); `text` is untrusted, at most `passageMax` after cleaning (422). Not unique per region: only `request_id` makes a retry idempotent. `annotation_id` is null |
+| `PATCH /:id` `{ crop: null }` | | Returns the crop to `source.region`: these posts have no automatic crop, so `card.crop` is never null |
+| `PATCH /:id` `{ style }` to a text card, `{ quote }` | | 400, with `REGION_STYLE_REFUSED` or "A post made from a region has no quote to edit." |
+
+- The card has only `headline` and `topic`; `quote`, `emphasis`, `pull` and `takeawaysTitle` are `''` and `takeaways` is `[]`. Its first style comes from the destination as for a highlight; `crop` starts as the region.
+- The answer is `{ headline, topic, drafts: { finding, contrast, caveat }, hashtags }`; any other card field is ignored. The draft rules, limits, take rule, leak checks and single repair are a highlight's. The numbers pool is the region text, the page text, title, credit, page and take; quotations must come from the region text or the page text.
+- The request sends `{ regionText, pageText, title, credit, page }`, plus `readerTake`, the previous version (`previousCard` is `{ headline, topic }`) and `change` as for a highlight. The prompt shares every rule with a highlight's and differs in its opening, its card fields and one section: for `region`, find the caption in `pageText` ("Figure 3: …") and write about what the region shows according to it, never describing visual detail the text does not state; for `paper`, the finding says what the paper studied and its main result as the abstract states it.
+- `marks` is every highlight on the post's page (none of them is the post's own). A region post survives its source being deleted and is reconnected when the source is restored, through the existing trash links on `source_id`.
+
 ### Renderer API (T2), in `frontend/src/lib/share-card/`
 
 ```ts
@@ -206,7 +245,7 @@ Each task: write the failing test first, then the code; keep `npm run typecheck`
 
 ### Stage 2: more ways to start
 
-**T5 Region posts, server** (`share-posts/region-server`). A post without a highlight: `POST` base accepts `{ request_id, source_id, page, region, text, kind: 'region' | 'paper', destination?, take? }`. `source.kind` is `'highlight' | 'region' | 'paper'`; `rects` is empty and `crop` starts as the region. The prompt says the reader selected a region that may be a figure, a table or a passage, gives the text inside it and the page text, and asks for the same drafts; the picture itself is never sent. The quote and text-card fields may be empty for a region, and the text-card styles are not offered then.
+**T5 Region posts, server** (built on `share-posts/server`). A post without a highlight, as specified in "Region and first-page posts (T5)" under the Contract: `POST` base accepts `{ request_id, source_id, page, region, text, kind: 'region' | 'paper', destination?, take?, agent?, model? }`; `source.kind` and `source.region` record where it started; `rects` is empty and `crop` starts as, and resets to, the region. The prompt says the reader selected a region that may be a figure, a table, an equation or a passage (or is sharing the paper from its first page), gives the text inside it and the page text, and asks for the same drafts; the picture itself is never sent. The card has only a headline and a topic, and the text-card styles and quote edits are refused.
 
 **T6 Region selection in the reader** (`share-posts/region-ui`). "Share a region" in the reader: drag a box on a page, collect the text inside it from the text layer, start the post. "Share the first page" in the Post tab: a region post of kind `paper` whose crop starts at the top of page 1. Browser tests with the API mocked.
 
