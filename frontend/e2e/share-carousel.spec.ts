@@ -567,3 +567,61 @@ test.describe('a carousel whose PDF was removed', () => {
     expect(overflow).toBeLessThanOrEqual(0);
   });
 });
+
+// ── For review: the carousel in a narrow and a wider side column ────────────────────────────────────────────────────
+test.describe('carousels, for review', () => {
+  test.beforeEach(async ({ page }) => { await mockAuth(page); });
+
+  test('the chooser, the slides, the edit dialog and the export row at 360 and 480 px, and a removed PDF', async ({ page }) => {
+    test.setTimeout(180_000);
+    fs.mkdirSync(SHOTS, { recursive: true });
+    const state = fake();
+    await page.setViewportSize({ width: 806, height: 1000 });
+    const { ids, project, source, readerUrl } = await paper(page, state);
+    for (const width of [360, 480]) {
+      const name = (what: string) => path.join(SHOTS, `${width}-${what}.png`);
+      const viewport = Math.round((width + 5) / 0.45);
+      await page.setViewportSize({ width: viewport, height: 1000 });
+      state.current = null;
+      await page.goto(readerUrl);
+      await page.getByRole('button', { name: '✦ Post' }).click();
+      const panel = page.locator('[data-share-post]');
+      await page.getByRole('button', { name: 'Share several highlights' }).click();
+      const dialog = page.getByRole('dialog', { name: 'Share several highlights' });
+      for (const id of [ids.third, ids.first, ids.second]) await dialog.locator(`[data-chooser-id="${id}"]`).click();
+      await page.screenshot({ path: name('chooser') });
+      await dialog.getByRole('button', { name: 'Cancel' }).click();
+
+      await page.setViewportSize({ width: viewport, height: 2200 });
+      await openCarousel(page, state, readerUrl, [ids.first, ids.second, ids.third], project.id, source.id);
+      const column = (await panel.boundingBox())!.width;
+      expect(Math.abs(column - width)).toBeLessThanOrEqual(4);
+      const overflow = () => panel.evaluate(element => element.scrollWidth - element.clientWidth);
+      expect(await overflow()).toBeLessThanOrEqual(0);
+      await panel.screenshot({ path: name('cover') });
+      await goTo(page, 3);
+      await panel.screenshot({ path: name('highlight-slide') });
+      await goTo(page, 6);
+      await panel.screenshot({ path: name('text-slide') });
+      await goTo(page, 2);
+      await page.getByRole('button', { name: 'Edit slide' }).click();
+      await page.setViewportSize({ width: viewport, height: 900 });
+      await page.screenshot({ path: name('edit-dialog') });
+      await page.getByRole('dialog', { name: /^Edit slide/ }).getByRole('button', { name: 'Cancel' }).click();
+      await page.setViewportSize({ width: viewport, height: 2200 });
+      await page.getByRole('button', { name: 'Save as PDF' }).scrollIntoViewIfNeeded();
+      await page.getByRole('button', { name: 'Save as PDF' }).locator('xpath=../..').screenshot({ path: name('export-row') });
+      expect(await overflow()).toBeLessThanOrEqual(0);
+    }
+
+    // A removed PDF, in the Highlights tab's side panel.
+    const removed = await createProjectViaApi(page, 'Removed carousel');
+    state.current = setRecord(state, removed.id, null, [ids.first, ids.second, ids.third]);
+    await page.setViewportSize({ width: 1100, height: 2200 });
+    await page.goto(`/projects/${removed.id}`);
+    await page.getByRole('tab', { name: /Highlights/ }).click();
+    await page.locator(`[data-post-id="${POST_ID}"]`).click();
+    await goTo(page, 3);
+    await page.locator('[data-share-post]').screenshot({ path: path.join(SHOTS, 'removed-pdf.png') });
+  });
+});

@@ -305,7 +305,7 @@ Renderer (`frontend/src/lib/share-card/slides.ts`): `renderSlide(slide, context,
 
 - [ ] **T7 Carousel, server** (`share-posts/server`): the contract above, the prompt variant for a set, parsing and checks, start, the two new edits, `setSlides`, tests.
 - [ ] **T8 Carousel, renderer and export** (`share-posts/renderer`): `slides.ts`, the slide number in the credit strip, a kicker that is not the topic, the PDF and ZIP writers, sample frames for every slide kind.
-- [ ] **T9 Carousel, panel** (on `feat/share-posts`, after T7 and T8): choosing and ordering highlights, the slide viewer, per-slide edits and crops, export, browser tests, README.
+- [x] **T9 Carousel, panel** (on `feat/share-posts`, after T7 and T8): choosing and ordering highlights, the slide viewer, per-slide edits and crops, export, browser tests, README.
 - [ ] **G3 Gate** as G1.
 
 ## Acceptance criteria
