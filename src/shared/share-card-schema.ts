@@ -2,33 +2,47 @@
 // contract module, never this one, so zod stays out of its bundle (test/unit/visual-bundle.test.ts).
 import { z } from 'zod'
 import {
-  ANGLES, CARD, DESTINATIONS, HIGHLIGHT_COLORS, LINKS, LOOKS, SOURCE_KINDS, STYLES, TAKE_MAX,
-  type Caption, type CardContent, type PageMark, type PageRect, type ShareCardSource,
+  ANGLES, CARD, DESTINATIONS, HIGHLIGHT_COLORS, LINKS, LOOKS, SET, SOURCE_KINDS, STYLES, TAKE_MAX,
+  type Caption, type CardContent, type PageMark, type PageRect, type SetContent, type SetItem, type ShareCardSource,
 } from './share-card.js'
 
 const fraction = z.number().finite().min(0).max(1)
 export const pageRectSchema = z.object({ x1: fraction, y1: fraction, x2: fraction, y2: fraction }).strict()
 
+export const setItemSchema = z.object({
+  annotation_id: z.string().max(200).nullable(), passage: z.string().min(CARD.passageMin).max(CARD.passageMax), page: z.number().int().positive(),
+  rects: z.array(pageRectSchema).max(500), color: z.enum(HIGHLIGHT_COLORS),
+}).strict()
+
 /**
- * A stored source. One stored before region posts has no kind or region and is a highlight. A highlight's passage
- * has CARD.passageMin characters at least; a region's may be empty. A region post carries its region; a highlight none.
+ * A stored source. One stored before region posts has no kind, region or items and is a highlight. A highlight's
+ * passage has CARD.passageMin characters at least; a region's may be empty; a set's holds all its highlights. Only a
+ * region or first-page post carries a region, and only a set has items, 2 to SET.maxItems.
  */
 export const shareCardSourceSchema = z.object({
   version: z.literal(1),
   kind: z.enum(SOURCE_KINDS).default('highlight'),
-  passage: z.string().max(CARD.passageMax),
+  passage: z.string().max(CARD.passageMax * SET.maxItems + 2 * (SET.maxItems - 1)),
   page: z.number().int().positive(),
   rects: z.array(pageRectSchema).max(500),
   color: z.enum(HIGHLIGHT_COLORS),
   region: pageRectSchema.nullable().default(null),
+  items: z.array(setItemSchema).max(SET.maxItems).default([]),
   context: z.string().max(CARD.contextMax),
   title: z.string().max(2000),
   credit: z.string().max(CARD.creditMax),
   url: z.string().max(4000),
 }).strict().superRefine((source, context) => {
   if (source.kind === 'highlight' && source.passage.length < CARD.passageMin) context.addIssue({ code: 'custom', path: ['passage'], message: `A highlight's passage needs at least ${CARD.passageMin} characters.` })
-  if ((source.kind === 'highlight') !== (source.region === null)) context.addIssue({ code: 'custom', path: ['region'], message: 'Only a region or first-page post has a region.' })
+  if (source.kind !== 'set' && source.passage.length > CARD.passageMax) context.addIssue({ code: 'custom', path: ['passage'], message: `A passage has at most ${CARD.passageMax} characters.` })
+  if ((source.kind === 'region' || source.kind === 'paper') !== (source.region !== null)) context.addIssue({ code: 'custom', path: ['region'], message: 'Only a region or first-page post has a region.' })
+  if (source.kind === 'set' ? source.items.length < SET.minItems : source.items.length > 0) context.addIssue({ code: 'custom', path: ['items'], message: `Only a set has items, ${SET.minItems} to ${SET.maxItems}.` })
 })
+
+export const setContentSchema = z.object({
+  study: z.string(), points: z.array(z.string()).max(SET.maxItems), takeaway: z.string(), limitations: z.string(),
+  crops: z.array(pageRectSchema.nullable()).max(SET.maxItems),
+}).strict()
 
 export const cardTakeawaySchema = z.object({ title: z.string(), detail: z.string() }).strict()
 
@@ -37,6 +51,7 @@ export const cardContentSchema = z.object({
   quote: z.string(), quoteEdited: z.boolean(), emphasis: z.string(), headline: z.string(), pull: z.string(),
   topic: z.string(), takeawaysTitle: z.string(), takeaways: z.array(cardTakeawaySchema),
   style: z.enum(STYLES), look: z.enum(LOOKS), crop: pageRectSchema.nullable(),
+  set: setContentSchema.nullable().default(null),
 }).strict()
 
 export const pageMarkSchema = z.object({ rects: z.array(pageRectSchema).max(500), color: z.enum(HIGHLIGHT_COLORS) }).strict()
@@ -64,3 +79,5 @@ same<Same<z.infer<typeof shareCardSourceSchema>, ShareCardSource>>(true)
 same<Same<z.infer<typeof cardContentSchema>, CardContent>>(true)
 same<Same<z.infer<typeof captionSchema>, Caption>>(true)
 same<Same<z.infer<typeof pageMarkSchema>, PageMark>>(true)
+same<Same<z.infer<typeof setItemSchema>, SetItem>>(true)
+same<Same<z.infer<typeof setContentSchema>, SetContent>>(true)

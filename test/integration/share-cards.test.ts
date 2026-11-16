@@ -6,8 +6,8 @@ import { randomUUID } from 'node:crypto'
 import { buildServer } from '../../src/server/app.js'
 import { openDatabase } from '../../src/core/database.js'
 import { RetrievalService } from '../../src/core/retrieval.js'
-import { CHECK_FAILED, SHARE_CARD_REPAIR, ShareCardService, pageContext, parseShareCardAnswer, sharePostPrompt } from '../../src/core/share-cards.js'
-import { DRAFT, REGION_STYLE_REFUSED, captionText, cleanPassage, draftLimits, type Caption, type Destination, type ShareCardRecord, type SourceKind } from '../../src/shared/share-card.js'
+import { CHECK_FAILED, SHARE_CARD_REPAIR, ShareCardService, pageContext, parseShareCardAnswer, sharePostPrompt, sharedContext } from '../../src/core/share-cards.js'
+import { DRAFT, REGION_STYLE_REFUSED, SET_STYLE_REFUSED, captionText, cleanPassage, draftLimits, type Caption, type Destination, type ShareCardRecord, type SourceKind } from '../../src/shared/share-card.js'
 import { testConfig, createSource } from '../helpers/test-utils.js'
 
 const HIGHLIGHT = 'Attention lets every position look at every other position in\nthe sequence. However, the cost grows with the square of the se-\nquence length, so long documents become expensive.'
@@ -101,14 +101,14 @@ test('a highlight becomes a post in one request built from the passage and its p
     assert.equal(record.status, 'complete'); assert.equal(record.error, null); assert.equal(record.can_undo, false)
     assert.equal(s.callCount(), 1)
     assert.deepEqual(record.source, {
-      version: 1, kind: 'highlight', passage: PASSAGE, page: 2, color: 'green', region: null, title: 'Test Source', credit: '', url: URL,
+      version: 1, kind: 'highlight', passage: PASSAGE, page: 2, color: 'green', region: null, items: [], title: 'Test Source', credit: '', url: URL,
       rects: [{ x1: 0.12, y1: 0.08, x2: 0.88, y2: 0.1 }, { x1: 0.12, y1: 0.1, x2: 0.86, y2: 0.12 }, { x1: 0.12, y1: 0.12, x2: 0.6, y2: 0.14 }],
       context: record.source.context,
     })
     assert.match(record.source.context, /^Page one introduces the model\.\n\nAttention lets every position.*sparse patterns may reduce this cost\.\n\nPage three compares results\.$/)
     assert.doesNotMatch(record.source.context, /Page four/)
     // LinkedIn by default: the Page style, hashtags hidden, the link in the post.
-    assert.deepEqual(record.card, { ...CARD, quoteEdited: false, style: 'page', look: 'ink', crop: null })
+    assert.deepEqual(record.card, { ...CARD, quoteEdited: false, style: 'page', look: 'ink', crop: null, set: null })
     assert.deepEqual(record.caption, caption())
     assert.equal(record.destination, 'linkedin'); assert.equal(record.take, '')
     assert.deepEqual(record.marks, [{ color: 'green', rects: record.source.rects }])
@@ -698,7 +698,7 @@ const REGION = { x1: 0.1, y1: 0.4, x2: 0.9, y2: 0.75 }
 const REGION_CARD = { headline: 'Longer inputs cost far more', topic: 'Attention' }
 const regionAnswer = (extra: Record<string, unknown> = {}) => JSON.stringify({ ...REGION_CARD, drafts: DRAFTS, hashtags: HASHTAGS, ...extra })
 const regionCard = (extra: Record<string, unknown> = {}) => ({
-  quote: '', quoteEdited: false, emphasis: '', pull: '', takeawaysTitle: '', takeaways: [], style: 'page', look: 'ink', crop: REGION, ...REGION_CARD, ...extra,
+  quote: '', quoteEdited: false, emphasis: '', pull: '', takeawaysTitle: '', takeaways: [], style: 'page', look: 'ink', crop: REGION, set: null, ...REGION_CARD, ...extra,
 })
 const regionPrompt = (kind: SourceKind, destination: Destination = 'linkedin') => sharePostPrompt(destination, draftLimits(destination, { url: URL }), kind)
 
@@ -719,7 +719,7 @@ test('a region of a page becomes a post from its text alone, with the region as 
     assert.equal(record.status, 'complete'); assert.equal(s.callCount(), 1)
     assert.equal(record.annotation_id, null); assert.equal(record.source_id, s.source)
     assert.deepEqual(record.source, {
-      version: 1, kind: 'region', passage: 'Sequence length Cost', page: 3, rects: [], color: 'yellow', region: REGION,
+      version: 1, kind: 'region', passage: 'Sequence length Cost', page: 3, rects: [], color: 'yellow', region: REGION, items: [],
       context: record.source.context, title: 'Test Source', credit: '', url: URL,
     })
     assert.match(record.source.context, /^Attention lets every position.*\n\nPage three compares results\.\n\nPage four is out of range\.$/)
@@ -868,5 +868,227 @@ test('a region post outlives its source, and restoring the source reconnects it'
     const restored = await s.app.inject({ method: 'POST', url: `/api/recovery/trash/${trash[0]!.id}/restore`, payload: {} })
     assert.equal(restored.statusCode, 200, restored.body); assert.equal(restored.json().linksSkipped, 0)
     assert.deepEqual((await s.app.inject({ url: `${s.base}/${record.id}` })).json(), record)
+  } finally { await s.close() }
+})
+
+// Carousels: two to eight highlights of one paper, in the reader's order.
+const POINTS = ['Every position sees every other one', 'Page three compares results', 'Page four is out of range']
+const SET_WORDS = {
+  topic: 'Attention', headline: 'Reach has a quadratic price', study: 'The authors describe a model built on attention alone.', points: POINTS,
+  takeaway: 'Attention buys reach at a cost that grows fast.', limitations: 'Sparse patterns are only suspected to reduce the cost.',
+}
+const setAnswer = (extra: Record<string, unknown> = {}) => JSON.stringify({ ...SET_WORDS, drafts: DRAFTS, hashtags: HASHTAGS, ...extra })
+const setCard = (extra: Record<string, unknown> = {}, set: Record<string, unknown> = {}) => ({
+  quote: '', quoteEdited: false, emphasis: '', pull: '', takeawaysTitle: '', takeaways: [], style: 'headline', look: 'ink', crop: null,
+  headline: SET_WORDS.headline, topic: SET_WORDS.topic, ...extra,
+  set: { study: SET_WORDS.study, points: POINTS, takeaway: SET_WORDS.takeaway, limitations: SET_WORDS.limitations, crops: [null, null, null], ...set },
+})
+const PAGE_THREE = 'Page three compares results.', PAGE_FOUR = 'Page four is out of range.'
+const BOX = (y: number) => [{ x1: 0.1, y1: y, x2: 0.8, y2: y + 0.02 }]
+
+async function setSetup() {
+  const s = await setup()
+  // The reader's order is not the pages' order.
+  const ids = [await s.highlight(HIGHLIGHT, { color: 'green', rects: BOX(0.1) }), await s.highlight(PAGE_THREE, { page_number: 3, color: 'pink', rects: BOX(0.3) }),
+    await s.highlight(PAGE_FOUR, { page_number: 4, color: 'blue', rects: BOX(0.5) })]
+  const body = (extra: Record<string, unknown> = {}) => ({ request_id: randomUUID(), source_id: s.source, annotation_ids: ids, kind: 'set', ...extra })
+  const start = (extra: Record<string, unknown> = {}) => s.app.inject({ method: 'POST', url: s.base, payload: body(extra) })
+  s.respond(1, setAnswer())
+  return { ...s, ids, body, start }
+}
+
+test('several highlights become a carousel built from their own words and pages', async () => {
+  const s = await setSetup()
+  try {
+    const payload = s.body()
+    const response = await s.app.inject({ method: 'POST', url: s.base, payload }); assert.equal(response.statusCode, 202, response.body)
+    const record = await s.settle((response.json() as ShareCardRecord).id)
+    assert.equal(record.status, 'complete'); assert.equal(s.callCount(), 1)
+    assert.equal(record.annotation_id, null); assert.equal(record.source_id, s.source)
+    const items = [{ annotation_id: s.ids[0], passage: PASSAGE, page: 2, rects: BOX(0.1), color: 'green' },
+      { annotation_id: s.ids[1], passage: PAGE_THREE, page: 3, rects: BOX(0.3), color: 'pink' }, { annotation_id: s.ids[2], passage: PAGE_FOUR, page: 4, rects: BOX(0.5), color: 'blue' }]
+    assert.deepEqual(record.source, {
+      version: 1, kind: 'set', passage: [PASSAGE, PAGE_THREE, PAGE_FOUR].join('\n\n'), page: 2, rects: [], color: 'yellow', region: null, items,
+      context: record.source.context, title: 'Test Source', credit: '', url: URL,
+    })
+    // The items' own pages, in page order; not their neighbours.
+    assert.match(record.source.context, /^Attention lets every position.*sparse patterns may reduce this cost\.\n\nPage three compares results\.\n\nPage four is out of range\.$/)
+    assert.doesNotMatch(record.source.context, /Page one/)
+    assert.deepEqual(record.card, setCard())
+    assert.deepEqual(record.caption, caption())
+    assert.deepEqual(record.set_marks, items.map(item => [{ rects: item.rects, color: item.color }]))
+    assert.deepEqual(record.marks, record.set_marks[0])
+    const sent = s.prompt(1), input = s.input(1)
+    assert.ok(sent.startsWith(`${sharePostPrompt('linkedin', draftLimits('linkedin', { url: URL }), 'set')}\n\n{`))
+    assert.match(sent, /in this order, to tell its story in a carousel/); assert.match(sent, /- points: one string per entry in highlights/)
+    assert.deepEqual(Object.keys(input).sort(), ['credit', 'highlights', 'pageText', 'title'])
+    assert.deepEqual(input.highlights, items.map(item => ({ page: item.page, text: item.passage })))
+    assert.equal(input.pageText, record.source.context)
+    const list = (await s.app.inject({ url: `${s.base}?source_id=${s.source}` })).json()
+    assert.deepEqual(list, [{ id: record.id, status: 'complete', annotation_id: null, source_id: s.source, page: 2, kind: 'set', title: SET_WORDS.headline, updated_at: record.updated_at }])
+
+    // Only the request ID makes a retry idempotent: the same highlights again are a second carousel.
+    const again = await s.app.inject({ method: 'POST', url: s.base, payload }); assert.equal(again.statusCode, 200); assert.equal(again.json().id, record.id)
+    assert.equal((await s.app.inject({ method: 'POST', url: s.base, payload: { ...payload, annotation_ids: s.ids.slice(0, 2) } })).statusCode, 409)
+    s.fail(2)
+    const failed = await s.settle(((await s.start({ annotation_ids: [s.ids[2], s.ids[0]] })).json() as ShareCardRecord).id)
+    assert.equal(failed.status, 'failed'); assert.notEqual(failed.id, record.id)
+    assert.equal(((await s.app.inject({ url: s.base })).json() as Array<{ id: string; title: string }>).find(item => item.id === failed.id)!.title, '2 highlights')
+    // A highlight in more than one carousel, and in its own post, is fine.
+    assert.equal((await s.create(s.ids[0]!)).statusCode, 202)
+  } finally { await s.close() }
+})
+
+test('a carousel\'s slide words and crops are edited one at a time; text cards and quote edits are refused', async () => {
+  const s = await setSetup()
+  try {
+    const first = await s.settle(((await s.start()).json() as ShareCardRecord).id), url = `${s.base}/${first.id}`
+    const patch = (payload: unknown) => s.app.inject({ method: 'PATCH', url, payload })
+    const refuse = async (payload: unknown, detail: string) => {
+      const response = await patch(payload); assert.equal(response.statusCode, 400, JSON.stringify(payload)); assert.equal(response.json().detail, detail)
+    }
+    const point = (await patch({ set_text: { field: 'point', index: 1, text: '  Results  are compared ' } })).json() as ShareCardRecord
+    assert.deepEqual(point.card!.set!.points, [POINTS[0], 'Results are compared', POINTS[2]]); assert.equal(point.can_undo, true)
+    const noStudy = (await patch({ set_text: { field: 'study', text: ' ' } })).json() as ShareCardRecord
+    assert.equal(noStudy.card!.set!.study, '')
+    assert.equal(((await patch({ set_text: { field: 'limitations', text: 'Untested at scale.' } })).json() as ShareCardRecord).card!.set!.limitations, 'Untested at scale.')
+    assert.equal(((await patch({ set_text: { field: 'takeaway', text: 'Reach costs.' } })).json() as ShareCardRecord).card!.set!.takeaway, 'Reach costs.')
+    await refuse({ set_text: { field: 'takeaway', text: '' } }, 'takeaway has 0 characters; allowed 1–140.')
+    await refuse({ set_text: { field: 'point', index: 0, text: 'p'.repeat(71) } }, 'points[0] has 71 characters; allowed 1–70.')
+    await refuse({ set_text: { field: 'point', text: 'No index' } }, 'Name the point to edit with its index.')
+    await refuse({ set_text: { field: 'study', index: 0, text: 'x' } }, 'Only a point has an index.')
+    await refuse({ set_text: { field: 'point', index: 3, text: 'x' } }, 'This carousel has no point 4.')
+    for (const bad of [{ set_text: { field: 'cover', text: 'x' } }, { set_text: { field: 'point', index: -1, text: 'x' } }, { set_text: { field: 'study' } }])
+      assert.equal((await patch(bad)).statusCode, 400)
+    const undone = (await s.app.inject({ method: 'POST', url: `${url}/undo`, payload: {} })).json() as ShareCardRecord
+    assert.equal(undone.card!.set!.takeaway, SET_WORDS.takeaway)
+
+    // One highlight slide's crop, in place and kept through Undo; null is automatic again.
+    const crop = { x1: 0.05, y1: 0.2, x2: 0.95, y2: 0.45 }
+    await patch({ set_text: { field: 'takeaway', text: 'Reach costs.' } })
+    const cropped = (await patch({ crop, slide: 1 })).json() as ShareCardRecord
+    assert.deepEqual(cropped.card!.set!.crops, [null, crop, null]); assert.equal(cropped.card!.crop, null)
+    const kept = (await s.app.inject({ method: 'POST', url: `${url}/undo`, payload: {} })).json() as ShareCardRecord
+    assert.deepEqual(kept.card!.set!.crops, [null, crop, null]); assert.equal(kept.card!.set!.takeaway, SET_WORDS.takeaway)
+    assert.deepEqual(((await patch({ crop: null, slide: 1 })).json() as ShareCardRecord).card!.set!.crops, [null, null, null])
+    await patch({ crop, slide: 2 })
+    await refuse({ crop }, 'A carousel has a crop for each highlight slide; name the slide.')
+    await refuse({ crop, slide: 3 }, 'This carousel has no highlight slide 4.')
+    await refuse({ crop: { ...crop, x2: 0 }, slide: 0 }, 'A crop needs x1 < x2 and y1 < y2.')
+    for (const style of ['page', 'quote', 'idea', 'takeaways']) await refuse({ style, look: 'ink' }, SET_STYLE_REFUSED)
+    assert.equal(((await patch({ style: 'headline', look: 'paper' })).json() as ShareCardRecord).card!.look, 'paper')
+    await refuse({ quote: 'Every position' }, 'A carousel has no quote to edit.')
+    assert.equal(((await patch({ headline: 'My own cover' })).json() as ShareCardRecord).card!.headline, 'My own cover')
+
+    // A new destination: one request; the Headline style, the look and the crops stay.
+    s.respond(2, setAnswer({ drafts: { finding: X_FINDING, contrast: '', caveat: '' }, headline: 'Reach, priced' }))
+    await s.app.inject({ method: 'POST', url: `${url}/change`, payload: { destination: 'x' } })
+    const moved = await s.settle(first.id)
+    assert.equal(s.callCount(), 2); assert.equal(moved.status, 'complete')
+    assert.deepEqual(moved.card, setCard({ headline: 'Reach, priced', look: 'paper' }, { crops: [null, null, crop] }))
+    assert.deepEqual(s.input(2).previousCard, { headline: 'My own cover', topic: 'Attention', study: '', points: [POINTS[0], 'Results are compared', POINTS[2]],
+      takeaway: SET_WORDS.takeaway, limitations: 'Untested at scale.' })
+
+    // A single post has no slides.
+    const single = await s.post(s.ids[0])
+    const singleUrl = `${s.base}/${single.id}`
+    for (const [payload, detail] of [[{ set_text: { field: 'study', text: 'x' } }, 'Only a carousel has slide text.'], [{ crop, slide: 0 }, 'Only a carousel has slides.']] as const) {
+      const response = await s.app.inject({ method: 'PATCH', url: singleUrl, payload }); assert.equal(response.statusCode, 400); assert.equal(response.json().detail, detail)
+    }
+  } finally { await s.close() }
+})
+
+test('a carousel is refused without a request when its highlights are too few, too many, repeated, foreign or out of bounds', async () => {
+  const s = await setSetup()
+  try {
+    const refuse = async (extra: Record<string, unknown>, status: number, detail?: string) => {
+      const response = await s.start(extra)
+      assert.equal(response.statusCode, status, `${JSON.stringify(extra)} ${response.body}`)
+      if (detail) assert.equal(response.json().detail, detail)
+    }
+    await refuse({ annotation_ids: [s.ids[0]] }, 400)
+    await refuse({ annotation_ids: Array.from({ length: 9 }, () => randomUUID()) }, 400)
+    await refuse({ annotation_ids: [s.ids[0], s.ids[1], s.ids[0]] }, 400, 'Choose each highlight once.')
+    await refuse({ annotation_ids: [s.ids[0], 'missing'] }, 404, 'Highlight not found.')
+    const elsewhere = createSource(s.db, s.project.id, PAGES)
+    await refuse({ source_id: elsewhere }, 404, 'Highlight not found.')
+    await refuse({ source_id: 'missing' }, 404, 'Source not found.')
+    await refuse({ source_id: createSource(s.db, s.other.id, PAGES) }, 404, 'Source not found.')
+    await refuse({ annotation_id: s.ids[0] }, 400)
+    await refuse({ kind: 'region' }, 400)
+    await refuse({ annotation_ids: [s.ids[0], await s.highlight('Too short.')] }, 422, 'Highlight 2 is too short for a post.')
+    await refuse({ annotation_ids: [await s.highlight('word '.repeat(1300)), s.ids[0]] }, 422, 'Highlight 1 is too long for a post.')
+    await refuse({ take: 't'.repeat(401) }, 400, 'A take has at most 400 characters.')
+    s.db.prepare("UPDATE sources SET type='kindle' WHERE id=?").run(s.source)
+    await refuse({}, 422, 'Posts can be made from PDFs only.')
+    assert.equal(s.callCount(), 0)
+  } finally { await s.close() }
+})
+
+test('a carousel answer is checked field by field against every highlight, the pages and the take', () => {
+  const items = [{ annotation_id: 'a', passage: 'The model reached 41% accuracy on 2048 tokens.', page: 2, rects: [], color: 'yellow' as const },
+    { annotation_id: 'b', passage: 'We suspect that sparse patterns may reduce this cost.', page: 7, rects: [], color: 'yellow' as const }]
+  const source = { kind: 'set' as const, items, passage: items.map(item => item.passage).join('\n\n'), context: 'Table 2 compares models.', title: 'Attention', credit: 'Vaswani et al., 2017', page: 2, url: URL }
+  const options = { destination: 'linkedin' as const, take: '', changed: false }
+  const words = { ...SET_WORDS, points: ['Accuracy reached 41% at 2048 tokens', 'Sparse patterns may cut the cost'] }
+  const answer = (extra: Record<string, unknown> = {}) => setAnswer({ ...words, ...extra })
+  const parsed = parseShareCardAnswer(answer({ quote: 'ignored', takeaways: 'ignored', study: null, limitations: null }), source, options)
+  assert.deepEqual(parsed.card, setCard({}, { points: words.points, study: '', limitations: '', crops: [null, null] }))
+  // A number from a later highlight's page, the credit or the take passes.
+  parseShareCardAnswer(answer({ takeaway: 'Seen on page 7 of the 2017 paper.' }), source, options)
+  const take = 'Only 3 caveats matter.'
+  parseShareCardAnswer(answer({ limitations: 'There are 3 caveats.', drafts: { finding: `${FINDING}\n\n${take}`, contrast: '', caveat: `${CAVEAT}\n\n${take}` } }), source, { ...options, take })
+  for (const [raw, reason] of [
+    [answer({ points: words.points.slice(0, 1) }), /^Error: points has 1 items; it needs exactly 2, one per highlight in order\.$/],
+    [answer({ points: 'one' }), /^Error: points must be a list of strings, one per highlight in order\.$/],
+    [answer({ points: ['a', 7] }), /points must be a list of strings/],
+    [answer({ points: ['p'.repeat(71), 'b'] }), /points\[0\] has 71 characters; allowed 1–70/],
+    [answer({ study: 's'.repeat(161) }), /study has 161 characters; allowed 0–160/],
+    [answer({ takeaway: undefined }), /takeaway must be a string/],
+    [answer({ takeaway: '' }), /takeaway has 0 characters; allowed 1–140/],
+    [answer({ limitations: 'l'.repeat(161) }), /limitations has 161 characters/],
+    [answer({ headline: '' }), /headline has 0 characters/],
+    [answer({ topic: '' }), /topic must name the subject/],
+    [answer({ points: ['Accuracy reached 42%', words.points[1]] }), /^Error: points\[0\] has numbers that are not in highlights, pageText, title, credit, page or readerTake: 42\. Use only numbers stated there\.$/],
+    [answer({ study: 'A study of 1,000 papers.' }), /study has numbers .*: 1,000\./],
+    [answer({ limitations: 'Only 3 models were compared.' }), /limitations has numbers .*: 3\./],
+    [answer({ headline: 'Accuracy hit 50%' }), /headline has numbers .*: 50\./],
+    [answer({ takeaway: 'The pageText says so.' }), /takeaway must not mention pageText or the supplied text/],
+    [answer({ study: 'My reading of a model study.' }), /study must not use the first person \("My"\)/],
+    [answer({ limitations: 'The authors write “sparse patterns will certainly remove every cost” here.' }), /limitations quotes words that are not in highlights or pageText/],
+    [answer({ points: ['See www.example.org', words.points[1]] }), /points\[0\] must not contain links/],
+    [answer({ drafts: { ...DRAFTS, finding: '' } }), /drafts\.finding must not be empty/],
+    [answer({ drafts: { ...DRAFTS, finding: FINDING.replace('The catch is cost.', 'The catch is cost, 9 times over.') } }), /drafts\.finding has numbers that are not in highlights/],
+  ] as Array<[string, RegExp]>) assert.throws(() => parseShareCardAnswer(raw, source, options), reason, String(reason))
+})
+
+test('a carousel\'s page text shares the budget fairly between its highlights\' pages, in page order', () => {
+  const pages = new Map([[1, 'a'.repeat(9000)], [2, 'b'.repeat(100)], [3, 'c'.repeat(9000)], [9, 'unused']])
+  const context = sharedContext(pages, [3, 1, 2, 3])
+  assert.equal(context.length, 12_000)
+  assert.match(context, /^a{5948}\n\nb{100}\n\nc{5948}$/)
+  assert.equal(sharedContext(new Map([[1, 'short'], [2, 'text']]), [2, 1]), 'short\n\ntext')
+  assert.equal(sharedContext(new Map(), [4, 5]), '')
+})
+
+test('a carousel outlives its highlights and its source, and restoring the source reconnects it', async () => {
+  const s = await setSetup()
+  try {
+    const record = await s.settle(((await s.start()).json() as ShareCardRecord).id), url = `${s.base}/${record.id}`
+    // Deleting one of its highlights changes nothing in the post: its stored words and boxes stand in.
+    assert.equal((await s.app.inject({ method: 'DELETE', url: `/api/projects/${s.project.id}/sources/${s.source}/annotations/${s.ids[1]}` })).statusCode, 204)
+    assert.deepEqual((await s.app.inject({ url })).json(), record)
+    // A new highlight on an item's page shows on that slide only.
+    await s.highlight(PAGE_FOUR, { page_number: 4, color: 'yellow', rects: BOX(0.8) })
+    const marked = (await s.app.inject({ url })).json() as ShareCardRecord
+    assert.deepEqual(marked.set_marks[2], [{ rects: BOX(0.5), color: 'blue' }, { rects: BOX(0.8), color: 'yellow' }])
+    assert.deepEqual(marked.set_marks.slice(0, 2), record.set_marks.slice(0, 2))
+    assert.equal((await s.app.inject({ method: 'DELETE', url: `/api/projects/${s.project.id}/sources/${s.source}` })).statusCode, 200)
+    const orphan = (await s.app.inject({ url })).json() as ShareCardRecord
+    assert.equal(orphan.source_id, null); assert.deepEqual(orphan.card, record.card); assert.deepEqual(orphan.set_marks, record.set_marks)
+    const trash = (await s.app.inject({ url: '/api/recovery/trash' })).json() as Array<{ id: string }>
+    const restored = await s.app.inject({ method: 'POST', url: `/api/recovery/trash/${trash[0]!.id}/restore`, payload: {} })
+    assert.equal(restored.statusCode, 200, restored.body); assert.equal(restored.json().linksSkipped, 0)
+    assert.equal(((await s.app.inject({ url })).json() as ShareCardRecord).source_id, s.source)
   } finally { await s.close() }
 })
