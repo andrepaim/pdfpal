@@ -1,5 +1,5 @@
 import {
-  DESTINATIONS, type Angle, type Destination, type LinkPlacement, type PageRect, type ShareCardRecord, type ShareCardSummary, type ShareLook, type ShareStyle,
+  DESTINATIONS, type Angle, type Row, type Stat, type Destination, type LinkPlacement, type PageRect, type ShareCardRecord, type ShareCardSummary, type ShareLook, type ShareStyle,
 } from '../../../src/shared/share-card'
 
 async function request<T>(url: string, init: { method?: string; body?: object } = {}): Promise<T> {
@@ -31,15 +31,33 @@ export function rememberDestination(destination: Destination) {
 /** One request for new text. At least one field. */
 export type ShareCardChange = { instruction?: string; destination?: Destination; take?: string }
 
+/**
+ * A post as the panel reads it. The server fills the numbers of a stored post leniently, but the panel does not rely
+ * on it: a missing key number is none, missing stats or rows are none, and a paper result stored as a plain sentence
+ * is that sentence without numbers.
+ */
+export function readRecord(record: ShareCardRecord): ShareCardRecord {
+  const card = record.card as (ShareCardRecord['card'] & Record<string, unknown>) | null
+  if (!card) return record
+  const paper = card.paper && {
+    ...card.paper, methodStats: card.paper.methodStats ?? [],
+    results: (card.paper.results ?? []).map(result => typeof result === 'string' ? { text: result, stat: null, rows: [] }
+      : { ...result, stat: result.stat ?? null, rows: result.rows ?? [] }),
+  }
+  const set = card.set && { ...card.set, studyStats: card.set.studyStats ?? [] }
+  return { ...record, card: { ...card, stat: card.stat ?? null, paper: paper ?? null, set: set ?? null } }
+}
+const postRecord = (url: string, init: { method?: string; body?: object } = {}) => request<ShareCardRecord>(url, init).then(readRecord)
+
 /** Exactly one kind of edit per request (see the PATCH route in src/server/share-cards.ts). */
-const patch = (projectId: string, id: string, body: object) => request<ShareCardRecord>(`${base(projectId)}/${id}`, { method: 'PATCH', body })
+const patch = (projectId: string, id: string, body: object) => postRecord(`${base(projectId)}/${id}`, { method: 'PATCH', body })
 
 /** What a carousel starts from: highlights of one PDF, in the order of their slides. */
 export type SetStart = { sourceId: string; annotationIds: string[] }
 /** One of a paper post's slides: `index` names a result, and only a result. */
-export type PaperTextEdit = { field: 'question' | 'method' | 'result'; index?: number; text: string }
+export type PaperTextEdit = { field: 'question' | 'method' | 'result'; index?: number; text?: string; stats?: Stat[]; stat?: Stat | null; rows?: Row[] }
 /** One carousel slide's words: `index` names a point, and only a point. */
-export type SetTextEdit = { field: 'study' | 'takeaway' | 'limitations' | 'point'; index?: number; text: string }
+export type SetTextEdit = { field: 'study' | 'takeaway' | 'limitations' | 'point'; index?: number; text?: string; stats?: Stat[] }
 
 /** What a region or first-page post starts from: the box as page fractions and the text read inside it. */
 export type RegionStart = { sourceId: string; page: number; region: PageRect; text: string; kind: 'region' | 'paper' }
@@ -59,7 +77,7 @@ async function startOnce(projectId: string, key: string, body: object, options: 
   }
   const forget = () => { try { sessionStorage.removeItem(stored) } catch { /* As above. */ } }
   try {
-    const record = await request<ShareCardRecord>(base(projectId), { body: { request_id: requestId, ...body, destination, ...(take ? { take } : {}) } })
+    const record = await postRecord(base(projectId), { body: { request_id: requestId, ...body, destination, ...(take ? { take } : {}) } })
     forget()
     return record
   } catch (error) {
@@ -103,12 +121,12 @@ export const shareCardApi = {
   },
   list: (projectId: string, sourceId?: string) =>
     request<ShareCardSummary[]>(`${base(projectId)}${sourceId ? `?source_id=${encodeURIComponent(sourceId)}` : ''}`),
-  get: (projectId: string, id: string) => request<ShareCardRecord>(`${base(projectId)}/${id}`),
+  get: (projectId: string, id: string) => postRecord(`${base(projectId)}/${id}`),
   /** New text: an instruction, another destination, another take, or several of them, in one request. */
-  change: (projectId: string, id: string, change: ShareCardChange) => request<ShareCardRecord>(`${base(projectId)}/${id}/change`, { body: change }),
-  retry: (projectId: string, id: string) => request<ShareCardRecord>(`${base(projectId)}/${id}/retry`, { body: {} }),
-  cancel: (projectId: string, id: string) => request<ShareCardRecord>(`${base(projectId)}/${id}/cancel`, { body: {} }),
-  undo: (projectId: string, id: string) => request<ShareCardRecord>(`${base(projectId)}/${id}/undo`, { body: {} }),
+  change: (projectId: string, id: string, change: ShareCardChange) => postRecord(`${base(projectId)}/${id}/change`, { body: change }),
+  retry: (projectId: string, id: string) => postRecord(`${base(projectId)}/${id}/retry`, { body: {} }),
+  cancel: (projectId: string, id: string) => postRecord(`${base(projectId)}/${id}/cancel`, { body: {} }),
+  undo: (projectId: string, id: string) => postRecord(`${base(projectId)}/${id}/undo`, { body: {} }),
   restyle: (projectId: string, id: string, style: ShareStyle, look: ShareLook) => patch(projectId, id, { style, look }),
   /** The reader's crop as page fractions; null returns to the automatic crop. */
   crop: (projectId: string, id: string, crop: PageRect | null) => patch(projectId, id, { crop }),
@@ -120,6 +138,8 @@ export const shareCardApi = {
   showTags: (projectId: string, id: string, showTags: boolean) => patch(projectId, id, { show_tags: showTags }),
   link: (projectId: string, id: string, link: LinkPlacement) => patch(projectId, id, { link }),
   editHeadline: (projectId: string, id: string, headline: string) => patch(projectId, id, { headline }),
+  /** The post's key number, or null for none: drawn large on the hook of a highlight, region or set post; behind Undo. */
+  editStat: (projectId: string, id: string, stat: Stat | null) => patch(projectId, id, { stat }),
   /** One of a paper post's slides: its question, method, or a result (`index` 0 or 1, for a result only); behind Undo. */
   editPaperText: (projectId: string, id: string, edit: PaperTextEdit) => patch(projectId, id, { paper_text: edit }),
   /** A single post's takeaway, the third card of the Carousel style: 1 to 140 characters, behind Undo. */

@@ -4,11 +4,11 @@
 // its neighbours, and kept per slide, look and crop, so stepping through is instant and nothing is drawn twice. A slow
 // drawing never replaces a newer one.
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { CARD, PAPER, SET, collapse, postSlides, setSlides, type PageRect, type ShareCardRecord, type ShareLook, type SlideSpec } from '../../../src/shared/share-card'
+import { collapse, postSlides, setSlides, type PageRect, type ShareCardRecord, type ShareLook, type SlideSpec } from '../../../src/shared/share-card'
 import { canvasPng } from '../lib/share-card'
 import { PAGE_UNAVAILABLE, pageCrop, type PageCrop, type PageUnavailable } from '../lib/share-card/page-crop'
-import { itemSource, renderSlide, slideSheetSpace, slideText, type SlideContext } from '../lib/share-card/slides'
-import { Modal, button, faded, field, muted, primary } from './SharePostParts'
+import { deckBlock, itemSource, renderSlide, slideSheetSpace, slideText, type SlideContext } from '../lib/share-card/slides'
+import { button, faded, muted } from './SharePostParts'
 
 /** What each kind of slide is called in the viewer and the edit dialog. */
 export const SLIDE_NAMES: Record<SlideSpec['kind'], string> = {
@@ -19,21 +19,26 @@ export const SLIDE_NAMES: Record<SlideSpec['kind'], string> = {
 /** A slide's name: "Cover", "Highlight 2", "The study", "Result 1"… A result is named by its kicker ("The result" alone). */
 export const slideName = (slide: SlideSpec) => slide.kind === 'point' ? `Highlight ${slide.item + 1}` : slide.kind === 'result' ? slide.kicker || SLIDE_NAMES.result : SLIDE_NAMES[slide.kind]
 
-/** What a screen reader hears for a slide: its place, its kind and its words. */
-export const slideAlt = (slide: SlideSpec, index: number, count: number) => `Slide ${index + 1} of ${count}, ${slideName(slide).toLowerCase()}: ${slideText(slide)}`
-
-/** The longest text a slide holds, and whether emptying it removes the slide. A page slide's words are not edited here. */
-export const SLIDE_FIELDS: Record<Exclude<SlideSpec['kind'], 'page'>, { label: string; max: number; removable: boolean; required?: string }> = {
-  cover: { label: 'Headline', max: CARD.headlineMax, removable: false },
-  lead: { label: 'Headline', max: CARD.headlineMax, removable: false },
-  question: { label: 'The question', max: PAPER.questionMax, removable: false },
-  method: { label: 'The method', max: PAPER.methodMax, removable: false },
-  result: { label: 'The result', max: PAPER.resultMax, removable: false, required: 'A result cannot be empty: a paper post keeps at least one.' },
-  study: { label: 'The study', max: SET.studyMax, removable: true },
-  point: { label: 'Claim', max: SET.pointMax, removable: false },
-  takeaway: { label: 'The takeaway', max: Math.min(SET.takeawayMax, CARD.takeawayMax), removable: false },
-  limitations: { label: 'Limits', max: SET.limitationsMax, removable: true },
+/**
+ * What a slide says, in reading order: its words, and the numbers it draws (the layout deckBlock picks). Tiles and a
+ * key number read value then label before the sentence under them; a comparison reads its sentence, then each row.
+ * Built here because slideText gives the words only; the renderer may take this over.
+ */
+export function slideWords(slide: SlideSpec): string {
+  const block = deckBlock(slide)
+  const stat = (each: { value: string; label: string }) => `${collapse(each.value)} ${collapse(each.label)}`.trim()
+  const sentence = (text: string) => collapse(text)
+  if (!block) return slideText(slide)
+  switch (block.kind) {
+    case 'stats': return [block.stats.map(stat).join('; ') + '.', sentence(block.text)].filter(part => part && part !== '.').join(' ')
+    case 'number': return `${stat(block.stat)}. ${sentence(block.text)}`
+    case 'table': return `${sentence(block.text)} ${block.rows.map(row => `${collapse(row.label)}: ${collapse(row.value)}`).join('; ')}.`
+    default: return slideText(slide)
+  }
 }
+
+/** What a screen reader hears for a slide: its place, its kind and what it says. */
+export const slideAlt = (slide: SlideSpec, index: number, count: number) => `Slide ${index + 1} of ${count}, ${slideName(slide).toLowerCase()}: ${slideWords(slide)}`
 
 export type DrawnSlide = { key: string; url: string; alt: string; style: string; look: ShareLook; index: number; crop?: PageCrop }
 type CropResult = { crop?: PageCrop; reason?: PageUnavailable }
@@ -226,37 +231,5 @@ export function SlideViewer({ slides, index, onIndex, shown, label = 'Slides' }:
         <button type="button" onClick={() => go(index + 1)} aria-disabled={index === count - 1} aria-label="Next slide" style={faded({ ...button, padding: '4px 12px' }, index === count - 1)}>Next ›</button>
       </div>
     </div>
-  )
-}
-
-/**
- * Edits the words of the slide in view: the cover's headline, or one slide's text within its limit. A page slide has
- * no words to edit (Adjust crop changes it). `title` replaces the dialog's title, as "Add a takeaway" does.
- */
-export function SlideEditDialog({ open, slide, index, count, title, onSave, onCancel }: {
-  open: boolean; slide: SlideSpec | null; index: number; count: number; title?: string; onSave: (text: string) => void; onCancel: () => void
-}) {
-  const [text, setText] = useState('')
-  useEffect(() => { if (open && slide) setText(slideText(slide)) }, [open, slide])
-  const spec = slide && slide.kind !== 'page' ? SLIDE_FIELDS[slide.kind] : null
-  const words = collapse(text)
-  const empty = !words, canSave = !!spec && (!empty || spec.removable) && words.length <= spec.max
-  return (
-    <Modal open={open && !!spec} title={title ?? (slide ? `Edit slide ${index + 1} of ${count}: ${slideName(slide)}` : 'Edit slide')} onClose={onCancel} actions={<>
-      <button type="button" onClick={onCancel} style={button}>Cancel</button>
-      <button type="button" onClick={() => { if (canSave) onSave(words) }} disabled={!canSave} style={faded(primary, !canSave)}>
-        {empty && spec?.removable ? 'Remove slide' : 'Save'}
-      </button>
-    </>}>
-      {slide && spec && <>
-        <p id="slide-edit-hint" style={{ ...muted, margin: '0 0 8px' }}>
-          Up to {spec.max} characters.{spec.removable ? ' Leave it empty to remove this slide; Undo brings it back.' : ''}
-        </p>
-        {empty && spec.required && <p role="note" style={{ fontSize: 12, color: '#fca5a5', margin: '0 0 8px' }}>{spec.required}</p>}
-        <textarea value={text} onChange={event => setText(event.target.value.slice(0, spec.max))} maxLength={spec.max} rows={spec.max > 100 ? 4 : 2} autoFocus
-          aria-label={spec.label} aria-describedby="slide-edit-hint" style={field} />
-        <div style={{ ...muted, textAlign: 'right' }}>{text.length}/{spec.max}</div>
-      </>}
-    </Modal>
   )
 }

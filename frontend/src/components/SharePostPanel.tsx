@@ -16,7 +16,8 @@ import { cropBox } from '../lib/share-card/crop-box'
 import CropEditor from './CropEditor'
 import RegionPicker, { readFirstPage, type RegionChoice } from './RegionPicker'
 import HighlightChooser, { eligibleHighlights, type ChooserHighlight } from './HighlightChooser'
-import { SlideEditDialog, SlideViewer, slideName, useSlides } from './SlideViewer'
+import { SlideViewer, slideName, useSlides } from './SlideViewer'
+import { SlideEditDialog, type SlideEdit } from './SlideEditDialog'
 import { carouselFileName, slideFileName, slidesPdf, slidesZip } from '../lib/share-card/export'
 import { ChoiceRow, Modal, PostMenu, Switch, alert, button, faded, field, heading, muted, primary } from './SharePostParts'
 
@@ -448,23 +449,53 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
     }
   }, { done: { text: kind === 'zip' ? 'All slides saved as a ZIP.' : 'Carousel saved as a PDF.' } })
 
-  /** Saves the words of the slide in view: the cover's headline, or one slide's text; an empty study or limits removes it. */
-  const saveSlideText = (text: string) => {
+  /**
+   * Sends edits in order and shows each saved version; resolves to the refusal's message, or null when all were
+   * saved, so a dialog can show a refusal and stay open.
+   */
+  const commit = async (calls: Array<() => Promise<ShareCardRecord>>, done: Message): Promise<string | null> => {
+    setFailure(''); setMessage(null); setBusy(true)
+    try {
+      for (const call of calls) {
+        const next = await call()
+        setRecord(next); last.current = { status: next.status, headline: next.card?.headline, card: !!next.card }
+      }
+      setMessage(done)
+      changedRef.current?.()
+      return null
+    } catch (error) { return (error as Error).message }
+    finally { setBusy(false) }
+  }
+
+  /**
+   * Saves the slide in view: its words, and the numbers its kind carries, in one request (one Undo step). A cover's
+   * headline and key number are two edits on the server, so a cover whose headline and number both changed is two.
+   * An empty study or limits removes that slide.
+   */
+  const saveSlideEdit = async (edit: SlideEdit): Promise<string | null> => {
     const slide = carousel.slide
-    setEditingSlide(false)
-    if (!record || !slide) return
+    if (!record || !card || !slide || slide.kind === 'page') return null
+    const { text } = edit, id = record.id
     const removed = !text && (slide.kind === 'study' || slide.kind === 'limitations')
     const done = removed ? { text: `The ${slideName(slide).toLowerCase().replace(/^the /u, '')} slide was removed.`, undo: true } : { text: 'Slide saved.' }
-    if (slide.kind === 'cover' || slide.kind === 'lead') void act(() => shareCardApi.editHeadline(projectId, record.id, text), { done })
-    else if (slide.kind === 'page') return
-    else if (slide.kind === 'question' || slide.kind === 'method') void act(() => shareCardApi.editPaperText(projectId, record.id, { field: slide.kind, text }), { done })
-    else if (slide.kind === 'result') void act(() => shareCardApi.editPaperText(projectId, record.id, { field: 'result', index: slide.item ?? 0, text }), { done })
-    else if (!isSet && slide.kind === 'takeaway') void act(() => shareCardApi.editTakeaway(projectId, record.id, text), { done })
-    else if (slide.kind === 'point') void act(() => shareCardApi.editSetText(projectId, record.id, { field: 'point', index: slide.item, text }), { done })
-    else if (slide.kind === 'study' || slide.kind === 'takeaway' || slide.kind === 'limitations') {
-      const field = slide.kind
-      void act(() => shareCardApi.editSetText(projectId, record.id, { field, text }), { done })
-    }
+    let calls: Array<() => Promise<ShareCardRecord>>
+    if (slide.kind === 'cover') {
+      const stat = edit.stat ?? null, numberChanged = JSON.stringify(stat) !== JSON.stringify(card.stat ?? null)
+      calls = [
+        ...text !== collapse(slide.headline) || !numberChanged ? [() => shareCardApi.editHeadline(projectId, id, text)] : [],
+        ...numberChanged ? [() => shareCardApi.editStat(projectId, id, stat)] : [],
+      ]
+    } else if (slide.kind === 'lead') calls = [() => shareCardApi.editHeadline(projectId, id, text)]
+    else if (slide.kind === 'question') calls = [() => shareCardApi.editPaperText(projectId, id, { field: 'question', text })]
+    else if (slide.kind === 'method') calls = [() => shareCardApi.editPaperText(projectId, id, { field: 'method', text, stats: edit.stats ?? [] })]
+    else if (slide.kind === 'result') calls = [() => shareCardApi.editPaperText(projectId, id, { field: 'result', index: slide.item ?? 0, text, stat: edit.stat ?? null, rows: edit.rows ?? [] })]
+    else if (!isSet && slide.kind === 'takeaway') calls = [() => shareCardApi.editTakeaway(projectId, id, text)]
+    else if (slide.kind === 'point') calls = [() => shareCardApi.editSetText(projectId, id, { field: 'point', index: slide.item, text })]
+    else if (slide.kind === 'study') calls = [() => shareCardApi.editSetText(projectId, id, { field: 'study', text, stats: edit.stats ?? [] })]
+    else { const field = slide.kind; calls = [() => shareCardApi.editSetText(projectId, id, { field, text })] }
+    const problem = await commit(calls, done)
+    if (!problem) setEditingSlide(false)
+    return problem
   }
 
   const saveImage = (exportSize: CardSize) => act(async () => {
@@ -829,10 +860,14 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
           }} />
       )}
       {slideMode && <SlideEditDialog open={editingSlide} slide={carousel.slide} index={carousel.index} count={carousel.slides.length}
-        onCancel={() => setEditingSlide(false)} onSave={saveSlideText} />}
+        onCancel={() => setEditingSlide(false)} onSave={saveSlideEdit} />}
       {postCarousel && <SlideEditDialog open={addingTakeaway} slide={NEW_TAKEAWAY} index={carousel.slides.length} count={carousel.slides.length + 1} title="Add a takeaway"
         onCancel={() => setAddingTakeaway(false)}
-        onSave={text => { setAddingTakeaway(false); void act(() => shareCardApi.editTakeaway(projectId, record.id, text), { done: { text: 'Takeaway added.' } }) }} />}
+        onSave={async ({ text }) => {
+          const problem = await commit([() => shareCardApi.editTakeaway(projectId, record.id, text)], { text: 'Takeaway added.' })
+          if (!problem) setAddingTakeaway(false)
+          return problem
+        }} />}
       {editingCrop && fileUrl && card && canEditCrop && (
         <CropEditor fileUrl={fileUrl} page={record.source.page} value={editorStart} marks={record.marks}
           resetLabel={regionPost ? 'Back to the original region' : undefined}
