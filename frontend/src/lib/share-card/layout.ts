@@ -58,7 +58,7 @@ export const TOO_LONG = 'The card text needs shortening.'
 
 export type Box = { x1: number; y1: number; x2: number; y2: number }
 export type TextRole = 'glyph' | 'kicker' | 'quote' | 'emphasis' | 'headline' | 'pull' | 'takeawaysTitle' | 'numeral' | 'takeawayTitle' | 'takeawayDetail'
-  | 'footerTitle' | 'footerCredit' | 'wordmark'
+  | 'footerTitle' | 'footerCredit' | 'wordmark' | 'slideNumber'
 export type TextCommand = {
   kind: 'text'; role: TextRole; text: string
   /** Start of the text and its alphabetic baseline. */
@@ -87,6 +87,13 @@ export type CardLayoutInput = {
    * one, Page is drawn as Quote and Headline as Big idea.
    */
   crop?: { width: number; height: number; marks: PageMark[] }
+  /** The kicker's words instead of the topic (a carousel's "The study"); '' draws none. */
+  kicker?: string
+  /**
+   * A carousel slide's number and the count, drawn as "3 / 7" in the strip above the wordmark. On a slide, a source
+   * page of 0 or less credits the paper without a page.
+   */
+  slide?: { number: number; count: number }
 }
 export type CardLayout = {
   width: number; height: number
@@ -538,7 +545,7 @@ class Card {
   kicker(parts: Part[], after: number, s: number) {
     const marker = this.p.look === 'marker'
     const ink: Ink = { face: marker ? 'bold' : 'semibold', size: this.px(3), color: marker ? this.p.text : this.p.accent, alpha: 1, tracking: 0.14 }
-    const label = this.ellipsize(clean(this.input.card.topic).toUpperCase(), ink, this.inner)
+    const label = this.ellipsize(clean(this.input.kicker ?? this.input.card.topic).toUpperCase(), ink, this.inner)
     if (!label) return
     const leading = 1.25
     parts.push({ height: ink.size * leading, draw: (out, y) => out.push(textCommand('kicker', label, this.padX, y + baselineOf(ink, leading), ink, this.measure(label, fontOf(ink), spacingOf(ink)))) })
@@ -565,26 +572,37 @@ class Card {
     } }
   }
 
-  /** Title over credit and page, and the wordmark, pinned to the bottom. Returns its top. */
+  /**
+   * Title over credit and page, and the wordmark, pinned to the bottom; on a carousel slide, its number over the
+   * wordmark, both right-aligned. The title and credit are ellipsized to leave the right-hand column clear. Returns
+   * its top.
+   */
   footer(): number {
     const { u, p, padX, inner } = this
     const gap = 3.2 * u
+    const slide = this.input.slide
     const mark: Ink = { face: 'bold', size: this.chrome(2.6), color: p.text, alpha: 0.55, tracking: 0.14 }
     const markWidth = this.measure(WORDMARK, fontOf(mark), spacingOf(mark))
-    const width = inner - (markWidth - spacingOf(mark)) - gap
+    const numberInk: Ink = { face: 'semibold', size: this.chrome(3.1), color: p.text, alpha: 0.72, tracking: 0 }
+    const number = slide ? `${slide.number} / ${slide.count}` : ''
+    const numberWidth = number ? this.measure(number, fontOf(numberInk), 0) : 0
+    const width = inner - Math.max(markWidth - spacingOf(mark), numberWidth) - gap
     const titleInk: Ink = { face: 'bold', size: this.chrome(3.5), color: p.text, alpha: 1, tracking: 0 }
     const creditInk: Ink = { face: 'regular', size: this.chrome(3.1), color: p.text, alpha: 0.72, tracking: 0 }
     const title = this.ellipsize(clean(this.input.source.title), titleInk, width)
-    const credit = this.ellipsize(clean(creditLine(this.input.source)), creditInk, width)
+    const source = this.input.source
+    const credit = this.ellipsize(clean(slide && !(source.page > 0) ? collapse(source.credit) : creditLine(source)), creditInk, width)
     const titleLine = title ? titleInk.size * 1.25 : 0, creditLineHeight = credit ? creditInk.size * 1.3 : 0
-    const markLine = mark.size * 1.3
-    const height = Math.max(titleLine + creditLineHeight, markLine)
+    const markLine = mark.size * 1.3, numberLine = number ? numberInk.size * 1.3 : 0
+    const height = Math.max(titleLine + creditLineHeight, numberLine + markLine)
     const footerTop = this.bottom - height
     const y = footerTop + (height - titleLine - creditLineHeight) / 2
     if (title) this.out.push(textCommand('footerTitle', title, padX, y + baselineOf(titleInk, 1.25), titleInk, this.measure(title, fontOf(titleInk), 0)))
     if (credit) this.out.push(textCommand('footerCredit', credit, padX, y + titleLine + baselineOf(creditInk, 1.3), creditInk, this.measure(credit, fontOf(creditInk), 0)))
+    const right = footerTop + (height - numberLine - markLine) / 2
+    if (number) this.out.push(textCommand('slideNumber', number, padX + inner - numberWidth, right + baselineOf(numberInk, 1.3), numberInk, numberWidth))
     // Canvas adds tracking after the last letter too; the ink ends at the right edge.
-    this.out.push(textCommand('wordmark', WORDMARK, padX + inner - markWidth + spacingOf(mark), footerTop + (height - markLine) / 2 + baselineOf(mark, 1.3), mark, markWidth))
+    this.out.push(textCommand('wordmark', WORDMARK, padX + inner - markWidth + spacingOf(mark), right + numberLine + baselineOf(mark, 1.3), mark, markWidth))
     return footerTop
   }
 
