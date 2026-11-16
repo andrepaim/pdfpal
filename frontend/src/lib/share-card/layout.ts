@@ -94,6 +94,11 @@ export type CardLayoutInput = {
    * page of 0 or less credits the paper without a page.
    */
   slide?: { number: number; count: number }
+  /**
+   * An exact part of the Big idea headline drawn in the look's emphasis box, as a quote's emphasis is: a paper
+   * carousel's result slide boxes the number its text starts with. Ignored when the headline does not contain it.
+   */
+  headlineEmphasis?: string
 }
 export type CardLayout = {
   width: number; height: number
@@ -376,7 +381,7 @@ class Card {
     const gap = (units: number, scale: number) => parts.push({ height: units * u * k * scale, draw: () => {} })
     if (style === 'idea') {
       this.kicker(parts, 5, s)
-      const headline = this.display(card.headline, 11.5, s, -0.04, 1, floor, 'headline')
+      const headline = this.display(card.headline, 11.5, s, -0.04, 1, floor, 'headline', this.input.headlineEmphasis)
       if (!headline) return null
       parts.push(this.text(headline, padX))
       const pull = opening(clean(card.pull), '')[0]
@@ -502,8 +507,14 @@ class Card {
    * A balanced display line at `units` and scale `s`. It takes up to 15% less size when that saves a line, so a
    * word that only just misses does not sit alone ("More / feedback / ...").
    */
-  display(text: string, units: number, s: number, tracking: number, leading: number, floor: boolean, role: TextRole): Paragraph | null {
-    const build = (q: number) => this.plain(text, { face: 'bold', size: this.px(units, q), color: this.p.text, alpha: 1, tracking }, leading, role)
+  display(text: string, units: number, s: number, tracking: number, leading: number, floor: boolean, role: TextRole, emphasis = ''): Paragraph | null {
+    const words = clean(text), boxed = emphasis && words.includes(clean(emphasis)) ? clean(emphasis) : ''
+    const build = (q: number) => {
+      const ink: Ink = { face: 'bold', size: this.px(units, q), color: this.p.text, alpha: 1, tracking }
+      if (!boxed) return this.plain(text, ink, leading, role)
+      const marked: Ink = { ...ink, color: this.p.emphasis.text, box: { color: this.p.emphasis.box, alpha: this.p.emphasis.boxAlpha } }
+      return new Paragraph(this.measure, words, boxed, ink, marked, leading, 0.17 * ink.size, role)
+    }
     const full = build(s)
     if (!full.wrap(this.inner, true)) return this.wrapped(s, this.inner, true, floor, build)
     const smaller = Math.max(s * 0.85, FLOOR)

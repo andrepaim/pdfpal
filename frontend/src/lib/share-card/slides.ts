@@ -4,12 +4,12 @@
 // slide is the Headline style, its claim above that highlight's page crop; a page slide is the Page style, the post's
 // own crop under the kicker, or its fallback text when there is no crop. slideInput, layoutSlide and slideSpace are
 // pure (tested in Node); renderSlide and slideSheetSpace draw with the bundled fonts.
-import type { HighlightColor, PageRect, ShareCardSource, ShareLook } from '../../../../src/shared/share-card'
+import { collapse, type HighlightColor, type PageRect, type ShareCardSource, type ShareLook } from '../../../../src/shared/share-card'
 import type { SheetRoom } from './crop-box'
 import { drawCard } from './draw'
 import { loadCardFonts } from './fonts'
 import { canvasMeasure } from './index'
-import { layoutCard, pageSheetSpace, type CardLayout, type CardLayoutInput, type Measure } from './layout'
+import { layoutCard, pageSheetSpace, TOO_LONG, type CardLayout, type CardLayoutInput, type Measure } from './layout'
 import type { PageCrop } from './page-crop'
 
 /** One slide; structurally the same as SlideSpec in src/shared/share-card.ts, which setSlides() returns. */
@@ -18,12 +18,22 @@ export type SlideSpec =
   | { kind: 'study' | 'takeaway' | 'limitations'; kicker: string; text: string }
   | { kind: 'point'; kicker: string; headline: string; item: number }
   | { kind: 'page'; kicker: string; fallback: string }
+  | { kind: 'lead'; kicker: string; headline: string; fallback: string }
+  | { kind: 'question' | 'method' | 'result'; kicker: string; text: string; item?: number }
 
 /**
- * The longest text each kind holds, in characters: SET's limits, CARD.headlineMax for the cover, and CARD.quoteMax
- * for a page slide's fallback (the quote, or the headline when there is none).
+ * The longest text each kind holds, in characters: SET's limits, CARD.headlineMax for the cover and a paper's lead,
+ * CARD.quoteMax for a page slide's fallback (the quote, or the headline when there is none), and PAPER's limits.
  */
-export const SLIDE_LIMITS = { cover: 80, study: 160, takeaway: 140, limitations: 160, point: 70, page: 240 } as const
+export const SLIDE_LIMITS = { cover: 80, study: 160, takeaway: 140, limitations: 160, point: 70, page: 240, lead: 80, question: 160, method: 160, result: 140 } as const
+
+/**
+ * The number a result's text starts with, with its sign and unit ("41%", "2x", "−0.4 points", "1,204"), or ''. A
+ * result slide draws it in the look's emphasis box, so the eye finds the finding first.
+ */
+export function leadingNumber(text: string): string {
+  return /^[<>~≈±+\-−]?\s?[$€£]?\d(?:[\d.,]*\d)?(?:\s?%|×|x(?![a-z])|-fold|\s(?:times|percent|percentage points?|points?|pp)(?![a-z]))?/iu.exec(text.trim())?.[0] ?? ''
+}
 
 /** What a point slide needs of its highlight: the page it is on, its boxes and colour. A SetItem has these. */
 export type SlideItem = { page: number; rects: PageRect[]; color: HighlightColor }
@@ -49,22 +59,28 @@ export type SlideOptions = {
   crop?: PageCrop
 }
 
-/** A slide's words: the cover's and a point's headline, a page slide's fallback, the other kinds' text. */
-export const slideText = (slide: SlideSpec) => slide.kind === 'cover' || slide.kind === 'point' ? slide.headline : slide.kind === 'page' ? slide.fallback : slide.text
+/** A slide's words: the cover's, a point's and a lead's headline, a page slide's fallback, the other kinds' text. */
+export const slideText = (slide: SlideSpec) =>
+  slide.kind === 'cover' || slide.kind === 'point' || slide.kind === 'lead' ? slide.headline : slide.kind === 'page' ? slide.fallback : slide.text
 
 /**
- * The card a slide is drawn as. Cover and text slides: the Big idea style with the words as its headline and no pull
- * quote. Point slides: the Headline style. Page slides: the Page style, which without a crop is the Quote style
- * drawing the fallback, with the kicker in place of the quotation mark. The kicker is the slide's own; the strip
- * carries the number and count. Only point and page slides credit a page: the item's, or the post's.
+ * The card a slide is drawn as. Cover and text slides (study, takeaway, limitations, question, method, result): the
+ * Big idea style with the words as its headline and no pull quote; a result boxes the number it starts with. Point
+ * and lead slides: the Headline style, which without a crop is Big idea; a lead then takes its fallback as the pull
+ * quote when it differs from the headline (layoutSlide leaves it out when it does not fit). Page slides: the Page
+ * style, which without a crop is the Quote style drawing the fallback, with the kicker in place of the quotation
+ * mark. The kicker is the slide's own; the strip carries the number and count. Only point, page and lead slides
+ * credit a page: the item's, or the post's.
  */
 export function slideInput(slide: SlideSpec, context: SlideContext, options: Omit<SlideOptions, 'crop'> & { crop?: { width: number; height: number; marks: PageCrop['marks'] } }): CardLayoutInput {
-  const point = slide.kind === 'point', sheet = point || slide.kind === 'page'
-  const page = point ? context.items?.[slide.item]?.page ?? context.source.page : slide.kind === 'page' ? context.source.page : 0
+  const point = slide.kind === 'point', own = slide.kind === 'page' || slide.kind === 'lead', sheet = point || own
+  const page = point ? context.items?.[slide.item]?.page ?? context.source.page : own ? context.source.page : 0
+  const pull = slide.kind === 'lead' && !options.crop && collapse(slide.fallback) !== collapse(slide.headline) ? slide.fallback : ''
   return {
-    card: { quote: slideText(slide), emphasis: '', headline: slideText(slide), pull: '', topic: '', takeawaysTitle: '', takeaways: [] },
+    card: { quote: slideText(slide), emphasis: '', headline: slideText(slide), pull, topic: '', takeawaysTitle: '', takeaways: [] },
     source: { title: context.source.title, credit: context.source.credit, page, color: context.source.color },
-    style: point ? 'headline' : slide.kind === 'page' ? 'page' : 'idea',
+    style: point || slide.kind === 'lead' ? 'headline' : slide.kind === 'page' ? 'page' : 'idea',
+    headlineEmphasis: slide.kind === 'result' ? leadingNumber(slide.text) || undefined : undefined,
     look: options.look,
     size: 'feed',
     crop: sheet && options.crop ? { width: options.crop.width, height: options.crop.height, marks: options.crop.marks } : undefined,
@@ -73,9 +89,17 @@ export function slideInput(slide: SlideSpec, context: SlideContext, options: Omi
   }
 }
 
-/** Lays out a slide (pure). A point slide without a crop is laid out as Big idea; `style` says so. */
+/**
+ * Lays out a slide (pure). A point or lead slide without a crop is laid out as Big idea; `style` says so. A lead's
+ * pull quote that does not fit is left out.
+ */
 export function layoutSlide(slide: SlideSpec, context: SlideContext, options: Parameters<typeof slideInput>[2], measure: Measure): CardLayout {
-  return layoutCard(slideInput(slide, context, options), measure)
+  const input = slideInput(slide, context, options)
+  if (!input.card.pull) return layoutCard(input, measure)
+  try { return layoutCard(input, measure) } catch (error) {
+    if ((error as Error).message !== TOO_LONG) throw error
+    return layoutCard({ ...input, card: { ...input.card, pull: '' } }, measure)
+  }
 }
 
 /**

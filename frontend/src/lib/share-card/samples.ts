@@ -244,3 +244,38 @@ export const POST_CAROUSEL: PostCarouselSample = {
     { kind: 'takeaway', kicker: 'The takeaway', text: 'Point at the gap between what the learner tried and what happened, not at the learner.' },
   ],
 }
+
+// ── Share the paper ────────────────────────────────────────────────────────────────────────────────────────────────
+
+export type PaperCarouselSample = {
+  name: string
+  slides: SlideSpec[]
+  /** The lead's crop of the made-up page: its title, authors and abstract. */
+  crop: PageRect
+  source: PageFrame['source']
+}
+
+/** Lead, question, method, two results and the takeaway, every text at its limit. */
+export const PAPER_CAROUSEL: PaperCarouselSample = {
+  name: 'paper-carousel', crop: ABSTRACT, source: { ...pageSource, title: LONG_TITLE, credit: LONG_CREDIT },
+  slides: [
+    { kind: 'lead', kicker: 'Organisational learning!', headline: longEnglish.headline, fallback: longEnglish.headline },
+    { kind: 'question', kicker: 'The question', text: 'Does a specific comment about the gap between an attempt and its result help music and language learners improve more than general praise does, over a semester?' },
+    { kind: 'method', kicker: 'The method', text: 'Over one semester, 312 music and language students were followed through 1,204 recorded practice sessions, each one ending in broad praise or a specific remark.' },
+    { kind: 'result', kicker: 'Result 1', text: '41% higher gains on blind-rated tests for the students who heard specific comments; the gap between the groups also widened during the term.', item: 0 },
+    { kind: 'result', kicker: 'Result 2', text: 'Feedback given within ten minutes of an attempt was remembered twice as often a week later as feedback that came at the very end of lessons.', item: 1 },
+    { kind: 'takeaway', kicker: 'The takeaway', text: 'Give fewer comments, and make each one point at the gap between what the learner tried and what then happened, soon after each attempt ends.' },
+  ],
+}
+
+/** One result, short texts: five slides. */
+export const PAPER_CAROUSEL_FIVE: PaperCarouselSample = {
+  name: 'paper-carousel-five', crop: ABSTRACT, source: pageSource,
+  slides: [
+    { kind: 'lead', kicker: 'Learning science', headline: 'Specific feedback beat praise by 41%.', fallback: 'Specific feedback beat praise by 41%.' },
+    { kind: 'question', kicker: 'The question', text: 'Does specific feedback beat praise?' },
+    { kind: 'method', kicker: 'The method', text: '312 students, 1,204 sessions, one semester.' },
+    { kind: 'result', kicker: 'The result', text: '41% higher test gains with specific comments.', item: 0 },
+    { kind: 'takeaway', kicker: 'The takeaway', text: 'Fewer, specific comments, soon.' },
+  ],
+}
