@@ -16,80 +16,20 @@ Available as a **Windows desktop app**, a **Linux desktop engineering preview**,
 
 [Install and run](#install-and-run) · [Quickstart](#quickstart) · [Documentation](docs/README.md)
 
-Reader screenshots show the current browser interface, which is shared with the desktop app. The visual example replays a recorded Claude response in the new renderer; the decoder answer is the original Codex response. Windows menu evidence is dated separately. See [capture details](screenshots/CAPTURE.md).
+https://github.com/user-attachments/assets/9014a985-5a21-41a6-9084-6f9d5dece3ec
 
-### Read with AI beside the page
+One reading session with [*Attention Is All You Need*](https://arxiv.org/pdf/1706.03762v7), recorded in the browser reader, which the desktop app shares. The answers are live Codex output and the waits are shortened. See [how it was recorded](screenshots/CAPTURE.md).
 
-Select the passage you're stuck on and work through it beside the paper. In §3.1 of [*Attention Is All You Need*](https://arxiv.org/pdf/1706.03762v7), the decoder uses both masking and shifted inputs. Why are both needed? A reader asks for a concrete token sequence showing how the answer would leak without the shift.
+| In the video | What happens |
+| --- | --- |
+| [**Find**](#sources--discovery) | Search for a paper by title and add it to a project organized into collections. |
+| [**Ask**](#reading--chat) | Select the decoder-masking passage in §3.1 and ask why the inputs are shifted too. The answer works through a short target sequence. |
+| [**Visualize**](#visual-explanations) | Choose **Explain visually** on the √dₖ scaling sentence in §3.2.1 and step through the explanation. |
+| [**Keep**](#organization) | Save a highlight and write what you understood as a Markdown note. |
+| [**Share**](#share-what-you-read) | Turn the highlight into a LinkedIn post built around your own take, then the whole paper into an Instagram carousel. |
+| [**Connect**](#reading--chat) | Ask one question across several papers in project chat. |
 
-![Dark PDF pages with the decoder masking and input-shift passage highlighted beside an explanation of answer leakage using a short target sequence](screenshots/reader-decoder-masking.png)
-
-### Turn difficult concepts into visual explanations
-
-How do queries, keys and values turn a sequence into a context-aware representation? Use `/visual` to work through attention one step at a time. Here the reader shows the attention paper beside a token grid that reveals scores and weights, with a caption for each step.
-
-![Current PDF reader beside an attention explanation showing aligned token, score and weight rows, step navigation and an illustrative-example label](screenshots/visual-attention-steps.png)
-
-Expand the viewer to inspect a query/key plot, then return to the same step beside the paper.
-
-![Expanded visual explanation with labeled query and key vectors, a small-angle annotation and a segmented nine-step progress bar](screenshots/visual-attention-expanded.png)
-
-This recorded visual response is a general-concept example: its illustrative numbers are not measurements from the paper, and no passage was supplied to that original request. The decoder answer above was generated from its selected PDF passage. Explore all nine visual steps in the [interactive HTML download](screenshots/9-visual-explanation.html), which works offline. Visual explanations also work in project chat and the Kindle companion.
-
-### Build a research library
-
-Group papers into collections within a project, then read them individually or ask questions across your sources.
-
-![Research project with Transformer papers organized into Core Transformer Papers and Related Techniques collections](screenshots/6-collections.png)
-
-### Keep what you understand
-
-Write what you learned in your own words and save questions to revisit as Markdown notes in your project.
-
-![Rendered research note explaining why attention replaced recurrence, with an open question to revisit](screenshots/5-notes.png)
-
-<details>
-<summary>Dictionary, discovery, Windows navigation, and Kindle setup</summary>
-
-**Look up a word without leaving the page**
-
-Double-click an English word for a definition from the bundled offline dictionary. Ask and Highlight stay beside the selection.
-
-![PDF reader with a selected word, its local WordNet definition card, and the Ask, Highlight and Explain visually actions](screenshots/reader-dictionary.png)
-
-**Find your next paper**
-
-Search by title and add papers directly to your project.
-
-![Paper search results with an Add button beside each result](screenshots/3-search.png)
-
-**Follow the citation trail**
-
-Explore a paper's references and citing papers, and add useful sources as you read.
-
-![Related papers panel listing references with buttons to add them to the project](screenshots/2-related.png)
-
-**Give each research topic a home**
-
-Keep sources, notes, and conversations together in a local project.
-
-![Current browser projects page with three sample research workspaces](screenshots/4-projects.png)
-
-**Move around the Windows app**
-
-Use the integrated toolbar for reading history, project search, cloud sync and help. Press **Ctrl+K** to find a project or **F10** to open the app menu for AI settings, backups, privacy, Kindle setup and the CLI skill.
-
-The Windows menu capture below is retained from the installed 2.7.0-preview.2 build on November 6, 2026.
-
-![Windows app menu with library navigation, Command line & ChatGPT, AI settings, recovery, privacy and update controls](screenshots/desktop-menu.png)
-
-**Bring pdfpal to Kindle for Web**
-
-Download the Chrome companion, connect it to your local library, and manage paired connections.
-
-![Kindle companion setup page with extension download instructions and paired connection management](screenshots/8-extension-setup.png)
-
-</details>
+Not in the video: the [offline dictionary](docs/reader-guide.md#offline-dictionary), [related papers](#sources--discovery), the [Kindle companion](#read-a-kindle-book) and [backups](#backups-recovery--privacy). To step through a visual explanation without installing anything, download the [exported example](screenshots/9-visual-explanation.html), which works offline.
 
 ## Install and run
 
@@ -101,7 +41,7 @@ Download the Chrome companion, connect it to your local library, and manage pair
 
 ### Windows desktop preview
 
-1. [Open the official GitHub Releases page](https://github.com/andrepaim/pdfpal/releases) and download the **pdfpal-Setup-…-x64.exe** installer from the newest Windows desktop release, marked **Pre-release**.
+1. [Open the official GitHub Releases page](https://github.com/andrepaim/pdfpal/releases) and download the **pdfpal-Setup-…-x64.exe** installer from the newest desktop release, marked **Pre-release**.
 2. Run the installer, then open **pdfpal** from the Windows Start menu. If upgrading, quit the running app from its tray menu first.
 3. In AI settings, choose **Continue with ChatGPT** to use eligible plan allowance directly, or choose an installed coding agent.
 4. Create a project, import a PDF, and start reading. See the [PDF quickstart](#read-a-pdf) below.
@@ -118,7 +58,7 @@ The Windows installer is currently an **unsigned engineering preview**, so Windo
 
 ### Linux desktop engineering preview
 
-The x86-64 Debian package targets Mint 22/Ubuntu 24.04, with X11 as the initial validation environment. Download the `.deb`, `pdfpal-linux-release.json` and `SHA256SUMS-linux.txt` from the [Linux preview release](https://github.com/andrepaim/pdfpal/releases/tag/linux-desktop-v2.8.0-beta.5.linux.1), then check `sha256sum -c SHA256SUMS-linux.txt` in the download directory. Newer engineering artifacts are available from [CI](https://github.com/andrepaim/pdfpal/actions/workflows/ci.yml), or build from source using the [Linux quickstart](docs/linux-quickstart.md). Linux publication is separate from the automatic Windows release pipeline.
+The x86-64 Debian package targets Mint 22/Ubuntu 24.04, with X11 as the initial validation environment. Download the `.deb`, `pdfpal-linux-release.json` and `SHA256SUMS-linux.txt` from the newest desktop release on the [GitHub Releases page](https://github.com/andrepaim/pdfpal/releases), which publishes Windows and Linux together, then check `sha256sum -c SHA256SUMS-linux.txt` in the download directory. Newer engineering artifacts are available from [CI](https://github.com/andrepaim/pdfpal/actions/workflows/ci.yml), or build from source using the [Linux quickstart](docs/linux-quickstart.md).
 
 Install with `sudo apt install ./pdfpal-<version>-amd64.deb`, then open **pdfpal** from the application menu. The app includes its runtime and a separate `pdfpal-desktop-cli`; a system Node installation is unnecessary for those bundled tools. Node-based assistant CLIs may need their own runtime. The shared **pdfpal menu** offers settings, backups, CLI setup, licenses and updates inside the native Linux window frame. **F10** opens it; **Ctrl+K** finds a project. Closing the Linux window quits the app. Account persistence requires a supported, unlocked OS keyring; local reading works without sign-in. Wayland, live account flows and clean-machine installation remain manual acceptance checks.
 
@@ -207,23 +147,19 @@ Book questions use title/author, previous discussion, and captured or saved exce
 
 Select text in the PDF reader and choose **Explain visually** from its popup, or type `/visual <concept>` in the reader or project chat. Type `/` for a command suggestion; Tab completes `/visual`. With a passage attached, `/visual` alone explains that selection. The same command works in the [Kindle companion](extension/README.md#explain-visually). Your configured assistant supplies content for flow diagrams, plots, token/vector grids, comparisons, bars and quadrants; pdfpal handles their layout. Figures reveal in steps with named clickable details, captions, source labels and a full text transcript. Use Next/Back, the segmented progress bar or arrow keys; **Expand** keeps your current step in a larger viewer. Save to a project note or export a self-contained HTML file that uses the same renderer and works offline. Saved explanations reopen without another model call, including older saved visuals. Project chat also supports general-concept questions without PDFs. See the [visual explanation guide](docs/visual-explanations.md).
 
-### Share a highlight as a post
+### Share what you read
 
-Click a highlight in a PDF and choose **Create post**. A post is the PDF's own page with your highlights on it, plus a text built around your point of view, for one destination: **LinkedIn**, **X · Bluesky · Threads** or **Instagram**. The destination you chose last is remembered on this device. Your configured assistant writes the text in a single request while you keep reading; choosing another destination later asks for the text again for that destination, and **Undo** returns to the earlier version.
+Turn something from a PDF into a post for **LinkedIn**, **X · Bluesky · Threads** or **Instagram**: an image made from the paper's own page, and a draft text. Your configured assistant writes the words in a single request while you keep reading. The image is drawn on your computer, and posts stay on this device.
 
-The image is drawn on your computer. LinkedIn and X start on **Page**: a crop of the page, as tall as it needs to be, with every highlight inside it in its own colour. Instagram starts on **Carousel**: three cards at 4:5, swiped in order: the hook (your post's headline), the page with your highlights, and the takeaway, one sentence on why the finding matters. Step through them with **Previous** and **Next** or the arrow keys; **Edit slide** changes the hook or the takeaway, and **Adjust crop** on the page card changes its crop. A post made before posts had a takeaway shows two cards and **Add a takeaway**. You can choose **Page**, **Headline** or **Carousel** for any destination; **Headline** puts a headline above the crop on one card. **Adjust crop** opens the whole page: drag the box or its handles, or use the arrow keys, and **Reset to automatic** returns to the crop around your highlight. **Edit headline** puts your own words above the page. The **Ink**, **Paper** and **Marker** looks, and the **Quote**, **Big idea** and **Takeaways** text cards under **Text cards**, change instantly and make no request. When the PDF has been removed, a post shows its text card instead, and a Carousel's page card shows the quote (or, for a region, the headline).
+- **From a highlight**: click a highlight and choose **Create post**. The image is the page cropped around your highlights, each in its own colour.
+- **From a region**: **Share a region** in the **Post** tab takes a figure, a table, an equation or a passage.
+- **The whole paper**: **Share the paper** writes what the paper set out to answer, how it was done and what it found.
+- **Several highlights**: **Share several highlights** makes a carousel with one slide per highlight.
+- **Your take**: type one line of what you think and choose **Rewrite around my take**. Every draft quotes it word for word.
+- **Carousels and numbers**: on Instagram a post opens as a carousel. Slides show a key number, a study's design or a small comparison table as numbers, and every number comes from the text.
+- **Export**: copy or save an image. A carousel also saves as a ZIP of PNG files or as one PDF.
 
-Type **Your take**, one line of what you think, and choose **Rewrite around my take**: every draft quotes it word for word and leads into it. Without a take the drafts state what the paper says, with no opinion. A request returns up to three drafts, shown as tabs: **The finding** always, **Belief vs. paper** and **The caveat** only when the page supports them. Picking a tab changes the text at once. Every number in a draft must appear in the highlight, its page, the title, the credit or your take. pdfpal adds the source line, the link and, when switched on, the hashtags. On LinkedIn you can keep the link out of the post and paste it as the first comment with **Copy first comment**; on X a counter shows the length as X counts it, with a link as 23 characters. You can also **Edit** the text by hand; picking a tab afterwards replaces your edits, and **Undo** brings them back.
-
-A post can also start without a highlight. In the **Post** tab, **Share a region** opens the page you are reading with a box on it: move and resize it over a figure, a table, an equation or a passage, with the pointer or the arrow keys, and choose **Create post**. The image is that part of the page; the assistant never sees it and writes from the words inside the box and the text of the page, so a figure's caption on the page matters. A region post has a headline, a takeaway and the **Page**, **Headline** and **Carousel** styles, but no quote and no text cards; **Adjust crop** offers **Back to the original region** instead of an automatic crop, and when the PDF has been removed the post shows its headline as a **Big idea** card.
-
-**Share the paper** makes a post about the paper as a whole, with one click. Its picture is the first page's title, authors and abstract (everything above the Introduction heading), worked out from the text; you can adjust the crop afterwards. The assistant reads more than the first page (the opening pages, the start of the method and results, and the conclusion) and writes what the paper set out to answer, how it was done and what it found, besides the headline, the takeaway and the drafts, which give that general view in the same order. On Instagram a paper post is a carousel of five or six slides: the paper (the headline above the first page), the question, the method, one or two results and the takeaway; on LinkedIn and X it opens on **Page**, with **Carousel** one click away. **Edit slide** changes the words of any slide; a result cannot be left empty. A paper post made before papers had their own slides keeps its three cards and offers **Rewrite** to add them.
-
-Several highlights of one PDF can become a carousel, the format whole-paper posts use. In the **Post** tab, **Share several highlights** lists the PDF's highlights in page order: choose 2 to 8 and put them in order with the arrow buttons, then choose **Create carousel**. The slides, all 1080 × 1350, are a cover, the study in one sentence when the text states what was studied, one slide per highlight (a short claim above that highlight's page, with every highlight on it), the takeaway and, when the text states any, the limits; each carries the credit strip and its number. Step through them with **Previous** and **Next** or the arrow keys. **Edit slide** changes the words of the slide in view, and emptying the study or the limits removes that slide (**Undo** brings it back); **Adjust crop** on a highlight slide changes that slide's crop only. The destination, your take, the drafts and the caption options work as for any post. **Copy slide** and **Save slide** take the slide in view; **Save all slides (ZIP)** saves every slide as a PNG file, and **Save as PDF** saves them as one PDF with a page per slide, which LinkedIn takes as a document post. When the PDF has been removed, the highlight slides show their claims without the page.
-
-Slides show numbers as numbers. A post's key number, the one number that carries the finding, is drawn large on its hook; the study of a carousel and the method of a paper post show their design's numbers as tiles; and a paper's result shows its key number very large, or the comparison it reports as a small table. Every number comes from the text, and **Edit slide** changes them with the slide's sentence: each value and label, adding or removing tiles and rows, and reordering a table's rows. A slide whose numbers are all removed is drawn as text.
-
-Use **Copy image** and **Copy caption** to paste into a post, or **Save image** at the destination's size; on Instagram, **Headline** and **Page** also offer a Story (9:16). In the Carousel style, **Copy slide** and **Save slide** take the card in view, and **Save all slides (ZIP)** and **Save as PDF** save all three. **Ask for a change** in the ⋯ menu requests a revision in your own words. Each highlight has at most one post; highlights with a post are marked in the reader and in the project's **Highlights** tab, which lists every post. Posts stay on this device: they are not part of cloud sync. A post keeps its own copy of the passage (or of the region's text), so deleting the highlight or the PDF does not delete it.
+See the [sharing guide](docs/share-posts.md) for destinations, styles and looks, cropping, drafts and editing.
 
 ### Organization
 
@@ -235,8 +171,6 @@ Use **Copy image** and **Copy caption** to paste into a post, or **Save image** 
 ### Backups, recovery & privacy
 
 Open **pdfpal menu → Backups & recovery** in the Windows or Linux desktop app, or **Backups** at the lower left in the browser reader. Save a complete local library copy, including managed PDFs, notes, highlights, saved conversations and visual explanations. Automatic backups run daily by default while the app is open; choose every six hours, daily or weekly. Verify a backup or open a separate recovery copy while keeping your current library. **Recently deleted** retains up to 100 deletion entries for 30 days. See [backup and recovery](docs/backup-recovery.md).
-
-![Current browser backup settings showing a verified local library copy and recovery controls](screenshots/backups-recovery.png)
 
 **Privacy & diagnostics** in the desktop app menu (or **Privacy** in the browser) separates local diagnostics, optional usage analytics and default-off error sharing. Shared error reports exclude documents, conversations, titles, filenames and raw error messages. See [error reporting](docs/error-reports.md).
 
@@ -271,9 +205,9 @@ Finding papers is legwork, and by now agents are better at it than we are: they 
    pdfpal --json source file <project-id> <source-id> <collection-id>
    ```
 
-3. **Open it in the browser**, already organized into collections, as shown in the [research library screenshot](#build-a-research-library).
+3. **Open it in the browser**, already organized into collections.
 
-4. **Read and ask questions inline**, in the same reader shown above, right where the agent left off.
+4. **Read and ask questions inline**, in the reader shown in the video above, right where the agent left off.
 
 ## CLI
 
@@ -371,20 +305,6 @@ npm run test:package
 `npm test` runs Node's test runner through `tsx`, fails when no tests are found, and enforces the configured c8 coverage thresholds. Playwright starts the compiled Fastify server using an isolated temporary data directory. Set `PLAYWRIGHT_EXECUTABLE_PATH` to use a system Chromium installation.
 
 Documentation-only CI runs link checks, credential scanning and tests of the change classifier. Application builds, browser suites, Firebase contracts and native packaging are skipped when the entire change is limited to documentation/media. Code, tooling, workflows, dependency inputs and shipped agent skills keep full validation; manual Windows checks always run.
-
-### Project loops
-
-Reusable agent workflows for this repository live in [`LOOPS.md`](LOOPS.md). [Loopy](https://signals.forwardfuture.com/loop-library/) is optional contributor tooling and is not required to build or run pdfpal.
-
-```bash
-npx skills add Forward-Future/loopy --skill loopy -g
-```
-
-Run the saved local test-quality workflow with:
-
-```text
-$loopy run the saved Local test-quality pass loop
-```
 
 ## Architecture
 

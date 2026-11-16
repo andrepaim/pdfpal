@@ -10,6 +10,7 @@ Start with the [project README](../README.md) for installation, a PDF/Kindle wal
 | Build/install the x86-64 Debian desktop engineering preview | [Linux quickstart](linux-quickstart.md) |
 | Run the CLI and browser reader on Linux/WSL | [Source installation](../README.md#linux-and-wsl), [CLI skill reference](../skills/pdfpal-cli/SKILL.md) |
 | Step through a visual explanation, save it or export it | [Visual explanations](visual-explanations.md) |
+| Turn a highlight, a region or a whole paper into a post | [Sharing posts](share-posts.md) |
 | Define an English word without an AI request | [Offline dictionary](reader-guide.md#offline-dictionary) |
 | Understand selection context, citations and project chat | [Reader guide](reader-guide.md) |
 | Connect Kindle for Web, capture text and troubleshoot OCR | [Kindle companion](../extension/README.md) |
