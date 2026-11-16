@@ -2,12 +2,14 @@ import { test, expect, type Page, type Route } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  DESTINATION_DEFAULTS, DESTINATION_NAMES, FIT, captionText, firstCommentText,
+  DESTINATION_DEFAULTS, DESTINATION_NAMES, STYLE_NAMES, cardDescription, FIT, captionText, firstCommentText,
   type Angle, type CardContent, type Caption, type Destination, type PageMark, type PageRect, type ShareCardRecord,
 } from '../../src/shared/share-card';
 import { PAGE_FRAMES, SAMPLES as TEXT_SAMPLES } from '../src/lib/share-card/samples';
 import { cropBox } from '../src/lib/share-card/crop-box';
 import { tallPdf } from './tall-pdf';
+import { pdfPages, zipNames } from './export-files';
+import { carouselFileName, slideFileName } from '../src/lib/share-card/export';
 import { mockAuth, createProjectViaApi } from './helpers';
 
 const SAMPLES = path.resolve('test-results/share-card-samples');
@@ -62,6 +64,7 @@ const CARD: CardContent = {
   quote: 'the cost grows with the square of the sequence length', quoteEdited: false, emphasis: 'the square',
   headline: 'Reach has a quadratic price', pull: 'long documents become expensive', topic: 'Attention',
   takeawaysTitle: 'What full attention costs', style: 'page', look: 'ink', crop: null, set: null,
+  takeaway: 'Long documents need another plan than full attention.',
   takeaways: [{ title: 'Reach is global', detail: 'Every position can use every other one.' },
     { title: 'Cost grows fast', detail: 'Doubling the input quadruples the work.' }, { title: 'Long inputs hurt', detail: 'Documents become expensive quickly.' }],
 };
@@ -168,6 +171,7 @@ async function routePosts(page: Page, state: Fake) {
       else if ('show_tags' in body) next = { card, caption: { ...caption, showTags: body.show_tags } };
       else if ('link' in body) next = { card, caption: { ...caption, link: body.link } };
       else if ('headline' in body) { next = { card: { ...card, headline: body.headline }, caption }; keep = true; }
+      else if ('takeaway' in body) { next = { card: { ...card, takeaway: body.takeaway }, caption }; keep = true; }
       else if ('caption' in body) { next = { card, caption: { ...caption, edited: body.caption } }; keep = true; }
       // As the server does: look, style, crop, hashtags and link also change the version behind Undo, so they survive it.
       if (state.previous && !keep && !('angle' in body)) {
@@ -251,7 +255,8 @@ async function openPost(page: Page, state: Fake, readerUrl: string, extra: Parti
   await page.goto(`${readerUrl}?post=${POST_ID}`);
 }
 
-const card = (page: Page) => page.locator('img[data-share-card]');
+const card = (page: Page) => page.locator('img[data-share-card]:not([data-slide])');
+const slide = (page: Page) => page.locator('img[data-slide]');
 const caption = (page: Page) => page.locator('[data-share-caption]');
 const shownText = (state: Fake) => captionText(state.current!.source, state.current!.caption!);
 const pngSize = (bytes: Buffer) => ({ signature: bytes.subarray(0, 8).toString('hex'), width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) });
@@ -287,20 +292,34 @@ test.describe('share posts in the reader', () => {
       await expect(page.getByRole('radio', { name: 'Quote' })).toBeHidden();
 
       const style = DESTINATION_DEFAULTS[destination].style;
-      await expect(card(page)).toHaveAttribute('data-share-card', `${style}/ink`, { timeout: 20_000 });
       expect(page.url()).toContain(`post=${POST_ID}`);
-      await expect(page.getByRole('radio', { name: style === 'page' ? 'Page' : 'Headline' })).toHaveAttribute('aria-checked', 'true');
-      // Every highlight inside the automatic crop is drawn: own, blue and green always, pink with three lines of
-      // context. The one far down the page is outside every automatic crop and is not drawn.
-      await expect(card(page)).toHaveAttribute('data-share-marks', destination === 'x' ? '3' : '4');
-      const height = await fitHeight(page);
-      if (destination === 'instagram') expect(height).toBe(1350);
-      else { expect(height).toBeGreaterThanOrEqual(FIT.minHeight); expect(height).toBeLessThan(FIT.maxHeight); }
+      await expect(page.getByRole('radio', { name: STYLE_NAMES[style], exact: true })).toHaveAttribute('aria-checked', 'true');
+      if (destination === 'instagram') {
+        // Instagram: three cards, the hook, the page and the takeaway; the page carries every highlight in its crop.
+        expect(style).toBe('carousel');
+        await expect(slide(page)).toHaveAttribute('data-slide', '1', { timeout: 20_000 });
+        await expect(slide(page)).toHaveAttribute('data-slide-count', '3');
+        await expect(slide(page)).toHaveAttribute('data-slide-kind', 'cover');
+        await page.getByRole('button', { name: 'Next slide' }).click();
+        await expect(slide(page)).toHaveAttribute('data-slide-kind', 'page');
+        await expect(slide(page)).toHaveAttribute('data-share-card', 'page/ink');
+        await expect(slide(page)).toHaveAttribute('data-share-marks', '4');
+        await expect(card(page)).toHaveCount(0);
+      } else {
+        await expect(card(page)).toHaveAttribute('data-share-card', `${style}/ink`, { timeout: 20_000 });
+        // Every highlight inside the automatic crop is drawn: own, blue and green always, pink with three lines of
+        // context. The one far down the page is outside every automatic crop and is not drawn.
+        await expect(card(page)).toHaveAttribute('data-share-marks', destination === 'x' ? '3' : '4');
+        const height = await fitHeight(page);
+        expect(height).toBeGreaterThanOrEqual(FIT.minHeight); expect(height).toBeLessThan(FIT.maxHeight);
+      }
       await expect(caption(page)).toHaveText(shownText(state));
       await expect(page.locator('[data-x-count]')).toHaveCount(destination === 'x' ? 1 : 0);
       await expect(page.getByRole('switch', { name: 'Hashtags' })).toHaveCount(destination === 'x' ? 0 : 1);
       if (destination === 'instagram') await expect(page.getByRole('switch', { name: 'Hashtags' })).toHaveAttribute('aria-checked', 'true');
-      await expect(page.getByRole('button', { name: 'Save Story (9:16)' })).toHaveCount(destination === 'instagram' ? 1 : 0);
+      // No Story in the Carousel style: the slides are the export.
+      await expect(page.getByRole('button', { name: 'Save Story (9:16)' })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Save all slides (ZIP)' })).toHaveCount(destination === 'instagram' ? 1 : 0);
       expect(state.calls.start).toBe(1); expect(state.calls.change).toBe(0); expect(state.calls.patch).toBe(0);
       await noSideScroll(page);
     });
@@ -329,10 +348,11 @@ test.describe('share posts in the reader', () => {
 
     state.hold = false;
     await expect(page.getByText('Your post was rewritten.')).toBeVisible({ timeout: 10_000 });
-    await expect(card(page)).toHaveAttribute('data-share-card', 'headline/ink');
-    await expect(card(page)).toHaveAttribute('data-share-size', '1080x1350');
+    // Instagram takes the Carousel style: three cards.
+    await expect(slide(page)).toHaveAttribute('data-slide-count', '3');
+    await expect(page.getByRole('radio', { name: 'Carousel' })).toHaveAttribute('aria-checked', 'true');
     await expect(caption(page)).toHaveText(shownText(state));
-    await expect(page.getByRole('button', { name: 'Save Story (9:16)' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Save Story (9:16)' })).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Undo last change' }).click();
     await expect(page.getByText('Back to the earlier version.')).toBeVisible();
@@ -574,12 +594,18 @@ test.describe('share posts in the reader', () => {
     expect(state.calls.change).toBe(0); expect(state.calls.start).toBe(0);
   });
 
-  test('Instagram saves a Story at 1080 × 1920', async ({ page }) => {
+  test('Headline chosen on Instagram is one card again, with its Story export', async ({ page }) => {
     test.setTimeout(60_000);
     const state = fake();
     const { url } = await paper(page, state);
     await openPost(page, state, url, { ...written('instagram', ''), destination: 'instagram' });
+    await expect(slide(page)).toHaveAttribute('data-slide-count', '3', { timeout: 20_000 });
+    await expect(page.getByRole('button', { name: 'Save Story (9:16)' })).toHaveCount(0);
+    await page.getByRole('radio', { name: 'Headline', exact: true }).click();
+    expect(state.bodies.patch.at(-1)).toEqual({ style: 'headline', look: 'ink' });
     await expect(card(page)).toHaveAttribute('data-share-card', 'headline/ink', { timeout: 20_000 });
+    await expect(slide(page)).toHaveCount(0);
+    expect(state.calls.change).toBe(0);
     for (const [label, name, height] of [['Save image', 'pdfpal-share-card-paper-p2-headline.png', 1350], ['Save Story (9:16)', 'pdfpal-share-card-paper-p2-headline-story.png', 1920]] as const) {
       const download = page.waitForEvent('download');
       await page.getByRole('button', { name: label }).click();
@@ -629,7 +655,8 @@ test.describe('a post whose PDF was removed', () => {
     const version = written('instagram', '');
     state.current = {
       ...record(project.id, null, null, 'Attention lets every position look at every other position.', [{ x1: 0.1, y1: 0.2, x2: 0.9, y2: 0.23 }], []),
-      ...version, caption: { ...version.caption, drafts: { ...version.caption.drafts, contrast: '', caveat: '' } }, destination: 'instagram',
+      // The reader chose Headline on Instagram.
+      ...version, card: { ...version.card, style: 'headline' }, caption: { ...version.caption, drafts: { ...version.caption.drafts, contrast: '', caveat: '' } }, destination: 'instagram',
     };
     await page.goto(`/projects/${project.id}`);
     await page.getByRole('tab', { name: /Highlights/ }).click();
@@ -655,6 +682,240 @@ test.describe('a post whose PDF was removed', () => {
   });
 });
 
+// ── The Carousel style: three cards from one highlight ───────────────────────────────────────────────────────────────
+test.describe('the Carousel style', () => {
+  test.beforeEach(async ({ page }) => { await mockAuth(page); });
+
+  const instagram = (state: Fake): Partial<ShareCardRecord> => ({ ...written('instagram', ''), destination: 'instagram' });
+  async function goTo(page: Page, number: number) {
+    const current = Number(await slide(page).getAttribute('data-slide'));
+    for (let at = current; at < number; at++) await page.getByRole('button', { name: 'Next slide' }).click();
+    for (let at = current; at > number; at--) await page.getByRole('button', { name: 'Previous slide' }).click();
+    await expect(slide(page)).toHaveAttribute('data-slide', String(number));
+  }
+
+  test('a highlight is three cards: the hook, the page with every highlight on it, and the takeaway', async ({ page }) => {
+    test.setTimeout(60_000);
+    const state = fake();
+    const { url } = await paper(page, state);
+    await openPost(page, state, url, instagram(state));
+    await expect(slide(page)).toHaveAttribute('data-slide', '1', { timeout: 20_000 });
+    const viewer = page.locator('[data-slide-viewer]');
+    await expect(viewer).toHaveAccessibleName(cardDescription(state.current!.card!, 'carousel', state.current!.source));
+    await expect(viewer).toHaveAccessibleName('Carousel of 3 slides: Reach has a quadratic price.');
+    await expect(slide(page)).toHaveAttribute('alt', 'Slide 1 of 3, cover: Reach has a quadratic price');
+    await expect(page.locator('[data-slide-position]')).toHaveText('1 of 3 · Cover');
+    await viewer.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(slide(page)).toHaveAttribute('alt', `Slide 2 of 3, the page: ${CARD.quote}`);
+    await expect(slide(page)).toHaveAttribute('data-share-card', 'page/ink');
+    await expect(slide(page)).toHaveAttribute('data-share-marks', '4');
+    await expect(page.getByText('Automatic crop')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Edit slide' })).toHaveCount(0);
+    await page.keyboard.press('End');
+    await expect(slide(page)).toHaveAttribute('alt', `Slide 3 of 3, the takeaway: ${CARD.takeaway}`);
+    await expect(page.getByRole('button', { name: 'Next slide' })).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByRole('button', { name: 'Add a takeaway' })).toHaveCount(0);
+    // The style row: Page, Headline and Carousel; the text cards stay under their disclosure.
+    await expect(page.getByRole('radiogroup', { name: 'Card style' }).getByRole('radio')).toHaveText(['Page', 'Headline', 'Carousel']);
+    await expect(page.getByRole('radio', { name: 'Quote' })).toBeHidden();
+    expect(state.calls.patch).toBe(0);
+  });
+
+  test('a post without a takeaway shows two cards and a quiet Add a takeaway', async ({ page }) => {
+    const state = fake();
+    const { url } = await paper(page, state);
+    const version = written('instagram', '');
+    await openPost(page, state, url, { ...version, card: { ...version.card, takeaway: '' }, destination: 'instagram' });
+    await expect(slide(page)).toHaveAttribute('data-slide-count', '2', { timeout: 20_000 });
+    await page.getByRole('button', { name: 'Add a takeaway' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Add a takeaway' });
+    const field = dialog.getByRole('textbox', { name: 'The takeaway' });
+    await expect(field).toHaveValue('');
+    await expect(dialog.getByRole('button', { name: 'Save' })).toBeDisabled();
+    await field.fill('Long inputs need a cheaper kind of attention.');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    expect(state.bodies.patch.at(-1)).toEqual({ takeaway: 'Long inputs need a cheaper kind of attention.' });
+    await expect(page.getByText('Takeaway added.')).toBeVisible();
+    await expect(slide(page)).toHaveAttribute('data-slide-count', '3');
+    await expect(page.getByRole('button', { name: 'Add a takeaway' })).toHaveCount(0);
+    expect(state.calls.change).toBe(0);
+  });
+
+  test('editing the takeaway and the hook, with Undo', async ({ page }) => {
+    test.setTimeout(60_000);
+    const state = fake();
+    const { url } = await paper(page, state);
+    await openPost(page, state, url, instagram(state));
+    await expect(slide(page)).toHaveAttribute('data-slide', '1', { timeout: 20_000 });
+    await goTo(page, 3);
+    await page.getByRole('button', { name: 'Edit slide' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Edit slide 3 of 3: The takeaway' });
+    const field = dialog.getByRole('textbox', { name: 'The takeaway' });
+    await expect(field).toHaveValue(CARD.takeaway);
+    await expect(dialog.getByText('Up to 140 characters.')).toBeVisible();
+    await field.fill('t'.repeat(150));
+    await expect(field).toHaveValue('t'.repeat(140));
+    await field.fill('Short inputs are where full attention pays.');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    expect(state.bodies.patch.at(-1)).toEqual({ takeaway: 'Short inputs are where full attention pays.' });
+    await expect(slide(page)).toHaveAttribute('alt', 'Slide 3 of 3, the takeaway: Short inputs are where full attention pays.');
+    await page.getByRole('button', { name: 'Undo last change' }).click();
+    await expect(slide(page)).toHaveAttribute('alt', `Slide 3 of 3, the takeaway: ${CARD.takeaway}`);
+
+    await goTo(page, 1);
+    await page.getByRole('button', { name: 'Edit slide' }).click();
+    const hook = page.getByRole('dialog', { name: 'Edit slide 1 of 3: Cover' });
+    await hook.getByRole('textbox', { name: 'Headline' }).fill('Reach costs more than it looks');
+    await hook.getByRole('button', { name: 'Save' }).click();
+    expect(state.bodies.patch.at(-1)).toEqual({ headline: 'Reach costs more than it looks' });
+    await expect(slide(page)).toHaveAttribute('alt', 'Slide 1 of 3, cover: Reach costs more than it looks');
+    expect(state.calls.change).toBe(0);
+  });
+
+  test('the page card\'s crop is adjusted from its slide and reset', async ({ page }) => {
+    test.setTimeout(60_000);
+    const state = fake();
+    const { url } = await paper(page, state);
+    await openPost(page, state, url, instagram(state));
+    await expect(slide(page)).toHaveAttribute('data-slide', '1', { timeout: 20_000 });
+    await goTo(page, 2);
+    await expect(slide(page)).toHaveAttribute('data-share-crop', /\d/);
+    const automatic = (await slide(page).getAttribute('data-share-crop'))!;
+    await page.getByRole('button', { name: 'Adjust crop' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Adjust crop' });
+    await expect(dialog).toHaveAttribute('data-state', 'ready');
+    await expect(page.locator('[data-crop-box]')).toBeFocused();
+    await page.keyboard.press('Shift+ArrowDown');
+    const chosen = (await page.locator('[data-crop-box]').getAttribute('data-crop'))!;
+    await dialog.getByRole('button', { name: 'Apply' }).click();
+    await expect(page.getByText('Crop saved.')).toBeVisible();
+    const saved = state.bodies.patch.at(-1)!.crop as PageRect;
+    expect([saved.x1, saved.y1, saved.x2, saved.y2].map(value => value.toFixed(4)).join(',')).toBe(chosen);
+    expect(state.bodies.patch.at(-1)).not.toHaveProperty('slide');
+    await expect(slide(page)).toHaveAttribute('data-share-crop', chosen);
+    await expect(page.getByText('Your crop')).toBeVisible();
+    await page.getByRole('button', { name: 'Adjust crop' }).click();
+    await expect(dialog).toHaveAttribute('data-state', 'ready');
+    await dialog.getByRole('button', { name: 'Reset to automatic' }).click();
+    expect(state.bodies.patch.at(-1)).toEqual({ crop: null });
+    await expect(slide(page)).toHaveAttribute('data-share-crop', automatic);
+  });
+
+  test('a page too tall for an automatic crop says so on its slide and can be given a crop', async ({ page }) => {
+    test.setTimeout(60_000);
+    const state = fake();
+    await routePosts(page, state);
+    const { project, source, lines } = await openPdf(page, tallPdf(), 1);
+    const rects = lines.map(line => line.rect);
+    const annotation = await highlight(page, project.id, source.id, 1, lines.map(line => line.text).join('\n').slice(0, 5000), rects);
+    const base = record(project.id, source.id, annotation, lines.map(line => line.text).join(' ').slice(0, 5000), rects, [{ rects, color: 'yellow' }]);
+    state.template = { ...base, source: { ...base.source, page: 1 } };
+    await openPost(page, state, `/projects/${project.id}/sources/${source.id}`, instagram(state));
+    await expect(slide(page)).toHaveAttribute('data-slide', '1', { timeout: 20_000 });
+    await goTo(page, 2);
+    await expect(slide(page)).toHaveAttribute('data-share-card', 'quote/ink');
+    await expect(page.getByText('This highlight is too tall for an automatic crop. Adjust the crop to show part of it.')).toBeVisible();
+    await page.getByRole('button', { name: 'Adjust crop' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Adjust crop' });
+    await expect(dialog).toHaveAttribute('data-state', 'ready');
+    const start = cropBox(rects, 0);
+    const shown = (await page.locator('[data-crop-box]').getAttribute('data-crop'))!.split(',').map(Number);
+    [start.x1, start.y1, start.x2, start.y2].forEach((value, index) => expect(Math.abs(value - shown[index]!)).toBeLessThan(0.002));
+    await dialog.getByRole('button', { name: 'Bottom edge' }).focus();
+    for (let i = 0; i < 12; i++) await page.keyboard.press('Shift+ArrowUp');
+    await dialog.getByRole('button', { name: 'Apply' }).click();
+    await expect(slide(page)).toHaveAttribute('data-share-card', 'page/ink');
+  });
+
+  test('Carousel chosen on LinkedIn draws the three cards without a request, and Page brings the single card back', async ({ page }) => {
+    test.setTimeout(60_000);
+    const state = fake();
+    const { url } = await paper(page, state);
+    await openPost(page, state, url);
+    await expect(card(page)).toHaveAttribute('data-share-card', 'page/ink', { timeout: 20_000 });
+    await page.getByRole('radio', { name: 'Carousel' }).click();
+    expect(state.bodies.patch.at(-1)).toEqual({ style: 'carousel', look: 'ink' });
+    await expect(slide(page)).toHaveAttribute('data-slide-count', '3', { timeout: 20_000 });
+    await expect(card(page)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Save all slides (ZIP)' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Save image' })).toHaveCount(0);
+    await page.getByRole('radio', { name: 'Paper look' }).click();
+    expect(state.bodies.patch.at(-1)).toEqual({ style: 'carousel', look: 'paper' });
+    await expect(slide(page)).toHaveAttribute('data-share-card', 'idea/paper');
+    await page.getByRole('radio', { name: 'Page', exact: true }).click();
+    await expect(card(page)).toHaveAttribute('data-share-card', 'page/paper', { timeout: 20_000 });
+    await expect(slide(page)).toHaveCount(0);
+    expect(state.calls.change).toBe(0); expect(state.calls.start).toBe(0);
+  });
+
+  test('the three cards are copied and saved as a ZIP of three and a PDF of three pages', async ({ page, context }) => {
+    test.setTimeout(60_000);
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    const state = fake();
+    const { url } = await paper(page, state);
+    await openPost(page, state, url, instagram(state));
+    await expect(slide(page)).toHaveAttribute('data-slide', '1', { timeout: 20_000 });
+    await page.getByRole('button', { name: 'Copy slide' }).click();
+    await expect(page.getByText('Slide copied. Paste it into your post.')).toBeVisible();
+    let download = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Save slide' }).click();
+    expect((await download).suggestedFilename()).toBe(slideFileName('Share card paper', 1, 3));
+    download = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Save all slides (ZIP)' }).click();
+    let file = await download;
+    expect(file.suggestedFilename()).toBe(carouselFileName('Share card paper', 'zip'));
+    expect(zipNames(fs.readFileSync((await file.path())!))).toEqual([1, 2, 3].map(number => slideFileName('Share card paper', number, 3)));
+    download = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Save as PDF' }).click();
+    file = await download;
+    expect(file.suggestedFilename()).toBe(carouselFileName('Share card paper', 'pdf'));
+    expect(pdfPages(fs.readFileSync((await file.path())!))).toBe(3);
+  });
+
+  test('switching to Instagram and back makes one request each way', async ({ page }) => {
+    test.setTimeout(60_000);
+    const state = fake();
+    const { url } = await paper(page, state);
+    await openPost(page, state, url);
+    await expect(card(page)).toHaveAttribute('data-share-card', 'page/ink', { timeout: 20_000 });
+    await page.getByRole('radio', { name: DESTINATION_NAMES.instagram }).click();
+    await expect(slide(page)).toHaveAttribute('data-slide-count', '3', { timeout: 15_000 });
+    expect(state.calls.change).toBe(1);
+    await page.getByRole('radio', { name: DESTINATION_NAMES.linkedin }).click();
+    await expect(card(page)).toHaveAttribute('data-share-card', 'page/ink', { timeout: 15_000 });
+    await expect(slide(page)).toHaveCount(0);
+    expect(state.bodies.change).toEqual([{ destination: 'instagram', take: '' }, { destination: 'linkedin', take: '' }]);
+    expect(state.calls.patch).toBe(0);
+  });
+});
+
+test.describe('a Carousel post whose PDF was removed', () => {
+  test.beforeEach(async ({ page }) => { await mockAuth(page); });
+
+  test('draws its page slide from the quote and says why', async ({ page }) => {
+    const state = fake();
+    await routePosts(page, state);
+    const project = await createProjectViaApi(page, 'Removed PDF carousel');
+    state.current = { ...record(project.id, null, null, 'Attention lets every position look at every other position.', [{ x1: 0.1, y1: 0.2, x2: 0.9, y2: 0.23 }], []),
+      ...written('instagram', ''), destination: 'instagram' };
+    await page.goto(`/projects/${project.id}`);
+    await page.getByRole('tab', { name: /Highlights/ }).click();
+    await page.getByRole('button', { name: /Reach has a quadratic price/ }).click();
+    await expect(slide(page)).toHaveAttribute('data-slide-count', '3', { timeout: 20_000 });
+    await expect(page.getByText('The PDF for this post was removed. The page slide shows the quote instead.')).toBeVisible();
+    await expect(page.getByRole('radio', { name: 'Carousel' })).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByRole('radio', { name: 'Carousel' })).toBeEnabled();
+    for (const name of ['Page', 'Headline']) await expect(page.getByRole('radio', { name, exact: true })).toBeDisabled();
+    await page.getByRole('button', { name: 'Next slide' }).click();
+    await expect(slide(page)).toHaveAttribute('data-slide-kind', 'page');
+    await expect(slide(page)).toHaveAttribute('data-share-card', 'quote/ink');
+    await expect(slide(page)).toHaveAttribute('alt', `Slide 2 of 3, the page: ${CARD.quote}`);
+    await expect(page.getByRole('button', { name: 'Adjust crop' })).toHaveCount(0);
+    await noSideScroll(page);
+  });
+});
+
 // ── For review: the panel in a narrow and a wider side column ────────────────────────────────────────────────────────
 test.describe('the post panel, for review', () => {
   test.beforeEach(async ({ page }) => { await mockAuth(page); });
@@ -673,7 +934,8 @@ test.describe('the post panel, for review', () => {
         const panel = page.locator('[data-share-post]');
         state.previous = null; state.hold = false;
         await openPost(page, state, url, { ...written(destination, ''), destination });
-        await expect(card(page)).toHaveAttribute('data-share-card', `${DESTINATION_DEFAULTS[destination].style}/ink`, { timeout: 20_000 });
+        if (destination === 'instagram') await expect(slide(page)).toHaveAttribute('data-share-card', 'idea/ink', { timeout: 20_000 });
+        else await expect(card(page)).toHaveAttribute('data-share-card', `${DESTINATION_DEFAULTS[destination].style}/ink`, { timeout: 20_000 });
         const columnWidth = (await panel.boundingBox())!.width;
         expect(Math.abs(columnWidth - width)).toBeLessThanOrEqual(4);
         await noSideScroll(page);
@@ -895,5 +1157,54 @@ test.describe('share posts: fixes from the review', () => {
     await expect(caption(page)).toHaveText(shownText(state));
     await expect(card(page)).toHaveAttribute('data-share-card', 'page/marker');
     await expect(page.getByRole('switch', { name: 'Hashtags' })).toHaveAttribute('aria-checked', 'true');
+  });
+});
+
+// ── For review: the Carousel style in a narrow and a wider side column ───────────────────────────────────────────────
+test.describe('the Carousel style, for review', () => {
+  test.beforeEach(async ({ page }) => { await mockAuth(page); });
+
+  test('the three cards, the two-card case, the takeaway dialog, the style row and the export row at 360 and 480 px', async ({ page }) => {
+    test.setTimeout(180_000);
+    const shots = path.resolve('test-results/share-instagram');
+    fs.mkdirSync(shots, { recursive: true });
+    const state = fake();
+    await page.setViewportSize({ width: 806, height: 2200 });
+    const { url } = await paper(page, state);
+    const slide = (p: Page) => p.locator('img[data-slide]');
+    for (const width of [360, 480]) {
+      const name = (what: string) => path.join(shots, `${width}-${what}.png`);
+      const viewport = Math.round((width + 5) / 0.45);
+      const panel = page.locator('[data-share-post]');
+      const overflow = () => panel.evaluate(element => element.scrollWidth - element.clientWidth);
+      await page.setViewportSize({ width: viewport, height: 2200 });
+      state.previous = null;
+      await openPost(page, state, url, { ...written('instagram', ''), destination: 'instagram' });
+      await expect(slide(page)).toHaveAttribute('data-slide', '1', { timeout: 20_000 });
+      expect(Math.abs((await panel.boundingBox())!.width - width)).toBeLessThanOrEqual(4);
+      for (const number of [1, 2, 3]) {
+        if (number > 1) await page.getByRole('button', { name: 'Next slide' }).click();
+        await expect(slide(page)).toHaveAttribute('data-slide', String(number));
+        expect(await overflow()).toBeLessThanOrEqual(0);
+        await panel.screenshot({ path: name(`slide-${number}`) });
+      }
+      await page.getByRole('radiogroup', { name: 'Card style' }).locator('xpath=..').screenshot({ path: name('style-row-carousel') });
+      await page.getByRole('button', { name: 'Save as PDF' }).locator('xpath=../..').screenshot({ path: name('export-row') });
+      await page.getByRole('radio', { name: 'Headline', exact: true }).click();
+      await expect(page.locator('img[data-share-card]:not([data-slide])')).toHaveAttribute('data-share-card', 'headline/ink', { timeout: 20_000 });
+      await page.getByRole('radiogroup', { name: 'Card style' }).locator('xpath=..').screenshot({ path: name('style-row-headline') });
+      await panel.screenshot({ path: name('headline-chosen') });
+
+      const version = written('instagram', '');
+      await openPost(page, state, url, { ...version, card: { ...version.card, takeaway: '' }, destination: 'instagram' });
+      await expect(slide(page)).toHaveAttribute('data-slide-count', '2', { timeout: 20_000 });
+      expect(await overflow()).toBeLessThanOrEqual(0);
+      await panel.screenshot({ path: name('two-slides') });
+      await page.setViewportSize({ width: viewport, height: 900 });
+      await page.getByRole('button', { name: 'Add a takeaway' }).click();
+      await page.getByRole('dialog', { name: 'Add a takeaway' }).getByRole('textbox').fill('Long inputs need a cheaper kind of attention.');
+      await page.screenshot({ path: name('takeaway-dialog') });
+      await page.getByRole('dialog', { name: 'Add a takeaway' }).getByRole('button', { name: 'Cancel' }).click();
+    }
   });
 });

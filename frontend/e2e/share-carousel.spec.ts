@@ -8,6 +8,7 @@ import {
 import { carouselFileName, slideFileName } from '../src/lib/share-card/export';
 import { mockAuth, createProjectViaApi } from './helpers';
 import { tallPdf } from './tall-pdf';
+import { pdfPages, zipNames } from './export-files';
 import { cropBox } from '../src/lib/share-card/crop-box';
 
 // Carousels in the reader: several highlights of one PDF become one post. The project, the PDF
@@ -195,37 +196,6 @@ async function goTo(page: Page, number: number) {
   for (let at = current; at < number; at++) await page.getByRole('button', { name: 'Next slide' }).click();
   for (let at = current; at > number; at--) await page.getByRole('button', { name: 'Previous slide' }).click();
   await expect(slide(page)).toHaveAttribute('data-slide', String(number));
-}
-
-/** The names of the files in a stored ZIP, read from its central directory. */
-function zipNames(bytes: Buffer): string[] {
-  const end = bytes.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
-  expect(end).toBeGreaterThan(0);
-  const count = bytes.readUInt16LE(end + 10), names: string[] = [];
-  let at = bytes.readUInt32LE(end + 16);
-  for (let index = 0; index < count; index++) {
-    expect(bytes.readUInt32LE(at)).toBe(0x02014b50);
-    const nameLength = bytes.readUInt16LE(at + 28), extra = bytes.readUInt16LE(at + 30), comment = bytes.readUInt16LE(at + 32);
-    names.push(bytes.subarray(at + 46, at + 46 + nameLength).toString('utf8'));
-    // Each entry's local header is where the directory says, and holds a PNG.
-    const local = bytes.readUInt32LE(at + 42);
-    expect(bytes.readUInt32LE(local)).toBe(0x04034b50);
-    const data = local + 30 + bytes.readUInt16LE(local + 26) + bytes.readUInt16LE(local + 28);
-    expect(bytes.subarray(data, data + 8).toString('hex')).toBe('89504e470d0a1a0a');
-    at += 46 + nameLength + extra + comment;
-  }
-  return names;
-}
-
-/** The number of pages in a PDF: its page tree's count, checked against its page objects. */
-function pdfPages(bytes: Buffer): number {
-  const text = bytes.toString('latin1');
-  expect(text.startsWith('%PDF-')).toBe(true);
-  expect(text.trimEnd().endsWith('%%EOF')).toBe(true);
-  const pages = (text.match(/\/Type \/Page(?!s)\b/g) ?? []).length;
-  expect(Number(/\/Type \/Pages [^>]*\/Count (\d+)/.exec(text)?.[1])).toBe(pages);
-  expect((text.match(/\/Subtype \/Image/g) ?? []).length).toBe(pages);
-  return pages;
 }
 
 test.describe('carousels in the reader', () => {

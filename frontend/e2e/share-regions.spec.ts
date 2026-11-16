@@ -16,6 +16,7 @@ const POST_ID = '3b9c2d4e-5f60-4a71-8b92-a3b4c5d6e7f8';
 const TITLE = 'Sparse Attention at a Fraction of the Cost';
 const HEADLINE = 'Accuracy keeps climbing long after the curve looks flat';
 const FIGURE_TEXT = '100\nAccuracy\n50\n0\n0\n50\n100\nSteps';
+const TAKEAWAY = 'Training longer will not close the gap that the window leaves open.';
 const BUSY = 'pdfpal is busy writing posts. Try again shortly.';
 
 type Fake = {
@@ -36,7 +37,7 @@ function drafts(destination: Destination): Caption['drafts'] {
 /** A region or first-page post as the server returns it once written. */
 function regionRecord(projectId: string, sourceId: string | null, kind: Exclude<SourceKind, 'highlight'>, page: number, region: PageRect, text: string, destination: Destination = 'linkedin'): ShareCardRecord {
   const defaults = DESTINATION_DEFAULTS[destination];
-  const card: CardContent = { quote: '', quoteEdited: false, emphasis: '', headline: HEADLINE, pull: '', topic: 'Training', takeawaysTitle: '', takeaways: [], style: defaults.style, look: 'ink', crop: region };
+  const card: CardContent = { quote: '', quoteEdited: false, emphasis: '', headline: HEADLINE, pull: '', topic: 'Training', takeawaysTitle: '', takeaways: [], style: defaults.style, look: 'ink', crop: region, set: null, takeaway: TAKEAWAY };
   return {
     id: POST_ID, project_id: projectId, source_id: sourceId, annotation_id: null, status: 'complete', can_undo: false, instruction: '', error: null,
     created_at: '2026-11-15T10:00:00.000Z', updated_at: '2026-11-15T10:00:01.000Z', destination, take: '', marks: [],
@@ -76,9 +77,10 @@ async function routePosts(page: Page, state: Fake) {
       state.patches.push(body);
       if ('crop' in body) state.current = { ...post, card: { ...post.card!, crop: body.crop ?? post.source.region }, updated_at: new Date().toISOString() };
       else if ('style' in body) {
-        if (!['page', 'headline'].includes(body.style)) return json(400, { detail: 'A post made from a region has no quote or takeaways, so it uses the Page or Headline style.' });
+        if (!['page', 'headline', 'carousel'].includes(body.style)) return json(400, { detail: 'A post made from a region has no quote or takeaways, so it uses the Page, Headline or Carousel style.' });
         state.current = { ...post, card: { ...post.card!, style: body.style, look: body.look }, updated_at: new Date().toISOString() };
-      } else return json(409, { detail: 'Not expected in this test.' });
+      } else if ('takeaway' in body) state.current = { ...post, card: { ...post.card!, takeaway: body.takeaway }, can_undo: true, updated_at: new Date().toISOString() };
+      else return json(409, { detail: 'Not expected in this test.' });
       return json(200, state.current);
     }
     return json(409, { detail: 'Not expected in this test.' });
@@ -111,7 +113,8 @@ async function pageLines(page: Page, pageNumber: number): Promise<Line[]> {
 }
 
 const postTab = (page: Page) => page.getByRole('button', { name: '✦ Post', exact: true });
-const card = (page: Page) => page.locator('img[data-share-card]');
+const card = (page: Page) => page.locator('img[data-share-card]:not([data-slide])');
+const slide = (page: Page) => page.locator('img[data-slide]');
 const cropBox = (page: Page) => page.locator('[data-crop-box]');
 const cropOf = async (page: Page) => (await cropBox(page).getAttribute('data-crop'))!.split(',').map(Number);
 const fixed = (region: PageRect) => [region.x1, region.y1, region.x2, region.y2].map(value => value.toFixed(4)).join(',');
@@ -335,7 +338,9 @@ test.describe('a region post whose PDF was removed', () => {
     const state = fake();
     await routePosts(page, state);
     const project = await createProjectViaApi(page, 'Removed region PDF');
-    state.current = regionRecord(project.id, null, 'region', 3, { x1: 0.1, y1: 0.3, x2: 0.9, y2: 0.6 }, FIGURE_TEXT, 'instagram');
+    const removed = regionRecord(project.id, null, 'region', 3, { x1: 0.1, y1: 0.3, x2: 0.9, y2: 0.6 }, FIGURE_TEXT, 'instagram');
+    // The reader chose Headline on Instagram; the Carousel style without its PDF is covered below.
+    state.current = { ...removed, card: { ...removed.card!, style: 'headline' } };
     await page.goto(`/projects/${project.id}`);
     await page.getByRole('tab', { name: /Highlights/ }).click();
     const entry = page.locator(`[data-post-id="${POST_ID}"]`);
@@ -353,6 +358,78 @@ test.describe('a region post whose PDF was removed', () => {
     await noSideScroll(page);
     fs.mkdirSync(SHOTS, { recursive: true });
     await page.locator('[data-share-post]').screenshot({ path: path.join(SHOTS, 'removed-pdf.png') });
+  });
+});
+
+// ── The Carousel style for region and first-page posts ───────────────────────────────────────────────────────────────
+test.describe('region and first-page posts in the Carousel style', () => {
+  test.beforeEach(async ({ page }) => { await mockAuth(page); });
+
+  test('a region post is three cards whose page card is the region, and its crop resets to the region', async ({ page }) => {
+    test.setTimeout(60_000);
+    const state = fake();
+    await routePosts(page, state);
+    const { project, source, url } = await openPaper(page, 2);
+    const region = { x1: 0.12, y1: 0.2, x2: 0.88, y2: 0.52 };
+    state.current = regionRecord(project.id, source.id, 'region', 2, region, FIGURE_TEXT, 'instagram');
+    await page.goto(`${url}?post=${POST_ID}`);
+    await expect(slide(page)).toHaveAttribute('data-slide-count', '3', { timeout: 20_000 });
+    await expect(page.getByRole('radiogroup', { name: 'Card style' }).getByRole('radio')).toHaveText(['Page', 'Headline', 'Carousel']);
+    await expect(page.getByRole('radio', { name: 'Carousel' })).toHaveAttribute('aria-checked', 'true');
+    await page.getByRole('button', { name: 'Next slide' }).click();
+    await expect(slide(page)).toHaveAttribute('data-slide-kind', 'page');
+    await expect(slide(page)).toHaveAttribute('data-share-card', 'page/ink');
+    await expect(slide(page)).toHaveAttribute('data-share-crop', fixed(region));
+    await expect(page.getByText('The region you chose')).toBeVisible();
+    await page.getByRole('button', { name: 'Next slide' }).click();
+    await expect(slide(page)).toHaveAttribute('alt', `Slide 3 of 3, the takeaway: ${TAKEAWAY}`);
+    await page.getByRole('button', { name: 'Previous slide' }).click();
+    await page.getByRole('button', { name: 'Adjust crop' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Adjust crop' });
+    await expect(dialog).toHaveAttribute('data-state', 'ready');
+    await dialog.getByRole('button', { name: 'Back to the original region' }).click();
+    expect(state.patches.at(-1)).toEqual({ crop: null });
+    await expect(slide(page)).toHaveAttribute('data-share-crop', fixed(region));
+    // Choosing Headline is one card again; Carousel brings the three back.
+    await page.getByRole('radio', { name: 'Headline', exact: true }).click();
+    await expect(card(page)).toHaveAttribute('data-share-card', 'headline/ink', { timeout: 20_000 });
+    await page.getByRole('radio', { name: 'Carousel' }).click();
+    await expect(slide(page)).toHaveAttribute('data-slide-count', '3', { timeout: 20_000 });
+    expect(state.patches.filter(patch => 'style' in patch)).toEqual([{ style: 'headline', look: 'ink' }, { style: 'carousel', look: 'ink' }]);
+  });
+
+  test('a first-page post is three cards: the hook, the first page, the takeaway', async ({ page }) => {
+    test.setTimeout(60_000);
+    const state = fake();
+    await routePosts(page, state);
+    const { project, source, url } = await openPaper(page, 1);
+    const region = { x1: 0.08, y1: 0.04, x2: 0.92, y2: 0.32 };
+    state.current = regionRecord(project.id, source.id, 'paper', 1, region, TITLE, 'instagram');
+    await page.goto(`${url}?post=${POST_ID}`);
+    await expect(slide(page)).toHaveAttribute('alt', `Slide 1 of 3, cover: ${HEADLINE}`, { timeout: 20_000 });
+    await page.getByRole('button', { name: 'Next slide' }).click();
+    await expect(slide(page)).toHaveAttribute('data-share-card', 'page/ink');
+    await expect(slide(page)).toHaveAttribute('data-share-crop', fixed(region));
+    // A post without a quote names its page card by its headline.
+    await expect(slide(page)).toHaveAttribute('alt', `Slide 2 of 3, the page: ${HEADLINE}`);
+    await expect(page.getByRole('button', { name: 'Save Story (9:16)' })).toHaveCount(0);
+  });
+
+  test('a region post in the Carousel style without its PDF draws its page card from the headline', async ({ page }) => {
+    const state = fake();
+    await routePosts(page, state);
+    const project = await createProjectViaApi(page, 'Removed region carousel');
+    state.current = regionRecord(project.id, null, 'region', 3, { x1: 0.1, y1: 0.3, x2: 0.9, y2: 0.6 }, FIGURE_TEXT, 'instagram');
+    await page.goto(`/projects/${project.id}`);
+    await page.getByRole('tab', { name: /Highlights/ }).click();
+    await page.locator(`[data-post-id="${POST_ID}"]`).click();
+    await expect(slide(page)).toHaveAttribute('data-slide-count', '3', { timeout: 20_000 });
+    await expect(page.getByText('The PDF for this post was removed. The page slide shows the headline instead.')).toBeVisible();
+    await page.getByRole('button', { name: 'Next slide' }).click();
+    await expect(slide(page)).toHaveAttribute('data-slide-kind', 'page');
+    await expect(slide(page)).toHaveAttribute('data-share-card', 'quote/ink');
+    await expect(page.getByRole('button', { name: 'Adjust crop' })).toHaveCount(0);
+    await noSideScroll(page);
   });
 });
 
@@ -395,7 +472,8 @@ test.describe('region posts, for review', () => {
         state.current = regionRecord(project.id, source.id, 'region', 2, { x1: 0.15, y1: 0.22, x2: 0.84, y2: 0.53 }, FIGURE_TEXT, destination);
         await page.setViewportSize({ width: Math.round((width + 5) / 0.45), height: 2200 });
         await page.goto(`${url}?post=${POST_ID}`);
-        await expect(card(page)).toHaveAttribute('data-share-card', `${DESTINATION_DEFAULTS[destination].style}/ink`, { timeout: 20_000 });
+        if (destination === 'instagram') await expect(slide(page)).toHaveAttribute('data-slide-count', '3', { timeout: 20_000 });
+        else await expect(card(page)).toHaveAttribute('data-share-card', `${DESTINATION_DEFAULTS[destination].style}/ink`, { timeout: 20_000 });
         await noSideScroll(page);
         await page.locator('[data-share-post]').screenshot({ path: shot(`${destination}-post`) });
       }
