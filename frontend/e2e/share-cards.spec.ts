@@ -64,7 +64,7 @@ const CARD: CardContent = {
   quote: 'the cost grows with the square of the sequence length', quoteEdited: false, emphasis: 'the square',
   headline: 'Reach has a quadratic price', pull: 'long documents become expensive', topic: 'Attention',
   takeawaysTitle: 'What full attention costs', style: 'page', look: 'ink', crop: null, set: null,
-  takeaway: 'Long documents need another plan than full attention.',
+  takeaway: 'Long documents need another plan than full attention.', paper: null,
   takeaways: [{ title: 'Reach is global', detail: 'Every position can use every other one.' },
     { title: 'Cost grows fast', detail: 'Doubling the input quadruples the work.' }, { title: 'Long inputs hurt', detail: 'Documents become expensive quickly.' }],
 };
@@ -172,6 +172,7 @@ async function routePosts(page: Page, state: Fake) {
       else if ('link' in body) next = { card, caption: { ...caption, link: body.link } };
       else if ('headline' in body) { next = { card: { ...card, headline: body.headline }, caption }; keep = true; }
       else if ('takeaway' in body) { next = { card: { ...card, takeaway: body.takeaway }, caption }; keep = true; }
+      else if ('paper_text' in body) return json(400, { detail: 'Only a paper post has a question, method and results.' });
       else if ('caption' in body) { next = { card, caption: { ...caption, edited: body.caption } }; keep = true; }
       // As the server does: look, style, crop, hashtags and link also change the version behind Undo, so they survive it.
       if (state.previous && !keep && !('angle' in body)) {

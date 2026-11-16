@@ -7,7 +7,7 @@ import {
 } from '../../src/shared/share-card';
 import { mockAuth, createProjectViaApi } from './helpers';
 
-// Region and first-page posts in the reader. The project and the PDF (test/fixtures/share-regions.pdf, made by
+// Region posts in the reader (paper posts are in share-paper.spec.ts). The project and the PDF (test/fixtures/share-regions.pdf, made by
 // test/fixtures/make-share-regions-pdf.mjs) are real; the share-card routes are answered by the small fake below, so
 // no assistant is involved. Page 1 is a paper's first page; page 2 holds a plotted figure with axis labels.
 
@@ -37,7 +37,7 @@ function drafts(destination: Destination): Caption['drafts'] {
 /** A region or first-page post as the server returns it once written. */
 function regionRecord(projectId: string, sourceId: string | null, kind: Exclude<SourceKind, 'highlight'>, page: number, region: PageRect, text: string, destination: Destination = 'linkedin'): ShareCardRecord {
   const defaults = DESTINATION_DEFAULTS[destination];
-  const card: CardContent = { quote: '', quoteEdited: false, emphasis: '', headline: HEADLINE, pull: '', topic: 'Training', takeawaysTitle: '', takeaways: [], style: defaults.style, look: 'ink', crop: region, set: null, takeaway: TAKEAWAY };
+  const card: CardContent = { quote: '', quoteEdited: false, emphasis: '', headline: HEADLINE, pull: '', topic: 'Training', takeawaysTitle: '', takeaways: [], style: defaults.style, look: 'ink', crop: region, set: null, takeaway: TAKEAWAY, paper: null };
   return {
     id: POST_ID, project_id: projectId, source_id: sourceId, annotation_id: null, status: 'complete', can_undo: false, instruction: '', error: null,
     created_at: '2026-11-15T10:00:00.000Z', updated_at: '2026-11-15T10:00:01.000Z', destination, take: '', marks: [],
@@ -62,7 +62,7 @@ async function routePosts(page: Page, state: Fake) {
     if (request.method() === 'GET' && tail === '') {
       const post = state.current;
       return json(200, post ? [{ id: post.id, status: post.status, annotation_id: null, source_id: post.source_id, page: post.source.page, kind: post.source.kind,
-        title: post.card?.headline || (post.source.kind === 'paper' ? 'First page' : `Region on p. ${post.source.page}`), updated_at: post.updated_at }] : []);
+        title: post.card?.headline || (post.source.kind === 'paper' ? 'Paper' : `Region on p. ${post.source.page}`), updated_at: post.updated_at }] : []);
     }
     const post = state.current;
     if (!post || tail.split('/')[1] !== post.id) return json(404, { detail: 'Post not found.' });
@@ -135,7 +135,7 @@ async function noSideScroll(page: Page, selector = '[data-share-post]') {
   expect(overflow).toBeLessThanOrEqual(0);
 }
 
-test.describe('region and first-page posts in the reader', () => {
+test.describe('region posts in the reader', () => {
   test.beforeEach(async ({ page }) => { await mockAuth(page); });
 
   test('choose a region with the pointer and create the post', async ({ page }) => {
@@ -144,7 +144,7 @@ test.describe('region and first-page posts in the reader', () => {
     await routePosts(page, state);
     const { source } = await openPaper(page, 2);
     await postTab(page).click();
-    await expect(page.getByText('A figure or passage on page 2, or the title and abstract.')).toBeVisible();
+    await expect(page.getByText('A figure or passage on page 2; or the paper: its question, method and results.')).toBeVisible();
     await page.getByRole('button', { name: 'Share a region' }).click();
     const dialog = page.getByRole('dialog', { name: 'Choose a region' });
     await expect(dialog).toHaveAttribute('data-state', 'ready');
@@ -209,7 +209,7 @@ test.describe('region and first-page posts in the reader', () => {
     await expect(dialog).toHaveAttribute('data-state', 'ready');
     // The reader scrolls back to page 1 behind the modal: the panel's hint follows it, the picker does not.
     await page.locator('[data-pdf-page="1"]').evaluate(element => element.scrollIntoView({ block: 'start' }));
-    await expect(page.getByText('A figure or passage on page 1, or the title and abstract.')).toBeAttached();
+    await expect(page.getByText('A figure or passage on page 1; or the paper: its question, method and results.')).toBeAttached();
     // Give a picker that followed the reader time to read page 1 before the post is created.
     await page.waitForTimeout(500);
     await expect(dialog).toHaveAttribute('data-state', 'ready');
@@ -233,34 +233,6 @@ test.describe('region and first-page posts in the reader', () => {
     await expect(page.getByRole('dialog', { name: 'Choose a region' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Share a region' })).toBeFocused();
     expect(state.starts).toHaveLength(0);
-  });
-
-  test('share the first page: the box starts over the title, authors and abstract', async ({ page }) => {
-    test.setTimeout(60_000);
-    const state = fake();
-    await routePosts(page, state);
-    const { lines } = await openPaper(page, 1);
-    await postTab(page).click();
-    await page.getByRole('button', { name: 'Share the first page' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Share the first page' });
-    await expect(dialog).toHaveAttribute('data-state', 'ready');
-    const start = await cropOf(page);
-    const line = (text: string | RegExp) => lines.find(entry => typeof text === 'string' ? entry.text.includes(text) : text.test(entry.text))!.rect;
-    for (const text of [TITLE, 'Ada Lovelace', 'Abstract', 'Full attention lets every position', 'learning-rate schedule.'])
-      expect(inside(line(text), start), `${text} inside ${start}`).toBe(true);
-    // The introduction's heading and the text under it are left out.
-    expect(start[3]!).toBeLessThan(line('1 Introduction').y1);
-    expect(start[3]!).toBeGreaterThan(line('learning-rate schedule.').y2);
-    await dialog.getByRole('button', { name: 'Create post' }).click();
-    await expect(card(page)).toHaveAttribute('data-share-card', 'page/ink', { timeout: 20_000 });
-    const body = state.starts[0]!;
-    expect(body).toMatchObject({ kind: 'paper', page: 1 });
-    expect(fixed(body.region)).toBe(start.map(value => value.toFixed(4)).join(','));
-    expect(body.text.split('\n')[0]).toBe(TITLE);
-    expect(body.text).toContain('Abstract');
-    expect(body.text).toMatch(/learning-rate schedule\.$/);
-    expect(body.text).not.toContain('Introduction');
-    await expect(card(page)).toHaveAttribute('alt', 'Page card: the first page of the paper');
   });
 
   test('a refused start shows its message and opens nothing', async ({ page }) => {
@@ -362,7 +334,7 @@ test.describe('a region post whose PDF was removed', () => {
 });
 
 // ── The Carousel style for region and first-page posts ───────────────────────────────────────────────────────────────
-test.describe('region and first-page posts in the Carousel style', () => {
+test.describe('region posts in the Carousel style', () => {
   test.beforeEach(async ({ page }) => { await mockAuth(page); });
 
   test('a region post is three cards whose page card is the region, and its crop resets to the region', async ({ page }) => {
@@ -398,23 +370,6 @@ test.describe('region and first-page posts in the Carousel style', () => {
     expect(state.patches.filter(patch => 'style' in patch)).toEqual([{ style: 'headline', look: 'ink' }, { style: 'carousel', look: 'ink' }]);
   });
 
-  test('a first-page post is three cards: the hook, the first page, the takeaway', async ({ page }) => {
-    test.setTimeout(60_000);
-    const state = fake();
-    await routePosts(page, state);
-    const { project, source, url } = await openPaper(page, 1);
-    const region = { x1: 0.08, y1: 0.04, x2: 0.92, y2: 0.32 };
-    state.current = regionRecord(project.id, source.id, 'paper', 1, region, TITLE, 'instagram');
-    await page.goto(`${url}?post=${POST_ID}`);
-    await expect(slide(page)).toHaveAttribute('alt', `Slide 1 of 3, cover: ${HEADLINE}`, { timeout: 20_000 });
-    await page.getByRole('button', { name: 'Next slide' }).click();
-    await expect(slide(page)).toHaveAttribute('data-share-card', 'page/ink');
-    await expect(slide(page)).toHaveAttribute('data-share-crop', fixed(region));
-    // A post without a quote names its page card by its headline.
-    await expect(slide(page)).toHaveAttribute('alt', `Slide 2 of 3, the page: ${HEADLINE}`);
-    await expect(page.getByRole('button', { name: 'Save Story (9:16)' })).toHaveCount(0);
-  });
-
   test('a region post in the Carousel style without its PDF draws its page card from the headline', async ({ page }) => {
     const state = fake();
     await routePosts(page, state);
@@ -437,7 +392,7 @@ test.describe('region and first-page posts in the Carousel style', () => {
 test.describe('region posts, for review', () => {
   test.beforeEach(async ({ page }) => { await mockAuth(page); });
 
-  test('the post list, the region and first-page modals, and a region post for LinkedIn and Instagram at 360 and 480 px', async ({ page }) => {
+  test('the post list, the region modal, and a region post for LinkedIn and Instagram at 360 and 480 px', async ({ page }) => {
     test.setTimeout(120_000);
     fs.mkdirSync(SHOTS, { recursive: true });
     const state = fake();
@@ -463,10 +418,6 @@ test.describe('region posts, for review', () => {
       await expect(page.getByRole('dialog', { name: 'Choose a region' })).toHaveAttribute('data-state', 'ready');
       await page.screenshot({ path: shot('region-modal') });
       await page.keyboard.press('Escape');
-      await page.getByRole('button', { name: 'Share the first page' }).click();
-      await expect(page.getByRole('dialog', { name: 'Share the first page' })).toHaveAttribute('data-state', 'ready');
-      await page.screenshot({ path: shot('first-page-modal') });
-      await page.keyboard.press('Escape');
 
       for (const destination of ['linkedin', 'instagram'] as const) {
         state.current = regionRecord(project.id, source.id, 'region', 2, { x1: 0.15, y1: 0.22, x2: 0.84, y2: 0.53 }, FIGURE_TEXT, destination);
@@ -487,12 +438,12 @@ test.describe('region posts, for review', () => {
     state.current = null;
     await page.goto(url);
     await postTab(page).click();
-    await page.getByRole('button', { name: 'Share the first page' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Share the first page' });
+    await page.getByRole('button', { name: 'Share a region' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Choose a region' });
     await expect(dialog).toHaveAttribute('data-state', 'ready');
     const box = (await dialog.boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x + box.width).toBeLessThanOrEqual(390);
     await expect(dialog.getByRole('button', { name: 'Create post' })).toBeInViewport();
-    await page.screenshot({ path: path.join(SHOTS, 'phone-first-page-modal.png') });
+    await page.screenshot({ path: path.join(SHOTS, 'phone-region-modal.png') });
   });
 });
