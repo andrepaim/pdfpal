@@ -396,3 +396,41 @@ test('a carousel is described and listed by its headline and its size', () => {
   assert.equal(summaryTitle(setSource, 'Reach has a quadratic price'), 'Reach has a quadratic price')
   assert.equal(summaryTitle(setSource, ''), '3 highlights')
 })
+
+test('review: a thousands reading never matches a smaller number, and rounding never bridges one', () => {
+  const source = '312 managers across 5 firms answered the survey [10]. Page 20. Of 12,500 patients, 13.4% were older.'
+  for (const draft of ['10,000 managers', '312,000 managers', '5,000 firms', '20,000 responses', '5.000 firms', '10.000 people'])
+    assert.deepEqual(unsupportedNumbers(draft, [source]), [numbersIn(draft)[0]], draft)
+  // 12,500 is not 12.5, so it supports neither 13 nor 12.5.
+  assert.deepEqual(unsupportedNumbers('13 hospitals', ['Of 12,500 patients']), ['13'])
+  assert.deepEqual(unsupportedNumbers('12.5 patients', ['Of 12,500 patients']), ['12.5'])
+  // A draft's thousands reading is not rounded either: 1,234 is not 1.2341 rounded.
+  assert.deepEqual(unsupportedNumbers('1,234 items', ['a ratio of 1.2341']), ['1,234'])
+  // What must still pass.
+  for (const [draft, allowed] of [['1,572 alliances', '1572 alliances'], ['1572 alliances', '1,572 alliances'], ['0.65', 'g = .65'],
+    ['1,572 alianças', 'Foram 1.572 alianças'], ['1.572', 'Foram 1.572 alianças'], ['12,500 patients', 'Of 12 500 patients'], ['13%', 'were 13.4% older'],
+    ['0.650', 'g = 0.65'], ['1.4 percent', 'by 1.35 percent']] as const)
+    assert.deepEqual(unsupportedNumbers(draft, [allowed]), [], `${draft} | ${allowed}`)
+})
+
+test('review: the source side of the numbers check is lenient, the draft side exact', () => {
+  for (const [draft, allowed] of [
+    ['from 2010–19', 'between 2010 and 2019'], ['from 2010-19', 'in 2010 and in 2019'],
+    ['12 hospitals', 'data of12 hospitals'], ['in 2017', 'collected in2017'],
+    ['100 people', 'one hundred people'], ['250 people', 'two hundred and fifty people'], ['1000 people', 'a thousand people'],
+    ['the 20th century', 'the twentieth century'], ['the 21st trial', 'the twenty-first trial'],
+    ['62%', 'in 2019,62% of firms'], ['2019', 'in 2019,62% of firms'],
+  ] as const) assert.deepEqual(unsupportedNumbers(draft, [allowed]), [], `${draft} | ${allowed}`)
+  // Exact on the draft side: an abbreviated end still needs its year; names with digits in the draft are still skipped.
+  assert.deepEqual(unsupportedNumbers('from 2010–19', ['in 2010 only']), ['19'])
+  assert.deepEqual(unsupportedNumbers('p53 and CO2', ['nothing']), [])
+  assert.deepEqual(unsupportedNumbers('101 people', ['one hundred people']), ['101'])
+  // A sign is prose, not a number: a fall of 12% supports "12%".
+  assert.deepEqual(unsupportedNumbers('a rise of 12%', ['a change of −12%']), [])
+})
+
+test('review: a take always leaves room for words of the assistant\'s own, even with a change', () => {
+  assert.equal(draftLimits('linkedin', { take: 'My take.', changed: true }).minParagraphs, 2)
+  assert.equal(draftLimits('x', { take: 'My take.', changed: true }).minParagraphs, 2)
+  assert.equal(draftLimits('linkedin', { changed: true }).minParagraphs, 1)
+})
