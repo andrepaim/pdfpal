@@ -118,6 +118,8 @@ export const shareCardApi = {
   showTags: (projectId: string, id: string, showTags: boolean) => patch(projectId, id, { show_tags: showTags }),
   link: (projectId: string, id: string, link: LinkPlacement) => patch(projectId, id, { link }),
   editHeadline: (projectId: string, id: string, headline: string) => patch(projectId, id, { headline }),
+  /** A single post's takeaway, the third card of the Carousel style: 1 to 140 characters, behind Undo. */
+  editTakeaway: (projectId: string, id: string, takeaway: string) => patch(projectId, id, { takeaway }),
   editCaption: (projectId: string, id: string, caption: string) => patch(projectId, id, { caption }),
   editQuote: (projectId: string, id: string, quote: string) => patch(projectId, id, { quote }),
   editCredit: (projectId: string, id: string, credit: string) => patch(projectId, id, { credit }),

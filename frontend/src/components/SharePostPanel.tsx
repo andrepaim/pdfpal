@@ -62,6 +62,8 @@ export const xLength = (text: string) => [...text.replace(/https?:\/\/\S+/giu, '
 
 const PICTURED: ReadonlySet<ShareStyle> = new Set(['page', 'headline'])
 const WHOLE_PAGE: PageRect = { x1: 0, y1: 0, x2: 1, y2: 1 }
+/** The empty takeaway slide "Add a takeaway" edits, for a post made before posts had one. */
+const NEW_TAKEAWAY = { kind: 'takeaway', kicker: 'The takeaway', text: '' } as const
 /** Where the crop editor starts when there is no crop to start from: the highlight's own lines, else the whole page. */
 const startingCrop = (rects: PageRect[]) => rects.length ? cropBox(rects, 0) : WHOLE_PAGE
 /** True for a post made from a region or the first page; a stored source without a kind is a highlight's. */
@@ -273,7 +275,11 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
   const regionPost = fromRegion(record?.source.kind)
   // A carousel: its slides replace the single card, with their own crops and words.
   const isSet = record?.source.kind === 'set'
-  const carousel = useSlides(isSet ? record : null, look, fileUrl)
+  // A single post in the Carousel style: its three cards (two without a takeaway) in the same viewer as a set's slides.
+  const postCarousel = !isSet && style === 'carousel'
+  const slideMode = isSet || postCarousel
+  const carousel = useSlides(isSet || postCarousel ? record : null, look, fileUrl, postCarousel)
+  const [addingTakeaway, setAddingTakeaway] = useState(false)
   const [editingSlide, setEditingSlide] = useState(false)
   const [slideCrop, setSlideCrop] = useState<{ item: number; page: number; value: PageRect } | null>(null)
   const [exporting, setExporting] = useState<{ what: string; done: number; total: number } | null>(null)
@@ -326,7 +332,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
 
   // Draws the preview, keeping the previous picture on screen while the next one renders. Keyed as the crop is, and
   // for the same reason; a picture finished after the post closed gets no URL, so nothing is left unrevoked.
-  const renderKey = record && card && !isSet && (!pictured || cropReady) ? (pictured ? cropKey : JSON.stringify([version, style, look, size])) : ''
+  const renderKey = record && card && !slideMode && (!pictured || cropReady) ? (pictured ? cropKey : JSON.stringify([version, style, look, size])) : ''
   const renderJobs = useRef(new Map<string, Promise<Shown | null>>())
   const renderJob = useRef<(key: string) => Promise<Shown | null>>(() => Promise.resolve(null))
   if (record && card) {
@@ -396,7 +402,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
   }
 
   /** The picture that Copy copies: the card at the destination's size, or the carousel's slide in view. */
-  const picture = async () => isSet ? canvasPng((await carousel.draw(carousel.index)).canvas) : (await image(size)).blob
+  const picture = async () => slideMode ? canvasPng((await carousel.draw(carousel.index)).canvas) : (await image(size)).blob
   const copyImage = () => act(async () => {
     const desktop = window.pdfpalDesktop?.copyImage
     if (desktop) {
@@ -407,7 +413,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
     if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) throw new Error(COPY_UNAVAILABLE)
     // A promise keeps the click's permission to write while the card renders.
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': picture() })]).catch(() => { throw new Error(COPY_UNAVAILABLE) })
-  }, { done: { text: isSet ? SLIDE_COPIED : IMAGE_COPIED } })
+  }, { done: { text: slideMode ? SLIDE_COPIED : IMAGE_COPIED } })
 
   const carouselTitle = record?.source.title || 'post'
   const saveSlide = () => act(async () => {
@@ -439,6 +445,8 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
     const removed = !text && (slide.kind === 'study' || slide.kind === 'limitations')
     const done = removed ? { text: `The ${slideName(slide).toLowerCase().replace(/^the /u, '')} slide was removed.`, undo: true } : { text: 'Slide saved.' }
     if (slide.kind === 'cover') void act(() => shareCardApi.editHeadline(projectId, record.id, text), { done })
+    else if (slide.kind === 'page') return
+    else if (!isSet && slide.kind === 'takeaway') void act(() => shareCardApi.editTakeaway(projectId, record.id, text), { done })
     else void act(() => shareCardApi.editSetText(projectId, record.id, slide.kind === 'point' ? { field: 'point', index: slide.item, text } : { field: slide.kind, text }), { done })
   }
 
@@ -570,7 +578,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
       {restyleFailure && <p role="alert" style={alert}>{restyleFailure}</p>}
     </div>
   ) : null
-  const carouselExport = isSet ? (
+  const carouselExport = slideMode ? (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button type="button" onClick={() => void copyImage()} disabled={busy} style={{ ...primary, flex: 1, minWidth: 120 }}>Copy slide</button>
@@ -591,6 +599,30 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
       )}
     </div>
   ) : null
+
+  // ── A single post in the Carousel style: the hook, the page, the takeaway ──
+  const pageShown = postCarousel && slide?.kind === 'page' && slideShown ? slideShown : null
+  const pageReason = postCarousel && slide?.kind === 'page' ? carousel.reason : null
+  const canAdjustPage = postCarousel && slide?.kind === 'page' && !!fileUrl && (!!pageShown?.crop || pageReason === 'too-tall') && !active
+  const pageStart = card ? card.crop ?? pageShown?.crop?.box ?? startingCrop(record.source.rects) : WHOLE_PAGE
+  const fallbackWords = card?.quote ? 'the quote' : 'the headline'
+  const postCarouselView = postCarousel && card ? <>
+    <SlideViewer slides={carousel.slides} index={carousel.index} onIndex={carousel.setIndex} shown={carousel.shown} label={cardDescription(card, 'carousel', record.source)} />
+    {carousel.drawError && <p role="alert" style={alert}>{carousel.drawError}</p>}
+    {!fileUrl && <div style={{ ...muted, textAlign: 'center' }}>{PAGE_UNAVAILABLE['no-source']} The page slide shows {fallbackWords} instead.</div>}
+    {fileUrl && pageReason && <div style={{ ...muted, textAlign: 'center' }}>{pageReason === 'too-tall' ? TOO_TALL_HINT : `${PAGE_UNAVAILABLE[pageReason]} The page slide shows ${fallbackWords} instead.`}</div>}
+  </> : null
+  const postCarouselButtons = postCarousel && card && !active ? (
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+      {slide && slide.kind !== 'page' && <button type="button" onClick={() => setEditingSlide(true)} style={button}>Edit slide</button>}
+      {canAdjustPage && <button type="button" onClick={() => setEditingCrop(true)} style={button}>Adjust crop</button>}
+      {canAdjustPage && pageReason !== 'too-tall' && <span style={muted}>{regionPost ? (sameBox(card.crop, record.source.region) ? 'The region you chose' : 'Your crop') : card.crop ? 'Your crop' : 'Automatic crop'}</span>}
+      {!card.takeaway && <button type="button" onClick={() => setAddingTakeaway(true)}
+        style={{ background: 'none', border: 'none', padding: '4px 0', color: '#a5b4fc', fontSize: 12, cursor: 'pointer', textDecoration: 'underline' }}>Add a takeaway</button>}
+    </div>
+  ) : null
+  const canEditCrop = postCarousel ? canAdjustPage : canAdjust
+  const editorStart = postCarousel ? pageStart : cropStart
 
   return (
     <div data-share-post style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -638,21 +670,23 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
       {card && caption && <>
         {isSet ? carouselImage : <div style={section}>
           {(active || record.status === 'failed' || record.status === 'cancelled') && <div style={{ ...muted, fontWeight: 600 }}>Your last completed version</div>}
-          <div style={{ width: '100%', maxWidth: 440, alignSelf: 'center', aspectRatio: ratio, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', background: '#111114' }}>
-            {shown && <img src={shown.url} alt={shown.alt} data-share-card={`${shown.style}/${shown.look}`} data-share-size={`${shown.width}x${shown.height}`}
-              data-share-marks={shown.crop ? shown.crop.marks.length : undefined} data-share-crop={shown.crop ? cropText(shown.crop.box) : undefined}
-              style={{ width: '100%', height: '100%', display: 'block' }} />}
-          </div>
-          {drawError && <p role="alert" style={alert}>{drawError}</p>}
-          {tooTall && <div style={{ ...muted, textAlign: 'center' }}>{TOO_TALL_HINT}</div>}
-          {unavailable && !tooTall && <div style={{ ...muted, textAlign: 'center' }}>{unavailable === 'no-source' ? 'Page and Headline aren’t available' : `${STYLE_NAMES[style]} isn’t available`}: {PAGE_UNAVAILABLE[unavailable]}</div>}
+          {postCarousel ? postCarouselView : <>
+            <div style={{ width: '100%', maxWidth: 440, alignSelf: 'center', aspectRatio: ratio, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', background: '#111114' }}>
+              {shown && <img src={shown.url} alt={shown.alt} data-share-card={`${shown.style}/${shown.look}`} data-share-size={`${shown.width}x${shown.height}`}
+                data-share-marks={shown.crop ? shown.crop.marks.length : undefined} data-share-crop={shown.crop ? cropText(shown.crop.box) : undefined}
+                style={{ width: '100%', height: '100%', display: 'block' }} />}
+            </div>
+            {drawError && <p role="alert" style={alert}>{drawError}</p>}
+            {tooTall && <div style={{ ...muted, textAlign: 'center' }}>{TOO_TALL_HINT}</div>}
+            {unavailable && !tooTall && <div style={{ ...muted, textAlign: 'center' }}>{unavailable === 'no-source' ? 'Page and Headline aren’t available' : `${STYLE_NAMES[style]} isn’t available`}: {PAGE_UNAVAILABLE[unavailable]}</div>}
+          </>}
 
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
             <ChoiceRow label="Card style" disabled={active} value={drawn} onChoose={option => void choose({ style: option, look })}
-              options={(['page', 'headline'] as ShareStyle[]).map(styleChoice)} />
+              options={(['page', 'headline', 'carousel'] as ShareStyle[]).map(styleChoice)} />
             {looksRow}
           </div>
-          {(canAdjust || (hasHeadline && !active)) && (
+          {postCarousel ? postCarouselButtons : (canAdjust || (hasHeadline && !active)) && (
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
               {hasHeadline && !active && <button type="button" onClick={() => open('headline')} style={button}>Edit headline</button>}
               {canAdjust && <button type="button" onClick={() => setEditingCrop(true)} style={button}>Adjust crop</button>}
@@ -733,7 +767,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
           </div>
         </div>
 
-        {isSet ? carouselExport : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {slideMode ? carouselExport : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" onClick={() => void copyImage()} disabled={busy} style={{ ...primary, flex: 1, minWidth: 120 }}>Copy image</button>
             <button type="button" onClick={() => void act(() => copyText(text), { done: { text: CAPTION_COPIED } })} disabled={busy || !text} style={{ ...primary, flex: 1, minWidth: 120 }}>Copy caption</button>
@@ -765,10 +799,13 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
             void act(() => shareCardApi.cropSlide(projectId, record.id, item, next), { done: { text: next ? 'Crop saved.' : 'Back to the automatic crop.' } })
           }} />
       )}
-      {isSet && <SlideEditDialog open={editingSlide} slide={carousel.slide} index={carousel.index} count={carousel.slides.length}
+      {slideMode && <SlideEditDialog open={editingSlide} slide={carousel.slide} index={carousel.index} count={carousel.slides.length}
         onCancel={() => setEditingSlide(false)} onSave={saveSlideText} />}
-      {editingCrop && fileUrl && card && canAdjust && (
-        <CropEditor fileUrl={fileUrl} page={record.source.page} value={cropStart} marks={record.marks}
+      {postCarousel && <SlideEditDialog open={addingTakeaway} slide={NEW_TAKEAWAY} index={carousel.slides.length} count={carousel.slides.length + 1} title="Add a takeaway"
+        onCancel={() => setAddingTakeaway(false)}
+        onSave={text => { setAddingTakeaway(false); void act(() => shareCardApi.editTakeaway(projectId, record.id, text), { done: { text: 'Takeaway added.' } }) }} />}
+      {editingCrop && fileUrl && card && canEditCrop && (
+        <CropEditor fileUrl={fileUrl} page={record.source.page} value={editorStart} marks={record.marks}
           resetLabel={regionPost ? 'Back to the original region' : undefined}
           onCancel={() => setEditingCrop(false)}
           onApply={next => {

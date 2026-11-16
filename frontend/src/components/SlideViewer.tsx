@@ -1,16 +1,17 @@
-// A carousel in the Post tab: its slides (setSlides) drawn one at a time with renderSlide, a viewer that steps
+// Slides in the Post tab: a carousel of several highlights (setSlides, "Stage 3" in docs/share-posts-plan.md) or one
+// post drawn in the Carousel style (postSlides, "Stage 4"), drawn one at a time with renderSlide, a viewer that steps
 // through them, and the dialog that edits one slide's words. Slides are drawn lazily, the one in view first and then
 // its neighbours, and kept per slide, look and crop, so stepping through is instant and nothing is drawn twice. A slow
-// drawing never replaces a newer one. See "Stage 3" in docs/share-posts-plan.md.
+// drawing never replaces a newer one.
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { CARD, SET, collapse, setSlides, type PageRect, type ShareCardRecord, type ShareLook, type SetSlideSpec as SlideSpec } from '../../../src/shared/share-card'
+import { CARD, SET, collapse, postSlides, setSlides, type PageRect, type ShareCardRecord, type ShareLook, type SlideSpec } from '../../../src/shared/share-card'
 import { canvasPng } from '../lib/share-card'
 import { PAGE_UNAVAILABLE, pageCrop, type PageCrop, type PageUnavailable } from '../lib/share-card/page-crop'
 import { itemSource, renderSlide, slideSheetSpace, slideText, type SlideContext } from '../lib/share-card/slides'
 import { Modal, button, faded, field, muted, primary } from './SharePostParts'
 
 /** What each kind of slide is called in the viewer and the edit dialog. */
-export const SLIDE_NAMES: Record<SlideSpec['kind'], string> = { cover: 'Cover', study: 'The study', point: 'Highlight', takeaway: 'The takeaway', limitations: 'Limits' }
+export const SLIDE_NAMES: Record<SlideSpec['kind'], string> = { cover: 'Cover', study: 'The study', point: 'Highlight', page: 'The page', takeaway: 'The takeaway', limitations: 'Limits' }
 
 /** A slide's name: "Cover", "Highlight 2", "The study"… */
 export const slideName = (slide: SlideSpec) => slide.kind === 'point' ? `Highlight ${slide.item + 1}` : SLIDE_NAMES[slide.kind]
@@ -18,12 +19,12 @@ export const slideName = (slide: SlideSpec) => slide.kind === 'point' ? `Highlig
 /** What a screen reader hears for a slide: its place, its kind and its words. */
 export const slideAlt = (slide: SlideSpec, index: number, count: number) => `Slide ${index + 1} of ${count}, ${slideName(slide).toLowerCase()}: ${slideText(slide)}`
 
-/** The longest text a slide holds, and whether emptying it removes the slide. */
-export const SLIDE_FIELDS: Record<SlideSpec['kind'], { label: string; max: number; removable: boolean }> = {
+/** The longest text a slide holds, and whether emptying it removes the slide. A page slide's words are not edited here. */
+export const SLIDE_FIELDS: Record<Exclude<SlideSpec['kind'], 'page'>, { label: string; max: number; removable: boolean }> = {
   cover: { label: 'Headline', max: CARD.headlineMax, removable: false },
   study: { label: 'The study', max: SET.studyMax, removable: true },
   point: { label: 'Claim', max: SET.pointMax, removable: false },
-  takeaway: { label: 'The takeaway', max: SET.takeawayMax, removable: false },
+  takeaway: { label: 'The takeaway', max: Math.min(SET.takeawayMax, CARD.takeawayMax), removable: false },
   limitations: { label: 'Limits', max: SET.limitationsMax, removable: true },
 }
 
@@ -34,13 +35,14 @@ const reasonOf = (error: unknown): PageUnavailable => ((error as Error).message 
 const cropText = (box: PageRect) => [box.x1, box.y1, box.x2, box.y2].map(value => value.toFixed(4)).join(',')
 
 /**
- * A carousel's slides and their pictures. `record` is null, or not a set, for every other post: then there are no
- * slides and nothing is drawn.
+ * A post's slides and their pictures: a set's always, any other post's when `carousel` (its style is Carousel). For
+ * every other post, or no record, there are no slides and nothing is drawn.
  */
-export function useSlides(record: ShareCardRecord | null, look: ShareLook, fileUrl: string | null) {
-  const card = record?.source.kind === 'set' && record.card?.set ? record.card : null
+export function useSlides(record: ShareCardRecord | null, look: ShareLook, fileUrl: string | null, carousel = false) {
+  const isSet = record?.source.kind === 'set' && !!record.card?.set
+  const card = record?.card && (isSet || carousel) ? record.card : null
   const source = record?.source ?? null
-  const slides = useMemo(() => card && source ? setSlides(card, source) : [], [card, source])
+  const slides = useMemo<SlideSpec[]>(() => !card || !source ? [] : isSet ? setSlides(card, source) : postSlides(card, source), [card, source, isSet])
   const [index, setIndex] = useState(0)
   const [shown, setShown] = useState<DrawnSlide | null>(null)
   const [drawError, setDrawError] = useState('')
@@ -62,14 +64,21 @@ export function useSlides(record: ShareCardRecord | null, look: ShareLook, fileU
 
   const context = useCallback((at: number): SlideContext => ({
     source: { title: source!.title, credit: source!.credit, page: source!.page, color: source!.color },
-    items: source!.items, number: at + 1, count,
-  }), [source, count])
+    ...isSet ? { items: source!.items } : {}, number: at + 1, count,
+  }), [source, count, isSet])
 
-  /** What a point slide's crop depends on: its words and place (the room under them), the look, the crop and the marks. */
+  /**
+   * What a slide's crop depends on: its words and place (the room under them), the look, the crop and the marks. A
+   * point slide crops its highlight's page; a page slide the post's own, as its single card would.
+   */
   const cropKey = useCallback((at: number) => {
     const slide = slides[at]
-    if (!slide || slide.kind !== 'point' || !card || !source || !record) return ''
-    return JSON.stringify([slide, at, count, look, source.title, source.credit, source.items[slide.item], card.set!.crops[slide.item] ?? null, record.set_marks[slide.item] ?? [], fileUrl])
+    if (!slide || !card || !source || !record) return ''
+    if (slide.kind === 'point')
+      return JSON.stringify([slide, at, count, look, source.title, source.credit, source.items[slide.item], card.set!.crops[slide.item] ?? null, record.set_marks[slide.item] ?? [], fileUrl])
+    if (slide.kind === 'page')
+      return JSON.stringify([slide, at, count, look, source.title, source.credit, source.page, source.rects, source.region, card.crop, record.marks, fileUrl])
+    return ''
   }, [slides, card, source, record, count, look, fileUrl])
 
   const pictureKey = useCallback((at: number) => {
@@ -80,12 +89,14 @@ export function useSlides(record: ShareCardRecord | null, look: ShareLook, fileU
 
   const cropFor = useCallback((at: number): Promise<CropResult> => {
     const slide = slides[at], key = cropKey(at)
-    if (!slide || slide.kind !== 'point' || !key || !card || !source || !record) return Promise.resolve({})
+    if (!slide || (slide.kind !== 'point' && slide.kind !== 'page') || !key || !card || !source || !record) return Promise.resolve({})
     let result = crops.current.get(key)
     if (!result) {
-      const item = source.items[slide.item]!
+      const crop = (sheet: Awaited<ReturnType<typeof slideSheetSpace>>) => slide.kind === 'point'
+        ? pageCrop(fileUrl, itemSource(source, source.items[slide.item]!), { sheet, crop: card.set!.crops[slide.item] ?? null, marks: record.set_marks[slide.item] ?? [], extraLines: 3 })
+        : pageCrop(fileUrl, source, { sheet, crop: card.crop, marks: record.marks, extraLines: 3 })
       result = slideSheetSpace(slide, context(at), { look })
-        .then(sheet => pageCrop(fileUrl, itemSource(source, item), { sheet, crop: card.set!.crops[slide.item] ?? null, marks: record.set_marks[slide.item] ?? [], extraLines: 3 }))
+        .then(crop)
         .then(crop => ({ crop }), error => {
           const reason = reasonOf(error)
           setReasons(previous => previous[key] === reason ? previous : { ...previous, [key]: reason })
@@ -120,7 +131,7 @@ export function useSlides(record: ShareCardRecord | null, look: ShareLook, fileU
         const blob = await canvasPng(canvas)
         canvas.width = 0
         if (!mounted.current) throw new Error('The post was closed.')
-        const item: DrawnSlide = { key, url: URL.createObjectURL(blob), alt: slideAlt(slides[at]!, at, count), style, look, index: at, crop: style === 'headline' ? crop : undefined }
+        const item: DrawnSlide = { key, url: URL.createObjectURL(blob), alt: slideAlt(slides[at]!, at, count), style, look, index: at, crop: style === 'headline' || style === 'page' ? crop : undefined }
         pictures.current.set(key, item)
         while (pictures.current.size > 32) {
           const oldest = pictures.current.keys().next().value!
@@ -164,7 +175,7 @@ export function useSlides(record: ShareCardRecord | null, look: ShareLook, fileU
   }, [count, draw])
 
   const slide = slides[current] ?? null
-  const reason = slide?.kind === 'point' ? reasons[cropKey(current)] ?? null : null
+  const reason = slide?.kind === 'point' || slide?.kind === 'page' ? reasons[cropKey(current)] ?? null : null
   return {
     slides, index: current, setIndex, slide, shown,
     drawError, draw, drawAll, reason, cropOf: cropFor,
@@ -176,10 +187,12 @@ type ViewerProps = {
   index: number
   onIndex: (index: number) => void
   shown: DrawnSlide | null
+  /** The viewer's accessible name: "Slides" for a set, the whole post's description for the Carousel style. */
+  label?: string
 }
 
 /** The slide in view with Previous and Next; the arrow keys, Home and End step through when the viewer has focus. */
-export function SlideViewer({ slides, index, onIndex, shown }: ViewerProps) {
+export function SlideViewer({ slides, index, onIndex, shown, label = 'Slides' }: ViewerProps) {
   const count = slides.length, slide = slides[index]
   const go = (next: number) => onIndex(Math.max(0, Math.min(count - 1, next)))
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -190,7 +203,7 @@ export function SlideViewer({ slides, index, onIndex, shown }: ViewerProps) {
   }
   const position = `${index + 1} of ${count}`
   return (
-    <div role="group" aria-roledescription="carousel" aria-label="Slides" data-slide-viewer tabIndex={0} onKeyDown={onKeyDown}
+    <div role="group" aria-roledescription="carousel" aria-label={label} data-slide-viewer tabIndex={0} onKeyDown={onKeyDown}
       style={{ display: 'flex', flexDirection: 'column', gap: 8, outlineOffset: 3, borderRadius: 8 }}>
       <div style={{ width: '100%', maxWidth: 440, alignSelf: 'center', aspectRatio: '1080 / 1350', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', background: '#111114' }}>
         {shown && <img src={shown.url} alt={shown.alt} data-slide={shown.index + 1} data-slide-count={count} data-slide-kind={slides[shown.index]?.kind}
@@ -209,17 +222,20 @@ export function SlideViewer({ slides, index, onIndex, shown }: ViewerProps) {
   )
 }
 
-/** Edits the words of the slide in view: the cover's headline, or one slide's text within SET's limits. */
-export function SlideEditDialog({ open, slide, index, count, onSave, onCancel }: {
-  open: boolean; slide: SlideSpec | null; index: number; count: number; onSave: (text: string) => void; onCancel: () => void
+/**
+ * Edits the words of the slide in view: the cover's headline, or one slide's text within its limit. A page slide has
+ * no words to edit (Adjust crop changes it). `title` replaces the dialog's title, as "Add a takeaway" does.
+ */
+export function SlideEditDialog({ open, slide, index, count, title, onSave, onCancel }: {
+  open: boolean; slide: SlideSpec | null; index: number; count: number; title?: string; onSave: (text: string) => void; onCancel: () => void
 }) {
   const [text, setText] = useState('')
   useEffect(() => { if (open && slide) setText(slideText(slide)) }, [open, slide])
-  const spec = slide ? SLIDE_FIELDS[slide.kind] : null
+  const spec = slide && slide.kind !== 'page' ? SLIDE_FIELDS[slide.kind] : null
   const words = collapse(text)
   const empty = !words, canSave = !!spec && (!empty || spec.removable) && words.length <= spec.max
   return (
-    <Modal open={open && !!slide} title={slide ? `Edit slide ${index + 1} of ${count}: ${slideName(slide)}` : 'Edit slide'} onClose={onCancel} actions={<>
+    <Modal open={open && !!spec} title={title ?? (slide ? `Edit slide ${index + 1} of ${count}: ${slideName(slide)}` : 'Edit slide')} onClose={onCancel} actions={<>
       <button type="button" onClick={onCancel} style={button}>Cancel</button>
       <button type="button" onClick={() => { if (canSave) onSave(words) }} disabled={!canSave} style={faded(primary, !canSave)}>
         {empty && spec?.removable ? 'Remove slide' : 'Save'}
