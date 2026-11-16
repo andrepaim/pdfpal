@@ -30,7 +30,10 @@ export const SOURCE_KINDS = ['highlight', 'region', 'paper', 'set'] as const
 /** A carousel: how many highlights, and the limits of its slides' words. */
 export const SET = { minItems: 2, maxItems: 8, studyMax: 160, pointMax: 70, takeawayMax: 140, limitationsMax: 160 } as const
 /** A post about the whole paper: the limits of its question, method and results. */
-export const PAPER = { questionMax: 160, methodMax: 160, resultMax: 140, minResults: 1, maxResults: 2 } as const
+export const PAPER = {
+  questionMax: 160, methodMax: 160, resultMax: 140, minResults: 1, maxResults: 2,
+  maxStats: 4, statValueMax: 12, statLabelMax: 48, maxRows: 4, rowLabelMax: 28, rowValueMax: 12,
+} as const
 /** The smallest region, as a fraction of the page in each direction. */
 export const REGION_MIN = 0.05
 /** Where the link goes in a LinkedIn post: in the post, or held back as a ready first-comment line. */
@@ -47,9 +50,20 @@ export type SourceKind = (typeof SOURCE_KINDS)[number]
 /** One highlight of a carousel, copied when the post is made so that the post outlives it. */
 export type SetItem = { annotation_id: string | null; passage: string; page: number; rects: PageRect[]; color: HighlightColor }
 /** A carousel's words beyond the cover, and the reader's crop of each highlight slide (null is automatic). */
-export type SetContent = { study: string; points: string[]; takeaway: string; limitations: string; crops: Array<PageRect | null> }
+export type SetContent = {
+  study: string
+  /** The study's design in numbers, as a paper's methodStats: [] or 2 to 4 (the reader may keep fewer). */
+  studyStats: Stat[]
+  points: string[]; takeaway: string; limitations: string; crops: Array<PageRect | null>
+}
 /** What a post about the whole paper says beyond its headline: what it asked, how it was tested, what it found (the main finding first). */
-export type PaperContent = { question: string; method: string; results: string[] }
+export type PaperContent = { question: string; method: string; methodStats: Stat[]; results: PaperResult[] }
+/** A number shown as a number: its value with its unit as the text writes it ("312", "24 hours", "65B", "41%"), and what it counts. */
+export type Stat = { value: string; label: string }
+/** One row of a comparison: a condition, group or model, and its value. */
+export type Row = { label: string; value: string }
+/** One finding: its sentence, the number that carries it (or null), and the comparison it reports ([] or 2 to 4 rows of one measure and unit). */
+export type PaperResult = { text: string; stat: Stat | null; rows: Row[] }
 export type HighlightColor = (typeof HIGHLIGHT_COLORS)[number]
 export type ShareCardStatus = 'pending' | 'running' | 'complete' | 'failed' | 'cancelled'
 
@@ -128,6 +142,11 @@ export type CardContent = {
    * paper post stored before it existed.
    */
   paper: PaperContent | null
+  /**
+   * The post's key number: the one number that carries the finding, with what it measures. Null when the text gives
+   * no number, and for a post stored before it existed. For a paper post it is its first result's stat.
+   */
+  stat: Stat | null
 }
 
 /** The text of a post: up to three drafts for one destination, and how the copied text is composed. */
@@ -264,6 +283,8 @@ function limit(name: string, value: string, max: number, min = 1) {
  * and the limit, because they are handed back to the model as the repair reason.
  */
 export function validateCard(card: CardContent, source: Pick<ShareCardSource, 'passage' | 'context'> & { kind?: SourceKind; items?: SetItem[] }): void {
+  // Every kind may carry a key number.
+  if (card.stat) validateStat('stat', card.stat)
   if (source.kind === 'set') return validateSetCard(card, source.items ?? [])
   if (source.kind && source.kind !== 'highlight') return validateRegionCard(card, source.kind)
   limit('quote', card.quote, CARD.quoteMax)
@@ -315,7 +336,29 @@ function validatePaper(paper: PaperContent): void {
   limit('method', paper.method, PAPER.methodMax)
   if (!Array.isArray(paper.results) || paper.results.length < PAPER.minResults || paper.results.length > PAPER.maxResults)
     throw new Error(`results has ${Array.isArray(paper.results) ? paper.results.length : 0} items; allowed ${PAPER.minResults}–${PAPER.maxResults}, the main finding first.`)
-  paper.results.forEach((result, index) => limit(`results[${index}]`, result, PAPER.resultMax))
+  if (paper.methodStats.length > PAPER.maxStats) throw new Error(`methodStats has ${paper.methodStats.length} items; allowed at most ${PAPER.maxStats}.`)
+  paper.methodStats.forEach((stat, index) => validateStat(`methodStats[${index}]`, stat))
+  paper.results.forEach((result, index) => {
+    const name = `results[${index}]`
+    limit(`${name}.text`, result.text, PAPER.resultMax)
+    if (result.stat) validateStat(`${name}.stat`, result.stat)
+    if (result.rows.length === 1 || result.rows.length > PAPER.maxRows) throw new Error(`${name}.rows has ${result.rows.length} items; allowed none, or 2–${PAPER.maxRows}.`)
+    result.rows.forEach((row, position) => {
+      limit(`${name}.rows[${position}].label`, row.label, PAPER.rowLabelMax)
+      numeric(`${name}.rows[${position}].value`, row.value, PAPER.rowValueMax)
+    })
+  })
+}
+
+/** A value: 1 to `max` characters with a digit in it. */
+function numeric(name: string, value: string, max: number) {
+  limit(name, value, max)
+  if (!/\p{N}/u.test(value)) throw new Error(`${name} must contain a digit.`)
+}
+
+function validateStat(name: string, stat: Stat) {
+  numeric(`${name}.value`, stat.value, PAPER.statValueMax)
+  limit(`${name}.label`, stat.label, PAPER.statLabelMax)
 }
 
 /** Why a carousel cannot take another style. */
@@ -341,6 +384,8 @@ function validateSetCard(card: CardContent, items: SetItem[]): void {
   limit('study', set.study, SET.studyMax, 0)
   limit('takeaway', set.takeaway, SET.takeawayMax)
   limit('limitations', set.limitations, SET.limitationsMax, 0)
+  if (set.studyStats.length > PAPER.maxStats) throw new Error(`studyStats has ${set.studyStats.length} items; allowed at most ${PAPER.maxStats}.`)
+  set.studyStats.forEach((stat, index) => validateStat(`studyStats[${index}]`, stat))
   set.crops.forEach((crop, index) => { if (crop && !(crop.x1 < crop.x2 && crop.y1 < crop.y2)) throw new Error(`crops[${index}] needs x1 < x2 and y1 < y2.`) })
   if (card.style !== 'headline') throw new Error(SET_STYLE_REFUSED)
   if (!(LOOKS as readonly string[]).includes(card.look)) throw new Error(`Unknown card look: ${card.look}.`)
@@ -351,14 +396,21 @@ function validateSetCard(card: CardContent, items: SetItem[]): void {
  * post's page crop; `fallback` is drawn instead when the PDF file is gone.
  */
 export type SlideSpec =
-  | { kind: 'cover'; kicker: string; headline: string }
-  | { kind: 'study' | 'takeaway' | 'limitations'; kicker: string; text: string }
+  /** `stat`, the post's key number, is drawn large with the headline when there is one. */
+  | { kind: 'cover'; kicker: string; headline: string; stat: Stat | null }
+  /** A set's study: `stats` are its design's numbers, drawn as tiles when there are any. */
+  | { kind: 'study'; kicker: string; text: string; stats: Stat[] }
+  | { kind: 'takeaway' | 'limitations'; kicker: string; text: string }
   | { kind: 'point'; kicker: string; headline: string; item: number }
   | { kind: 'page'; kicker: string; fallback: string }
   /** A paper post's first slide: its headline above its own page crop; `fallback` is drawn without the PDF file. */
   | { kind: 'lead'; kicker: string; headline: string; fallback: string }
   /** `item` is which result. */
-  | { kind: 'question' | 'method' | 'result'; kicker: string; text: string; item?: number }
+  | { kind: 'question'; kicker: string; text: string }
+  /** `stats` are the design's numbers, drawn as tiles when there are any. */
+  | { kind: 'method'; kicker: string; text: string; stats: Stat[] }
+  /** `item` is which result; `rows` (a comparison) or `stat` (one key number) pick the layout. */
+  | { kind: 'result'; kicker: string; text: string; item?: number; stat: Stat | null; rows: Row[] }
 /** The slides of a carousel of several highlights: none of a single post's own kinds. */
 export type SetSlideSpec = Exclude<SlideSpec, { kind: 'page' | 'lead' | 'question' | 'method' | 'result' }>
 
@@ -371,17 +423,17 @@ export function postSlides(card: CardContent, source: Pick<ShareCardSource, 'kin
   const takeaway = card.takeaway ? [{ kind: 'takeaway', kicker: 'The takeaway', text: card.takeaway } as const] : []
   // A post about the whole paper: five or six slides. One stored before it had a question keeps the three cards.
   if (source.kind === 'paper' && card.paper) {
-    const { question, method, results } = card.paper
+    const { question, method, methodStats, results } = card.paper
     return [
       { kind: 'lead', kicker: card.topic, headline: card.headline, fallback: card.headline },
       { kind: 'question', kicker: 'The question', text: question },
-      { kind: 'method', kicker: 'The method', text: method },
-      ...results.map((text, item): SlideSpec => ({ kind: 'result', kicker: results.length === 1 ? 'The result' : `Result ${item + 1}`, text, item })),
+      { kind: 'method', kicker: 'The method', text: method, stats: methodStats },
+      ...results.map(({ text, stat, rows }, item): SlideSpec => ({ kind: 'result', kicker: results.length === 1 ? 'The result' : `Result ${item + 1}`, text, item, stat, rows })),
       ...takeaway,
     ]
   }
   return [
-    { kind: 'cover', kicker: card.topic, headline: card.headline },
+    { kind: 'cover', kicker: card.topic, headline: card.headline, stat: card.stat },
     { kind: 'page', kicker: card.topic, fallback: card.quote || card.headline },
     ...takeaway,
   ]
@@ -396,8 +448,8 @@ export function setSlides(card: CardContent, source: Pick<ShareCardSource, 'item
   if (!set) return []
   const points = set.points.slice(0, source.items.length).map((headline, item): SetSlideSpec => ({ kind: 'point', kicker: card.topic, headline, item }))
   return [
-    { kind: 'cover', kicker: card.topic, headline: card.headline },
-    ...set.study ? [{ kind: 'study', kicker: 'The study', text: set.study } as const] : [],
+    { kind: 'cover', kicker: card.topic, headline: card.headline, stat: card.stat },
+    ...set.study ? [{ kind: 'study', kicker: 'The study', text: set.study, stats: set.studyStats } as const] : [],
     ...points,
     { kind: 'takeaway', kicker: 'The takeaway', text: set.takeaway },
     ...set.limitations ? [{ kind: 'limitations', kicker: 'Limits', text: set.limitations } as const] : [],
@@ -652,4 +704,14 @@ export function unsupportedNumbers(text: string, allowedTexts: string[]): string
     refused.add(numeral)
   }
   return [...refused]
+}
+
+/**
+ * Where `numeral` (as a draft writes it) occurs in `text` as the same number: the start of every numeral of `text`
+ * written the same way or with a common reading ("1,572" and "1572"). No rounding and no number words: this places a
+ * value, it does not prove it (unsupportedNumbers does).
+ */
+export function numeralPositions(numeral: string, text: string): number[] {
+  const wanted = new Set(readings(numeral).values)
+  return [...text.matchAll(SOURCE_NUMERAL)].filter(match => match[0] === numeral || readings(match[0]).values.some(value => wanted.has(value))).map(match => match.index!)
 }

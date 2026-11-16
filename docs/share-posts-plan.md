@@ -440,6 +440,15 @@ Server: the paper prompt asks for `methodStats` and, per result, `stat` and `row
 // PATCH gains `{ stat }` (a Stat or null, Undo step); `set_text` for the study takes `stats` beside `text`.
 ```
 
+Settled in T16:
+
+- **Answer.** Every answer carries `stat` (an object or null; a missing field reads as null). A set's also carries `studyStats`; a paper's `methodStats` and `results` as objects `{ text, stat, rows }` (a plain sentence still reads as a result without numbers). Missing `methodStats`, `studyStats` or `rows` read as `[]`.
+- **Where a key number comes from.** A highlight's from the highlight itself; a region's from its text or page text; a set's from one of its highlights; a paper's from the first page or the wider text. For a paper post `card.stat` is copied from the first result's `stat` when it has one; otherwise the answer's own `stat` stands, checked.
+- **Checks on numbers.** Every value passes the numbers check and every label the checks on the assistant's own words. `methodStats` and `studyStats` are `[]` or 2 to 4 in an answer (a reader may keep 1), with no stat repeating another (same value and label, ignoring case and spacing). A result's stat value must also be in its sentence. A comparison's rows share one trailing unit (the text after the last digit: "%", "hours", or none, so "1348 ± 1" has none), and no two rows share a label.
+- **A value near its label** (`valueNearLabel` in `src/core/share-cards.ts`). Around every place the source writes the value's first number as a numeral (the same number in any thousands or decimal style), a window of 150 characters on each side must hold one of the label's content words. Content words are words with a letter, at least two characters, not in a short list of function words and generic measure words ("number", "total", "mean", "average"…); case and a plural "s" or "ies" are ignored, and a hyphenated word counts whole, joined and by its parts. A result's stat may match a word of its label or of its sentence. The check passes rather than fails when the value has no numeral, the label no content word, none of the label's words occurs anywhere in the source, or the source never writes the number as a numeral (a number word, a rounded decimal), which the numbers check decides alone.
+- **Edits.** `{ stat }` (a `Stat` or null) on every kind, behind Undo. `paper_text` takes `stats` (method only), `stat` and `rows` (a result only) beside an optional `text`; `set_text` takes `stats` for the study; at least one field must be sent; what is not sent is kept. The reader's values are checked for shape and limits only, not against the paper.
+- **Prompts.** The highlight, region and set prompts gain only the `stat` line (and the set's `studyStats` line); the paper prompt gains `methodStats`, the result objects and `stat`, and its numbers rule names stats and rows.
+
 **Tasks**
 
 - [ ] **T16 Server** (`share-posts/server`): the fields, the prompt, the checks (numbers, and a value near its label), the edit, reading older cards, tests.
