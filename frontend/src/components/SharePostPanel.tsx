@@ -12,6 +12,7 @@ import {
 import { rememberDestination, shareCardApi, watchShareCard, type ShareCardChange } from '../lib/share-card-api'
 import { cardSheetSpace, canvasPng, renderCard, palette } from '../lib/share-card'
 import { PAGE_UNAVAILABLE, pageCrop, type PageCrop, type PageUnavailable } from '../lib/share-card/page-crop'
+import { cropBox } from '../lib/share-card/crop-box'
 import CropEditor from './CropEditor'
 import RegionPicker, { type RegionKind } from './RegionPicker'
 import HighlightChooser, { eligibleHighlights, type ChooserHighlight } from './HighlightChooser'
@@ -24,6 +25,7 @@ export const CAPTION_COPIED = 'Caption copied.'
 export const FIRST_COMMENT_COPIED = 'First comment copied. Paste it under your post.'
 export const COPY_UNAVAILABLE = "Copying isn't available here. Use Save image."
 export const SLIDE_COPIED = 'Slide copied. Paste it into your post.'
+export const TOO_TALL_HINT = 'This highlight is too tall for an automatic crop. Adjust the crop to show part of it.'
 export const PDF_HINT = 'LinkedIn takes the PDF as a document post: one page per slide.'
 /** What X allows in one post, and what it counts any link as. */
 export const X_LIMIT = 280
@@ -59,6 +61,9 @@ export const cardFileName = (title: string, page: number, style: ShareStyle, siz
 export const xLength = (text: string) => [...text.replace(/https?:\/\/\S+/giu, 'x'.repeat(X_LINK))].length
 
 const PICTURED: ReadonlySet<ShareStyle> = new Set(['page', 'headline'])
+const WHOLE_PAGE: PageRect = { x1: 0, y1: 0, x2: 1, y2: 1 }
+/** Where the crop editor starts when there is no crop to start from: the highlight's own lines, else the whole page. */
+const startingCrop = (rects: PageRect[]) => rects.length ? cropBox(rects, 0) : WHOLE_PAGE
 /** True for a post made from a region or the first page; a stored source without a kind is a highlight's. */
 const fromRegion = (kind: string | undefined) => kind === 'region' || kind === 'paper'
 /** What a post without a highlight started from, in the post lists. */
@@ -192,7 +197,8 @@ const section: CSSProperties = { display: 'flex', flexDirection: 'column', gap: 
 
 function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string; postId: string; onOpen: (id: string | null) => void; onChanged?: () => void }) {
   const [record, setRecord] = useState<ShareCardRecord | null>(null)
-  const [loadError, setLoadError] = useState('')
+  /** The latest failed check of the post: still being retried, or given up (offer Check again). */
+  const [watchError, setWatchError] = useState<{ message: string; retrying: boolean; status?: number } | null>(null)
   const [poll, setPoll] = useState(0)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState('')
@@ -215,16 +221,27 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
 
   // Polls while a generation runs; reports finished generations and new headlines to the lists.
   useEffect(() => watchShareCard(projectId, postId, next => {
-    setRecord(next); setLoadError('')
+    setRecord(next); setWatchError(null)
     const previous = last.current
     if (previous.status !== undefined && (previous.status !== next.status || previous.headline !== next.card?.headline)) changedRef.current?.()
     if (previous.status && isActive(previous.status as ShareCardRecord['status']) && next.status === 'complete')
       setMessage({ text: previous.card ? 'Your post was rewritten.' : 'Your post is ready.' })
     last.current = { status: next.status, headline: next.card?.headline, card: !!next.card }
-  }, error => setLoadError(error.message)), [projectId, postId, poll])
+  }, (error, state) => setWatchError({ message: error.message, ...state })), [projectId, postId, poll])
+  const checkAgain = () => { setWatchError(null); setPoll(value => value + 1) }
+  const watchNotice = watchError && (
+    <div role="alert" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+      <span style={alert}>{watchError.retrying ? 'Couldn’t reach pdfpal to check on this post. Trying again…' : `pdfpal stopped checking on this post: ${watchError.message}`}</span>
+      {!watchError.retrying && watchError.status !== 422 && watchError.status !== 404 && <button type="button" onClick={checkAgain} style={{ ...button, padding: '3px 10px' }}>Check again</button>}
+    </div>
+  )
 
-  // Revoke cached pictures when the post closes.
-  useEffect(() => () => { for (const item of cache.current.values()) URL.revokeObjectURL(item.url); cache.current.clear() }, [])
+  // Revoke cached pictures when the post closes. A picture finished after that is never given a URL (see renderJob).
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false; for (const item of cache.current.values()) URL.revokeObjectURL(item.url); cache.current.clear() }
+  }, [])
 
   const act = useCallback(async (action: () => Promise<ShareCardRecord | void>, options: { regenerates?: boolean; done?: Message } = {}) => {
     if (busy) return
@@ -272,39 +289,67 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
     setTake(shownTake)
   }, [shownTake])
 
-  // The page crop for Page and Headline: it depends on the style, look and size, the reader's crop and the marks.
-  const cropKey = record && card ? JSON.stringify([version, style, look, size, card.crop, record.marks, defaults.extraLines, fileUrl]) : ''
+  // The page crop for Page and Headline. Its key is everything it is made from: the card's words (for the room the
+  // sheet has), style, look and size, the reader's crop, the marks, the post's page and boxes, and the file. A check of
+  // the post makes a new record object every second while a version is written, so the work is keyed by this, not by
+  // the record: a crop in flight is never thrown away and started again, and each key's crop is made once.
+  const cropKey = record && card && pictured && !isSet
+    ? JSON.stringify([version, style, look, size, card.crop, record.marks, defaults.extraLines, fileUrl, record.source.page, record.source.rects, record.source.region]) : ''
+  const cropJobs = useRef(new Map<string, Promise<{ crop?: PageCrop; reason?: PageUnavailable }>>())
+  const makeCrop = useRef<() => Promise<PageCrop>>(() => Promise.reject(new Error('no-file')))
+  if (record && card) {
+    const content = { card, source: record.source }, extraLines = defaults.extraLines
+    makeCrop.current = () => cardSheetSpace(content, { style, look, size })
+      .then(sheet => pageCrop(fileUrl, record.source, { sheet, crop: card.crop, marks: record.marks, extraLines }))
+  }
   useEffect(() => {
-    if (!record || !card || !pictured || isSet || crop?.key === cropKey) return
+    if (!cropKey || crop?.key === cropKey) return
+    let job = cropJobs.current.get(cropKey)
+    if (!job) {
+      job = makeCrop.current().then(result => ({ crop: result }), error => ({ reason: ((error as Error).message in PAGE_UNAVAILABLE ? (error as Error).message : 'no-file') as PageUnavailable }))
+      cropJobs.current.set(cropKey, job)
+      // Each crop holds a rendered page: keep the latest few.
+      while (cropJobs.current.size > 6) cropJobs.current.delete(cropJobs.current.keys().next().value!)
+    }
     let live = true
-    const content = { card, source: record.source }
-    cardSheetSpace(content, { style, look, size })
-      .then(sheet => pageCrop(fileUrl, record.source, { sheet, crop: card.crop, marks: record.marks, extraLines: defaults.extraLines }))
-      .then(result => { if (live) setCrop({ key: cropKey, crop: result }) })
-      .catch(error => { if (live) setCrop({ key: cropKey, reason: ((error as Error).message in PAGE_UNAVAILABLE ? (error as Error).message : 'no-file') as PageUnavailable }) })
+    void job.then(result => { if (live) setCrop({ key: cropKey, ...result }) })
     return () => { live = false }
-  }, [record, card, pictured, isSet, style, look, size, cropKey, crop?.key, fileUrl, defaults.extraLines])
+  }, [cropKey, crop?.key])
 
   const cropReady = pictured && crop?.key === cropKey ? crop : null
   const unavailable: PageUnavailable | null = !record ? null : !fileUrl ? 'no-source' : cropReady?.reason ?? null
   // The style drawn: Page and Headline fall back to Quote and Big idea without the page. A region post has no quote,
   // so both fall back to Big idea, drawn from its headline.
   const drawn: ShareStyle = pictured && (unavailable === 'no-source' || cropReady?.reason) ? (regionPost ? 'idea' : FALLBACK[style]!) : style
+  // Only an automatic crop can be too tall: the reader can still choose one, starting from the highlight's own lines.
+  const tooTall = cropReady?.reason === 'too-tall' && !!fileUrl
 
-  // Draws the preview, keeping the previous picture on screen while the next one renders.
+  // Draws the preview, keeping the previous picture on screen while the next one renders. Keyed as the crop is, and
+  // for the same reason; a picture finished after the post closed gets no URL, so nothing is left unrevoked.
+  const renderKey = record && card && !isSet && (!pictured || cropReady) ? (pictured ? cropKey : JSON.stringify([version, style, look, size])) : ''
+  const renderJobs = useRef(new Map<string, Promise<Shown | null>>())
+  const renderJob = useRef<(key: string) => Promise<Shown | null>>(() => Promise.resolve(null))
+  if (record && card) {
+    const content = { card, source: record.source }, pageImage = cropReady?.crop, drawnNow = drawn
+    renderJob.current = key => renderCard(content, { style: drawnNow, look, size, crop: pageImage }).then(async canvas => {
+      const drawnStyle = (canvas.dataset.style as ShareStyle | undefined) ?? drawnNow, { width, height } = canvas
+      const blob = await canvasPng(canvas)
+      canvas.width = 0
+      if (!mounted.current) return null
+      return { key, url: URL.createObjectURL(blob), alt: cardDescription(card, drawnStyle, record.source), style: drawnStyle, look, width, height,
+        crop: PICTURED.has(drawnStyle) ? pageImage : undefined }
+    })
+  }
   useEffect(() => {
-    if (!record || !card || isSet) return
-    if (pictured && !cropReady) return
-    const key = pictured ? cropKey : JSON.stringify([version, style, look, size])
-    const cached = cache.current.get(key)
+    if (!renderKey) return
+    const cached = cache.current.get(renderKey)
     if (cached) { setShown(cached); return }
-    let live = true
-    renderCard({ card, source: record.source }, { style: drawn, look, size, crop: cropReady?.crop })
-      .then(async canvas => {
-        const drawnStyle = (canvas.dataset.style as ShareStyle | undefined) ?? drawn
-        const blob = await canvasPng(canvas)
-        const item: Shown = { key, url: URL.createObjectURL(blob), alt: cardDescription(card, drawnStyle, record.source), style: drawnStyle, look, width: canvas.width, height: canvas.height,
-          crop: PICTURED.has(drawnStyle) ? cropReady?.crop : undefined }
+    let job = renderJobs.current.get(renderKey)
+    if (!job) {
+      const key = renderKey
+      job = renderJob.current(key).then(item => {
+        renderJobs.current.delete(key)
+        if (!item) return null
         cache.current.set(key, item)
         // Full-size pictures are large: keep a few per post.
         while (cache.current.size > 8) {
@@ -312,11 +357,14 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
           if (oldest === key) break
           URL.revokeObjectURL(cache.current.get(oldest)!.url); cache.current.delete(oldest)
         }
-        if (live) { setShown(item); setDrawError('') }
-      })
-      .catch(error => { if (live) setDrawError((error as Error).message) })
+        return item
+      }, error => { renderJobs.current.delete(key); throw error })
+      renderJobs.current.set(key, job)
+    }
+    let live = true
+    job.then(item => { if (live && item) { setShown(item); setDrawError('') } }, error => { if (live) setDrawError((error as Error).message) })
     return () => { live = false }
-  }, [record, card, isSet, version, style, drawn, look, size, pictured, cropReady, cropKey])
+  }, [renderKey])
 
   // A text card in use opens its disclosure.
   useEffect(() => { if ((TEXT_CARD_STYLES as readonly string[]).includes(drawn)) setCardsOpen(true) }, [drawn])
@@ -448,10 +496,20 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
   })) as Record<ShareLook, { ground: string; accent: string }>, [record?.source.color])
 
   if (!record) {
+    // Not loaded yet, or it cannot be: a post an earlier build saved (422) can only be deleted.
+    const unreadable = watchError?.status === 422
     return (
-      <div style={{ padding: 16 }}>
-        <button onClick={() => onOpen(null)} style={{ ...button, marginBottom: 12 }}>← All posts</button>
-        {loadError ? <p role="alert" style={alert}>{loadError}</p> : <span className="spinner" />}
+      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'flex-start' }}>
+        <button onClick={() => onOpen(null)} style={button}>← All posts</button>
+        {!watchError ? <span className="spinner" /> : unreadable ? <p role="alert" style={alert}>{watchError.message}</p> : watchNotice}
+        {unreadable && <button type="button" onClick={() => setDialog('delete')} disabled={busy} style={faded({ ...button, color: '#fca5a5' }, busy)}>Delete post</button>}
+        {failure && <p role="alert" style={alert}>{failure}</p>}
+        <Modal open={dialog === 'delete'} title="Delete this post?" onClose={() => setDialog(null)} actions={<>
+          <button onClick={() => setDialog(null)} style={button}>Cancel</button>
+          <button onClick={() => { setDialog(null); void act(async () => { await shareCardApi.delete(projectId, postId); onOpen(null) }) }} style={{ ...primary, background: '#b91c1c', borderColor: '#b91c1c' }}>Delete</button>
+        </>}>
+          <p style={{ fontSize: 13, margin: 0, color: '#d1d5db' }}>The PDF and your highlights will remain.</p>
+        </Modal>
       </div>
     )
   }
@@ -466,7 +524,8 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
     disabled: PICTURED.has(option) && (unavailable === 'no-source' || (option === style && !!cropReady?.reason)),
     title: PICTURED.has(option) && (unavailable === 'no-source' || option === style) ? pageTitle : undefined,
   })
-  const canAdjust = PICTURED.has(drawn) && !!cropReady?.crop && !active
+  const canAdjust = (PICTURED.has(drawn) && !!cropReady?.crop || tooTall) && !active
+  const cropStart = card ? card.crop ?? cropReady?.crop?.box ?? startingCrop(record.source.rects) : WHOLE_PAGE
   const hasHeadline = drawn === 'headline' || drawn === 'idea'
   const ratio = shown ? `${shown.width} / ${shown.height}` : '1080 / 1350'
   const looksRow = (
@@ -490,7 +549,8 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
   const slide = carousel.slide
   const slideShown = carousel.shown && carousel.shown.index === carousel.index ? carousel.shown : null
   const slideItem = slide?.kind === 'point' ? slide.item : null
-  const canAdjustSlide = slideItem !== null && !!fileUrl && !!slideShown?.crop && !active
+  const slideTooTall = slideItem !== null && carousel.reason === 'too-tall'
+  const canAdjustSlide = slideItem !== null && !!fileUrl && (!!slideShown?.crop || slideTooTall) && !active
   const slideCropIsYours = slideItem !== null && !!card?.set?.crops[slideItem]
   const carouselImage = isSet && card?.set ? (
     <div style={section}>
@@ -498,12 +558,12 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
       <SlideViewer slides={carousel.slides} index={carousel.index} onIndex={carousel.setIndex} shown={carousel.shown} />
       {carousel.drawError && <p role="alert" style={alert}>{carousel.drawError}</p>}
       {!fileUrl && <div style={{ ...muted, textAlign: 'center' }}>{PAGE_UNAVAILABLE['no-source']} Highlight slides show their claim without the page.</div>}
-      {fileUrl && carousel.reason && <div style={{ ...muted, textAlign: 'center' }}>{PAGE_UNAVAILABLE[carousel.reason]} This slide shows its claim without the page.</div>}
+      {fileUrl && carousel.reason && <div style={{ ...muted, textAlign: 'center' }}>{carousel.reason === 'too-tall' ? TOO_TALL_HINT : `${PAGE_UNAVAILABLE[carousel.reason]} This slide shows its claim without the page.`}</div>}
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
           {!active && slide && <button type="button" onClick={() => setEditingSlide(true)} style={button}>Edit slide</button>}
-          {canAdjustSlide && <button type="button" onClick={() => setSlideCrop({ item: slideItem!, page: record.source.items[slideItem!]!.page, value: card.set!.crops[slideItem!] ?? slideShown!.crop!.box })} style={button}>Adjust crop</button>}
-          {canAdjustSlide && <span style={muted}>{slideCropIsYours ? 'Your crop' : 'Automatic crop'}</span>}
+          {canAdjustSlide && <button type="button" onClick={() => setSlideCrop({ item: slideItem!, page: record.source.items[slideItem!]!.page, value: card.set!.crops[slideItem!] ?? slideShown?.crop?.box ?? startingCrop(record.source.items[slideItem!]!.rects) })} style={button}>Adjust crop</button>}
+          {canAdjustSlide && !slideTooTall && <span style={muted}>{slideCropIsYours ? 'Your crop' : 'Automatic crop'}</span>}
         </div>
         {looksRow}
       </div>
@@ -573,6 +633,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
         </div>
       )}
       {failure && <p role="alert" style={alert}>{failure}</p>}
+      {watchNotice}
 
       {card && caption && <>
         {isSet ? carouselImage : <div style={section}>
@@ -583,7 +644,8 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
               style={{ width: '100%', height: '100%', display: 'block' }} />}
           </div>
           {drawError && <p role="alert" style={alert}>{drawError}</p>}
-          {unavailable && <div style={{ ...muted, textAlign: 'center' }}>{unavailable === 'no-source' ? 'Page and Headline aren’t available' : `${STYLE_NAMES[style]} isn’t available`}: {PAGE_UNAVAILABLE[unavailable]}</div>}
+          {tooTall && <div style={{ ...muted, textAlign: 'center' }}>{TOO_TALL_HINT}</div>}
+          {unavailable && !tooTall && <div style={{ ...muted, textAlign: 'center' }}>{unavailable === 'no-source' ? 'Page and Headline aren’t available' : `${STYLE_NAMES[style]} isn’t available`}: {PAGE_UNAVAILABLE[unavailable]}</div>}
 
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
             <ChoiceRow label="Card style" disabled={active} value={drawn} onChoose={option => void choose({ style: option, look })}
@@ -594,7 +656,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
               {hasHeadline && !active && <button type="button" onClick={() => open('headline')} style={button}>Edit headline</button>}
               {canAdjust && <button type="button" onClick={() => setEditingCrop(true)} style={button}>Adjust crop</button>}
-              {canAdjust && <span style={muted}>{regionPost ? (sameBox(card.crop, record.source.region) ? 'The region you chose' : 'Your crop') : card.crop ? 'Your crop' : 'Automatic crop'}</span>}
+              {canAdjust && !tooTall && <span style={muted}>{regionPost ? (sameBox(card.crop, record.source.region) ? 'The region you chose' : 'Your crop') : card.crop ? 'Your crop' : 'Automatic crop'}</span>}
             </div>
           )}
           {!regionPost && (
@@ -705,8 +767,8 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
       )}
       {isSet && <SlideEditDialog open={editingSlide} slide={carousel.slide} index={carousel.index} count={carousel.slides.length}
         onCancel={() => setEditingSlide(false)} onSave={saveSlideText} />}
-      {editingCrop && fileUrl && card && cropReady?.crop && (
-        <CropEditor fileUrl={fileUrl} page={record.source.page} value={card.crop ?? cropReady.crop.box} marks={record.marks}
+      {editingCrop && fileUrl && card && canAdjust && (
+        <CropEditor fileUrl={fileUrl} page={record.source.page} value={cropStart} marks={record.marks}
           resetLabel={regionPost ? 'Back to the original region' : undefined}
           onCancel={() => setEditingCrop(false)}
           onApply={next => {

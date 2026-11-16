@@ -53,8 +53,12 @@ export function useSlides(record: ShareCardRecord | null, look: ShareLook, fileU
 
   // A removed slide can leave the index past the end: show the last one.
   useEffect(() => { if (count && index >= count) setIndex(count - 1) }, [count, index])
-  // Revoke the pictures when the post closes.
-  useEffect(() => () => { for (const item of pictures.current.values()) URL.revokeObjectURL(item.url); pictures.current.clear() }, [])
+  // Revoke the pictures when the post closes. A picture finished after that is never given a URL (see picture).
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false; for (const item of pictures.current.values()) URL.revokeObjectURL(item.url); pictures.current.clear() }
+  }, [])
 
   const context = useCallback((at: number): SlideContext => ({
     source: { title: source!.title, credit: source!.credit, page: source!.page, color: source!.color },
@@ -103,22 +107,31 @@ export function useSlides(record: ShareCardRecord | null, look: ShareLook, fileU
     return { canvas, style: canvas.dataset.style ?? 'idea', crop }
   }, [slides, cropFor, context, look])
 
-  /** The slide's picture, drawn once per key and kept. */
-  const picture = useCallback(async (at: number): Promise<DrawnSlide> => {
+  /** The slide's picture, drawn once per key and kept; a drawing in flight is shared, so a key never gets two URLs. */
+  const drawing = useRef(new Map<string, Promise<DrawnSlide>>())
+  const picture = useCallback((at: number): Promise<DrawnSlide> => {
     const key = pictureKey(at)
     const cached = pictures.current.get(key)
-    if (cached) return cached
-    const { canvas, style, crop } = await draw(at)
-    const blob = await canvasPng(canvas)
-    canvas.width = 0
-    const item: DrawnSlide = { key, url: URL.createObjectURL(blob), alt: slideAlt(slides[at]!, at, count), style, look, index: at, crop: style === 'headline' ? crop : undefined }
-    pictures.current.set(key, item)
-    while (pictures.current.size > 32) {
-      const oldest = pictures.current.keys().next().value!
-      if (oldest === key) break
-      URL.revokeObjectURL(pictures.current.get(oldest)!.url); pictures.current.delete(oldest)
+    if (cached) return Promise.resolve(cached)
+    let job = drawing.current.get(key)
+    if (!job) {
+      job = (async () => {
+        const { canvas, style, crop } = await draw(at)
+        const blob = await canvasPng(canvas)
+        canvas.width = 0
+        if (!mounted.current) throw new Error('The post was closed.')
+        const item: DrawnSlide = { key, url: URL.createObjectURL(blob), alt: slideAlt(slides[at]!, at, count), style, look, index: at, crop: style === 'headline' ? crop : undefined }
+        pictures.current.set(key, item)
+        while (pictures.current.size > 32) {
+          const oldest = pictures.current.keys().next().value!
+          if (oldest === key) break
+          URL.revokeObjectURL(pictures.current.get(oldest)!.url); pictures.current.delete(oldest)
+        }
+        return item
+      })().finally(() => drawing.current.delete(key))
+      drawing.current.set(key, job)
     }
-    return item
+    return job
   }, [pictureKey, draw, slides, count, look])
 
   // The slide in view first; then its neighbours, so that stepping is instant.

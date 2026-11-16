@@ -55,10 +55,22 @@ async function startOnce(projectId: string, key: string, body: object, options: 
     requestId = crypto.randomUUID()
     try { sessionStorage.setItem(stored, requestId) } catch { /* As above. */ }
   }
-  const record = await request<ShareCardRecord>(base(projectId), { body: { request_id: requestId, ...body, destination, ...(take ? { take } : {}) } })
-  try { sessionStorage.removeItem(stored) } catch { /* As above. */ }
-  return record
+  const forget = () => { try { sessionStorage.removeItem(stored) } catch { /* As above. */ } }
+  try {
+    const record = await request<ShareCardRecord>(base(projectId), { body: { request_id: requestId, ...body, destination, ...(take ? { take } : {}) } })
+    forget()
+    return record
+  } catch (error) {
+    // A refusal (4xx) is final: nothing started, or the ID is already spent (409), so sending it again is pointless and
+    // would keep this start refused for the rest of the session. A lost answer or a server error keeps the ID: the
+    // start may have happened, and the same ID returns it.
+    if (definite(error)) forget()
+    throw error
+  }
 }
+
+/** True for an answer the server gave on purpose (4xx), as opposed to a lost connection, a timeout or a server error. */
+export const definite = (error: unknown) => { const status = (error as { status?: number }).status; return typeof status === 'number' && status >= 400 && status < 500 }
 
 export const shareCardApi = {
   /**
@@ -112,16 +124,33 @@ export const shareCardApi = {
   delete: (projectId: string, id: string) => request<void>(`${base(projectId)}/${id}`, { method: 'DELETE' }),
 }
 
-/** Polls a post once a second while a generation runs. Returns a function that stops polling. */
-export function watchShareCard(projectId: string, id: string, onRecord: (record: ShareCardRecord) => void, onError: (error: Error) => void): () => void {
-  let stopped = false, timer: ReturnType<typeof setTimeout> | undefined
+/** How long to wait before checking again after the 1st, 2nd… failed check of a post; then the watch gives up. */
+export const WATCH_RETRY_MS = [500, 1000, 2000, 4000] as const
+
+/**
+ * Polls a post once a second while a generation runs. A check that fails for a lost connection, a timeout or a server
+ * error is tried again after WATCH_RETRY_MS; `onError` hears each failure with `retrying` true, and once more with
+ * false when the watch gives up. A definite answer (404 for a deleted post, 422 for one an earlier build saved) stops
+ * the watch at once. Returns a function that stops polling.
+ */
+export function watchShareCard(projectId: string, id: string, onRecord: (record: ShareCardRecord) => void,
+  onError: (error: Error, state: { retrying: boolean; status?: number }) => void): () => void {
+  let stopped = false, failures = 0, timer: ReturnType<typeof setTimeout> | undefined
   const tick = async () => {
     try {
       const record = await shareCardApi.get(projectId, id)
       if (stopped) return
+      failures = 0
       onRecord(record)
       if (record.status === 'pending' || record.status === 'running') timer = setTimeout(tick, 1000)
-    } catch (error) { if (!stopped) onError(error as Error) }
+    } catch (error) {
+      if (stopped) return
+      const status = (error as { status?: number }).status
+      const delay = definite(error) ? undefined : WATCH_RETRY_MS[failures]
+      failures++
+      onError(error as Error, { retrying: delay !== undefined, status })
+      if (delay !== undefined) timer = setTimeout(tick, delay)
+    }
   }
   void tick()
   return () => { stopped = true; if (timer) clearTimeout(timer) }

@@ -200,7 +200,9 @@ export default function App({ user }: { user: User }) {
     Promise.all([
       sourcesApi.get(projectId, sourceId),
       annotationsApi.list(projectId, sourceId),
-      linked ? shareCardApi.get(projectId, linked).catch(() => null) : Promise.resolve(null),
+      // A post that answers but cannot be read (one an earlier build saved) still opens, so the panel can say so and
+      // offer to delete it; one that is gone or out of reach leaves the reader as it was.
+      linked ? shareCardApi.get(projectId, linked).catch((e: { status?: number }) => e.status === 422 ? { id: linked, unreadable: true as const } : null) : Promise.resolve(null),
     ])
       .then(([s, anns, post]) => {
         if (progressTimer.current) clearTimeout(progressTimer.current)
@@ -213,9 +215,10 @@ export default function App({ user }: { user: User }) {
         setPdfPages(s.pages || 0)
         setPdfLabel(s.title || s.url || 'PDF')
         setAnnotations(anns)
-        if (post) { setPostId(post.id); setPostPage(post.source.page); setRightPanel('post') }
+        const page = post && 'source' in post ? post.source.page : null
+        if (post) { setPostId(post.id); setPostPage(page); setRightPanel('post') }
         else setPostPage(null)
-        setViewedPage(post?.source.page ?? s.last_page_read ?? 1)
+        setViewedPage(page ?? s.last_page_read ?? 1)
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
@@ -244,7 +247,7 @@ export default function App({ user }: { user: User }) {
     if (postParam === seenPostParam.current) return
     seenPostParam.current = postParam
     if (!postParam || postParam === postId || !projectId) return
-    shareCardApi.get(projectId, postParam).then(post => openPost(post.id, post.source.page)).catch(() => {})
+    shareCardApi.get(projectId, postParam).then(post => openPost(post.id, post.source.page)).catch((e: { status?: number }) => { if (e.status === 422) openPost(postParam) })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postParam])
 
