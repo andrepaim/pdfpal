@@ -73,6 +73,18 @@ export default function CropEditor({ fileUrl, page, value, marks, onApply, onCan
     }
   }, [])
 
+  // A finger that drags the box or a handle must not also start a browser scroll gesture: Chrome turns a drag that
+  // lifts while still moving into a fling, and treats the next tap during that fling as "stop the fling", so a quick
+  // tap on Apply after a flick would be swallowed. Cancelling the drag's touchmove keeps it out of gesture handling.
+  // React's touch listeners are passive, so this one is added natively.
+  useEffect(() => {
+    const dialog = dialogRef.current
+    if (!dialog) return
+    const hold = (event: TouchEvent) => { if (drag.current && event.cancelable) event.preventDefault() }
+    dialog.addEventListener('touchmove', hold, { passive: false })
+    return () => dialog.removeEventListener('touchmove', hold)
+  }, [])
+
   // Load the page.
   useEffect(() => {
     let cancelled = false

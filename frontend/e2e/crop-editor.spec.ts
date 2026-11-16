@@ -208,15 +208,16 @@ test.describe('crop editor on a phone-width touch screen', () => {
     for (let i = 1; i <= 8; i++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(x + i * 0.1 * frame.width / 8, y + i * 0.1 * frame.height / 8) });
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await expectCrop(page, [0.2, 0.2, 0.7, 0.6], 0.006);
+    await page.screenshot({ path: path.join(SHOTS, 'phone-390-after-touch.png') });
 
-    // And moves the box.
+    // And moves the box with a flick: the finger lifts while still moving. Chrome would turn that into a fling and
+    // swallow a tap made while it runs, so Apply is tapped at once: the drag must not start a browser gesture.
     const inside = (await box(page).boundingBox())!;
     x = inside.x + inside.width / 2; y = inside.y + inside.height / 2;
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(x, y) });
     for (let i = 1; i <= 8; i++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(x - i * 0.1 * frame.width / 8, y + i * 0.1 * frame.height / 8) });
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await expectCrop(page, [0.1, 0.3, 0.6, 0.7], 0.006);
-    await page.screenshot({ path: path.join(SHOTS, 'phone-390-after-touch.png') });
 
     await dialog.getByRole('button', { name: 'Apply' }).tap();
     await expect(page.locator('[data-crop-result]')).toHaveText(/^applied 0\.1\d+,0\.\d+,0\.\d+,0\.\d+$/);
