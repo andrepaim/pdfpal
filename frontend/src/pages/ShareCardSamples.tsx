@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react'
 import { LOOKS, type CardSize, type PageMark, type PageRect, type ShareLook, type ShareStyle } from '../../../src/shared/share-card'
 import { canvasPng, cardSheetSpace, loadCardFonts, renderCard, type PageCrop } from '../lib/share-card'
 import { boundingBox, planCrop, runBox, type CropPlan } from '../lib/share-card/crop-box'
-import { CAROUSEL_MAX, CAROUSEL_SHORT, OTHERS_ON_PAGE, PAGE_FRAMES, PAPER_CAROUSEL, PAPER_CAROUSEL_FIVE, POST_CAROUSEL, SAMPLE_PAGE, SAMPLES, type CarouselSample, type PageFrame } from '../lib/share-card/samples'
+import { CAROUSEL_MAX, CAROUSEL_SHORT, DECK_LIMITS, DECK_PAPER, DECK_PAPER_PLAIN, DECK_POST, DECK_POST_PLAIN, DECK_SET, DECK_SET_PLAIN, OTHERS_ON_PAGE, PAGE_FRAMES, PAPER_CAROUSEL, PAPER_CAROUSEL_FIVE, POST_CAROUSEL, SAMPLE_PAGE, SAMPLES, type CarouselSample, type DeckSample, type PageFrame } from '../lib/share-card/samples'
 import { renderSlide, slideSheetSpace, type SlideContext, type SlideSpec } from '../lib/share-card/slides'
 
 type Result = { kind: 'frame' | 'slide' | 'sample'; name: string; url?: string; size?: string; error?: string }
@@ -151,6 +151,19 @@ async function postPageCrop(slide: SlideSpec, context: SlideContext, look: Share
   return cut(page, planCrop({ rects, color: POST_CAROUSEL.mark.color }, SAMPLE_PAGE, { sheet, crop: reader, marks, extraLines: 3 }, reader ? [] : page.runs))
 }
 
+/**
+ * A deck's picture slide: a page or lead slide crops around the post's own highlight (the lead to the title, authors
+ * and abstract), a point slide around its item; every highlight on the page is drawn.
+ */
+async function deckCrop(deck: DeckSample, slide: SlideSpec, context: SlideContext, look: ShareLook, page: SamplePage): Promise<PageCrop> {
+  const own = slide.kind === 'point' ? deck.items[slide.item]! : deck.items[0]!
+  const rects = page.find(own.phrase)
+  const marks = [POST_CAROUSEL.mark, ...OTHERS_ON_PAGE].map(mark => ({ rects: page.find(mark.phrase), color: mark.color }))
+  const sheet = await slideSheetSpace(slide, context, { look })
+  const crop = slide.kind === 'lead' ? PAPER_CAROUSEL.crop : null
+  return cut(page, planCrop({ rects, color: own.color }, SAMPLE_PAGE, { sheet, crop, marks, extraLines: 3 }, crop ? [] : page.runs))
+}
+
 /** A point slide's crop: its highlight on the made-up page, with every highlight of the set as marks. */
 async function slideCrop(carousel: CarouselSample, slide: Extract<SlideSpec, { kind: 'point' }>, context: SlideContext, look: ShareLook, page: SamplePage): Promise<PageCrop> {
   const item = carousel.items[slide.item]!
@@ -191,6 +204,19 @@ export default function ShareCardSamples() {
           const canvas = await renderCard({ card: frame.card, source }, { style: frame.style, look, size: frame.size, crop })
           if (canvas.dataset.style !== frame.style) throw new Error(`Drawn as ${canvas.dataset.style}.`)
           return canvas
+        })
+      }
+      // Decks: a highlight post, a set and a paper, each with its numbers and without any, in every look; the limit
+      // cases in Ink.
+      const decks: Array<[DeckSample, readonly ShareLook[]]> = [[DECK_POST, LOOKS], [DECK_SET, LOOKS], [DECK_PAPER, LOOKS], [DECK_POST_PLAIN, LOOKS], [DECK_SET_PLAIN, LOOKS], [DECK_PAPER_PLAIN, LOOKS],
+        [{ name: 'deck-limits', slides: DECK_LIMITS, source: { ...PAPER_CAROUSEL.source }, items: [POST_CAROUSEL.mark] }, ['ink']]]
+      for (const [deck, looks] of decks) for (const look of looks) for (const [index, slide] of deck.slides.entries()) {
+        if (cancelled) return
+        await show('slide', `${deck.name}-${look}-${index + 1}-${slide.kind}`, async () => {
+          const context: SlideContext = { source: { ...deck.source, color: 'yellow' }, number: index + 1, count: deck.slides.length,
+            items: deck.items.map(item => ({ page: 1, rects: [], color: item.color })) }
+          const crop = ['page', 'point', 'lead'].includes(slide.kind) ? await deckCrop(deck, slide, context, look, pages[1]) : undefined
+          return renderSlide(slide, context, { look, crop })
         })
       }
       // A paper carousel in every look (six slides) and the five-slide one in Ink; the lead also without its crop.

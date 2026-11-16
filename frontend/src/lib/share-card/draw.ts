@@ -23,7 +23,8 @@ function command(ctx: Context, item: DrawCommand, layout: CardLayout, crop?: Can
     case 'rect':
       ctx.globalAlpha = item.alpha
       ctx.fillStyle = item.color
-      ctx.fillRect(item.x, item.y, item.width, item.height)
+      if (item.radius) { ctx.beginPath(); ctx.roundRect(item.x, item.y, item.width, item.height, item.radius); ctx.fill() }
+      else ctx.fillRect(item.x, item.y, item.width, item.height)
       ctx.globalAlpha = 1
       return
     case 'text':
