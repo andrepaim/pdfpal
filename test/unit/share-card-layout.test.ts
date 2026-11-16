@@ -215,7 +215,8 @@ test('the Fit size is as tall as the kicker, the sheet and the footer need, with
   for (const look of LOOKS) {
     const space = pageSheetSpace({ card: sample.card, source: sample.source, style: 'page', look, size: 'fit' }, measure)
     // The room is that of the tallest Fit card, which is Feed's.
-    assert.deepEqual(space, pageSheetSpace({ card: sample.card, source: sample.source, style: 'page', look, size: 'feed' }, measure))
+    const feed = pageSheetSpace({ card: sample.card, source: sample.source, style: 'page', look, size: 'feed' }, measure)
+    assert.equal(space.width, feed.width); assert.equal(space.height, feed.height)
     const chrome = FIT.maxHeight - space.height
     const at = (sheetHeight: number) => layoutCard({ ...inputFor(sample, 'page', look, 'fit'), crop: { width: space.width, height: sheetHeight, marks: MARKS } }, measure)
     // A sheet that needs a card between the bounds gets exactly that card, the sheet at full width.
@@ -243,6 +244,24 @@ test('the Fit size is as tall as the kicker, the sheet and the footer need, with
   const headline = layoutCard({ ...inputFor(sample, 'headline', 'ink', 'fit'), crop: CROPS.wide }, measure)
   assert.equal(headline.height, SIZES.feed.height)
   assert.deepEqual(headline.commands, layoutCard({ ...inputFor(sample, 'headline', 'ink', 'feed'), crop: CROPS.wide }, measure).commands)
+})
+
+test('the room for a sheet says how tall an automatic crop should grow to leave no empty ground', () => {
+  const sample = SAMPLES[0]!
+  for (const look of LOOKS) {
+    for (const style of ['page', 'headline'] as const) for (const size of SIZE_NAMES) {
+      const space = pageSheetSpace({ card: sample.card, source: sample.source, style, look, size }, measure)
+      assert.equal(space.fill, space.height, `${style}/${size}`)
+    }
+    // At Fit the crop fills the smallest Fit card: a sheet of that height gives a card of FIT.minHeight.
+    const fit = pageSheetSpace({ card: sample.card, source: sample.source, style: 'page', look, size: 'fit' }, measure)
+    assert.equal(fit.fill, fit.height - (FIT.maxHeight - FIT.minHeight))
+    const card = layoutCard({ ...inputFor(sample, 'page', look, 'fit'), crop: { width: fit.width, height: fit.fill!, marks: [] } }, measure)
+    assert.equal(card.height, FIT.minHeight)
+    // Headline at Fit is laid out as Feed, and so is its room.
+    assert.deepEqual(pageSheetSpace({ card: sample.card, source: sample.source, style: 'headline', look, size: 'fit' }, measure),
+      pageSheetSpace({ card: sample.card, source: sample.source, style: 'headline', look, size: 'feed' }, measure))
+  }
 })
 
 test('Headline puts the topic and the headline above the sheet, and is Big idea without a crop', () => {

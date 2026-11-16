@@ -97,8 +97,9 @@ export const SAMPLES: Sample[] = [
 ]
 
 // ── Page and Headline frames ───────────────────────────────────────────────────────────────────────────────────────
-// The samples page draws SAMPLE_PAGE on a canvas, finds each mark's phrase in it, and crops it as pageCrop crops a PDF
-// page. The paper, its authors and its numbers are invented.
+// The samples page draws SAMPLE_PAGE on a canvas, in one column or two, finds each mark's phrase in it, and crops it
+// as pageCrop crops a PDF page, its lines given as text runs as pdf.js gives them. The paper, its authors and its
+// numbers are invented.
 
 export const SAMPLE_PAGE = {
   /** US Letter, in points. */
@@ -111,12 +112,15 @@ export const SAMPLE_PAGE = {
     { heading: 'Abstract', text: 'Practice improves performance only when learners can see what to change. We followed 312 music and language students over one semester and recorded 1,204 practice sessions, each ending with either general praise or a specific observation about the gap between the attempt and its result. Students who received specific feedback improved 41% more on blind-rated tests than those who received praise, and the difference grew over the semester. More feedback was not better: beyond three comments per session, gains levelled off and students reported lower motivation. Timing mattered as well; feedback given within ten minutes of an attempt was remembered twice as often a week later. The effect held across instruments, languages and prior skill levels.' },
     { heading: '1  Introduction', text: 'Feedback is among the most studied influences on learning, yet its effects vary widely. Reviews report average gains, but a large share of feedback interventions lower performance. One explanation is that much feedback describes the learner rather than the task: it praises, encourages or grades without pointing to anything that could be done differently. In this study we ask whether the content of feedback, rather than its amount, explains who improves. We compare two kinds of comment that teachers give every day and measure their effect on skill, memory and motivation over a full semester of ordinary practice.' },
     { heading: '2  Method', text: 'Students were recruited from four schools and assigned at random to teachers trained in one of the two styles. Each session was recorded, transcribed and coded by two raters who did not know the condition. Skill was measured at the start, the middle and the end of the semester by judges who heard anonymous recordings.' },
+    { heading: '3  Results', text: 'Both groups practised for about the same time each week, and attendance did not differ between the conditions. By the middle of the semester the students who heard specific comments had already pulled ahead, and the gap widened in the second half. Teachers in the specific condition gave fewer comments per session than those in the praise condition, yet their students recalled more of them a week later. Students with the least prior skill gained the most, which suggests that a clear pointer to the next change matters most when there is the most to change.' },
   ],
 } as const
 
 export type FrameMark = { phrase: string; color: HighlightColor }
 export type PageFrame = {
   name: string
+  /** The page in two columns, the sections after the first two in the right one. */
+  columns?: 2
   style: 'page' | 'headline'
   size: CardSize
   extraLines: 0 | 1 | 3
@@ -129,6 +133,7 @@ export type PageFrame = {
 }
 
 const OWN: FrameMark = { phrase: 'Students who received specific feedback improved 41% more on blind-rated tests than those who received praise', color: 'yellow' }
+const RIGHT: FrameMark = { phrase: 'coded by two raters who did not know the condition', color: 'yellow' }
 const OTHERS: FrameMark[] = [
   { phrase: 'More feedback was not better', color: 'green' },
   { phrase: 'within ten minutes of an attempt', color: 'blue' },
@@ -156,5 +161,7 @@ export const PAGE_FRAMES: PageFrame[] = [
   { name: 'headline-feed-abstract-max', style: 'headline', size: 'feed', extraLines: 3, crop: ABSTRACT, marks: [OWN, ...OTHERS], card: pageCard(longEnglish.headline, longEnglish.topic), source: pageSource },
   { name: 'headline-story-abstract-max', style: 'headline', size: 'story', extraLines: 3, crop: ABSTRACT, marks: [OWN, ...OTHERS], card: pageCard(longPortuguese.headline, longPortuguese.topic), source: { ...pageSource, title: LONG_TITLE, credit: LONG_CREDIT } },
   { name: 'headline-feed-whole-min', style: 'headline', size: 'feed', extraLines: 0, crop: WHOLE, marks: [OWN], card: pageCard(minimal.headline, ''), source: { ...pageSource, title: '', credit: '' } },
+  { name: 'page-fit-x-columns', columns: 2, style: 'page', size: 'fit', extraLines: 1, crop: null, marks: [OTHERS[0]!, OWN, OTHERS[1]!], card: pageCard(headline), source: pageSource },
+  { name: 'headline-feed-columns', columns: 2, style: 'headline', size: 'feed', extraLines: 3, crop: null, marks: [RIGHT, OTHERS[0]!], card: { ...pageCard(headline), quote: `${RIGHT.phrase}.` }, source: { ...pageSource, passage: `${RIGHT.phrase}.` } },
   { name: 'headline-feed-word', style: 'headline', size: 'feed', extraLines: 0, crop: null, marks: [OWN, OTHERS[0]!], card: pageCard(longWordEnglish.headline), source: pageSource },
 ]

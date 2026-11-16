@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { autoCrop, boundingBox, cropBox, cropMarks, fitSheet, planCrop, readerCrop } from '../../frontend/src/lib/share-card/crop-box.js'
+import { autoCrop, boundingBox, cropBox, cropMarks, fitSheet, planCrop, readerCrop, runBox, textLines } from '../../frontend/src/lib/share-card/crop-box.js'
 
 const near = (actual: number, expected: number) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} ≠ ${expected}`)
 const rounded = (value: unknown) => JSON.parse(JSON.stringify(value, (_, v) => typeof v === 'number' ? Math.round(v * 1000) / 1000 : v))
@@ -122,4 +122,162 @@ test('a crop plan: the reader\'s crop or the automatic one, the marks inside it,
   // The render never exceeds the largest canvas side.
   const whole = planCrop(own, A4, { sheet: { width: 20_000, height: 40_000 }, crop: { x1: 0, y1: 0, x2: 1, y2: 1 }, marks: [], extraLines: 3 })!
   assert.ok(whole.width <= 4095 && whole.height <= 4095, `${whole.width}×${whole.height}`)
+})
+
+// ── Automatic crops snapped to the page's text ─────────────────────────────────────────────────────────────────────
+// Text runs as pdf.js gives them, on a US Letter page in points, turned into page fractions by runBox.
+const LETTER = { width: 612, height: 792 }
+const run = (left: number, right: number, baseline: number, size = 10) => runBox(left, right, baseline, size, LETTER)
+const column = (left: number, right: number, first: number, count: number, pitch = 13, size = 10) =>
+  Array.from({ length: count }, (_, index) => run(left, right, first + index * pitch, size))
+/** A highlight on one line from `left` to `right`, as the reader's text layer gives it. */
+const mark = (left: number, right: number, baseline: number, size = 10) =>
+  ({ x1: left / LETTER.width, y1: (baseline - 0.82 * size) / LETTER.height, x2: right / LETTER.width, y2: (baseline + 0.26 * size) / LETTER.height })
+const tall = { width: 896, height: 5000 }
+const sheetHeight = (box: { x1: number; y1: number; x2: number; y2: number }, width = 896) =>
+  width * (box.y2 - box.y1) * LETTER.height / ((box.x2 - box.x1) * LETTER.width)
+/** Every run is wholly inside the crop or wholly outside it: no line is cut through, no word at the sides. */
+function assertNothingCut(box: { x1: number; y1: number; x2: number; y2: number }, runs: Array<{ x1: number; y1: number; x2: number; y2: number }>) {
+  for (const r of runs) {
+    const across = r.x2 > box.x1 && r.x1 < box.x2, down = r.y2 > box.y1 && r.y1 < box.y2
+    if (!across || !down) continue
+    assert.ok(r.y1 >= box.y1 - 1e-9 && r.y2 <= box.y2 + 1e-9, `a line is cut: ${JSON.stringify(r)} in ${JSON.stringify(box)}`)
+    assert.ok(r.x1 >= box.x1 - 1e-9 && r.x2 <= box.x2 + 1e-9, `a line is cut at the side: ${JSON.stringify(r)} in ${JSON.stringify(box)}`)
+  }
+}
+const inside = (box: { y1: number; y2: number }, runs: Array<{ y1: number; y2: number }>) => runs.filter(r => r.y1 >= box.y1 - 1e-9 && r.y2 <= box.y2 + 1e-9).length
+
+test('text runs on one row join into one line piece, and a wide gap splits them into columns', () => {
+  const pieces = textLines([run(72, 200, 100), run(203, 300, 100), run(330, 540, 100), run(72, 540, 113)], LETTER)
+  assert.deepEqual(rounded(pieces), rounded([run(72, 300, 100), run(330, 540, 100), run(72, 540, 113)]))
+  assert.deepEqual(textLines([], LETTER), [])
+})
+
+test('an automatic crop takes whole lines and the width of the text column, not 55% of the page', () => {
+  const runs = column(72, 540, 100, 40)
+  // A short phrase in the middle of the 11th line, with one line of context.
+  const box = autoCrop([mark(250, 330, 230)], LETTER, tall, 1, runs)!
+  assertNothingCut(box, runs)
+  assert.equal(inside(box, runs), 3)
+  assert.ok(box.x1 < 72 / 612 && box.x1 > 50 / 612 && box.x2 > 540 / 612 && box.x2 < 562 / 612, JSON.stringify(box))
+  // The edges sit in the gaps next to the first and last lines.
+  assert.ok(box.y1 < runs[9]!.y1 && box.y1 > runs[8]!.y2 && box.y2 > runs[11]!.y2 && box.y2 < runs[12]!.y1)
+  assert.equal(inside(autoCrop([mark(250, 330, 230)], LETTER, tall, 3, runs)!, runs), 7)
+  assert.equal(inside(autoCrop([mark(250, 330, 230)], LETTER, tall, 0, runs)!, runs), 1)
+})
+
+test('a heading above the context is taken whole or left out, never cut', () => {
+  const runs = [...column(72, 540, 100, 6), run(72, 180, 196, 12), ...column(72, 540, 214, 10)]
+  for (const extra of [0, 1, 3] as const) for (const line of [0, 1, 2]) {
+    const box = autoCrop([mark(100, 400, 214 + line * 13)], LETTER, tall, extra, runs)!
+    assertNothingCut(box, runs)
+  }
+})
+
+test('on a two-column page the crop keeps to the highlight\'s column; across both it takes both', () => {
+  // Columns 54–298 and 314–558; the right one's baselines are offset by half a line.
+  const left = column(54, 298, 100, 40), right = column(314, 558, 106.5, 40), runs = [...left, ...right]
+  const inLeft = autoCrop([mark(100, 250, 100 + 13 * 12)], LETTER, tall, 3, runs)!
+  assertNothingCut(inLeft, runs)
+  assert.ok(inLeft.x2 < 314 / 612 && inLeft.x1 < 54 / 612, JSON.stringify(inLeft))
+  assert.equal(inside(inLeft, left), 7)
+  // The same margin on both sides, though one side meets the gutter.
+  near((54 / 612 - inLeft.x1) * 1e3, (inLeft.x2 - 298 / 612) * 1e3)
+  const inRight = autoCrop([mark(320, 500, 106.5 + 13 * 20)], LETTER, tall, 1, runs)!
+  assertNothingCut(inRight, runs)
+  assert.ok(inRight.x1 > 298 / 612 && inRight.x2 > 558 / 612, JSON.stringify(inRight))
+  // The last line of the left column and the first of the right: the union of both columns.
+  const across = autoCrop([mark(54, 298, 100 + 13 * 39), mark(314, 450, 106.5)], LETTER, tall, 0, runs)!
+  assert.ok(across.x1 < 54 / 612 && across.x2 > 558 / 612, JSON.stringify(across))
+  assertNothingCut(across, runs)
+})
+
+test('text across both columns stops the context, which is then taken from the other side', () => {
+  const title = run(54, 558, 80, 16)
+  const left = column(54, 298, 110, 30), right = column(314, 558, 110, 30), runs = [title, ...left, ...right]
+  const box = autoCrop([mark(60, 200, 110)], LETTER, tall, 3, runs)!
+  assertNothingCut(box, runs)
+  assert.ok(box.y1 >= title.y2 && box.x2 < 314 / 612, JSON.stringify(box))
+  assert.equal(inside(box, left), 7)
+  // A gap of several lines (a figure) stops it too.
+  const split = [...column(72, 540, 100, 10), ...column(72, 540, 400, 10)]
+  const above = autoCrop([mark(80, 300, 100 + 13 * 8)], LETTER, tall, 3, split)!
+  assert.ok(above.y2 < split[10]!.y1, JSON.stringify(above))
+  assert.equal(inside(above, split), 7)
+})
+
+test('the automatic crop grows by whole lines, balanced, until its sheet fills the room', () => {
+  const runs = column(72, 540, 100, 45)
+  const highlight = [mark(100, 400, 100 + 13 * 20)]
+  const minimum = autoCrop(highlight, LETTER, { width: 896, height: 5000 }, 1, runs)!
+  for (const fill of [300, 600, 900]) {
+    const box = autoCrop(highlight, LETTER, { width: 896, height: 5000, fill }, 1, runs)!
+    assertNothingCut(box, runs)
+    const lines = inside(box, runs), pitch = sheetHeight(box) * 13 / ((box.y2 - box.y1) * LETTER.height)
+    assert.ok(sheetHeight(box) <= fill + 1e-6 && sheetHeight(box) > fill - 1.5 * pitch, `fill ${fill}: ${sheetHeight(box)}`)
+    assert.ok(lines >= 3)
+    // Balanced: as many lines above the highlight as below, or one more above.
+    const above = runs.slice(0, 20).filter(r => r.y1 >= box.y1).length, below = runs.slice(21).filter(r => r.y2 <= box.y2).length
+    assert.ok(above - below === 0 || above - below === 1, `fill ${fill}: ${above} above, ${below} below`)
+  }
+  // A fill below the minimum context keeps the minimum; the room still caps the minimum.
+  assert.deepEqual(autoCrop(highlight, LETTER, { width: 896, height: 5000, fill: 10 }, 1, runs), minimum)
+  // Near the top of the text, the lines come from below.
+  const top = autoCrop([mark(100, 400, 100 + 13)], LETTER, { width: 896, height: 5000, fill: 600 }, 1, runs)!
+  assert.equal(runs.slice(0, 1).filter(r => r.y1 >= top.y1).length, 1)
+  assert.ok(inside(top, runs) > 10)
+  // The whole page's text fits: everything, and no more.
+  const all = autoCrop(highlight, LETTER, { width: 896, height: 50_000, fill: 50_000 }, 1, runs)!
+  assert.equal(inside(all, runs), 45)
+})
+
+test('a crop that grows downwards never ends on a heading without the line under it', () => {
+  const heading = run(72, 160, 240, 12)
+  const runs = [...column(72, 540, 100, 10), heading, ...column(72, 540, 258, 10)]
+  let seen = 0
+  for (let fill = 60; fill <= 900; fill += 5) {
+    const box = autoCrop([mark(100, 400, 165)], LETTER, { width: 896, height: 5000, fill }, 0, runs)!
+    assertNothingCut(box, runs)
+    if (heading.y1 >= box.y1 && heading.y2 <= box.y2) {
+      seen++
+      assert.ok(runs[11]!.y2 <= box.y2, `fill ${fill}: the crop ends on the heading`)
+    }
+  }
+  assert.ok(seen > 0)
+})
+
+test('an automatic crop with text still steps down through less context when the room is short', () => {
+  const runs = column(72, 540, 100, 40), highlight = [mark(100, 400, 230)]
+  const three = autoCrop(highlight, LETTER, tall, 3, runs)!, one = autoCrop(highlight, LETTER, tall, 1, runs)!, none = autoCrop(highlight, LETTER, tall, 0, runs)!
+  assert.deepEqual(autoCrop(highlight, LETTER, { width: 896, height: Math.floor(sheetHeight(three)) }, 3, runs), one)
+  assert.deepEqual(autoCrop(highlight, LETTER, { width: 896, height: Math.floor(sheetHeight(one)) }, 3, runs), none)
+  // After stepping down, the crop still grows into the room it has.
+  assert.equal(inside(autoCrop(highlight, LETTER, { width: 896, height: Math.floor(sheetHeight(one)), fill: 5000 }, 3, runs)!, runs), 2)
+  assert.equal(autoCrop(highlight, LETTER, { width: 896, height: Math.floor(sheetHeight(none)) }, 3, runs), null)
+})
+
+test('without a usable text layer the automatic crop is the old one', () => {
+  const highlight = [mark(250, 330, 230)]
+  for (const extra of [0, 1, 3] as const) {
+    assert.deepEqual(autoCrop(highlight, LETTER, tall, extra, []), cropBox(highlight, extra))
+    // Text elsewhere on the page, none of it under the highlight (a scanned page with a printed header).
+    assert.deepEqual(autoCrop(highlight, LETTER, { ...tall, fill: 4000 }, extra, [run(72, 300, 40)]), cropBox(highlight, extra))
+  }
+})
+
+test('a reader\'s crop is drawn exactly as set, with or without the post\'s own boxes', () => {
+  const runs = column(72, 540, 100, 40)
+  const crop = { x1: 0.1, y1: 0.2, x2: 0.7, y2: 0.45 }
+  const pink = { rects: [mark(100, 300, 230), mark(100, 300, 700)], color: 'pink' as const }
+  // A region post: no boxes of its own; the marks come only from the page.
+  const region = planCrop({ rects: [], color: 'yellow' }, LETTER, { sheet: { width: 896, height: 600, fill: 600 }, crop, marks: [pink], extraLines: 3 }, runs)!
+  assert.deepEqual(region.box, crop)
+  assert.deepEqual(region.marks.map(m => [m.color, m.rects.length]), [['pink', 1]])
+  assert.deepEqual(planCrop({ rects: [], color: 'yellow' }, LETTER, { sheet: { width: 896, height: 600 }, crop, marks: [], extraLines: 3 }, runs)!.marks, [])
+  // Without a crop, a region post has nothing to start from.
+  assert.equal(planCrop({ rects: [], color: 'yellow' }, LETTER, { sheet: { width: 896, height: 600 }, crop: null, marks: [pink], extraLines: 3 }, runs), null)
+  // The automatic crop is planned from the text and the fill.
+  const sheet = { width: 896, height: 1000, fill: 500 }
+  assert.deepEqual(planCrop({ rects: [mark(250, 330, 230)], color: 'yellow' }, LETTER, { sheet, crop: null, marks: [], extraLines: 1 }, runs)!.box,
+    autoCrop([mark(250, 330, 230)], LETTER, sheet, 1, runs))
 })

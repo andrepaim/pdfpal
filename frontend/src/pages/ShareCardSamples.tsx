@@ -3,11 +3,12 @@
 // the page holds a hundred-odd small blobs instead of as many full-size canvases.
 //
 // Page and Headline frames (data-frame) crop a made-up paper page drawn here, through the same planCrop that
-// pageCrop uses for a PDF. Text cards (data-sample) are the first build's matrix, unchanged.
+// pageCrop uses for a PDF, with the page's lines given as text runs as pdf.js gives them. Text cards (data-sample)
+// are the first build's matrix, unchanged.
 import { useEffect, useState } from 'react'
 import { LOOKS, type CardSize, type PageMark, type PageRect, type ShareLook, type ShareStyle } from '../../../src/shared/share-card'
 import { canvasPng, cardSheetSpace, loadCardFonts, renderCard, type PageCrop } from '../lib/share-card'
-import { planCrop } from '../lib/share-card/crop-box'
+import { planCrop, runBox } from '../lib/share-card/crop-box'
 import { PAGE_FRAMES, SAMPLE_PAGE, SAMPLES, type PageFrame } from '../lib/share-card/samples'
 
 type Result = { kind: 'frame' | 'sample'; name: string; url?: string; size?: string; error?: string }
@@ -18,8 +19,16 @@ const PAGE_SCALE = 4
 
 type Word = { text: string; x: number; width: number; baseline: number; size: number }
 
-/** Draws SAMPLE_PAGE as a PDF page would render: white, black type, justified body text. */
-function drawSamplePage(): { canvas: HTMLCanvasElement; find: (phrase: string) => PageRect[] } {
+type SamplePage = { canvas: HTMLCanvasElement; find: (phrase: string) => PageRect[]; runs: PageRect[] }
+/** Gap between the columns of the two-column page, in points. */
+const GUTTER = 18
+
+/**
+ * Draws SAMPLE_PAGE as a PDF page would render: white, black type, justified body text, in one column or two (the
+ * first two sections on the left). Lines that would pass the bottom margin are left out. `runs` are its lines as
+ * pdf.js gives text runs, one per line.
+ */
+function drawSamplePage(columns: 1 | 2): SamplePage {
   const { width, height, margin } = SAMPLE_PAGE
   const canvas = document.createElement('canvas')
   canvas.width = width * PAGE_SCALE; canvas.height = height * PAGE_SCALE
@@ -27,9 +36,9 @@ function drawSamplePage(): { canvas: HTMLCanvasElement; find: (phrase: string) =
   ctx.scale(PAGE_SCALE, PAGE_SCALE)
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, width, height)
   ctx.textBaseline = 'alphabetic'
-  const column = width - 2 * margin
   const paragraphs: Array<{ words: Word[]; font: string }> = []
-  let y = margin
+  const runs: PageRect[] = []
+  let y: number = margin, left: number = margin, column = width - 2 * margin
 
   /** Lays out `text` in the column; justified unless `ragged`. Returns its words. */
   const block = (text: string, font: string, size: number, leading: number, color: string, ragged: boolean): Word[] => {
@@ -46,16 +55,18 @@ function drawSamplePage(): { canvas: HTMLCanvasElement; find: (phrase: string) =
     const words: Word[] = []
     lines.forEach((items, index) => {
       const baseline = y + size
+      y += leading
+      if (baseline > height - margin) return
       const last = index === lines.length - 1
       const natural = items.reduce((sum, item) => sum + item.width, 0)
       const gap = !ragged && !last && items.length > 1 ? (column - natural) / (items.length - 1) : space
-      let x = margin
+      let x = left
       for (const item of items) {
         ctx.fillText(item.text, x, baseline)
         words.push({ text: item.text, x, width: item.width, baseline, size })
         x += item.width + gap
       }
-      y += leading
+      runs.push(runBox(left, x - gap, baseline, size, SAMPLE_PAGE))
     })
     return words
   }
@@ -67,12 +78,15 @@ function drawSamplePage(): { canvas: HTMLCanvasElement; find: (phrase: string) =
   block(SAMPLE_PAGE.authors, '400 11px "Newsreader"', 11, 14, '#000000', true)
   block(SAMPLE_PAGE.affiliations, 'italic 400 8.5px "Newsreader"', 8.5, 12, '#333333', true)
   const body = '400 10px "Newsreader"'
-  for (const section of SAMPLE_PAGE.sections) {
+  const top = y
+  if (columns === 2) column = (width - 2 * margin - GUTTER) / 2
+  SAMPLE_PAGE.sections.forEach((section, index) => {
+    if (columns === 2 && index === 2) { y = top; left = margin + column + GUTTER }
     y += 14
     block(section.heading, '600 10.5px "Inter"', 10.5, 15, '#000000', true)
     y += 2
     paragraphs.push({ words: block(section.text, body, 10, 13.2, '#111111', false), font: body })
-  }
+  })
 
   /** The phrase's boxes, one per line, as page fractions. */
   const find = (phrase: string): PageRect[] => {
@@ -94,16 +108,16 @@ function drawSamplePage(): { canvas: HTMLCanvasElement; find: (phrase: string) =
     }
     throw new Error(`The sample page has no "${phrase}".`)
   }
-  return { canvas, find }
+  return { canvas, find, runs }
 }
 
 /** A frame's page crop, cut from the made-up page as pageCrop renders a PDF page. */
-async function frameCrop(frame: PageFrame, look: ShareLook, page: ReturnType<typeof drawSamplePage>) {
+async function frameCrop(frame: PageFrame, look: ShareLook, page: SamplePage) {
   const marks: PageMark[] = frame.marks.map(mark => ({ rects: page.find(mark.phrase), color: mark.color }))
   const own = marks[0]!
   const source = { ...frame.source, rects: own.rects, color: own.color }
   const sheet = await cardSheetSpace({ card: frame.card, source }, { style: frame.style, look, size: frame.size })
-  const plan = planCrop(own, SAMPLE_PAGE, { sheet, crop: frame.crop, marks, extraLines: frame.extraLines })
+  const plan = planCrop(own, SAMPLE_PAGE, { sheet, crop: frame.crop, marks, extraLines: frame.extraLines }, frame.crop ? [] : page.runs)
   if (!plan) throw new Error('too-tall')
   const image = document.createElement('canvas')
   image.width = plan.width; image.height = plan.height
@@ -135,11 +149,11 @@ export default function ShareCardSamples() {
     }
     void (async () => {
       await loadCardFonts()
-      const page = drawSamplePage()
+      const pages = { 1: drawSamplePage(1), 2: drawSamplePage(2) }
       for (const frame of PAGE_FRAMES) for (const look of LOOKS as readonly ShareLook[]) {
         if (cancelled) return
         await show('frame', `${frame.name}-${look}`, async () => {
-          const { source, crop } = await frameCrop(frame, look, page)
+          const { source, crop } = await frameCrop(frame, look, pages[frame.columns ?? 1])
           const canvas = await renderCard({ card: frame.card, source }, { style: frame.style, look, size: frame.size, crop })
           if (canvas.dataset.style !== frame.style) throw new Error(`Drawn as ${canvas.dataset.style}.`)
           return canvas

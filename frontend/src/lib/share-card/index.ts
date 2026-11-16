@@ -53,8 +53,9 @@ export async function cardLayout(content: CardRenderContent, options: CardRender
 /**
  * The room for the sheet on a Page or Headline card of this style, look and size, at the full inner width: pass it to
  * pageCrop as `sheet`. For Fit it is the tallest Fit card's room, so the crop is chosen before the card's height.
+ * `fill` tells an automatic crop how far to grow so the card has no empty ground.
  */
-export async function cardSheetSpace(content: CardRenderContent, options: Omit<CardRenderOptions, 'crop'>): Promise<{ width: number; height: number }> {
+export async function cardSheetSpace(content: CardRenderContent, options: Omit<CardRenderOptions, 'crop'>): Promise<{ width: number; height: number; fill: number }> {
   await loadCardFonts()
   return pageSheetSpace({ card: content.card, source: content.source, style: options.style, look: options.look, size: options.size }, canvasMeasure())
 }
