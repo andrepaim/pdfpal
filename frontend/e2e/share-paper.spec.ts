@@ -443,7 +443,8 @@ test.describe('share the paper, for review', () => {
       const group = page.getByRole('group', { name: 'Start a post' });
       await expect(group).toBeVisible();
       await page.getByText('Or click a highlight').waitFor();
-      await expect(page.locator('#share-region-hint')).toHaveText('A figure or passage on page 1; the paper: its question, method and results; or a carousel of your highlights.');
+      // Which page is in view depends on the window's size here, so the page number is not part of this check.
+      await expect(page.locator('#share-region-hint')).toHaveText(/^A figure or passage on page \d+; the paper: its question, method and results; or a carousel of your highlights\.$/);
       await group.locator('xpath=ancestor::div[1]').screenshot({ path: shot('list') });
 
       await page.setViewportSize({ width: viewport, height: 2200 });
