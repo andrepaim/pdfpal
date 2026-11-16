@@ -197,13 +197,14 @@ const wordCount = (text: string) => text.split(/\s+/u).filter(Boolean).length
 export function draftLimits(destination: Destination, options: { take?: string; changed?: boolean; url?: string } = {}): DraftLimits {
   const base = DRAFT[destination], take = collapse(options.take ?? '')
   let { minWords, maxWords, maxChars, minParagraphs, maxParagraphs } = base
+  if (options.changed) { minWords = Math.min(minWords, 10); minParagraphs = 1 }
+  // A take is its own paragraph after at least one of the assistant's, even when a change asks for one paragraph.
   if (take) {
     maxWords = Math.max(maxWords, wordCount(take) + 25)
     maxChars = Math.max(maxChars, take.length + 140)
     minParagraphs = Math.max(minParagraphs, 2)
     maxParagraphs = Math.max(maxParagraphs, 2)
   }
-  if (options.changed) { minWords = Math.min(minWords, 10); minParagraphs = 1 }
   if (destination === 'x' && options.url?.trim()) maxChars -= X_LINK_CHARS
   // Where the first line is the whole visible post (X), it follows the character limit.
   const hookMax = base.hookMax >= base.maxChars ? maxChars : Math.min(base.hookMax, maxChars)
@@ -442,74 +443,136 @@ export function publicUrl(url: string | null | undefined): string {
 }
 
 // The numbers check. Every number the assistant writes must appear in what it was given, so that a recalled,
-// computed or converted figure never reaches a post. When two readings of a numeral are possible (is "1.572" a
-// thousand or a decimal?) both count: the check prefers letting a legitimate draft through to blocking it.
+// computed or converted figure never reaches a post. It is exact on the draft's side and lenient on the source's:
+// the source is extracted PDF text, with lost spaces and spelled-out numbers, and a missed match costs the reader a
+// failed post.
 //
 // - A numeral is a run of digits with "." or "," (or a non-breaking or thin space) between digit groups, or a
-//   leading-point decimal such as ".65". Digits glued to a preceding letter ("p53", "CO2", "H1N1") are names, not
-//   quantities, and are skipped. Signs and units are ignored: "63%", "63 percent" and "63" are the same number.
+//   leading-point decimal such as ".65". In a draft, digits glued to a preceding letter ("p53", "CO2", "H1N1") are
+//   names, not quantities, and are skipped; in the source they count, because pdf.js may have lost the space
+//   ("of12 hospitals"). Units are ignored: "63%", "63 percent" and "63" are the same number. So is the sign: a fall
+//   of "−12%" in the source supports "a rise of 12%", because a direction is prose, not a number.
 // - Thousands separators are dropped in either style ("1,572", "1.572", "1 572" are 1572), a decimal comma is a
-//   decimal point, and trailing decimal zeros do not matter ("0.650" is "0.65", ".65" is "0.65"). A numeral with one
-//   separator and three digits after it ("1,572") reads both as a thousand and as a decimal.
-// - A draft may round a decimal from the source to fewer places ("1.35" as "1.4" or "1.3"), and to a whole number
-//   only when the source's number is 10 or more ("63.4%" as "63%", but not "1.5" as "2").
-// - A year is a number like any other; a range ("2021–2024") is its two ends, and an abbreviated end ("2021-24")
-//   also counts in full. An ordinal ("3rd") is its number. An unreadable numeral ("3.5.1") must appear as written.
-// - English number words from zero to ninety-nine and ordinals up to "twelfth" in the source count as the number,
-//   so "thirty-three studies" supports "33". Number words in a draft are not checked.
+//   decimal point, and trailing zeros of a plain decimal do not matter ("0.650" is "0.65", ".65" is "0.65").
+// - A numeral with one separator and three digits after it ("1,572", "10.000") is ambiguous: it reads as a whole
+//   number (1572, 10000) and as a decimal that keeps its three places ("1.572", "10.000"). The decimal reading only
+//   matches the same three-place decimal, so "10,000" is never supported by "10", nor "12,500" by "12.5".
+// - A draft may round a plain decimal from the source to fewer places ("1.35" as "1.4" or "1.3"), and to a whole
+//   number only when the source's number is 10 or more ("63.4%" as "63%", but not "1.5" as "2"). An ambiguous
+//   numeral, on either side, is never rounded.
+// - A year is a number like any other. A range ("2021–2024") is its two ends; an abbreviated end ("2021-24") also
+//   reads in full, in the source and in the draft ("2010–19" needs 2010 and 2019, or 19).
+// - An ordinal ("3rd") is its number. An unreadable numeral ("3.5.1") must appear as written. In the source, a comma
+//   after four digits splits the numeral ("2019,62%" is 2019 and 62), and three-digit groups after a plain space
+//   join ("12 500" is also 12500).
+// - English number words in the source count: units, tens, "hundred" and "thousand" ("two hundred and fifty" is 250,
+//   "a thousand" 1000) and ordinals ("twentieth" is 20, "twenty-first" 21). Number words in a draft are not checked.
 
-const NUMERAL = /(?<![\p{L}\p{N}.,])(?:\d+(?:[.,   ]\d+)*|\.\d+)/gu
-const WORD_UNITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen',
-  'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen']
-const WORD_TENS = ['twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety']
-const WORD_ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth']
-const NUMBER_WORDS = new RegExp(`\\b(?:(${WORD_TENS.join('|')})(?:[-\\s]+(${WORD_UNITS.slice(1, 10).join('|')}))?|(${WORD_UNITS.join('|')})|(${WORD_ORDINALS.join('|')}))\\b`, 'giu')
-const ABBREVIATED_RANGE = /(?<!\d)(\d{2})(\d{2})\s*[-–—]\s*(\d{2})(?!\d)/gu
+const DRAFT_NUMERAL = /(?<![\p{L}\p{N}.,])(?:\d+(?:[.,   ]\d+)*|\.\d+)/gu
+const SOURCE_NUMERAL = /(?<![\p{N}.,])(?:\d+(?:[.,   ]\d+)*|\.\d+)/gu
+const SPACED_THOUSANDS = /(?<![\p{N}.,])\d{1,3}(?: \d{3})+(?![\p{N}])/gu
+const ABBREVIATED_RANGE = /(?<![\p{N}])(\d{2})(\d{2})\s*[-–—]\s*(\d{2})(?![\p{N}])/gu
+const CARDINALS: Record<string, number> = Object.fromEntries([
+  ...['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen',
+    'sixteen', 'seventeen', 'eighteen', 'nineteen'].map((word, value) => [word, value]),
+  ...['twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'].map((word, index) => [word, (index + 2) * 10]),
+])
+const ORDINALS: Record<string, number> = Object.fromEntries([
+  ...['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth', 'eleventh', 'twelfth', 'thirteenth', 'fourteenth',
+    'fifteenth', 'sixteenth', 'seventeenth', 'eighteenth', 'nineteenth'].map((word, index) => [word, index + 1]),
+  ...['twentieth', 'thirtieth', 'fortieth', 'fiftieth', 'sixtieth', 'seventieth', 'eightieth', 'ninetieth'].map((word, index) => [word, (index + 2) * 10]),
+  ['hundredth', 100], ['thousandth', 1000],
+])
+const SCALES: Record<string, number> = { hundred: 100, thousand: 1000 }
+const NUMBER_WORD = [...Object.keys(CARDINALS), ...Object.keys(ORDINALS), ...Object.keys(SCALES)].sort((a, b) => b.length - a.length).join('|')
+/** A run of number words, possibly led by "a" and joined by spaces, hyphens or "and". */
+const NUMBER_WORDS = new RegExp(`(?<![\\p{L}\\p{N}_])(?:a\\s+)?(?:${NUMBER_WORD})(?:(?:\\s+and\\s+|[\\s-]+)(?:${NUMBER_WORD}))*(?![\\p{L}\\p{N}_])`, 'giu')
 
-/** Every numeral in `text`, as written. */
-export const numbersIn = (text: string): string[] => [...text.matchAll(NUMERAL)].map(match => match[0])
+/** Every numeral in a draft's `text`, as written. */
+export const numbersIn = (text: string): string[] => [...text.matchAll(DRAFT_NUMERAL)].map(match => match[0])
 
-/** A plain decimal string without leading or trailing zeros: "007" is "7", ".650" is "0.65". */
-function canonical(digits: string): string {
+/** A plain decimal string without leading zeros, and without trailing decimal zeros unless `keep`: ".650" is "0.65". */
+function canonical(digits: string, keep = false): string {
   const [whole = '', fraction = ''] = digits.split('.')
-  const head = whole.replace(/^0+(?=\d)/u, '') || '0', tail = fraction.replace(/0+$/u, '')
+  const head = whole.replace(/^0+(?=\d)/u, '') || '0', tail = keep ? fraction : fraction.replace(/0+$/u, '')
   return tail ? `${head}.${tail}` : head
 }
 
-/** Every value a numeral may stand for, in canonical form. */
-function readings(numeral: string): string[] {
+/** The values a numeral may stand for, in canonical form, and whether it is ambiguous (see the rules above). */
+function readings(numeral: string): { values: string[]; ambiguous: boolean } {
   const out = new Set<string>()
+  const thousands = /^[1-9]\d{0,2}(?:,\d{3})+(?:\.\d+)?$/u.test(numeral) || /^[1-9]\d{0,2}(?:[.   ]\d{3})+(?:,\d+)?$/u.test(numeral)
+    || /^[1-9]\d{0,2}(?:[   ]\d{3})+(?:\.\d+)?$/u.test(numeral)
+  const decimal = /^\d*[.,]\d+$/u.test(numeral)
+  const ambiguous = thousands && decimal
   if (/^\d+$/u.test(numeral)) out.add(canonical(numeral))
-  if (/^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/u.test(numeral)) out.add(canonical(numeral.replaceAll(',', '')))
-  if (/^\d{1,3}(?:[.   ]\d{3})+(?:,\d+)?$/u.test(numeral)) out.add(canonical(numeral.replace(/[.   ]/gu, '').replace(',', '.')))
-  if (/^\d{1,3}(?:[   ]\d{3})+(?:\.\d+)?$/u.test(numeral)) out.add(canonical(numeral.replace(/[   ]/gu, '')))
-  if (/^\d*[.,]\d+$/u.test(numeral)) out.add(canonical(numeral.replace(',', '.')))
-  return [...out]
+  if (/^[1-9]\d{0,2}(?:,\d{3})+(?:\.\d+)?$/u.test(numeral)) out.add(canonical(numeral.replaceAll(',', '')))
+  if (/^[1-9]\d{0,2}(?:[.   ]\d{3})+(?:,\d+)?$/u.test(numeral)) out.add(canonical(numeral.replace(/[.   ]/gu, '').replace(',', '.')))
+  if (/^[1-9]\d{0,2}(?:[   ]\d{3})+(?:\.\d+)?$/u.test(numeral)) out.add(canonical(numeral.replace(/[   ]/gu, '')))
+  if (decimal) out.add(canonical(numeral.replace(',', '.'), ambiguous))
+  return { values: [...out], ambiguous }
+}
+
+/** The value of a run of number words: "two hundred and fifty" is 250, "twenty-first" 21, "a thousand" 1000. */
+function wordsValue(run: string): number {
+  let total = 0, current = 0
+  for (const word of run.toLowerCase().split(/[\s-]+/u)) {
+    if (word === 'and') continue
+    if (word === 'a') { current = 1; continue }
+    if (word in SCALES) {
+      current = (current || 1) * SCALES[word]!
+      if (SCALES[word]! >= 1000) { total += current; current = 0 }
+    } else current += CARDINALS[word] ?? ORDINALS[word] ?? 0
+  }
+  return total + current
 }
 
 const decimals = (value: string) => value.split('.')[1]?.length ?? 0
+
+/** Everything the allowed texts support: raw numerals, their values, and the plain decimals a draft may round. */
+function supported(allowedTexts: string[]) {
+  const raw = new Set<string>(), values = new Set<string>(), precise: Array<{ value: number; places: number }> = []
+  const add = (numeral: string) => {
+    raw.add(numeral)
+    const { values: found, ambiguous } = readings(numeral)
+    for (const value of found) {
+      values.add(value)
+      if (!ambiguous && decimals(value) > 0) precise.push({ value: Number(value), places: decimals(value) })
+    }
+  }
+  for (const allowed of allowedTexts) {
+    for (const [numeral] of allowed.matchAll(SOURCE_NUMERAL)) {
+      add(numeral)
+      // pdf.js may join "2019, 62%" into "2019,62%": a comma after four digits also splits the numeral.
+      if (/^\d{4,},/u.test(numeral)) for (const part of numeral.split(',')) add(part)
+    }
+    for (const [numeral] of allowed.matchAll(SPACED_THOUSANDS)) values.add(canonical(numeral.replaceAll(' ', '')))
+    for (const [, century = '', , end = ''] of allowed.matchAll(ABBREVIATED_RANGE)) values.add(canonical(century + end))
+    for (const [run] of allowed.matchAll(NUMBER_WORDS)) {
+      values.add(String(wordsValue(run)))
+      // Each word alone too, so that a list such as "one, two or three" still supports each number.
+      for (const word of run.toLowerCase().split(/[\s-]+/u)) if (word in CARDINALS || word in ORDINALS) values.add(String(CARDINALS[word] ?? ORDINALS[word]))
+    }
+  }
+  return { raw, values, precise }
+}
 
 /**
  * The numerals in `text` that none of `allowedTexts` supports, each once, as written. See the rules above.
  */
 export function unsupportedNumbers(text: string, allowedTexts: string[]): string[] {
-  const raw = new Set<string>(), values = new Set<string>()
-  for (const allowed of allowedTexts) {
-    for (const numeral of numbersIn(allowed)) { raw.add(numeral); for (const value of readings(numeral)) values.add(value) }
-    for (const [, century = '', , end = ''] of allowed.matchAll(ABBREVIATED_RANGE)) values.add(canonical(century + end))
-    for (const [, tens, unit, single, ordinal] of allowed.matchAll(NUMBER_WORDS)) {
-      const value = tens ? (WORD_TENS.indexOf(tens.toLowerCase()) + 2) * 10 + (unit ? WORD_UNITS.indexOf(unit.toLowerCase()) : 0)
-        : single ? WORD_UNITS.indexOf(single.toLowerCase()) : WORD_ORDINALS.indexOf(ordinal!.toLowerCase()) + 1
-      values.add(String(value))
-    }
-  }
-  const precise = [...values].filter(value => decimals(value) > 0).map(value => ({ value: Number(value), places: decimals(value) }))
+  const { raw, values, precise } = supported(allowedTexts)
   const rounds = (value: string) => precise.some(source => source.places > decimals(value) && (decimals(value) > 0 || source.value >= 10) &&
     Math.abs(source.value - Number(value)) <= 0.5 * 10 ** -decimals(value) + 1e-9)
+  // The abbreviated end of a range in the draft also reads in full: "2010–19" may mean 2019.
+  const expanded = new Map<number, string>()
+  for (const match of text.matchAll(ABBREVIATED_RANGE)) expanded.set(match.index! + match[0].length - 2, canonical(match[1]! + match[3]!))
   const refused = new Set<string>()
-  for (const numeral of numbersIn(text)) {
-    const options = readings(numeral)
-    if (!raw.has(numeral) && !options.some(value => values.has(value) || rounds(value))) refused.add(numeral)
+  for (const match of text.matchAll(DRAFT_NUMERAL)) {
+    const numeral = match[0], { values: options, ambiguous } = readings(numeral)
+    const full = expanded.get(match.index!)
+    if (raw.has(numeral) || options.some(value => values.has(value) || (!ambiguous && rounds(value))) || (full !== undefined && values.has(full))) continue
+    refused.add(numeral)
   }
   return [...refused]
 }
