@@ -627,12 +627,14 @@ export function layoutCard(input: CardLayoutInput, measure: Measure): CardLayout
 /**
  * The room for the crop on a Page or Headline card (any other style counts as Page): the tallest sheet, in px at the
  * full inner width, that fits between what sits above it and the footer. For Fit, that of the tallest Fit card, so
- * the crop can be chosen before the card's height is known.
+ * the crop can be chosen before the card's height is known. `fill` is the sheet height an automatic crop grows
+ * towards so the card has no empty ground: all the room on Feed and Story, the smallest Fit card's sheet on Fit.
  */
-export function pageSheetSpace(input: Omit<CardLayoutInput, 'crop'>, measure: Measure): { width: number; height: number } {
+export function pageSheetSpace(input: Omit<CardLayoutInput, 'crop'>, measure: Measure): { width: number; height: number; fill: number } {
   // Headline at Fit is laid out as Feed.
   const style = input.style === 'headline' ? 'headline' : 'page', size = style === 'headline' && input.size === 'fit' ? 'feed' : input.size
   const card = new Card({ ...input, style, size }, measure, size === 'fit' ? FIT.maxHeight : undefined)
   card.frame()
-  return card.sheetSpace(style)
+  const space = card.sheetSpace(style)
+  return { ...space, fill: size === 'fit' ? Math.max(0, space.height - (FIT.maxHeight - FIT.minHeight)) : space.height }
 }
