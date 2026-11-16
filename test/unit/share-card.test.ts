@@ -3,9 +3,10 @@ import assert from 'node:assert/strict'
 import {
   CARD, DESTINATION_DEFAULTS, DRAFT, REGION_MIN, SET, SET_STYLE_REFUSED, TAKE_MAX, captionText, cardDescription, cleanPassage, creditLine, defaultLook,
   draftLimits, firstCommentText, highlightColor, numbersIn, publicUrl, quoteMatches, regionProblem, setSlides, sourceLine, summaryTitle, unsupportedNumbers,
-  validateCard, postSlides, STYLES, STYLE_NAMES, REGION_STYLES, type Caption, type CardContent, type SetContent, type SetItem, type ShareCardSource,
+  validateCard, postSlides, PAPER, type PaperContent, STYLES, STYLE_NAMES, REGION_STYLES, type Caption, type CardContent, type SetContent, type SetItem, type ShareCardSource,
 } from '../../src/shared/share-card.js'
 import { captionSchema, cardContentSchema, previousVersionSchema, shareCardSourceSchema } from '../../src/shared/share-card-schema.js'
+import { paperText } from '../../src/core/share-cards.js'
 
 const passage = 'Attention lets every position look at every other one. However, the cost grows with the square of the sequence length.'
 const source: ShareCardSource = {
@@ -16,7 +17,7 @@ const source: ShareCardSource = {
 const card: CardContent = {
   quote: 'Attention lets every position look at every other one.', quoteEdited: false, emphasis: 'every other one',
   headline: 'Attention trades cost for reach', pull: 'sparse patterns may reduce this cost', topic: 'Attention',
-  takeawaysTitle: 'What full attention buys', style: 'quote', look: 'ink', crop: null, set: null, takeaway: '',
+  takeawaysTitle: 'What full attention buys', style: 'quote', look: 'ink', crop: null, set: null, takeaway: '', paper: null,
   takeaways: [{ title: 'Reach is global', detail: 'Every position can use any other.' },
     { title: 'Cost is quadratic', detail: 'Longer inputs cost much more.' }, { title: 'Sparsity may help', detail: 'The authors suspect it.' }],
 }
@@ -268,7 +269,7 @@ const REGION = { x1: 0.1, y1: 0.4, x2: 0.9, y2: 0.7 }
 const regionSource: ShareCardSource = { ...source, kind: 'region', region: REGION, rects: [], passage: 'Accuracy Sequence length', page: 3 }
 const regionCard: CardContent = {
   quote: '', quoteEdited: false, emphasis: '', headline: 'Longer inputs cost more', pull: '', topic: 'Attention', takeawaysTitle: '', takeaways: [],
-  style: 'page', look: 'ink', crop: REGION, set: null, takeaway: '',
+  style: 'page', look: 'ink', crop: REGION, set: null, takeaway: '', paper: null,
 }
 
 test('a region or paper card has only a headline, a topic and a takeaway, and only the Page, Headline and Carousel styles', () => {
@@ -282,7 +283,8 @@ test('a region or paper card has only a headline, a topic and a takeaway, and on
       [{ pull: 'Accuracy' }, /pull must be empty/],
       [{ takeawaysTitle: 'Three lessons' }, /takeawaysTitle must be empty/],
       [{ takeaways: card.takeaways }, /takeaways must be empty for a post made from a region/],
-      [{ style: 'quote' }, /^Error: A post made from a region has no quote or takeaways, so it uses the Page, Headline or Carousel style\.$/],
+      [{ style: 'quote' }, kind === 'paper' ? /^Error: A post about the paper has no quote or takeaways, so it uses the Page, Headline or Carousel style\.$/
+        : /^Error: A post made from a region has no quote or takeaways, so it uses the Page, Headline or Carousel style\.$/],
       [{ style: 'takeaways' }, /uses the Page, Headline or Carousel style/],
       [{ headline: '' }, /headline has 0 characters; allowed 1–80/],
       [{ topic: 't'.repeat(25) }, /topic has 25 characters/],
@@ -321,8 +323,8 @@ test('a region or paper post is described and listed without a quote', () => {
   assert.equal(cardDescription(card, 'page', source), `Page card: “${card.quote}”`)
   assert.equal(summaryTitle(regionSource, 'Longer inputs cost more'), 'Longer inputs cost more')
   assert.equal(summaryTitle(regionSource, ''), 'Region on p. 3')
-  assert.equal(summaryTitle({ ...regionSource, kind: 'paper', page: 1 }, ''), 'First page')
-  assert.equal(summaryTitle({ ...regionSource, kind: 'paper', page: 2 }, ''), 'Paper on p. 2')
+  assert.equal(summaryTitle({ ...regionSource, kind: 'paper', page: 1 }, ''), 'Paper')
+  assert.equal(summaryTitle({ ...regionSource, kind: 'paper', page: 2 }, ''), 'Paper')
   assert.equal(summaryTitle(source, ''), passage.slice(0, 80).replace(/\s+\S*$/, '') + '…')
   assert.equal(summaryTitle({ ...source, passage: 'A short passage of text.' }, ''), 'A short passage of text.')
 })
@@ -486,4 +488,120 @@ test('postSlides: cover, page and takeaway for a post in the Carousel style; non
   assert.equal(cardDescription(withTakeaway, 'carousel', source), 'Carousel of 3 slides: Attention trades cost for reach.')
   assert.equal(cardDescription(card, 'carousel'), 'Carousel of 2 slides: Attention trades cost for reach.')
   assert.equal(cardDescription({ ...regionCard, takeaway: TAKEAWAY }, 'carousel', regionSource), 'Carousel of 3 slides: Longer inputs cost more.')
+})
+
+// Stage 5: share the paper.
+const paperSource: ShareCardSource = { ...regionSource, kind: 'paper', page: 1, passage: 'Attention Is All You Need. Vaswani et al. Abstract: We propose a new architecture.' }
+const paperWords: PaperContent = {
+  question: 'Can attention alone model a sequence without recurrence?', method: 'The authors train the model on two translation tasks and compare it with earlier systems.',
+  results: ['It translates better than earlier systems at a lower training cost.', 'It also parses English constituency structure well.'],
+}
+const paperCard: CardContent = { ...regionCard, crop: { x1: 0, y1: 0, x2: 1, y2: 0.5 }, style: 'carousel', headline: 'Recurrence was optional all along', takeaway: TAKEAWAY, paper: paperWords }
+
+test('a paper card holds a question, a method and one or two results within PAPER\'s limits', () => {
+  assert.deepEqual(PAPER, { questionMax: 160, methodMax: 160, resultMax: 140, minResults: 1, maxResults: 2 })
+  assert.equal(CARD.paperContextMax, 24_000)
+  validateCard(paperCard, paperSource)
+  validateCard({ ...paperCard, paper: { ...paperWords, results: paperWords.results.slice(0, 1) } }, paperSource)
+  // A paper post stored before stage 5 has none.
+  validateCard({ ...paperCard, paper: null }, paperSource)
+  assert.throws(() => validateCard({ ...paperCard, style: 'idea' }, paperSource), /^Error: A post about the paper has no quote or takeaways, so it uses the Page, Headline or Carousel style\.$/)
+  const withPaper = (change: Partial<PaperContent>) => ({ ...paperCard, paper: { ...paperWords, ...change } })
+  for (const [value, message] of [
+    [withPaper({ question: '' }), /^Error: question has 0 characters; allowed 1–160\.$/],
+    [withPaper({ question: 'q'.repeat(161) }), /question has 161 characters; allowed 1–160/],
+    [withPaper({ method: 'm'.repeat(161) }), /method has 161 characters; allowed 1–160/],
+    [withPaper({ results: [] }), /^Error: results has 0 items; allowed 1–2, the main finding first\.$/],
+    [withPaper({ results: ['a', 'b', 'c'] }), /results has 3 items; allowed 1–2/],
+    [withPaper({ results: ['r'.repeat(141)] }), /^Error: results\[0\] has 141 characters; allowed 1–140\.$/],
+    [withPaper({ results: ['a', ''] }), /results\[1\] has 0 characters/],
+  ] as Array<[CardContent, RegExp]>) assert.throws(() => validateCard(value, paperSource), message, String(message))
+  // Only a paper post has these.
+  assert.throws(() => validateCard({ ...card, paper: paperWords }, source), /^Error: paper must be empty for a post from one highlight\.$/)
+  assert.throws(() => validateCard({ ...regionCard, paper: paperWords }, regionSource), /^Error: paper must be empty for a post made from a region\.$/)
+  assert.throws(() => validateCard({ ...setCard, paper: paperWords }, setSource), /^Error: paper must be empty for a carousel\.$/)
+  // A card stored without the field reads as null; a paper's text may be wider than another post's.
+  const { paper: _paper, ...stored } = card
+  assert.deepEqual(cardContentSchema.parse(stored), card)
+  assert.deepEqual(cardContentSchema.parse(paperCard), paperCard)
+  shareCardSourceSchema.parse({ ...paperSource, context: 'c'.repeat(CARD.paperContextMax) })
+  assert.throws(() => shareCardSourceSchema.parse({ ...paperSource, context: 'c'.repeat(CARD.paperContextMax + 1) }))
+  assert.throws(() => shareCardSourceSchema.parse({ ...regionSource, context: 'c'.repeat(CARD.contextMax + 1) }))
+})
+
+test('postSlides for a paper post: the lead, the question, the method, one or two results and the takeaway', () => {
+  const lead = { kind: 'lead', kicker: 'Attention', headline: paperCard.headline, fallback: paperCard.headline }
+  const question = { kind: 'question', kicker: 'The question', text: paperWords.question }
+  const method = { kind: 'method', kicker: 'The method', text: paperWords.method }
+  const takeaway = { kind: 'takeaway', kicker: 'The takeaway', text: TAKEAWAY }
+  assert.deepEqual(postSlides(paperCard, paperSource), [lead, question, method,
+    { kind: 'result', kicker: 'Result 1', text: paperWords.results[0], item: 0 }, { kind: 'result', kicker: 'Result 2', text: paperWords.results[1], item: 1 }, takeaway])
+  const one = { ...paperCard, paper: { ...paperWords, results: paperWords.results.slice(0, 1) } }
+  assert.deepEqual(postSlides(one, paperSource), [lead, question, method, { kind: 'result', kicker: 'The result', text: paperWords.results[0], item: 0 }, takeaway])
+  assert.deepEqual(postSlides({ ...one, takeaway: '' }, paperSource), [lead, question, method, { kind: 'result', kicker: 'The result', text: paperWords.results[0], item: 0 }])
+  // A paper post stored before stage 5 keeps the three cards.
+  assert.deepEqual(postSlides({ ...paperCard, paper: null }, paperSource).map(slide => slide.kind), ['cover', 'page', 'takeaway'])
+  assert.equal(cardDescription(paperCard, 'carousel', paperSource), 'Carousel of 6 slides: Recurrence was optional all along.')
+  assert.equal(cardDescription({ ...one, takeaway: '' }, 'carousel', paperSource), 'Carousel of 4 slides: Recurrence was optional all along.')
+  assert.equal(summaryTitle(paperSource, ''), 'Paper'); assert.equal(summaryTitle(paperSource, 'Recurrence was optional'), 'Recurrence was optional')
+})
+
+// The wider text of a paper post, from made-up pages. Each page is one line, as pdf.js extraction leaves it.
+const filler = (word: string, length: number) => `${word} `.repeat(Math.ceil(length / (word.length + 1))).slice(0, length).trim() + '.'
+const pagesOf = (...texts: string[]) => texts.map((text, index) => ({ page: index + 1, text }))
+
+test('paperText takes the first pages, the method, the results and the conclusion, never the references', () => {
+  const pages = pagesOf(
+    `Attention Is All You Need. Abstract We propose a model. 1 Introduction ${filler('intro', 9000)}`,
+    `${filler('intro', 6000)} 2 Methods We train on two tasks. ${filler('method', 9000)}`,
+    `${filler('method', 6000)} 3. RESULTS The model scores 28.4 BLEU. ${filler('result', 9000)}`,
+    `${filler('result', 6000)} 4 Conclusion We presented the model. ${filler('conclusion', 4000)} References [1] A. Author. ${filler('reference', 5000)}`,
+    `${filler('reference', 8000)}`,
+  )
+  const text = paperText(pages)
+  assert.ok(text.length <= 24_000, String(text.length))
+  // Each part starts where it should and they keep the page order.
+  const at = (fragment: string) => text.indexOf(fragment)
+  for (const fragment of ['Attention Is All You Need', '2 Methods We train on two tasks.', '3. RESULTS The model scores 28.4 BLEU.', '4 Conclusion We presented the model.'])
+    assert.ok(at(fragment) >= 0, fragment)
+  assert.ok(at('Attention') < at('2 Methods') && at('2 Methods') < at('3. RESULTS') && at('3. RESULTS') < at('4 Conclusion'))
+  assert.doesNotMatch(text, /reference|References/)
+  // No part crowds out another: each of the four gets a fair share of the budget.
+  for (const word of ['intro', 'method', 'result', 'conclusion']) assert.ok(text.split(word).length - 1 > 300, word)
+})
+
+test('paperText without any heading uses the first pages and the last page before the references', () => {
+  const pages = pagesOf(`Title. Abstract ${filler('first', 9000)}`, filler('second', 9000), filler('middle', 9000), filler('middle', 9000),
+    `${filler('last', 5000)} Bibliography Smith, J. ${filler('reference', 3000)}`)
+  const text = paperText(pages)
+  assert.ok(text.length <= 24_000)
+  assert.match(text, /^Title\. Abstract first/); assert.match(text, /last/); assert.doesNotMatch(text, /Bibliography|reference/)
+  assert.ok(text.indexOf('last') > text.indexOf('first'))
+  assert.ok(text.split('last').length - 1 > 400, 'the last page has its share')
+})
+
+test('paperText keeps a short paper whole, cuts a very long first page, and ignores headings that are not section starts', () => {
+  const short = pagesOf('Title. Abstract A small study. 1 Introduction Few words.', '2 Method We asked people. 3 Results They agreed. References [1] Someone.')
+  assert.equal(paperText(short), 'Title. Abstract A small study. 1 Introduction Few words.\n\n2 Method We asked people. 3 Results They agreed.')
+  // A first page longer than the whole budget leaves room for the rest.
+  const long = pagesOf(`Title. ${filler('first', 40_000)}`, `${filler('more', 3000)} 2 Methods We measured things. ${filler('method', 9000)}`)
+  const cut = paperText(long)
+  assert.ok(cut.length <= 24_000); assert.match(cut, /2 Methods We measured things\./)
+  // A table of contents, running text and a structured abstract on page 1 are not section starts.
+  const tricky = pagesOf(
+    `Title. Abstract Background We ask a question. Methods We surveyed nurses. Results Most agreed. Contents 1 Introduction 2 2 Methods 4 3 Results 7 4 Discussion 9 ${filler('intro', 4000)}`,
+    `${filler('intro', 9000)} The methods we used are standard, and results of earlier work vary. As in Section 2 Methods, the discussion of results follows. ${filler('intro', 3000)}`,
+    `${filler('intro', 6000)} 2 Methods Nurses answered a survey. ${filler('method', 9000)}`,
+    `${filler('method', 6000)} 3 Results Most nurses agreed. ${filler('result', 9000)}`,
+    `${filler('result', 6000)} 4 Discussion The survey shows agreement. ${filler('discussion', 3000)}`,
+  )
+  const picked = paperText(tricky)
+  assert.ok(picked.length <= 24_000)
+  for (const fragment of ['2 Methods Nurses answered a survey.', '3 Results Most nurses agreed.', '4 Discussion The survey shows agreement.']) assert.ok(picked.includes(fragment), fragment)
+  // Each part after the first starts at a real heading, not at the contents or the running text.
+  for (const start of ['\n\n2 Methods Nurses', '\n\n3 Results Most', '\n\n4 Discussion The survey']) assert.ok(picked.includes(start), start)
+  // The first part runs on from page 1 into page 2; no part starts at the contents or the running text.
+  assert.equal(picked.indexOf('\n\n2 Methods'), picked.indexOf('\n\n2 Methods Nurses'))
+  assert.ok(!picked.includes('\n\nMethods') && !picked.includes('\n\nResults') && !picked.includes('\n\nAs in Section'))
+  assert.equal(paperText([]), '')
 })

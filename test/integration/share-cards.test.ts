@@ -7,7 +7,7 @@ import { buildServer } from '../../src/server/app.js'
 import { openDatabase } from '../../src/core/database.js'
 import { RetrievalService } from '../../src/core/retrieval.js'
 import { CHECK_FAILED, SHARE_CARD_REPAIR, ShareCardService, pageContext, parseShareCardAnswer, sharePostPrompt, sharedContext } from '../../src/core/share-cards.js'
-import { DRAFT, REGION_STYLE_REFUSED, SET_STYLE_REFUSED, captionText, cleanPassage, draftLimits, type Caption, type Destination, type ShareCardRecord, type SourceKind } from '../../src/shared/share-card.js'
+import { DRAFT, PAPER_STYLE_REFUSED, REGION_STYLE_REFUSED, SET_STYLE_REFUSED, captionText, cleanPassage, draftLimits, type Caption, type Destination, type ShareCardRecord, type SourceKind } from '../../src/shared/share-card.js'
 import { testConfig, createSource } from '../helpers/test-utils.js'
 
 const HIGHLIGHT = 'Attention lets every position look at every other position in\nthe sequence. However, the cost grows with the square of the se-\nquence length, so long documents become expensive.'
@@ -109,7 +109,7 @@ test('a highlight becomes a post in one request built from the passage and its p
     assert.match(record.source.context, /^Page one introduces the model\.\n\nAttention lets every position.*sparse patterns may reduce this cost\.\n\nPage three compares results\.$/)
     assert.doesNotMatch(record.source.context, /Page four/)
     // LinkedIn by default: the Page style, hashtags hidden, the link in the post.
-    assert.deepEqual(record.card, { ...CARD, quoteEdited: false, style: 'page', look: 'ink', crop: null, set: null })
+    assert.deepEqual(record.card, { ...CARD, quoteEdited: false, style: 'page', look: 'ink', crop: null, set: null, paper: null })
     assert.deepEqual(record.caption, caption())
     assert.equal(record.destination, 'linkedin'); assert.equal(record.take, '')
     assert.deepEqual(record.marks, [{ color: 'green', rects: record.source.rects }])
@@ -699,7 +699,7 @@ const REGION = { x1: 0.1, y1: 0.4, x2: 0.9, y2: 0.75 }
 const REGION_CARD = { headline: 'Longer inputs cost far more', topic: 'Attention', takeaway: 'What a region shows still needs its caption to be read right.' }
 const regionAnswer = (extra: Record<string, unknown> = {}) => JSON.stringify({ ...REGION_CARD, drafts: DRAFTS, hashtags: HASHTAGS, ...extra })
 const regionCard = (extra: Record<string, unknown> = {}) => ({
-  quote: '', quoteEdited: false, emphasis: '', pull: '', takeawaysTitle: '', takeaways: [], style: 'page', look: 'ink', crop: REGION, set: null, ...REGION_CARD, ...extra,
+  quote: '', quoteEdited: false, emphasis: '', pull: '', takeawaysTitle: '', takeaways: [], style: 'page', look: 'ink', crop: REGION, set: null, paper: null, ...REGION_CARD, ...extra,
 })
 const regionPrompt = (kind: SourceKind, destination: Destination = 'linkedin') => sharePostPrompt(destination, draftLimits(destination, { url: URL }), kind)
 
@@ -752,25 +752,122 @@ test('a region of a page becomes a post from its text alone, with the region as 
   } finally { await s.close() }
 })
 
-test('the first page becomes a post about the paper, on the destination\'s default style', async () => {
+// A post about the whole paper: written from the first page and a wider text of the paper.
+const PAPER_WORDS = {
+  question: 'Can attention alone model a sequence?', method: 'The authors describe the model and compare results across its pages.',
+  results: ['Every position can look at every other one.', 'The cost grows with the square of the sequence length.'],
+}
+const paperAnswer = (extra: Record<string, unknown> = {}) => JSON.stringify({ ...REGION_CARD, headline: 'Attention alone can model a sequence', ...PAPER_WORDS, drafts: DRAFTS, hashtags: HASHTAGS, ...extra })
+
+test('the paper becomes a post about the whole paper: its question, method and results, from a wider text', async () => {
   const s = await regionSetup()
   try {
     const top = { x1: 0, y1: 0, x2: 1, y2: 0.5 }
-    s.respond(1, regionAnswer({ headline: 'Attention alone can model a sequence' }))
+    s.respond(1, paperAnswer())
     const response = await s.start({ kind: 'paper', page: 1, region: top, text: 'Test Source. Page one introduces the model.', destination: 'instagram' })
     assert.equal(response.statusCode, 202, response.body)
     const record = await s.settle((response.json() as ShareCardRecord).id)
+    assert.equal(record.status, 'complete')
     assert.equal(record.source.kind, 'paper'); assert.deepEqual(record.source.region, top); assert.equal(record.source.passage, 'Test Source. Page one introduces the model.')
-    assert.equal(record.card!.style, 'carousel'); assert.deepEqual(record.card!.crop, top); assert.equal(record.caption!.showTags, true)
-    assert.ok(s.prompt(1).startsWith(`${regionPrompt('paper', 'instagram')}\n\n{`))
-    assert.match(s.prompt(1), /sharing the paper itself/); assert.match(s.prompt(1), /what the paper studied and its main result/)
-    assert.equal(s.input(1).regionText, 'Test Source. Page one introduces the model.')
+    // The whole paper fits the budget, so its text is every page, in order.
+    assert.match(record.source.context, /^Page one introduces the model\.\n\nAttention lets every position.*\n\nPage three compares results\.\n\nPage four is out of range\.$/s)
+    assert.deepEqual(record.card, { quote: '', quoteEdited: false, emphasis: '', pull: '', takeawaysTitle: '', takeaways: [], headline: 'Attention alone can model a sequence',
+      topic: REGION_CARD.topic, takeaway: REGION_CARD.takeaway, style: 'carousel', look: 'ink', crop: top, set: null, paper: PAPER_WORDS })
+    assert.equal(record.caption!.showTags, true)
+    const sent = s.prompt(1), input = s.input(1)
+    assert.ok(sent.startsWith(`${regionPrompt('paper', 'instagram')}\n\n{`))
+    assert.match(sent, /is sharing the paper itself, as a whole/); assert.match(sent, /- question: /); assert.match(sent, /- results: one or two strings/)
+    assert.match(sent, /question the paper set out to answer, how it was tested, what it found/); assert.doesNotMatch(sent, /pageText/)
+    assert.deepEqual(Object.keys(input).sort(), ['credit', 'paperText', 'regionText', 'title'])
+    assert.equal(input.regionText, 'Test Source. Page one introduces the model.'); assert.equal(input.paperText, record.source.context)
     const [summary] = (await s.app.inject({ url: s.base })).json() as Array<{ kind: string; title: string }>
     assert.deepEqual({ kind: summary!.kind, title: summary!.title }, { kind: 'paper', title: 'Attention alone can model a sequence' })
-    // An empty region text is allowed: the page text carries the post.
-    s.respond(2, regionAnswer())
+
+    // A change sends the previous question, method and results.
+    s.respond(2, paperAnswer({ results: PAPER_WORDS.results.slice(0, 1) }))
+    await s.app.inject({ method: 'POST', url: `${s.base}/${record.id}/change`, payload: { instruction: 'One result only' } })
+    const changed = await s.settle(record.id)
+    assert.deepEqual(changed.card!.paper, { ...PAPER_WORDS, results: PAPER_WORDS.results.slice(0, 1) })
+    assert.deepEqual(s.input(2).previousCard, { headline: 'Attention alone can model a sequence', topic: REGION_CARD.topic, takeaway: REGION_CARD.takeaway, ...PAPER_WORDS })
+
+    // An empty region text is allowed: the paper's text carries the post. A failed one is listed as "Paper".
+    s.respond(3, paperAnswer())
     const empty = await s.settle(((await s.start({ kind: 'paper', page: 1, region: top, text: '' })).json() as ShareCardRecord).id)
-    assert.equal(empty.status, 'complete'); assert.equal(empty.source.passage, ''); assert.equal(s.input(2).regionText, '')
+    assert.equal(empty.status, 'complete'); assert.equal(empty.source.passage, ''); assert.equal(s.input(3).regionText, '')
+    s.fail(4)
+    const failed = await s.settle(((await s.start({ kind: 'paper', page: 1, region: top, text: '' })).json() as ShareCardRecord).id)
+    assert.equal(((await s.app.inject({ url: s.base })).json() as Array<{ id: string; title: string }>).find(item => item.id === failed.id)!.title, 'Paper')
+  } finally { await s.close() }
+})
+
+test('a paper answer is checked field by field against the first page and the wider text', () => {
+  const source = { kind: 'paper' as const, passage: 'A Survey of Nurses. Abstract We surveyed nurses.', context: 'We surveyed 312 nurses in 2019. Most nurses (63%) agreed.',
+    title: 'A Survey of Nurses', credit: '', page: 1, url: URL }
+  const options = { destination: 'linkedin' as const, take: '', changed: false }
+  const words = { question: 'Do nurses agree on the new rota?', method: 'A survey of 312 nurses in 2019.', results: ['Most nurses (63%) agreed.'] }
+  const answer = (extra: Record<string, unknown> = {}) => paperAnswer({ headline: 'Most nurses back the rota', ...words, ...extra })
+  assert.deepEqual(parseShareCardAnswer(answer(), source, options).card.paper, words)
+  // Extra fields on a region's answer are ignored, and it has no paper.
+  assert.equal(parseShareCardAnswer(paperAnswer(), { ...source, kind: 'region' }, options).card.paper, null)
+  for (const [raw, reason] of [
+    [answer({ question: undefined }), /^Error: question must be a string\.$/],
+    [answer({ method: 7 }), /^Error: method must be a string\.$/],
+    [answer({ results: 'Most agreed.' }), /^Error: results must be a list of 1–2 strings, the main finding first\.$/],
+    [answer({ results: [] }), /^Error: results has 0 items; allowed 1–2, the main finding first\.$/],
+    [answer({ results: ['a', 'b', 'c'] }), /results has 3 items/],
+    [answer({ question: 'q'.repeat(161) }), /question has 161 characters; allowed 1–160/],
+    [answer({ results: ['r'.repeat(141)] }), /results\[0\] has 141 characters; allowed 1–140/],
+    [answer({ results: ['Most nurses (63%) agreed.', ' most nurses (63%) AGREED '] }), /^Error: results\[1\] must differ from results\[0\]\.$/],
+    [answer({ results: ['Most nurses back the rota.'] }), /^Error: results\[0\] must say more than the headline, not repeat it\.$/],
+    [answer({ headline: 'A survey of nurses' }), /^Error: headline must be a hook, not the paper's title\.$/],
+    [answer({ method: 'A survey of 400 nurses.' }), /^Error: method has numbers that are not in regionText, paperText, title, credit, page or readerTake: 400\. Use only numbers stated there\.$/],
+    [answer({ results: ['Most nurses (64%) agreed.'] }), /results\[0\] has numbers .*: 64\./],
+    [answer({ question: 'What does paperText say about rotas?' }), /question must not mention pageText or the supplied text/],
+    [answer({ results: ['My reading: most nurses agreed.'] }), /results\[0\] must not use the first person \("My"\)/],
+    [answer({ method: 'A survey, see example.com.' }), /method must not contain links/],
+    [answer({ question: 'The authors ask “whether every nurse in the country prefers the rota” here.' }), /question quotes words that are not in regionText or paperText/],
+    [answer({ takeaway: 'Most nurses back the rota.' }), /takeaway must say what follows from the headline, not repeat it/],
+  ] as Array<[string, RegExp]>) assert.throws(() => parseShareCardAnswer(raw, source, options), reason, String(reason))
+})
+
+test('the reader edits a paper post\'s question, method and results one at a time, behind Undo', async () => {
+  const s = await regionSetup()
+  try {
+    s.respond(1, paperAnswer())
+    const top = { x1: 0, y1: 0, x2: 1, y2: 0.5 }
+    const first = await s.settle(((await s.start({ kind: 'paper', page: 1, region: top, text: '' })).json() as ShareCardRecord).id), url = `${s.base}/${first.id}`
+    const patch = (payload: unknown) => s.app.inject({ method: 'PATCH', url, payload })
+    const refuse = async (payload: unknown, detail: string) => {
+      const response = await patch(payload); assert.equal(response.statusCode, 400, JSON.stringify(payload)); assert.equal(response.json().detail, detail)
+    }
+    const question = (await patch({ paper_text: { field: 'question', text: '  Is   attention enough? ' } })).json() as ShareCardRecord
+    assert.equal(question.card!.paper!.question, 'Is attention enough?'); assert.equal(question.can_undo, true)
+    assert.equal(((await patch({ paper_text: { field: 'method', text: 'A model, described.' } })).json() as ShareCardRecord).card!.paper!.method, 'A model, described.')
+    assert.deepEqual(((await patch({ paper_text: { field: 'result', index: 1, text: 'In 2017 it cost less.' } })).json() as ShareCardRecord).card!.paper!.results,
+      [PAPER_WORDS.results[0], 'In 2017 it cost less.'])
+    await refuse({ paper_text: { field: 'result', index: 1, text: ' ' } }, 'results[1] has 0 characters; allowed 1–140.')
+    await refuse({ paper_text: { field: 'question', text: 'q'.repeat(161) } }, 'question has 161 characters; allowed 1–160.')
+    await refuse({ paper_text: { field: 'result', text: 'x' } }, 'Name the result to edit with its index.')
+    await refuse({ paper_text: { field: 'method', index: 0, text: 'x' } }, 'Only a result has an index.')
+    await refuse({ paper_text: { field: 'result', index: 2, text: 'x' } }, 'This post has no result 3.')
+    for (const bad of [{ paper_text: { field: 'takeaway', text: 'x' } }, { paper_text: { field: 'result', index: -1, text: 'x' } }, { paper_text: { field: 'question' } }])
+      assert.equal((await patch(bad)).statusCode, 400)
+    const undone = (await s.app.inject({ method: 'POST', url: `${url}/undo`, payload: {} })).json() as ShareCardRecord
+    assert.deepEqual(undone.card!.paper!.results, PAPER_WORDS.results)
+    // A paper post stored before it had a question keeps working, and asks for a rewrite to edit one.
+    const card = JSON.parse((s.db.prepare('SELECT card_json FROM share_cards WHERE id=?').get(first.id) as { card_json: string }).card_json)
+    delete card.paper
+    s.db.prepare('UPDATE share_cards SET card_json=? WHERE id=?').run(JSON.stringify(card), first.id)
+    assert.equal(((await s.app.inject({ url })).json() as ShareCardRecord).card!.paper, null)
+    await refuse({ paper_text: { field: 'question', text: 'x' } }, 'This post has no question, method and results yet; rewrite it to add them.')
+    // A paper post is named as such when it refuses a text card or a quote edit.
+    await refuse({ style: 'quote', look: 'ink' }, PAPER_STYLE_REFUSED)
+    await refuse({ quote: 'Attention' }, 'A post about the paper has no quote to edit.')
+    // Only a paper post has them.
+    const region = await s.settle(((await s.start()).json() as ShareCardRecord).id)
+    const response = await s.app.inject({ method: 'PATCH', url: `${s.base}/${region.id}`, payload: { paper_text: { field: 'question', text: 'x' } } })
+    assert.equal(response.statusCode, 400); assert.equal(response.json().detail, 'Only a post about the paper has a question, method and results.')
+    assert.equal(s.callCount(), 2)
   } finally { await s.close() }
 })
 
@@ -880,7 +977,7 @@ const SET_WORDS = {
 }
 const setAnswer = (extra: Record<string, unknown> = {}) => JSON.stringify({ ...SET_WORDS, drafts: DRAFTS, hashtags: HASHTAGS, ...extra })
 const setCard = (extra: Record<string, unknown> = {}, set: Record<string, unknown> = {}) => ({
-  quote: '', quoteEdited: false, emphasis: '', pull: '', takeawaysTitle: '', takeaways: [], style: 'headline', look: 'ink', crop: null, takeaway: '',
+  quote: '', quoteEdited: false, emphasis: '', pull: '', takeawaysTitle: '', takeaways: [], style: 'headline', look: 'ink', crop: null, takeaway: '', paper: null,
   headline: SET_WORDS.headline, topic: SET_WORDS.topic, ...extra,
   set: { study: SET_WORDS.study, points: POINTS, takeaway: SET_WORDS.takeaway, limitations: SET_WORDS.limitations, crops: [null, null, null], ...set },
 })

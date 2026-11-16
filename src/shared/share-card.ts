@@ -7,6 +7,8 @@ export const CARD = {
   quoteMax: 240, quoteLeadsMax: 120, emphasisMax: 40, headlineMax: 80, pullMax: 140, takeawayMax: 140,
   topicMax: 24, takeawaysTitleMax: 48, takeawayTitleMax: 32, takeawayDetailMax: 72,
   passageMin: 20, passageMax: 6000, contextMax: 12000, creditMax: 200,
+  /** The wider text a post about the whole paper is written from. */
+  paperContextMax: 24000,
 } as const
 /** Page and Headline show the PDF's own pixels; the other three are text cards. See docs/share-posts-plan.md. */
 export const STYLES = ['page', 'headline', 'carousel', 'quote', 'idea', 'takeaways'] as const
@@ -27,6 +29,8 @@ export const ANGLES = ['finding', 'contrast', 'caveat'] as const
 export const SOURCE_KINDS = ['highlight', 'region', 'paper', 'set'] as const
 /** A carousel: how many highlights, and the limits of its slides' words. */
 export const SET = { minItems: 2, maxItems: 8, studyMax: 160, pointMax: 70, takeawayMax: 140, limitationsMax: 160 } as const
+/** A post about the whole paper: the limits of its question, method and results. */
+export const PAPER = { questionMax: 160, methodMax: 160, resultMax: 140, minResults: 1, maxResults: 2 } as const
 /** The smallest region, as a fraction of the page in each direction. */
 export const REGION_MIN = 0.05
 /** Where the link goes in a LinkedIn post: in the post, or held back as a ready first-comment line. */
@@ -44,6 +48,8 @@ export type SourceKind = (typeof SOURCE_KINDS)[number]
 export type SetItem = { annotation_id: string | null; passage: string; page: number; rects: PageRect[]; color: HighlightColor }
 /** A carousel's words beyond the cover, and the reader's crop of each highlight slide (null is automatic). */
 export type SetContent = { study: string; points: string[]; takeaway: string; limitations: string; crops: Array<PageRect | null> }
+/** What a post about the whole paper says beyond its headline: what it asked, how it was tested, what it found (the main finding first). */
+export type PaperContent = { question: string; method: string; results: string[] }
 export type HighlightColor = (typeof HIGHLIGHT_COLORS)[number]
 export type ShareCardStatus = 'pending' | 'running' | 'complete' | 'failed' | 'cancelled'
 
@@ -117,6 +123,11 @@ export type CardContent = {
    * style. '' for a post stored before it existed, and for a set, which keeps its own in set.takeaway.
    */
   takeaway: string
+  /**
+   * A post about the whole paper: its question, method and one or two results. Null for every other kind, and for a
+   * paper post stored before it existed.
+   */
+  paper: PaperContent | null
 }
 
 /** The text of a post: up to three drafts for one destination, and how the copied text is composed. */
@@ -254,7 +265,7 @@ function limit(name: string, value: string, max: number, min = 1) {
  */
 export function validateCard(card: CardContent, source: Pick<ShareCardSource, 'passage' | 'context'> & { kind?: SourceKind; items?: SetItem[] }): void {
   if (source.kind === 'set') return validateSetCard(card, source.items ?? [])
-  if (source.kind && source.kind !== 'highlight') return validateRegionCard(card)
+  if (source.kind && source.kind !== 'highlight') return validateRegionCard(card, source.kind)
   limit('quote', card.quote, CARD.quoteMax)
   if (!card.quoteEdited && !quoteMatches(card.quote, source.passage)) throw new Error('quote must be copied exactly from highlight.')
   limit('emphasis', card.emphasis, CARD.emphasisMax, 0)
@@ -273,24 +284,38 @@ export function validateCard(card: CardContent, source: Pick<ShareCardSource, 'p
   if (!(STYLES as readonly string[]).includes(card.style)) throw new Error(`Unknown card style: ${card.style}.`)
   if (!(LOOKS as readonly string[]).includes(card.look)) throw new Error(`Unknown card look: ${card.look}.`)
   if (card.set) throw new Error('set must be empty for a post from one highlight.')
+  if (card.paper) throw new Error('paper must be empty for a post from one highlight.')
 }
 
 /** Why a region or first-page post cannot take a text-card style. */
 export const REGION_STYLE_REFUSED = 'A post made from a region has no quote or takeaways, so it uses the Page, Headline or Carousel style.'
+/** The same refusal for a post about the paper, named as such. */
+export const PAPER_STYLE_REFUSED = 'A post about the paper has no quote or takeaways, so it uses the Page, Headline or Carousel style.'
 /** The styles a region or first-page post can take. */
 export const REGION_STYLES = ['page', 'headline', 'carousel'] as const
 
 /** A region or first-page card: a headline and a topic, nothing quoted, drawn as Page or Headline. */
-function validateRegionCard(card: CardContent): void {
+function validateRegionCard(card: CardContent, kind: SourceKind): void {
   for (const name of ['quote', 'emphasis', 'pull', 'takeawaysTitle'] as const) if (card[name]) throw new Error(`${name} must be empty for a post made from a region.`)
   if (!Array.isArray(card.takeaways) || card.takeaways.length) throw new Error('takeaways must be empty for a post made from a region.')
   limit('headline', card.headline, CARD.headlineMax)
   limit('topic', card.topic, CARD.topicMax, 0)
   limit('takeaway', card.takeaway, CARD.takeawayMax, 0)
   if (!(STYLES as readonly string[]).includes(card.style)) throw new Error(`Unknown card style: ${card.style}.`)
-  if (!(REGION_STYLES as readonly string[]).includes(card.style)) throw new Error(REGION_STYLE_REFUSED)
+  if (!(REGION_STYLES as readonly string[]).includes(card.style)) throw new Error(kind === 'paper' ? PAPER_STYLE_REFUSED : REGION_STYLE_REFUSED)
   if (!(LOOKS as readonly string[]).includes(card.look)) throw new Error(`Unknown card look: ${card.look}.`)
   if (card.set) throw new Error('set must be empty for a post made from a region.')
+  if (kind !== 'paper' && card.paper) throw new Error('paper must be empty for a post made from a region.')
+  if (card.paper) validatePaper(card.paper)
+}
+
+/** A paper post's question, method and results within PAPER's limits. Messages name the answer's fields. */
+function validatePaper(paper: PaperContent): void {
+  limit('question', paper.question, PAPER.questionMax)
+  limit('method', paper.method, PAPER.methodMax)
+  if (!Array.isArray(paper.results) || paper.results.length < PAPER.minResults || paper.results.length > PAPER.maxResults)
+    throw new Error(`results has ${Array.isArray(paper.results) ? paper.results.length : 0} items; allowed ${PAPER.minResults}–${PAPER.maxResults}, the main finding first.`)
+  paper.results.forEach((result, index) => limit(`results[${index}]`, result, PAPER.resultMax))
 }
 
 /** Why a carousel cannot take another style. */
@@ -306,6 +331,7 @@ function validateSetCard(card: CardContent, items: SetItem[]): void {
   for (const name of ['quote', 'emphasis', 'pull', 'takeawaysTitle'] as const) if (card[name]) throw new Error(`${name} must be empty for a carousel.`)
   if (!Array.isArray(card.takeaways) || card.takeaways.length) throw new Error('takeaways must be empty for a carousel.')
   if (card.crop) throw new Error('crop must be empty for a carousel; each highlight slide has its own.')
+  if (card.paper) throw new Error('paper must be empty for a carousel.')
   if (card.takeaway) throw new Error('A carousel of several highlights keeps its takeaway on its own slide (set.takeaway).')
   limit('headline', card.headline, CARD.headlineMax)
   limit('topic', card.topic, CARD.topicMax, 0)
@@ -329,8 +355,12 @@ export type SlideSpec =
   | { kind: 'study' | 'takeaway' | 'limitations'; kicker: string; text: string }
   | { kind: 'point'; kicker: string; headline: string; item: number }
   | { kind: 'page'; kicker: string; fallback: string }
-/** The slides of a carousel of several highlights: every kind but the single post's page slide. */
-export type SetSlideSpec = Exclude<SlideSpec, { kind: 'page' }>
+  /** A paper post's first slide: its headline above its own page crop; `fallback` is drawn without the PDF file. */
+  | { kind: 'lead'; kicker: string; headline: string; fallback: string }
+  /** `item` is which result. */
+  | { kind: 'question' | 'method' | 'result'; kicker: string; text: string; item?: number }
+/** The slides of a carousel of several highlights: none of a single post's own kinds. */
+export type SetSlideSpec = Exclude<SlideSpec, { kind: 'page' | 'lead' | 'question' | 'method' | 'result' }>
 
 /**
  * The slides of a post drawn in the Carousel style: the cover (topic and headline), the page (its fallback is the
@@ -338,10 +368,22 @@ export type SetSlideSpec = Exclude<SlideSpec, { kind: 'page' }>
  */
 export function postSlides(card: CardContent, source: Pick<ShareCardSource, 'kind'>): SlideSpec[] {
   if (source.kind === 'set' || card.set) return []
+  const takeaway = card.takeaway ? [{ kind: 'takeaway', kicker: 'The takeaway', text: card.takeaway } as const] : []
+  // A post about the whole paper: five or six slides. One stored before it had a question keeps the three cards.
+  if (source.kind === 'paper' && card.paper) {
+    const { question, method, results } = card.paper
+    return [
+      { kind: 'lead', kicker: card.topic, headline: card.headline, fallback: card.headline },
+      { kind: 'question', kicker: 'The question', text: question },
+      { kind: 'method', kicker: 'The method', text: method },
+      ...results.map((text, item): SlideSpec => ({ kind: 'result', kicker: results.length === 1 ? 'The result' : `Result ${item + 1}`, text, item })),
+      ...takeaway,
+    ]
+  }
   return [
     { kind: 'cover', kicker: card.topic, headline: card.headline },
     { kind: 'page', kicker: card.topic, fallback: card.quote || card.headline },
-    ...card.takeaway ? [{ kind: 'takeaway', kicker: 'The takeaway', text: card.takeaway } as const] : [],
+    ...takeaway,
   ]
 }
 
@@ -371,12 +413,12 @@ export function regionProblem(region: PageRect): string | null {
     : 'A region needs x1 < x2 and y1 < y2 inside the page, and at least 5% of the page in each direction.'
 }
 
-/** A post's name in lists: the headline, else the start of the highlight, "Region on p. N", "First page" or "N highlights". */
+/** A post's name in lists: the headline, else the start of the highlight, "Region on p. N", "Paper" or "N highlights". */
 export function summaryTitle(source: Pick<ShareCardSource, 'kind' | 'passage' | 'page' | 'items'>, headline: string): string {
   if (headline) return headline
   if (source.kind === 'set') return `${source.items.length} highlights`
   if (source.kind === 'region') return `Region on p. ${source.page}`
-  if (source.kind === 'paper') return source.page === 1 ? 'First page' : `Paper on p. ${source.page}`
+  if (source.kind === 'paper') return 'Paper'
   return source.passage.length > 80 ? `${source.passage.slice(0, 80).replace(/\s+\S*$/u, '')}…` : source.passage
 }
 
