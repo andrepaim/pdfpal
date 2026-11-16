@@ -426,6 +426,20 @@ export type PaperContent = { question: string; method: string; methodStats: Stat
 
 Server: the paper prompt asks for `methodStats` and, per result, `stat` and `rows`, with the rule that a comparison never mixes measures and that `[]` and `null` are right when the text gives no such numbers. `PATCH { paper_text }` takes the new fields beside `text` (`stats` for the method; `stat` and `rows` for a result). Renderer: `renderSlide` picks the layout from the slide's fields.
 
+**Widened the same day**, on the owner's word that this is a rule for every post and not only for the paper: a slide is not text only when its content has a number to show.
+
+- Every post may carry its **key number** (`card.stat`): the one number that carries the finding, with a label. The hook slide of a highlight or region post, and the cover of a carousel of several highlights, draw it large with the headline. A paper post's first slide keeps the page as its picture and does not repeat the number.
+- The **study** slide of a carousel of several highlights takes stat tiles like the paper's method slide (`set.studyStats`).
+- The treatments for the question and the takeaway apply to every takeaway slide, in every carousel.
+- Slides that show the page (the page slide, a highlight slide, the paper's first slide) and the single-image styles are unchanged: they already show the paper's own pixels.
+
+```ts
+// CardContent gains `stat: Stat | null` (null when the text gives no number, and for posts stored before).
+// SetContent gains `studyStats: Stat[]` ([] for sets stored before).
+// SlideSpec: the cover slide gains `stat: Stat | null`; the study slide gains `stats: Stat[]`.
+// PATCH gains `{ stat }` (a Stat or null, Undo step); `set_text` for the study takes `stats` beside `text`.
+```
+
 **Tasks**
 
 - [ ] **T16 Server** (`share-posts/server`): the fields, the prompt, the checks (numbers, and a value near its label), the edit, reading older cards, tests.
