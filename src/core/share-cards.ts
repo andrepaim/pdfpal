@@ -437,59 +437,103 @@ function pageRects(row: { rects: string | null; x1: number; y1: number; x2: numb
  * The highlight's page and its neighbours, in page order, at most CARD.contextMax characters. The highlight's own
  * page comes first in the budget; what is left goes to the end of the page before and the start of the page after.
  */
-/** Section headings a paper post's wider text starts its parts at, in any letter case. Longest first. */
+/** Section headings a paper post's wider text starts or ends its parts at, in any letter case. Longest first. */
 const SECTIONS = {
   method: ['Materials and Methods', 'Experimental Setup', 'Methodology', 'Methods', 'Method', 'Approach', 'Experiments'],
   results: ['Results and Discussion', 'Results', 'Findings', 'Evaluation'],
+  /** Where a paper states its limits: kept with the conclusion, for the caveat. */
+  limitations: ['Limitations and Discussion', 'Discussion and Limitations', 'Limitations and Future Work', 'Limitations and Future Directions', 'Limitations',
+    'Future Work', 'Future Directions'],
   conclusion: ['Concluding Remarks', 'Conclusions', 'Conclusion', 'Discussion', 'Summary'],
+  /** Sections the post does not need: a part stops at them. */
+  end: ['Broader Impacts', 'Broader Impact', 'Impact Statement', 'Ethics Statement', 'Ethical Considerations', 'Acknowledgements', 'Acknowledgments',
+    'Acknowledgement', 'Acknowledgment', 'Author Contributions', 'Funding', 'Appendices', 'Appendix', 'Supplementary Materials', 'Supplementary Material'],
+  /** Everything from here on is left out. */
+  appendix: ['Appendices', 'Appendix', 'Supplementary Materials', 'Supplementary Material'],
   references: ['References', 'Bibliography', 'Works Cited', 'Literature Cited'],
 }
+/** The first word of a numbered section that is not the method, for the fallback below. */
+const NOT_METHOD = /^(?:introduction|background|related|preliminaries|preliminary|motivation|overview|notation|problem|prior|literature)$/iu
+/** A top-level numbered section after the end of a sentence: "3 QLoRA Finetuning", "2 Architectural details". */
+const NUMBERED_SECTION = /(?:(?<=\n)|(?<=[.!?:;)\]"”]\s+))(?:[2-9]|1\d)[^\S\n]+(\p{Lu}[\p{L}-]*)[^\S\n]/gu
 /**
- * A heading as it appears in extracted text, where each page is one line: at the start of the text or after the end
- * of a sentence, optionally numbered ("2", "3.1", "IV."), then the heading, then the section's first word with a
+ * A heading as it appears in extracted text, where each page is one line: at the start of the text or of a page, or
+ * after the end of a sentence, optionally numbered ("2", "3.1", "IV."), then the heading, then the section's first word with a
  * capital letter. A table of contents ("2 Methods 4") and running text ("the methods we used", "Section 2 Methods,
  * the …") are not section starts. References may open on "[1]".
  */
 function sectionPattern(names: string[], references = false): RegExp {
-  const variants = names.flatMap(name => [name, name.toUpperCase(), name.toLowerCase()]).map(name => name.replaceAll(' ', '\\s+'))
-  return new RegExp(`(?:^|(?<=[.!?:;)\\]"”]\\s+))(?:(?:\\d{1,2}(?:\\.\\d{1,2})*\\.?|[IVX]{1,4}\\.)\\s+)?(?:${variants.join('|')})[.:]?\\s+(?=[\\p{Lu}${references ? '\\[' : ''}])`, 'gu')
+  // Within one page: a page number ending one page is not the number of a heading that opens the next.
+  const variants = names.flatMap(name => [name, name.toUpperCase(), name.toLowerCase()]).map(name => name.replaceAll(' ', '[^\\S\\n]+'))
+  return new RegExp(`(?:^|(?<=\\n)|(?<=[.!?:;)\\]"”]\\s+))(?:(?:\\d{1,2}(?:\\.\\d{1,2})*\\.?|[IVX]{1,4}\\.)[^\\S\\n]+)?(?:${variants.join('|')})[.:]?[^\\S\\n]+(?=[\\p{Lu}${references ? '\\[' : ''}])`, 'gu')
 }
-const SECTION_PATTERNS = {
-  method: sectionPattern(SECTIONS.method), results: sectionPattern(SECTIONS.results), conclusion: sectionPattern(SECTIONS.conclusion),
-  references: sectionPattern(SECTIONS.references, true),
-}
+const SECTION_PATTERNS = Object.fromEntries(Object.entries(SECTIONS).map(([name, names]) => [name, sectionPattern(names, name === 'references')])) as Record<keyof typeof SECTIONS, RegExp>
+
+/** One part of a paper post's wider text: what it is, the page it starts on, and its text. */
+export type PaperPart = { part: 'start' | 'method' | 'results' | 'limitations' | 'conclusion' | 'last page'; page: number; text: string }
 
 /**
- * The wider text a paper post is written from, at most `max` characters, in page order: the first pages (abstract and
- * introduction), the start of the method and of the results sections, and the conclusion or discussion, each where
- * its heading is found; never the references. Headings on the first page (a structured abstract) do not count; the
- * method and results start at their first heading, the conclusion at its last. Without a conclusion heading the
- * last page before the references stands in for it, and with no heading at all that leaves the first pages and the
- * last page. A paper within the budget is kept whole. The budget is shared fairly: a part that needs less keeps
- * all of it and the others share the rest equally, so that no part crowds out another.
+ * The parts of the wider text a paper post is written from, in page order, at most `max` characters in all with the
+ * blank lines that join them (see paperText).
+ *
+ * - The text ends at the references (their first heading after page 1) and, failing that, at an appendix or
+ *   supplementary material heading in the second half: nothing after them is kept.
+ * - A paper within the budget is one part, kept whole.
+ * - Otherwise the parts start at the beginning (abstract and introduction), the method, the results, the
+ *   limitations and the conclusion, each at its heading after page 1 (so a structured abstract does not count).
+ *   The method and results start at their first heading. When no method heading is found, the first top-level
+ *   numbered section after the introduction that is not background or related work, and before the results, is the
+ *   method ("3 QLoRA Finetuning"). The limitations ("Limitations and Discussion", "Future Work", …) and the conclusion
+ *   start at their last heading; a conclusion heading only counts after the method and results, or in the second
+ *   half when neither was found, so that a paragraph called "Summary" mid-paper is not taken for it. Without either,
+ *   the last page stands in for them, when it starts after every part found.
+ * - A part stops at the next part, or at a section the post does not need (broader impact, acknowledgements,
+ *   appendices…), whichever comes first.
+ * - The budget is shared fairly: a part that needs less keeps all of it and the others share the rest equally.
  */
-export function paperText(pages: Array<{ page: number; text: string }>, max = CARD.paperContextMax): string {
-  const texts = [...pages].sort((a, b) => a.page - b.page).map(entry => entry.text.trim()).filter(Boolean)
-  if (!texts.length) return ''
+export function paperParts(pages: Array<{ page: number; text: string }>, max = CARD.paperContextMax): PaperPart[] {
+  const sorted = [...pages].sort((a, b) => a.page - b.page).filter(entry => entry.text.trim())
+  if (!sorted.length) return []
   const offsets: number[] = []
   let doc = ''
-  for (const text of texts) { offsets.push(doc ? doc.length + 2 : 0); doc = doc ? `${doc}\n\n${text}` : text }
+  for (const entry of sorted) { offsets.push(doc ? doc.length + 2 : 0); doc = doc ? `${doc}\n\n${entry.text.trim()}` : entry.text.trim() }
+  const pageAt = (at: number) => sorted[offsets.filter(offset => offset <= at).length - 1]!.page
   const afterFirst = offsets[1] ?? doc.length
-  const found = (pattern: RegExp) => [...doc.matchAll(pattern)].map(match => match.index!).filter(at => at >= afterFirst)
-  const references = found(SECTION_PATTERNS.references)[0]
+  const found = (name: keyof typeof SECTIONS, from = afterFirst) => [...doc.matchAll(SECTION_PATTERNS[name])].map(match => match.index!).filter(at => at >= from && at < doc.length)
+  const references = found('references')[0]
   if (references !== undefined) doc = doc.slice(0, references).trimEnd()
-  if (doc.length <= max) return doc
-  const method = found(SECTION_PATTERNS.method)[0], results = found(SECTION_PATTERNS.results)[0], conclusion = found(SECTION_PATTERNS.conclusion).at(-1)
-  const lastPage = offsets.filter(at => at < doc.length).at(-1)!
-  const starts = [...new Set([0, method, results, conclusion ?? lastPage].filter((at): at is number => at !== undefined && at < doc.length))].sort((a, b) => a - b)
-  const room = starts.map((start, index) => (starts[index + 1] ?? doc.length) - start)
+  else {
+    const appendix = found('appendix', Math.max(afterFirst, doc.length / 2))[0]
+    if (appendix !== undefined) doc = doc.slice(0, appendix).trimEnd()
+  }
+  if (doc.length <= max) return [{ part: 'start', page: sorted[0]!.page, text: doc }]
+  const results = found('results')[0]
+  const method = found('method')[0] ?? [...doc.matchAll(NUMBERED_SECTION)]
+    .find(match => match.index! >= afterFirst && !NOT_METHOD.test(match[1]!) && (results === undefined || match.index! < results))?.index
+  const limitations = found('limitations').at(-1)
+  const floor = method !== undefined || results !== undefined ? Math.max(method ?? 0, results ?? 0) + 1 : doc.length / 2
+  const conclusion = found('conclusion', Math.max(afterFirst, floor)).at(-1)
+  // The last page stands in for a conclusion only when it starts after every part found.
+  const last = offsets.filter(at => at < doc.length).at(-1)!
+  const lastPage = limitations === undefined && conclusion === undefined && last > Math.max(method ?? 0, results ?? 0) ? last : undefined
+  const named: Array<[PaperPart['part'], number | undefined]> = [['start', 0], ['method', method], ['results', results], ['limitations', limitations], ['conclusion', conclusion],
+    ['last page', lastPage && lastPage > 0 ? lastPage : undefined]]
+  const starts = named.filter((entry): entry is [PaperPart['part'], number] => entry[1] !== undefined)
+    .filter(([, at], index, all) => all.findIndex(([, other]) => other === at) === index).sort((a, b) => a[1] - b[1])
+  const ends = found('end')
+  const room = starts.map(([, start], index) => Math.min(starts[index + 1]?.[1] ?? doc.length, ends.find(at => at > start) ?? doc.length) - start)
   let left = max - 2 * (starts.length - 1)
   const share = new Array<number>(starts.length).fill(0)
   starts.map((_, index) => index).sort((a, b) => room[a]! - room[b]!).forEach((index, order) => {
     share[index] = Math.min(room[index]!, Math.floor(left / (starts.length - order)))
     left -= share[index]!
   })
-  return starts.map((start, index) => doc.slice(start, start + share[index]!).trim()).filter(Boolean).join('\n\n')
+  return starts.map(([part, start], index) => ({ part, page: pageAt(start), text: doc.slice(start, start + share[index]!).trim() })).filter(part => part.text)
+}
+
+/** The wider text a paper post is written from: paperParts joined by blank lines. Stored in source.context. */
+export function paperText(pages: Array<{ page: number; text: string }>, max = CARD.paperContextMax): string {
+  return paperParts(pages, max).map(part => part.text).join('\n\n')
 }
 
 /**
