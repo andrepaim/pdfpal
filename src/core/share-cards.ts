@@ -145,6 +145,7 @@ export const CHECK_FAILED = 'The post could not be checked against its source. T
 const RESTARTED = 'pdfpal restarted before this post finished. Use Try again.'
 const BUSY = 'pdfpal is busy writing posts. Try again shortly.'
 const WAIT = 'Wait for the current version or cancel it first.'
+const UNREADABLE = 'This post was saved by an earlier build of pdfpal and can no longer be opened. Delete it.'
 const ANSWER_LIMIT = 40_000
 const MAX_JOBS = 2
 
@@ -198,7 +199,15 @@ function fence(raw: string): string {
 const HASHTAG = /^[\p{L}\p{N}_]{2,30}$/u
 const TOPIC = /^[\p{L}\p{N}]+( [\p{L}\p{N}]+)*$/u
 const PARAGRAPH_BREAK = /\n[ \t]*\n/
-const LINK = /\b(https?:\/\/|www\.)/i
+/** Letters and digits in any script: the boundaries the prose checks use instead of ASCII-only \b. */
+const B = '(?<![\\p{L}\\p{N}_])', E = '(?![\\p{L}\\p{N}_])'
+/**
+ * A link: a scheme, "www.", a domain with a path ("evil.example/x"), or a bare domain on a common top-level domain
+ * ("example.com"), all of which LinkedIn turns into links. "e.g.", "Fig. 2", "et al.", "U.S." and decimals are not.
+ */
+const LINK = new RegExp(`https?:\\/\\/|${B}www\\.|(?<![\\p{L}\\p{N}_@.-])(?:[a-z0-9-]+\\.)+[a-z]{2,}\\/\\S|(?<![\\p{L}\\p{N}_@.-])(?:[a-z0-9-]+\\.)+(?:com|org|net|io|ai|edu|gov|info|app|dev|ly|xyz|uk|de|br)${E}`, 'iu')
+/** A hashtag: "#" not after a letter or digit, before a letter or underscore. "C#", "F#" and "#1" are not. */
+const HASHTAG_IN_TEXT = /(?<![\p{L}\p{N}_&])#[\p{L}_]/u
 const MARKDOWN = /\*\*|__|`|\]\(|^[ \t]*([-*+>]|\d+[.)])[ \t]/m
 /** How the prompt names the text it was given. A reader should never see these. Expected to grow after live review. */
 const SOURCE_WORDS = /pagetext|page text|supplied text|readertake|regiontext/i
@@ -206,19 +215,23 @@ const SOURCE_WORDS = /pagetext|page text|supplied text|readertake|regiontext/i
  * First person in English and Portuguese. A bare "I" is only caught before a common verb, so that "Type I error" and
  * "Phase I trial" pass. Expected to grow after live review.
  */
-const FIRST_PERSON = /\b(?:I['’](?:m|ve|d|ll)|I (?:think|believe|would|was|am|have|had|feel|felt|wonder|love|loved|read|learned|agree|disagree|guess|suspect|know|knew|mean|want|wish|hope|find|found|saw|see|use|used|will|can|could|should|do|did|don['’]t)|[Mm]y|[Mm]e|[Mm]yself|[Ee]u|[Mm]eus?|[Mm]inhas?)\b/u
+const FIRST_PERSON = new RegExp(`${B}(?:I['’](?:m|ve|d|ll)|I (?:think|believe|would|was|am|have|had|feel|felt|wonder|love|loved|read|learned|agree|disagree|guess|suspect|know|knew|mean|want|wish|hope|find|found|saw|see|use|used|will|can|could|should|do|did|don['’]t)|[Mm]y|[Mm]e|[Mm]yself|[Ee]u|[Mm]eus?|[Mm]inhas?)${E}`, 'u')
 /** Endings written to draw engagement. Expected to grow after live review. */
-const STOCK_ENDING = /\b(?:what do you think|what are your thoughts|thoughts\?|agree\?|let me know|in the comments|comment below|follow (?:me )?for more|like and share|repost|tag (?:someone|a friend))/iu
-/** A span in quotation marks. */
-const QUOTED = /“([^”]*)”|"([^"\n]*)"|«([^»]*)»/gu
+const STOCK_ENDING = new RegExp(`${B}(?:what do you think|what are your thoughts|thoughts\\?|agree\\?|let me know|in the comments|comment below|follow (?:me )?for more|like and share|repost|tag (?:someone|a friend))`, 'iu')
+/** A span in quotation marks, single curly ones included when they are not apostrophes (not inside a word). */
+const QUOTED = /“([^”]*)”|"([^"\n]*)"|«([^»]*)»|(?<![\p{L}\p{N}])‘([^’]*)’(?![\p{L}\p{N}])/gu
 /** Quotations of at least this many words must be exact; shorter ones are usually terms or scare quotes. */
 const QUOTE_CHECK_WORDS = 6
 
 const words = (text: string) => text.split(/\s+/u).filter(Boolean).length
 const plain = (text: string) => collapse(text.replace(/[‘’]/gu, "'").toLowerCase())
+/** Words broken at a line-end hyphen joined, as cleanPassage does, also where the line break became a space. */
+const joinBroken = (text: string) => text.replace(/(\p{Ll})[-‐][^\S\n]*\r?\n\s*(?=\p{Ll})/gu, '$1').replace(/(\p{Ll})[-‐]\s+(?=\p{Ll})/gu, '$1')
+/** What a quotation may be copied from: the text as given and with broken words joined, so either form matches. */
+const quotableText = (text: string) => [plain(text), plain(joinBroken(text))]
 
 /** `named` is how the prompt names the text the post started from: highlight or regionText. */
-type DraftContext = { limits: DraftLimits; take: string; allowed: string[]; quotable: string; named: string }
+type DraftContext = { limits: DraftLimits; take: string; allowed: string[]; quotable: string[]; named: string }
 
 /** Throws AnswerError naming the draft and the limit it breaks. */
 function checkDraft(name: string, draft: string, context: DraftContext) {
@@ -234,6 +247,7 @@ function checkDraft(name: string, draft: string, context: DraftContext) {
   if (take && !paragraphs.some(part => collapse(part) === take)) throw new AnswerError(`${name} must contain readerTake word for word as a paragraph of its own.`)
   // The reader's take may say anything; the checks below apply to the words the assistant wrote.
   const own = paragraphs.filter(part => !take || collapse(part) !== take)
+  if (take && own.join(' ').split(/\s+/u).filter(word => /\p{L}/u.test(word)).length < 3) throw new AnswerError(`${name} must lead into readerTake with words of its own.`)
   checkOwnWords(name, own.join('\n\n'), context)
   if (STOCK_ENDING.test(own.join('\n\n'))) throw new AnswerError(`${name} must not ask for comments, likes or shares.`)
   const last = paragraphs.at(-1)!
@@ -245,17 +259,19 @@ function checkDraft(name: string, draft: string, context: DraftContext) {
  * links, Markdown, leaks or first person; quotations copied exactly; numbers from the source.
  */
 function checkOwnWords(name: string, text: string, context: Pick<DraftContext, 'allowed' | 'quotable' | 'named'>) {
-  if (text.includes('#')) throw new AnswerError(`${name} must not contain hashtags.`)
+  if (HASHTAG_IN_TEXT.test(text)) throw new AnswerError(`${name} must not contain hashtags.`)
   if (LINK.test(text)) throw new AnswerError(`${name} must not contain links.`)
   if (MARKDOWN.test(text)) throw new AnswerError(`${name} must be plain text without Markdown.`)
   if (SOURCE_WORDS.test(text)) throw new AnswerError(`${name} must not mention pageText or the supplied text; state the idea directly.`)
   const person = FIRST_PERSON.exec(text.replace(QUOTED, ' '))?.[0]
   if (person) throw new AnswerError(`${name} must not use the first person ("${person}"); only readerTake speaks for the reader.`)
   for (const match of text.matchAll(QUOTED)) {
-    const quoted = match[1] ?? match[2] ?? match[3] ?? ''
-    if (words(quoted) < QUOTE_CHECK_WORDS) continue
-    const parts = quoted.split(/…|\.\.\./u).map(part => plain(part).replace(/^[\s.,;:!?'"]+|[\s.,;:!?'"]+$/gu, '')).filter(part => words(part) >= 3)
-    if (parts.some(part => !context.quotable.includes(part)))
+    const quoted = match[1] ?? match[2] ?? match[3] ?? match[4] ?? ''
+    if (words(quoted.replace(/…|\.\.\./gu, ' ')) < QUOTE_CHECK_WORDS) continue
+    // Every piece between ellipses, however short, must be in the source, in the quotation's order.
+    const parts = quoted.split(/…|\.\.\./u).map(part => plain(part).replace(/^[\s.,;:!?'"]+|[\s.,;:!?'"]+$/gu, '')).filter(Boolean)
+    const inOrder = (copy: string) => { let from = 0; return parts.every(part => { const at = copy.indexOf(part, from); from = at + part.length; return at >= 0 }) }
+    if (!context.quotable.some(inOrder))
       throw new AnswerError(`${name} quotes words that are not in ${context.named} or pageText: “${collapse(quoted).slice(0, 200)}”. Copy a quotation exactly or drop the quotation marks.`)
   }
   checkNumbers(name, text, context.allowed, context.named)
@@ -310,7 +326,7 @@ export function parseShareCardAnswer(raw: string,
   const take = collapse(options.take)
   // A carousel's numbers may come from any of its highlights' pages.
   const allowed = [source.passage, source.context, source.title, source.credit, String(source.page), ...items.map(item => String(item.page)), take]
-  const quotable = plain(`${source.passage} ${source.context} ${source.title}`)
+  const quotable = quotableText(`${source.passage} ${source.context} ${source.title}`)
   if (card.set) {
     // Every word on a carousel's slides is the assistant's own and passes a draft's checks for them.
     const slides: Array<[string, string]> = [['headline', card.headline], ['study', card.set.study], ...card.set.points.map((point, index): [string, string] => [`points[${index}]`, point]),
@@ -399,6 +415,11 @@ export function pageContext(pages: Map<number, string>, page: number, max = CARD
   return [head, own, tail].filter(Boolean).join('\n\n')
 }
 
+/** The version behind Undo, or UNREADABLE when it no longer parses. */
+function readVersion(json: string): Version {
+  try { return previousVersionSchema.parse(JSON.parse(json)) } catch { throw new ShareCardError(422, UNREADABLE) }
+}
+
 /** The reader's take as it is stored and sent: one line, at most TAKE_MAX characters, or ''. */
 function readTake(take: string | undefined): string {
   const text = collapse(take ?? '')
@@ -445,12 +466,19 @@ export class ShareCardService {
     return row
   }
 
+  /**
+   * The stored row as the API returns it. A row that no longer parses (one saved by the first build and restored from
+   * the trash, say) is refused with UNREADABLE instead of failing the request; it can still be deleted.
+   */
   private record(row: Row): ShareCardRecord {
-    const source = shareCardSourceSchema.parse(JSON.parse(row.source_json))
+    let source: ShareCardSource, card: CardContent | null, caption: Caption | null
+    try {
+      source = shareCardSourceSchema.parse(JSON.parse(row.source_json))
+      card = row.card_json ? cardContentSchema.parse(JSON.parse(row.card_json)) : null
+      caption = row.caption_json ? captionSchema.parse(JSON.parse(row.caption_json)) : null
+    } catch { throw new ShareCardError(422, UNREADABLE) }
     return {
-      id: row.id, project_id: row.project_id, source_id: row.source_id, annotation_id: row.annotation_id, status: row.status, source,
-      card: row.card_json ? cardContentSchema.parse(JSON.parse(row.card_json)) : null,
-      caption: row.caption_json ? captionSchema.parse(JSON.parse(row.caption_json)) : null,
+      id: row.id, project_id: row.project_id, source_id: row.source_id, annotation_id: row.annotation_id, status: row.status, source, card, caption,
       can_undo: row.previous_json !== null, instruction: row.instruction, error: row.error, created_at: row.created_at, updated_at: row.updated_at,
       destination: row.destination, take: row.take, ...this.marks(row, source),
     }
@@ -482,11 +510,13 @@ export class ShareCardService {
     const ids = (sourceId
       ? this.db.prepare('SELECT id FROM share_cards WHERE project_id=? AND source_id=? ORDER BY created_at DESC, id').all(projectId, sourceId)
       : this.db.prepare('SELECT id FROM share_cards WHERE project_id=? ORDER BY created_at DESC, id').all(projectId)) as Array<{ id: string }>
-    return ids.map(({ id }) => {
-      const row = this.row(projectId, id), source = shareCardSourceSchema.parse(JSON.parse(row.source_json))
-      const headline = row.card_json ? (JSON.parse(row.card_json) as CardContent).headline : ''
-      return { id: row.id, status: row.status, annotation_id: row.annotation_id, source_id: row.source_id, page: source.page, kind: source.kind,
-        title: summaryTitle(source, headline), updated_at: row.updated_at }
+    return ids.flatMap(({ id }) => {
+      const row = this.row(projectId, id)
+      // A post that no longer reads is left out, so that it cannot break the whole list.
+      let record: ShareCardRecord
+      try { record = this.record(row) } catch { return [] }
+      return [{ id: row.id, status: row.status, annotation_id: row.annotation_id, source_id: row.source_id, page: record.source.page, kind: record.source.kind,
+        title: summaryTitle(record.source, record.card?.headline ?? ''), updated_at: row.updated_at }]
     })
   }
 
@@ -615,6 +645,7 @@ export class ShareCardService {
    */
   private regenerate(projectId: string, id: string, next?: (row: Row) => Pick<Row, 'instruction' | 'destination' | 'take'>): ShareCardRecord {
     const row = this.row(projectId, id)
+    this.record(row)
     this.assertIdle(row)
     this.assertCapacity()
     const { instruction, destination, take } = next ? next(row) : row
@@ -656,8 +687,9 @@ export class ShareCardService {
   undo(projectId: string, id: string) {
     const row = this.row(projectId, id)
     this.assertIdle(row)
+    this.record(row)
     if (!row.previous_json) throw new ShareCardError(409, 'There is no earlier version to return to.')
-    const previous = previousVersionSchema.parse(JSON.parse(row.previous_json))
+    const previous = readVersion(row.previous_json)
     // The version returned to brings back the destination and take it was written for.
     this.db.prepare(`UPDATE share_cards SET card_json=?,caption_json=?,previous_json=NULL,destination=?,take=?,status='complete',error=NULL,error_detail=NULL,
       attempt=?,updated_at=? WHERE id=?`).run(JSON.stringify(previous.card), JSON.stringify(previous.caption), previous.caption.destination, previous.caption.take,
@@ -688,7 +720,7 @@ export class ShareCardService {
     const record = this.record(row)
     if (!record.card || !record.caption) throw new ShareCardError(409, 'This post has no completed version yet.')
     const next = change({ card: record.card, caption: record.caption }, record.source)
-    const behind = row.previous_json && previous ? JSON.stringify(previous(previousVersionSchema.parse(JSON.parse(row.previous_json)), record.source)) : row.previous_json
+    const behind = row.previous_json && previous ? JSON.stringify(previous(readVersion(row.previous_json), record.source)) : row.previous_json
     this.db.prepare('UPDATE share_cards SET card_json=?,caption_json=?,previous_json=?,updated_at=? WHERE id=?')
       .run(JSON.stringify(next.card), JSON.stringify(next.caption), behind, stamp(), id)
     return this.get(projectId, id)
@@ -696,12 +728,14 @@ export class ShareCardService {
 
   restyle(projectId: string, id: string, style: ShareStyle, look: ShareLook) {
     if (!STYLES.includes(style) || !LOOKS.includes(look)) throw new ShareCardError(400, 'Unknown card style or look.')
-    return this.place(projectId, id, (version, source) => {
+    const apply = (version: Version, source: ShareCardSource): Version => {
       // A carousel's slides are Headline cards; a region or first-page post has no quote or takeaways for a text card.
       if (source.kind === 'set' && style !== 'headline') throw new ShareCardError(400, SET_STYLE_REFUSED)
       if (source.kind !== 'highlight' && !(REGION_STYLES as readonly string[]).includes(style)) throw new ShareCardError(400, REGION_STYLE_REFUSED)
       return { ...version, card: { ...version.card, style, look } }
-    })
+    }
+    // How the post is shown, not what it says: the version behind Undo takes it too, so Undo never reverts it.
+    return this.place(projectId, id, apply, apply)
   }
 
   /**
@@ -755,11 +789,13 @@ export class ShareCardService {
   }
 
   showTags(projectId: string, id: string, showTags: boolean) {
-    return this.place(projectId, id, version => ({ ...version, caption: { ...version.caption, showTags } }))
+    const apply = (version: Version): Version => ({ ...version, caption: { ...version.caption, showTags } })
+    return this.place(projectId, id, apply, apply)
   }
 
   link(projectId: string, id: string, link: LinkPlacement) {
-    return this.place(projectId, id, version => ({ ...version, caption: { ...version.caption, link } }))
+    const apply = (version: Version): Version => ({ ...version, caption: { ...version.caption, link } })
+    return this.place(projectId, id, apply, apply)
   }
 
   /** The reader's own headline: 1–80 characters, kept behind Undo, and not held to the numbers check. */
@@ -847,8 +883,8 @@ export class ShareCardService {
   private async compose(row: Row, source: ShareCardSource, previous: Version | undefined, signal: AbortSignal): Promise<Composed> {
     // A short passage is the quote. A quote the reader edited stays theirs through a change. A region has no quote.
     const highlight = source.kind === 'highlight'
-    const fixedQuote = !highlight ? undefined : source.passage.length <= CARD.quoteLeadsMax ? { quote: source.passage, edited: false }
-      : previous?.card.quoteEdited ? { quote: previous.card.quote, edited: true } : undefined
+    const fixedQuote = !highlight ? undefined : previous?.card.quoteEdited ? { quote: previous.card.quote, edited: true }
+      : source.passage.length <= CARD.quoteLeadsMax ? { quote: source.passage, edited: false } : undefined
     const input: Record<string, unknown> = source.kind === 'set'
       ? { highlights: source.items.map(item => ({ page: item.page, text: item.passage })), pageText: source.context, title: source.title, credit: source.credit }
       : { [highlight ? 'highlight' : 'regionText']: source.passage, pageText: source.context, title: source.title, credit: source.credit, page: source.page }

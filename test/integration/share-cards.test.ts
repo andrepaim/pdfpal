@@ -1092,3 +1092,96 @@ test('a carousel outlives its highlights and its source, and restoring the sourc
     assert.equal(((await s.app.inject({ url })).json() as ShareCardRecord).source_id, s.source)
   } finally { await s.close() }
 })
+
+// Review fixes: false refusals and false passes in the answer checks, and service defects.
+const reviewSource = { passage: PASSAGE, context: 'We suspect that sparse patterns may reduce this cost. In the self-atten- tion layer every position looks at every other one.',
+  title: 'Attention Is All You Need', credit: '', page: 2, url: URL }
+const reviewOptions = { destination: 'linkedin' as const, take: '', changed: false }
+const withReviewLine = (line: string) => FINDING.replace('The catch is cost.', line)
+const passes = (line: string, options: Partial<typeof reviewOptions> = {}) => parseShareCardAnswer(drafts({ finding: withReviewLine(line) }), reviewSource, { ...reviewOptions, ...options })
+const refuses = (line: string, reason: RegExp) => assert.throws(() => passes(line), reason, line)
+
+test('review: an exact quotation across a line-end hyphen in the page text passes', () => {
+  passes('The authors write “in the self-attention layer every position looks at every other one” here.')
+  refuses('The authors write “in the self-attention layer every position looks at nothing else” here.', /quotes words that are not in highlight or pageText/)
+})
+
+test('review: first person, hashtags and links are found by Unicode-aware boundaries, without false positives', () => {
+  passes('Le résultat reste le même, the crème de la crème of models.')
+  passes('Code in C# and F# ranks #2 here.')
+  passes('In the U.S., e.g. in Fig. 2, the authors et al. agree on Node.js, i.e. it holds.')
+  refuses('It helps me, and #attention matters.', /must not contain hashtags/)
+  refuses('Read more at evil.example/x today.', /must not contain links/)
+  refuses('See example.com for the rest.', /must not contain links/)
+  refuses('See www.example.org now.', /must not contain links/)
+  refuses('Isso me preocupa.', /first person \("me"\)/)
+  refuses('Thoughts? Let me know.', /first person \("me"\)/)
+})
+
+test('review: a quotation chopped by ellipses or in single curly quotes is still checked', () => {
+  passes('The authors write “every position look … the cost grows with the square” here.')
+  refuses('The authors write “the cost … cubes … with every … position” here.', /quotes words that are not in highlight or pageText/)
+  refuses('The authors write “sparse patterns may … the cost grows” here.', /quotes words that are not in highlight or pageText/)
+  refuses('The authors write ‘the cost grows with the cube of the length’ here.', /quotes words that are not in highlight or pageText/)
+  passes('The authors’ model is theirs, and it’s honest about ‘cost’.')
+})
+
+test('review: with a take, a draft always has words of its own besides the take', () => {
+  const take = 'This is why my long-context runs still feel slow to me today.'
+  assert.throws(() => parseShareCardAnswer(drafts({ finding: take, caveat: '' }), reviewSource, { ...reviewOptions, take, changed: true }), /drafts\.finding has 1 paragraphs; use 2–8/)
+  assert.throws(() => parseShareCardAnswer(drafts({ finding: `— — —\n\n${take}`, caveat: '' }), reviewSource, { ...reviewOptions, take, changed: true }),
+    /^Error: drafts\.finding must lead into readerTake with words of its own\.$/)
+  parseShareCardAnswer(drafts({ finding: `The cost grows with the square of the length.\n\n${take}`, caveat: '' }), reviewSource, { ...reviewOptions, take, changed: true })
+})
+
+test('review: a reader\'s edited quote survives a rewrite of a short highlight', async () => {
+  const s = await setup()
+  try {
+    s.respond(1, answer({ emphasis: 'expensive', pull: '' })); s.respond(2, answer({ emphasis: '', pull: '' }))
+    const first = await s.post(await s.highlight('Long documents become\nexpensive quickly.')), url = `${s.base}/${first.id}`
+    const edited = (await s.app.inject({ method: 'PATCH', url, payload: { quote: 'Long inputs get expensive fast.' } })).json() as ShareCardRecord
+    assert.equal(edited.card!.quoteEdited, true)
+    await s.app.inject({ method: 'POST', url: `${url}/change`, payload: { instruction: 'Shorter headline' } })
+    const changed = await s.settle(first.id)
+    assert.equal(changed.status, 'complete'); assert.equal(changed.card!.quote, 'Long inputs get expensive fast.'); assert.equal(changed.card!.quoteEdited, true)
+    assert.equal(s.input(2).fixedQuote, 'Long inputs get expensive fast.')
+  } finally { await s.close() }
+})
+
+test('review: look, style, hashtags and link set after the last Undo step survive Undo, as the crop does', async () => {
+  const s = await setup()
+  try {
+    const first = await s.post(), url = `${s.base}/${first.id}`
+    const patch = (payload: unknown) => s.app.inject({ method: 'PATCH', url, payload })
+    await patch({ headline: 'My own headline' })
+    await patch({ style: 'idea', look: 'marker' }); await patch({ show_tags: true }); await patch({ link: 'comment' })
+    const undone = (await s.app.inject({ method: 'POST', url: `${url}/undo`, payload: {} })).json() as ShareCardRecord
+    assert.equal(undone.card!.headline, CARD.headline)
+    assert.deepEqual({ style: undone.card!.style, look: undone.card!.look, showTags: undone.caption!.showTags, link: undone.caption!.link },
+      { style: 'idea', look: 'marker', showTags: true, link: 'comment' })
+  } finally { await s.close() }
+})
+
+test('review: a stored post that no longer reads is left out of the list, refused clearly, and still deletable', async () => {
+  const s = await setup()
+  try {
+    const good = await s.post()
+    // A first-build row restored from a trash packet: a caption with a body, a card without a crop.
+    const old = JSON.parse(JSON.stringify(good)) as ShareCardRecord
+    const { crop: _crop, set: _set, ...oldCard } = old.card!
+    s.db.prepare(`INSERT INTO share_cards(id,project_id,source_id,annotation_id,request_id,request_hash,status,attempt,source_json,card_json,caption_json,created_at,updated_at)
+      VALUES ('old',?,?,NULL,'r-old','h','complete','t',?,?,?,'2020-01-01','2020-01-01')`).run(s.project.id, s.source,
+      JSON.stringify({ version: 1, passage: PASSAGE, page: 2, rects: [], color: 'yellow', context: '', title: 'Old', credit: '', url: '' }),
+      JSON.stringify(oldCard), JSON.stringify({ body: 'Old caption', hashtags: [], edited: null }))
+    const list = await s.app.inject({ url: s.base })
+    assert.equal(list.statusCode, 200); assert.deepEqual((list.json() as Array<{ id: string }>).map(item => item.id), [good.id])
+    const detail = 'This post was saved by an earlier build of pdfpal and can no longer be opened. Delete it.'
+    for (const request of [{ url: `${s.base}/old` }, { method: 'PATCH' as const, url: `${s.base}/old`, payload: { look: 'ink', style: 'quote' } },
+      { method: 'POST' as const, url: `${s.base}/old/change`, payload: { instruction: 'Again' } }, { method: 'POST' as const, url: `${s.base}/old/undo`, payload: {} }]) {
+      const response = await s.app.inject(request); assert.equal(response.statusCode, 422, request.url); assert.equal(response.json().detail, detail)
+    }
+    assert.equal(s.callCount(), 1)
+    assert.equal((await s.app.inject({ method: 'DELETE', url: `${s.base}/old` })).statusCode, 204)
+    assert.equal((s.db.prepare("SELECT COUNT(*) n FROM share_cards WHERE id='old'").get() as { n: number }).n, 0)
+  } finally { await s.close() }
+})
