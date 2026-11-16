@@ -273,6 +273,45 @@ async function noSideScroll(page: Page) {
 test.describe('share posts in the reader', () => {
   test.beforeEach(async ({ page }) => { await mockAuth(page); });
 
+  test('the highlight menu stays open when the page scrolls by itself, and closes when the reader scrolls', async ({ page }) => {
+    const state = fake();
+    const { annotation } = await paper(page, state);
+    await page.reload();
+    const box = page.locator(`[data-annotation-id="${annotation}"]`).first();
+    await expect(box).toBeVisible();
+    const menu = page.locator('[data-highlight-menu]');
+    // A scroll the reader did not make: a click that first scrolls its target into view, or the page settling
+    // while it loads, sends its scroll event just after the menu opened.
+    const scrollByItself = () => box.evaluate(node => {
+      let scroller: HTMLElement | null = node.parentElement;
+      while (scroller && !(scroller.scrollHeight > scroller.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(scroller).overflowY))) scroller = scroller.parentElement;
+      (scroller ?? document.scrollingElement!).scrollBy(0, 3);
+      return new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    });
+    for (let round = 0; round < 3; round++) {
+      await box.click();
+      await expect(menu).toBeVisible();
+      await scrollByItself();
+      await expect(menu).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(menu).toHaveCount(0);
+    }
+    // The reader scrolling the page with the wheel moves the highlight away from the menu, so it closes.
+    await box.click();
+    await expect(menu).toBeVisible();
+    const place = (await box.boundingBox())!;
+    await page.mouse.move(place.x + place.width / 2, place.y + 200);
+    await page.mouse.wheel(0, 120);
+    await expect(menu).toHaveCount(0);
+    // A wheel over the menu itself does not close it.
+    await box.click();
+    await expect(menu).toBeVisible();
+    const menuPlace = (await menu.boundingBox())!;
+    await page.mouse.move(menuPlace.x + 20, menuPlace.y + 20);
+    await page.mouse.wheel(0, 40);
+    await expect(menu).toBeVisible();
+  });
+
   for (const destination of ['linkedin', 'x', 'instagram'] as const) {
     test(`a new post for ${destination} opens on its frame with every highlight in the crop`, async ({ page }) => {
       test.setTimeout(60_000);
