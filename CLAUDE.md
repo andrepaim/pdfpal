@@ -84,4 +84,4 @@ Install Playwright browsers with `npm exec --workspace <frontend|extension> -- p
 
 ## Current focus
 
-Use `docs/README.md` for the maintained guide map. Merged reader work includes page-aware retrieval, the second-generation visual renderer, offline WordNet definitions, a Linux Debian desktop preview and one cloud library per Google account. `docs/reader-beta-and-retrieval-plan.md` records the beta/retrieval work and outstanding manual gates; it is not a blanket ban on the features already merged. Mac desktop, Android and multi-format source plans are outside the current default-branch feature set.
+Use `docs/README.md` for the maintained guide map. Merged reader work includes page-aware retrieval, the second-generation visual renderer, offline WordNet definitions, share posts (`docs/share-posts-plan.md`), a Linux Debian desktop preview and one cloud library per Google account. `docs/reader-beta-and-retrieval-plan.md` records the beta/retrieval work and outstanding manual gates; it is not a blanket ban on the features already merged. Mac desktop, Android and multi-format source plans are outside the current default-branch feature set.

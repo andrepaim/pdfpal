@@ -4,7 +4,7 @@
 
 One authorized desktop release publishes Windows x64 and Linux x64 from the same clean full source SHA and desktop version, under `desktop-v<version>`. The draft remains unpublished until shared regressions, native Windows installer acceptance, Linux packaged GUI/authenticated CLI, private synthetic keyring, Debian identity, and all six asset integrity/provenance checks pass. Preview signing and manual acceptance limitations remain explicit. Published tags and bytes are immutable; an incomplete draft can be repaired only for its original SHA.
 
-The current release preparation targets `2.8.0-beta.6`, above both the last Windows `2.8.0-beta.4` and separate Linux `2.8.0-beta.5.linux.1` previews. Verify unused tags before the version change. Desktop and npm versions remain independent.
+The current release preparation targets `2.8.0-beta.7`, above the coordinated `2.8.0-beta.6` release. (The first coordinated release, `2.8.0-beta.6`, followed the last Windows `2.8.0-beta.4` and the separate Linux `2.8.0-beta.5.linux.1` previews.) Verify unused tags before the version change. Desktop and npm versions remain independent.
 
 ## Scope and risks
 
@@ -27,3 +27,9 @@ Engineering previews retain the platform runbooks' outstanding real OAuth/keyrin
 ## Integration evidence
 
 Preparation PR [#23](https://github.com/andrepaim/pdfpal/pull/23) merged at `9c58b6eac0caa7c11d380550830144b5f3d3d15c` after all checks passed for head `0eea08c1c64e09bb0a079b1eeb6fc1642df95f3e` (tested PR merge `8e78986d91ca3aceb729349b13811cf9f55056fe`). This included both native packages, combined six-file verification, Windows beta measurements/kit, unit/type/build, browser/extension/distribution suites and Firebase emulator contracts. Post-merge CI and the separate version PR must pass before the release merge. The candidate exceeds all 16 existing desktop tags and includes the cloud-library recovery and shared Linux menu fixes by ancestry. No earlier published tag or asset is changed.
+
+### 2.8.0-beta.7
+
+Share posts were merged by PR [#25](https://github.com/andrepaim/pdfpal/pull/25) at `f41d54dacf30ae69f23d4f97443138504ed425cc` after every check passed for head `762b0d80ba394556851fce8cbc780d89e1d71704`: type and unit tests, browser and extension suites, Firebase emulator contracts, the packaged Windows checks and the Linux Debian package job. The change adds schema version 16 (a local `share_cards` table that is never synced) and one main-process handler that writes a PNG to the clipboard; application identity, signing, update filters and account behaviour are unchanged. The owner tried the feature in a side-by-side Windows preview build before asking for this release. Copy image has not been exercised by a person on Linux. The release notes for this version say what changed since `2.8.0-beta.6`; earlier versions keep their own text.
+
+The first run of this version's PR ([#26](https://github.com/andrepaim/pdfpal/pull/26)) failed one browser test: the highlight menu closed on a scroll event that arrived just after it opened. That was a defect in the reader, fixed with a failing test first in PR [#27](https://github.com/andrepaim/pdfpal/pull/27), merged at `12d724d8fc99764ca7c6f9e4d7fe8677434584d5` after every check passed for head `7e4eab8aae46fb833eebd0a54755a1d0b9b0da93`. This branch then took `master` again, so the release includes the fix.
