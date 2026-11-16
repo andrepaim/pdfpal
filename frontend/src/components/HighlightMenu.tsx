@@ -24,10 +24,21 @@ export default function HighlightMenu({ menu, hasPost, onClose, onAsk, onPost, o
     root.current?.querySelector<HTMLButtonElement>('button')?.focus()
     const dismiss = () => close.current()
     const outside = (event: Event) => { if (!root.current?.contains(event.target as Node)) dismiss() }
+    // The menu stays where it opened, so it closes when the reader scrolls the page away from it: with the wheel, by
+    // touch, or by dragging a scrollbar (a mousedown outside). A scroll the reader did not make must not close it: a
+    // click that first scrolls the highlight into view, or the page settling while it loads, sends its scroll event
+    // just after the menu opened.
+    const options = { capture: true, passive: true } as const
     document.addEventListener('mousedown', outside)
-    document.addEventListener('scroll', outside, true)
+    document.addEventListener('wheel', outside, options)
+    document.addEventListener('touchmove', outside, options)
     window.addEventListener('resize', dismiss)
-    return () => { document.removeEventListener('mousedown', outside); document.removeEventListener('scroll', outside, true); window.removeEventListener('resize', dismiss) }
+    return () => {
+      document.removeEventListener('mousedown', outside)
+      document.removeEventListener('wheel', outside, options)
+      document.removeEventListener('touchmove', outside, options)
+      window.removeEventListener('resize', dismiss)
+    }
   }, [menu])
   const choose = (action: () => void) => () => { onClose(); opener.current?.focus?.(); action() }
   const onKeyDown = (event: React.KeyboardEvent) => {
