@@ -347,10 +347,10 @@ Settled in T10:
 
 **Tasks**
 
-- [ ] **T10 Server** (`share-posts/server`): the contract, the prompt and checks for `takeaway`, the edit, `postSlides`, the rule for a set's limitations, tests.
-- [ ] **T11 Renderer** (`share-posts/renderer`): the `page` slide, its fallback, sample frames.
+- [x] **T10 Server** (`share-posts/server`): the contract, the prompt and checks for `takeaway`, the edit, `postSlides`, the rule for a set's limitations, tests.
+- [x] **T11 Renderer** (`share-posts/renderer`): the `page` slide, its fallback, sample frames.
 - [x] **T12 Panel** (on `feat/share-posts`, after T10 and T11): the slide viewer for the Carousel style, the style choice, the takeaway edit, export, browser tests, README.
-- [ ] **G4 Gate** as G1.
+- [x] **G4 Gate** as G1.
 
 ## Acceptance criteria
 
@@ -471,3 +471,20 @@ Covered: a highlight for each destination (one post rewritten for all three), a 
 - Real pages drew as intended after that fix: abstracts, a figure, a table, a caption, a page with a table beside the text.
 
 A Windows preview `2.8.0-posts.1` built from `250c5d1` was installed beside the released app (it does not have the crop fix).
+
+### G4: three cards for Instagram (16 November 2026)
+
+Revision `8ce8d615f2f0b50827897b61fb281507517e8e27` on `feat/share-posts`, not pushed.
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | passes |
+| `npm test` | 412 tests: 411 pass, 0 fail, 1 skipped (Firebase rules, no emulator). Lines 88.57%, branches 85.68%; `src/core/share-cards.ts` 99.57% lines, `src/server/share-cards.ts` 100% |
+| `npm run build` | passes; no zod in `frontend/dist/assets` |
+| Frontend Playwright | 181 passed |
+| `npm --prefix desktop test` | 75 passed |
+| `node scripts/check-secrets.mjs` | passed for 525 files |
+
+Tasks done: T10 to T12. Instagram posts from a highlight, a region or the first page open in the Carousel style: the hook, the page, the takeaway. A post stored before the takeaway existed shows two slides and offers "Add a takeaway".
+
+Still unchecked: the takeaway's wording and the set's limitations rule against real answers (no live request since they were written); the three exported cards posted to Instagram; Copy slide in the desktop apps.
