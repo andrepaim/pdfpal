@@ -15,6 +15,9 @@ type Props = {
   marks: PageMark[]
   /** null means "back to automatic". */ onApply: (crop: PageRect | null) => void
   onCancel: () => void
+  /** The dialog's title; "Adjust crop" by default. */ title?: string
+  /** The confirming button's label; "Apply" by default. */ applyLabel?: string
+  /** The reset button's label, which calls onApply(null); "Reset to automatic" by default, and null hides the button. */ resetLabel?: string | null
 }
 
 export const CROP_PAGE_UNAVAILABLE = 'The PDF page could not be loaded.'
@@ -40,7 +43,7 @@ const pct = (value: number) => `${value * 100}%`
 type Drag = { part: CropPart; start: PageRect; x: number; y: number; pointer: number; width: number; height: number }
 type LoadedPage = { proxy: PDFPageProxy; width: number; height: number }
 
-export default function CropEditor({ fileUrl, page, value, marks, onApply, onCancel }: Props) {
+export default function CropEditor({ fileUrl, page, value, marks, onApply, onCancel, title = 'Adjust crop', applyLabel = 'Apply', resetLabel = 'Reset to automatic' }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const frameRef = useRef<HTMLDivElement>(null)
@@ -209,7 +212,7 @@ export default function CropEditor({ fileUrl, page, value, marks, onApply, onCan
         maxHeight: `min(${MAX_DIALOG_HEIGHT}px, calc(100dvh - ${WINDOW_MARGIN}px))`,
       }}>
       <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '100%', minHeight: 0 }}>
-        <h2 id="crop-editor-title" style={{ fontSize: 15, margin: '0 0 4px' }}>Adjust crop</h2>
+        <h2 id="crop-editor-title" style={{ fontSize: 15, margin: '0 0 4px' }}>{title}</h2>
         <p id="crop-editor-hint" style={{ fontSize: 11, color: '#9ca3af', margin: '0 0 4px' }}>
           {status === 'error' ? CROP_PAGE_UNAVAILABLE : 'Drag the box to move it, or its handles to resize it. Arrow keys move the focused part; hold Shift for larger steps.'}
         </p>
@@ -267,9 +270,9 @@ export default function CropEditor({ fileUrl, page, value, marks, onApply, onCan
         </div>
         <div aria-live="polite" style={hidden}>{announcement}</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 10 }}>
-          {status !== 'error' && <button type="button" onClick={() => finish(null)} style={{ ...button, marginRight: 'auto' }}>Reset to automatic</button>}
-          <button ref={cancelRef} type="button" onClick={() => finish('cancel')} style={{ ...button, marginLeft: status === 'error' ? 'auto' : undefined }}>Cancel</button>
-          {status !== 'error' && <button type="button" onClick={() => finish(rect)} disabled={!ready} style={{ ...primary, opacity: ready ? 1 : 0.5 }}>Apply</button>}
+          {status !== 'error' && resetLabel !== null && <button type="button" onClick={() => finish(null)} style={{ ...button, marginRight: 'auto' }}>{resetLabel}</button>}
+          <button ref={cancelRef} type="button" onClick={() => finish('cancel')} style={{ ...button, marginLeft: status === 'error' || resetLabel === null ? 'auto' : undefined }}>Cancel</button>
+          {status !== 'error' && <button type="button" onClick={() => finish(rect)} disabled={!ready} style={{ ...primary, opacity: ready ? 1 : 0.5 }}>{applyLabel}</button>}
         </div>
       </div>
     </dialog>
