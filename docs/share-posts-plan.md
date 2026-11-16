@@ -118,7 +118,7 @@ Base `/api/projects/:projectId/share-cards`.
 | --- | --- | --- |
 | `POST` base | `{ request_id, annotation_id, destination?, take?, agent?, model? }` | `destination` defaults to `linkedin`. 202 created, 200 existing |
 | `POST /:id/change` | `{ instruction?, destination?, take? }`, at least one | One request; the earlier version goes behind Undo. A destination change also sets the style to that destination's default |
-| `PATCH /:id` | exactly one of `{ style, look }`, `{ crop }` (a `PageRect` or `null`), `{ angle }`, `{ show_tags }`, `{ link }`, `{ headline }`, `{ caption }`, `{ quote }`, `{ credit }` | `caption`, `quote` and `headline` keep an Undo step; the others are written in place. `angle` is refused when that draft is empty; choosing an angle clears `edited` |
+| `PATCH /:id` | exactly one of `{ style, look }`, `{ crop }` (a `PageRect` or `null`), `{ angle }`, `{ show_tags }`, `{ link }`, `{ headline }`, `{ caption }`, `{ quote }`, `{ credit }` | `caption`, `quote` and `headline` keep an Undo step; the others are written in place. `angle` is refused when that draft is empty; choosing an angle clears `edited`, and keeps an Undo step when it does |
 | `GET`, `retry`, `cancel`, `undo`, `DELETE` | as today | Undo also restores the destination and take of the version it returns to |
 
 ### Region and first-page posts (T5)
