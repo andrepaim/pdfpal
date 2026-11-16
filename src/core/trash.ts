@@ -14,7 +14,7 @@ type Link = { table: string; keys: Row; field: string; value: unknown; unchanged
 type Packet = { format: 1; rows: Record<string, Row[]>; links: Link[]; files: string[] }
 const kinds: Record<TrashKind, string> = { project: 'p', source: 's', collection: 'c', note: 'n', highlight: 'h', chat: 't', message: 'm' }
 const entityKinds: Record<string, TrashKind> = { projects: 'project', sources: 'source', collections: 'collection', notes: 'note', annotations: 'highlight', chat_sessions: 'chat', chat_messages: 'message' }
-const tables = ['projects','collections','sources','notes','kindle_conversations','visual_explanations','chat_sessions','chat_messages','kindle_turns','annotations','source_chunks','source_related']
+const tables = ['projects','collections','sources','notes','kindle_conversations','visual_explanations','chat_sessions','chat_messages','kindle_turns','annotations','share_cards','source_chunks','source_related']
 const quote = (name: string) => '"' + name.replaceAll('"','""') + '"'
 const empty = (): Packet => ({ format: 1, rows: {}, links: [], files: [] })
 const key = (table: string, row: Row) => String(table === 'chat_messages' ? row.sync_id : row.id)
@@ -36,11 +36,14 @@ function capture(db: Database, kind: TrashKind, id: string): Packet {
   const many = (table: string, column: string, ids: unknown[]) => ids.length ? select(table, `${quote(column)} IN (${ids.map(() => '?').join(',')})`, ids) : []
   if (kind === 'project') {
     select('projects','id=?',[id])
-    for (const table of ['collections','sources','notes','chat_sessions','kindle_conversations','visual_explanations','annotations']) select(table,'project_id=?',[id])
+    for (const table of ['collections','sources','notes','chat_sessions','kindle_conversations','visual_explanations','annotations','share_cards']) select(table,'project_id=?',[id])
   } else if (kind === 'source') {
     select('sources','id=?',[id]); select('annotations','source_id=?',[id])
     for (const row of db.prepare('SELECT id,source_id,accessed_at FROM chat_sessions WHERE source_id=?').all(id) as Row[])
       packet.links.push({ table:'chat_sessions',keys:{id:row.id},field:'source_id',value:id,unchanged:{accessed_at:row.accessed_at} })
+    // A post outlives its source and keeps its own copy of the passage; a restore reconnects it.
+    for (const row of db.prepare('SELECT id FROM share_cards WHERE source_id=?').all(id) as Row[])
+      packet.links.push({ table:'share_cards',keys:{id:row.id},field:'source_id',value:id })
   } else if (kind === 'collection') {
     const rows = db.prepare(`WITH RECURSIVE tree(id) AS (SELECT id FROM collections WHERE id=?
       UNION ALL SELECT c.id FROM collections c JOIN tree t ON c.parent_id=t.id) SELECT c.* FROM collections c JOIN tree t ON c.id=t.id`).all(id) as Row[]
@@ -61,6 +64,10 @@ function capture(db: Database, kind: TrashKind, id: string): Packet {
     for (const row of db.prepare('SELECT id FROM visual_explanations WHERE note_id=?').all(note.id) as Row[])
       packet.links.push({table:'visual_explanations',keys:row,field:'note_id',value:note.id})
   }
+  // Deleting a source deletes its highlights too, so both kinds record the posts made from them.
+  if (kind === 'source' || kind === 'highlight') for (const annotation of packet.rows.annotations ?? [])
+    for (const row of db.prepare('SELECT id FROM share_cards WHERE annotation_id=?').all(annotation.id) as Row[])
+      packet.links.push({ table:'share_cards',keys:{id:row.id},field:'annotation_id',value:annotation.id })
   packet.files = [...new Set((packet.rows.sources ?? []).map(r => r.local_path).filter((v): v is string => typeof v === 'string' && !!v))]
   return packet
 }
@@ -164,7 +171,7 @@ export class TrashService {
         if (table==='chat_messages') { identities.set(row.sync_id,randomUUID());if(!identities.has(row.sync_turn))identities.set(row.sync_turn,randomUUID()) }
       }
       for (const rows of Object.values(packet.rows)) for (const row of rows) {
-        for (const field of ['id','project_id','source_id','collection_id','parent_id','session_id','conversation_id','visual_id','note_id','sync_id','sync_turn'])
+        for (const field of ['id','project_id','source_id','collection_id','parent_id','session_id','conversation_id','visual_id','note_id','annotation_id','sync_id','sync_turn'])
           if (typeof row[field]==='string'&&identities.has(row[field]))row[field]=identities.get(row[field])
         if (typeof row.sources_used==='string') try {row.sources_used=JSON.stringify(JSON.parse(row.sources_used).map((v:string)=>identities.get(v)??v))}catch{}
       }
@@ -192,7 +199,7 @@ export class TrashService {
           const row={...source}
           if (table==='chat_messages'||table==='source_chunks'||table==='source_related') delete row.id
           // Preserve a note/paper when its optional filing target was deleted later.
-          for (const [field,parent] of [['collection_id','collections'],['parent_id','collections'],['source_id','sources']] as const)
+          for (const [field,parent] of [['collection_id','collections'],['parent_id','collections'],['source_id','sources'],['annotation_id','annotations']] as const)
             if (row[field] && !this.db.prepare(`SELECT 1 FROM ${parent} WHERE id=?`).get(row[field])) { row[field]=null;linksSkipped++ }
           const fields=Object.keys(row)
           try { this.db.prepare(`INSERT INTO ${quote(table)}(${fields.map(quote).join(',')}) VALUES(${fields.map(()=>'?').join(',')})`).run(...fields.map(f=>row[f])) }
@@ -201,7 +208,7 @@ export class TrashService {
         }
       }
       for (const link of packet.links) {
-        const allowed:Record<string,string[]>={sources:['collection_id'],chat_sessions:['source_id'],visual_explanations:['note_id'],extension_saved_notes:['note_id']}
+        const allowed:Record<string,string[]>={sources:['collection_id'],chat_sessions:['source_id'],visual_explanations:['note_id'],extension_saved_notes:['note_id'],share_cards:['source_id','annotation_id']}
         if(!allowed[link.table]?.includes(link.field))continue
         const conditions=[...Object.keys(link.keys).map(k=>`${quote(k)}=?`),`${quote(link.field)} IS NULL`,...Object.keys(link.unchanged??{}).map(k=>`${quote(k)} IS ?`)]
         const result=this.db.prepare(`UPDATE ${quote(link.table)} SET ${quote(link.field)}=? WHERE ${conditions.join(' AND ')}`)

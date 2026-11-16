@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('pdfpalDesktop', {
   downloadUpdate: () => ipcRenderer.invoke('pdfpal:download-update'),
   releaseNotes: () => ipcRenderer.invoke('pdfpal:release-notes'),
   openLicenses: () => ipcRenderer.invoke('pdfpal:open-licenses'),
+  copyImage: bytes => ipcRenderer.invoke('pdfpal:copy-image', bytes),
   onOpenUpdates: callback => {
     openUpdates = callback
     if (updatesPending) queueMicrotask(() => { if (updatesPending && openUpdates) { updatesPending = false; openUpdates() } })

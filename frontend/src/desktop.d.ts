@@ -30,6 +30,7 @@ declare global {
       downloadUpdate?(): Promise<boolean>
       releaseNotes?(): Promise<boolean>
       openLicenses?(): Promise<boolean>
+      copyImage?(bytes: Uint8Array): Promise<boolean>
       onOpenUpdates?(callback: () => void): () => void
       setupStatus?(): Promise<{ complete: boolean }>
       setupState?(): Promise<DesktopSetupState>

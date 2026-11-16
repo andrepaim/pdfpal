@@ -15,6 +15,8 @@ import { betaOptions, betaAcceptance } from './beta-acceptance.mjs'
 import {chromeCapabilities,chromeCommands,chromeOptions,chromeShortcut,feedbackIssueURL,nativeMenuRequired,readerHistoryTarget} from './chrome.mjs'
 import { defaultDesktopProfile } from './dist/shared/desktop-profile.js'
 import { closeToTray, initiallyHidden, linuxAutostart, linuxMenuTemplate } from './linux.mjs'
+import { clipboard } from 'electron'
+import { clipboardPng } from './clipboard.mjs'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
 const metadata = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).pdfpalDesktop ?? {}
@@ -687,6 +689,8 @@ else {
   handle('download-update', () => { if (updateState.state !== 'available') throw new Error('Check for an available update first'); openBrowser(updateState.downloadURL); return true }, true)
   handle('release-notes', () => { openBrowser(updateState.releaseURL ?? releasePage); return true }, true)
   handle('open-licenses', openLicenses, true)
+  // Share cards: the renderer's clipboard API may not write images here, since every permission request is refused.
+  handle('copy-image', bytes => { const image = nativeImage.createFromBuffer(clipboardPng(bytes)); if (image.isEmpty()) throw new Error('The card image could not be read.'); clipboard.writeImage(image); return true })
   handle('chatgpt-stop', () => { chatgpt.cancelAll(); return chatgpt.summary() })
   handle('chatgpt-state', () => chatgpt.summary())
   handle('chatgpt-connect', id => chatgpt.connect(id))

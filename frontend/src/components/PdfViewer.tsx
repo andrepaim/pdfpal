@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Document, Page, pdfjs, type DocumentProps } from 'react-pdf'
+import { Document, Page, type DocumentProps } from 'react-pdf'
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
@@ -8,12 +8,8 @@ import { isDefinable, selectionContext } from '../lib/selection-context'
 import DefinitionCard from './DefinitionCard'
 import VisualIcon from './VisualIcon'
 
-// Bundle the worker from the same pdfjs-dist version used by react-pdf.
-// package.json pins pdfjs-dist to react-pdf's exact version (no "^"): pdfjs
-// throws if the API and worker versions differ, and a caret range lets npm
-// hoist a newer pdfjs-dist here than the one react-pdf bundles internally,
-// silently breaking every render with "Failed to render page".
-pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString()
+// The worker and document options are shared with the share cards' Page style, which loads the PDF without the viewer.
+import { PDF_OPTIONS } from '../lib/pdf-document'
 
 type PageRect = { x1: number; y1: number; x2: number; y2: number }
 type PageSize = { width: number; height: number }
@@ -31,7 +27,12 @@ interface Props {
   onExplainVisually?: (text: string, page?: number) => void
   annotations?: Annotation[]
   onHighlightCreate?: (data: { page_number: number; x1: number; y1: number; x2: number; y2: number; rects: PageRect[]; text: string; color: string }) => void
-  onHighlightClick?: (annotation: Annotation) => void
+  /** `point` is where to place a menu for the highlight, in viewport coordinates. */
+  onHighlightClick?: (annotation: Annotation, point: { x: number; y: number }) => void
+  /** Highlights that have a share post get a small mark. */
+  postAnnotationIds?: { has(id: string): boolean }
+  /** Scrolls to a page whenever its key changes, such as when a post is opened. */
+  jumpTo?: { page: number; key: string } | null
 }
 
 const COLOR_MAP: Record<string, string> = {
@@ -119,17 +120,6 @@ function normalizePage(page: number | undefined): number {
   return Number.isInteger(page) && Number(page) > 0 ? Number(page) : 1
 }
 
-// Module-level constant so react-pdf's loadDocument effect never sees a new
-// object reference, preventing spurious document destroy/reload cycles.
-const PDF_OPTIONS = {
-  withCredentials: true,
-  // PDF.js needs these assets to decode JPEG2000 page images and to load
-  // fallback fonts. Vite exposes them at these stable paths in dev and in
-  // the production bundle (see vite.config.ts).
-  wasmUrl: '/pdfjs/wasm/',
-  standardFontDataUrl: '/pdfjs/standard_fonts/',
-}
-
 const FALLBACK_PAGE_SIZE: PageSize = { width: 595, height: 842 }
 
 function getPageSize(page: PDFPageProxy): PageSize {
@@ -141,7 +131,7 @@ function getPageSize(page: PDFPageProxy): PageSize {
 
 export default function PdfViewer({
   url, initialPage = 1, isResizing, onPageChange, onTextSelected, onExplainVisually,
-  annotations, onHighlightCreate, onHighlightClick,
+  annotations, onHighlightCreate, onHighlightClick, postAnnotationIds, jumpTo,
 }: Props) {
   const requestedPage = normalizePage(initialPage)
   const [numPages, setNumPages] = useState(0)
@@ -454,6 +444,22 @@ export default function PdfViewer({
     return () => clearTimeout(timer)
   }, [containerWidth, initialPage, numPages, restored, url])
 
+  // Brings a requested page into view once the saved position has been restored.
+  useEffect(() => {
+    const scroll = scrollRef.current
+    if (!jumpTo || !scroll || !numPages || !restored) return
+    const page = Math.min(numPages, normalizePage(jumpTo.page))
+    const frame = requestAnimationFrame(() => {
+      const target = scroll.querySelector<HTMLElement>(`[data-pdf-page="${page}"]`)
+      if (!target) return
+      scroll.scrollTop += target.getBoundingClientRect().top - scroll.getBoundingClientRect().top - 16
+      currentPageRef.current = page
+      setCurrentPage(page)
+      navigationRef.current.onPageChange?.(page)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [jumpTo, numPages, restored])
+
   // A narrow observation band through the viewport center defines the current
   // reading page. This stays correct for mixed page sizes and avoids doing a
   // getBoundingClientRect scan across hundreds of pages on every scroll event.
@@ -575,6 +581,7 @@ export default function PdfViewer({
                 pageSize={pageSizes[i] ?? FALLBACK_PAGE_SIZE}
                 annotations={pageAnnotations}
                 onHighlightClick={onHighlightClick}
+                postAnnotationIds={postAnnotationIds}
               />
             )
           })}
@@ -635,7 +642,8 @@ interface LazyPdfPageProps {
   pageScale?: number
   pageSize: PageSize
   annotations: Annotation[]
-  onHighlightClick?: (annotation: Annotation) => void
+  onHighlightClick?: (annotation: Annotation, point: { x: number; y: number }) => void
+  postAnnotationIds?: { has(id: string): boolean }
 }
 
 // The viewer can contain hundreds of pages. Mounting a canvas and text layer
@@ -644,7 +652,7 @@ interface LazyPdfPageProps {
 // hidden while their text layers remain selectable. Keep the layout with a
 // lightweight placeholder and only mount pages as they approach the viewport.
 
-function LazyPdfPage({ pageNumber, pageWidth, pageScale, pageSize: initialPageSize, annotations, onHighlightClick }: LazyPdfPageProps) {
+function LazyPdfPage({ pageNumber, pageWidth, pageScale, pageSize: initialPageSize, annotations, onHighlightClick, postAnnotationIds }: LazyPdfPageProps) {
   const pageRef = useRef<HTMLDivElement>(null)
   const [shouldRender, setShouldRender] = useState(pageNumber === 1)
   const [pageSize, setPageSize] = useState(initialPageSize)
@@ -691,30 +699,51 @@ function LazyPdfPage({ pageNumber, pageWidth, pageScale, pageSize: initialPageSi
         ) : (
           <div style={{ width: placeholderWidth, height: placeholderHeight, background: 'var(--pdf-page-background)' }} aria-label={`Page ${pageNumber}`} />
         )}
-        {annotations.map(ann =>
+        {annotations.map(ann => {
           // rects gives one box per selected line; annotations from before
           // that field existed only have the x1..y2 union.
-          (ann.rects && ann.rects.length ? ann.rects : [ann]).map((r, i) => (
-            <div
-              key={`${ann.id}-${i}`}
-              className="pdf-highlight"
-              onClick={() => onHighlightClick?.(ann)}
-              title={ann.text}
-              style={{
-                position: 'absolute',
-                left:   `${r.x1 * 100}%`,
-                top:    `${r.y1 * 100}%`,
-                width:  `${(r.x2 - r.x1) * 100}%`,
-                height: `${(r.y2 - r.y1) * 100}%`,
-                background: COLOR_MAP[ann.color] ?? COLOR_MAP.yellow,
-                pointerEvents: 'auto',
-                cursor: 'pointer',
-                zIndex: 2,
-                borderRadius: 2,
-              }}
-            />
-          )),
-        )}
+          const boxes = ann.rects && ann.rects.length ? ann.rects : [ann]
+          const first = boxes[0]!
+          return [
+            ...boxes.map((r, i) => (
+              <div
+                key={`${ann.id}-${i}`}
+                className="pdf-highlight"
+                data-annotation-id={ann.id}
+                onClick={event => onHighlightClick?.(ann, { x: event.clientX, y: event.clientY })}
+                title={ann.text}
+                // The first box of each highlight is the keyboard stop that opens its menu.
+                {...(i === 0 ? {
+                  tabIndex: 0, role: 'button', 'aria-label': `Highlight: ${ann.text.slice(0, 80)}`,
+                  onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return
+                    event.preventDefault()
+                    const rect = event.currentTarget.getBoundingClientRect()
+                    onHighlightClick?.(ann, { x: rect.left, y: rect.bottom })
+                  },
+                } : {})}
+                style={{
+                  position: 'absolute',
+                  left:   `${r.x1 * 100}%`,
+                  top:    `${r.y1 * 100}%`,
+                  width:  `${(r.x2 - r.x1) * 100}%`,
+                  height: `${(r.y2 - r.y1) * 100}%`,
+                  background: COLOR_MAP[ann.color] ?? COLOR_MAP.yellow,
+                  pointerEvents: 'auto',
+                  cursor: 'pointer',
+                  zIndex: 2,
+                  borderRadius: 2,
+                }}
+              />
+            )),
+            postAnnotationIds?.has(ann.id) && (
+              <span key={`${ann.id}-post`} data-post-mark={ann.id} title="This highlight has a post" aria-hidden="true"
+                style={{ position: 'absolute', left: `${first.x1 * 100}%`, top: `${first.y1 * 100}%`, transform: 'translate(-55%, -55%)', zIndex: 3,
+                  width: 14, height: 14, borderRadius: '50%', background: '#4f46e5', color: '#fff', fontSize: 9, lineHeight: '14px', textAlign: 'center',
+                  boxShadow: '0 0 0 2px rgba(255,255,255,0.85)', pointerEvents: 'none' }}>✦</span>
+            ),
+          ]
+        })}
       </div>
     </div>
   )

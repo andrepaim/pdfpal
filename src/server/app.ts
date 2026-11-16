@@ -33,6 +33,8 @@ import { ZodError } from 'zod'
 import { VisualExplanationService, VisualError } from '../core/visual-explanations.js'
 import {errorReportsFor} from '../core/error-reports.js'
 import { registerVisualRoutes } from './visual-explanations.js'
+import { ShareCardService, ShareCardError } from '../core/share-cards.js'
+import { registerShareCardRoutes } from './share-cards.js'
 
 type Params = { projectId: string; sourceId: string; id: string }
 const now = () => new Date().toISOString()
@@ -47,6 +49,7 @@ export async function buildServer(config: PdfpalConfig, cli?: CliRuntime) {
   const notes = new NoteService(db, config)
   const chat = new ChatService(db, config)
   const visuals = new VisualExplanationService(db, config)
+  const shareCards = new ShareCardService(db, config)
   app.addHook('onRequest', async (request, reply) => {
     reply.header('Content-Security-Policy', "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' data: blob: https://*.google-analytics.com https://*.analytics.google.com https://firebaseinstallations.googleapis.com https://firebaselogging.googleapis.com https://firebaseperformance.googleapis.com https://firebaseremoteconfig.googleapis.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-src 'none'; frame-ancestors 'self'")
     // Browser documents may use the reader API only from its own origin.
@@ -65,6 +68,7 @@ export async function buildServer(config: PdfpalConfig, cli?: CliRuntime) {
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof ExtensionError) return reply.status(error.status).send({ detail: error.message, code: error.code })
     if (error instanceof VisualError) return reply.status(error.status).send({ detail: error.message })
+    if (error instanceof ShareCardError) return reply.status(error.status).send({ detail: error.message })
     if (error instanceof ZodError) return reply.status(400).send({ detail: error.issues.map(issue => issue.message).join('; ') })
     if (error instanceof app.multipartErrors.RequestFileTooLargeError) {
       return reply.status(413).send({ detail: 'PDF files must be 25 MB or smaller.', code: 'FILE_TOO_LARGE' })
@@ -187,6 +191,7 @@ export async function buildServer(config: PdfpalConfig, cli?: CliRuntime) {
   registerResearchRoutes(app, db, config)
   registerDictionaryRoutes(app)
   registerVisualRoutes(app, visuals)
+  registerShareCardRoutes(app, shareCards)
   const kindle = await registerExtensionRoutes(app, db, config, visuals)
   await registerExtensionManagement(app, db)
   app.addHook('onSend', async (request, reply) => {
@@ -202,7 +207,7 @@ export async function buildServer(config: PdfpalConfig, cli?: CliRuntime) {
     await app.register(staticPlugin, { root: frontend, wildcard: false })
     app.setNotFoundHandler((request, reply) => request.url.startsWith('/api/') ? reply.status(404).send({ detail: 'Not Found' }) : reply.sendFile('index.html'))
   }
-  app.addHook('onClose', async () => { await closeCloud(); await kindle.close(); await visuals.close(); db.close() })
+  app.addHook('onClose', async () => { await closeCloud(); await kindle.close(); await visuals.close(); await shareCards.close(); db.close() })
   return app
 }
 

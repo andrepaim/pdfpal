@@ -1,0 +1,68 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [5 0 R 7 0 R 9 0 R] /Count 3 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding << /Type /Encoding /BaseEncoding /WinAnsiEncoding /Differences [1 /fi] >> >>
+endobj
+4 0 obj
+<< /Length 147 >>
+stream
+BT /F1 12 Tf 72 760 Td 16 TL
+(Page one introduces the model and its training data.) Tj T*
+(It sets up the question the next page answers.) Tj T*
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Contents 4 0 R /Resources << /Font << /F1 3 0 R >> >> >>
+endobj
+6 0 obj
+<< /Length 471 >>
+stream
+BT /F1 12 Tf 72 760 Td 16 TL
+(Attention lets every position look at every other position in) Tj T*
+(the sequence. However, the cost grows with the square of the se-) Tj T*
+(quence length, so long documents become expensive. We suspect) Tj T*
+(that sparse patterns may reduce this cost without a large loss of) Tj T*
+(quality. The \001rst experiments are encouraging but not conclusive.) Tj T*
+() Tj T*
+(A second paragraph follows the first one on the same page.) Tj T*
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Contents 6 0 R /Resources << /Font << /F1 3 0 R >> >> >>
+endobj
+8 0 obj
+<< /Length 131 >>
+stream
+BT /F1 12 Tf 72 760 Td 16 TL
+(Page three compares the results with earlier work.) Tj T*
+(It ends with the open questions.) Tj T*
+ET
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Contents 8 0 R /Resources << /Font << /F1 3 0 R >> >> >>
+endobj
+xref
+0 10
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000127 00000 n 
+0000000281 00000 n 
+0000000479 00000 n 
+0000000611 00000 n 
+0000001133 00000 n 
+0000001265 00000 n 
+0000001447 00000 n 
+trailer
+<< /Size 10 /Root 1 0 R >>
+startxref
+1579
+%%EOF

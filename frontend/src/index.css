@@ -213,3 +213,10 @@ body {
   .ai-settings-provider-fields { grid-template-columns: minmax(0, 1fr); }
   .ai-settings-option { gap: 9px; padding: 13px; }
 }
+
+/* Share post dialogs (SharePostPanel). */
+.share-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+/* Crop editor (CropEditor): focus rings, which inline styles cannot express. A handle's ring is drawn on its grip. */
+.crop-editor [data-crop-box]:focus-visible { outline: 2px solid #a5b4fc; outline-offset: 2px; }
+.crop-editor [data-crop-handle]:focus { outline: none; }
+.crop-editor [data-crop-handle]:focus-visible > span { outline: 2px solid #a5b4fc; outline-offset: 2px; }

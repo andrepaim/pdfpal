@@ -192,3 +192,75 @@ test('version 8 upgrade keeps credentials and visual ownership and runs only onc
   try { assert.equal(fs.readdirSync(config.backupsDir).length, backups + 1) }
   finally { cleanup(config, reopened) }
 })
+
+test('version 16 upgrade adds share cards to a version 15 library, backs it up once and keeps its highlights', () => {
+  const config = testConfig(), before = openDatabase(config)
+  before.exec(`INSERT INTO projects VALUES ('p','Project','','2020-01-01','2020-01-01');
+    INSERT INTO sources(id,project_id,type,title,pdf_text,pages,created_at,accessed_at) VALUES ('s','p','pdf','Paper','[Page 1]\nText',1,'2020-01-01','2020-01-01');
+    INSERT INTO annotations(id,source_id,project_id,page_number,x1,y1,x2,y2,text,color,created_at) VALUES ('a','s','p',1,0.1,0.1,0.5,0.2,'Highlighted text','green','2020-01-01');
+    DROP TABLE share_cards; DELETE FROM schema_migrations WHERE version>=16;`)
+  before.close()
+  const backups = fs.readdirSync(config.backupsDir).length, db = openDatabase(config)
+  try {
+    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 16)
+    assert.equal(CURRENT_SCHEMA, 16)
+    assert.deepEqual(db.prepare("SELECT text,color FROM annotations WHERE id='a'").get(), { text: 'Highlighted text', color: 'green' })
+    assert.deepEqual((db.prepare('PRAGMA index_list(share_cards)').all() as Array<{ name: string }>).map(index => index.name).filter(name => !name.startsWith('sqlite_')).sort(),
+      ['share_card_annotation', 'share_card_project', 'share_card_requests'])
+    assert.equal(fs.readdirSync(config.backupsDir).length, backups + 1)
+    db.prepare(`INSERT INTO share_cards(id,project_id,source_id,annotation_id,request_id,request_hash,status,attempt,source_json,created_at,updated_at)
+      VALUES ('c','p','s','a','r','h','complete','t','{}','2020-01-01','2020-01-01')`).run()
+    assert.deepEqual(db.prepare("SELECT destination,take FROM share_cards WHERE id='c'").get(), { destination: 'linkedin', take: '' })
+    assert.throws(() => db.prepare(`INSERT INTO share_cards(id,project_id,source_id,annotation_id,request_id,request_hash,status,attempt,source_json,created_at,updated_at)
+      VALUES ('d','p','s','a','r2','h','complete','t','{}','2020-01-01','2020-01-01')`).run(), /UNIQUE/)
+    assert.throws(() => db.prepare(`INSERT INTO share_cards(id,project_id,request_id,request_hash,status,attempt,source_json,created_at,updated_at)
+      VALUES ('e','p','r3','h','done','t','{}','2020-01-01','2020-01-01')`).run(), /CHECK/)
+    db.prepare("DELETE FROM sources WHERE id='s'").run()
+    assert.deepEqual(db.prepare("SELECT source_id,annotation_id FROM share_cards WHERE id='c'").get(), { source_id: null, annotation_id: null })
+    db.close()
+    const reopened = openDatabase(config)
+    try { assert.equal(fs.readdirSync(config.backupsDir).length, backups + 1); assert.equal((reopened.prepare('SELECT COUNT(*) n FROM share_cards').get() as { n: number }).n, 1) }
+    finally { reopened.close() }
+  } finally { fs.rmSync(config.dataDir, { recursive: true, force: true }) }
+})
+
+test('a library holding the first build\'s share_cards table opens with the final table, its posts dropped and its highlights kept', () => {
+  const config = testConfig(), before = openDatabase(config)
+  // The first build's table: version 16, no destination or take columns.
+  before.exec(`INSERT INTO projects VALUES ('p','Project','','2020-01-01','2020-01-01');
+    INSERT INTO sources(id,project_id,type,title,pdf_text,pages,created_at,accessed_at) VALUES ('s','p','pdf','Paper','[Page 1]\nText',1,'2020-01-01','2020-01-01');
+    INSERT INTO annotations(id,source_id,project_id,page_number,x1,y1,x2,y2,text,color,created_at) VALUES ('a','s','p',1,0.1,0.1,0.5,0.2,'Highlighted text','green','2020-01-01');
+    DROP TABLE share_cards;
+    CREATE TABLE share_cards (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      source_id TEXT REFERENCES sources(id) ON DELETE SET NULL, annotation_id TEXT REFERENCES annotations(id) ON DELETE SET NULL,
+      request_id TEXT NOT NULL, request_hash TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('pending','running','complete','failed','cancelled')), attempt TEXT NOT NULL,
+      source_json TEXT NOT NULL, card_json TEXT, caption_json TEXT, previous_json TEXT, instruction TEXT NOT NULL DEFAULT '',
+      error TEXT, error_detail TEXT, agent TEXT, model TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE UNIQUE INDEX share_card_requests ON share_cards(project_id, request_id);
+    CREATE UNIQUE INDEX share_card_annotation ON share_cards(annotation_id) WHERE annotation_id IS NOT NULL;
+    CREATE INDEX share_card_project ON share_cards(project_id, created_at);
+    INSERT INTO share_cards(id,project_id,source_id,annotation_id,request_id,request_hash,status,attempt,source_json,caption_json,created_at,updated_at)
+      VALUES ('old','p','s','a','r','h','complete','t','{}','{"body":"Old caption","hashtags":[],"edited":null}','2020-01-01','2020-01-01');`)
+  before.close()
+  const backups = fs.readdirSync(config.backupsDir).length, db = openDatabase(config)
+  try {
+    assert.equal((db.prepare('SELECT MAX(version) version FROM schema_migrations').get() as { version: number }).version, 16)
+    const columns = (db.prepare('PRAGMA table_info(share_cards)').all() as Array<{ name: string; dflt_value: string | null; notnull: number }>)
+    assert.deepEqual(columns.filter(column => ['destination', 'take'].includes(column.name)).map(({ name, dflt_value, notnull }) => ({ name, dflt_value, notnull })),
+      [{ name: 'destination', dflt_value: "'linkedin'", notnull: 1 }, { name: 'take', dflt_value: "''", notnull: 1 }])
+    assert.equal((db.prepare('SELECT COUNT(*) n FROM share_cards').get() as { n: number }).n, 0)
+    assert.deepEqual((db.prepare('PRAGMA index_list(share_cards)').all() as Array<{ name: string }>).map(index => index.name).filter(name => !name.startsWith('sqlite_')).sort(),
+      ['share_card_annotation', 'share_card_project', 'share_card_requests'])
+    assert.deepEqual(db.prepare("SELECT text,color FROM annotations WHERE id='a'").get(), { text: 'Highlighted text', color: 'green' })
+    // The library was already at version 16, so no backup is taken; a post in the final table survives a reopen.
+    assert.equal(fs.readdirSync(config.backupsDir).length, backups)
+    db.prepare(`INSERT INTO share_cards(id,project_id,source_id,annotation_id,request_id,request_hash,status,attempt,source_json,destination,take,created_at,updated_at)
+      VALUES ('new','p','s','a','r','h','complete','t','{}','x','A take.','2020-01-01','2020-01-01')`).run()
+    db.close()
+    const reopened = openDatabase(config)
+    try { assert.deepEqual(reopened.prepare('SELECT id,destination,take FROM share_cards').all(), [{ id: 'new', destination: 'x', take: 'A take.' }]) }
+    finally { reopened.close() }
+  } finally { fs.rmSync(config.dataDir, { recursive: true, force: true }) }
+})

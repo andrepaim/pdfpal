@@ -20,6 +20,8 @@ async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
     throw Object.assign(new Error(err.detail || `API error ${res.status}`), { code: err.code })
   }
+  // Deleting a highlight answers 204 with no body.
+  if (res.status === 204) return undefined as T
   return res.json()
 }
 

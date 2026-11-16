@@ -43,6 +43,13 @@ export function writeNotices(stage, sourceRoot) {
   // its notice on every copy.
   const wordnet = path.join(sourceRoot, 'data/wordnet/LICENSE')
   if (fs.existsSync(wordnet)) notices.push(`\n${'='.repeat(72)}\nWordNet 3.1 dictionary data (Princeton University)\nUsed for word definitions in the reader.\n\n--- LICENSE ---\n${fs.readFileSync(wordnet, 'utf8')}\n`)
+  // The share-card fonts are files in frontend/public/fonts, not packages, so the walk above does not find
+  // them either. The SIL Open Font License asks for its text with every copy.
+  for (const [family, file] of [['Inter', 'Inter-OFL.txt'], ['Newsreader', 'Newsreader-OFL.txt']]) {
+    const license = path.join(sourceRoot, 'frontend/public/fonts', file)
+    if (fs.existsSync(license)) notices.push(`\n${'='.repeat(72)}\n${family} font (SIL Open Font License 1.1)\nUsed to draw share cards.\n\n--- ${file} ---\n${fs.readFileSync(license, 'utf8')}\n`)
+    else throw new Error(`Cannot find the font license: ${file}`)
+  }
   fs.writeFileSync(path.join(stage, 'THIRD_PARTY_NOTICES.txt'), notices.join('\n'))
   return visited.size - 3
 }

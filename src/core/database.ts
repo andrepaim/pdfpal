@@ -12,7 +12,7 @@ import { installTrash } from './trash.js'
 import {installErrorReports} from './error-reports.js'
 import { installCliOperations } from './cli-operations.js'
 
-export const CURRENT_SCHEMA = 15
+export const CURRENT_SCHEMA = 16
 
 function columnExists(db: DatabaseType, table: string, column: string): boolean {
   return (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some(row => row.name === column)
@@ -261,6 +261,29 @@ function migrate(db: DatabaseType): void {
   db.exec("INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES (14,datetime('now'))")
   installCliOperations(db)
   db.exec("INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES (15,datetime('now'))")
+  // Share cards: one post per highlight, drawn on demand from stored words. Local only, never synced.
+  // Version 16 never shipped in a published build. The first build's table (without destination and take) is only
+  // in test libraries, so it is dropped rather than migrated. See docs/share-posts-plan.md.
+  if (tableExists(db, 'share_cards') && !columnExists(db, 'share_cards', 'destination')) db.exec('DROP TABLE share_cards')
+  db.exec(`CREATE TABLE IF NOT EXISTS share_cards (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      source_id TEXT REFERENCES sources(id) ON DELETE SET NULL,
+      annotation_id TEXT REFERENCES annotations(id) ON DELETE SET NULL,
+      request_id TEXT NOT NULL, request_hash TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('pending','running','complete','failed','cancelled')),
+      attempt TEXT NOT NULL,
+      source_json TEXT NOT NULL,
+      card_json TEXT, caption_json TEXT, previous_json TEXT,
+      instruction TEXT NOT NULL DEFAULT '',
+      destination TEXT NOT NULL DEFAULT 'linkedin', take TEXT NOT NULL DEFAULT '',
+      error TEXT, error_detail TEXT, agent TEXT, model TEXT,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS share_card_requests ON share_cards(project_id, request_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS share_card_annotation ON share_cards(annotation_id) WHERE annotation_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS share_card_project ON share_cards(project_id, created_at);
+    INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES (16,datetime('now'));`)
 }
 
 /** Migrate the original sessions/messages model without requiring network access. */
