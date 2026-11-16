@@ -4,7 +4,9 @@
 // its neighbours, and kept per slide, look and crop, so stepping through is instant and nothing is drawn twice. A slow
 // drawing never replaces a newer one.
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { CARD, SET, collapse, postSlides, setSlides, type PageRect, type ShareCardRecord, type ShareLook, type SlideSpec } from '../../../src/shared/share-card'
+import { CARD, SET, collapse, postSlides, setSlides, type PageRect, type ShareCardRecord, type ShareLook, type SlideSpec as SharedSlideSpec } from '../../../src/shared/share-card'
+/** The slide kinds this viewer shows; a paper post's own kinds (stage 5) arrive with T15. */
+type SlideSpec = Exclude<SharedSlideSpec, { kind: 'lead' | 'question' | 'method' | 'result' }>
 import { canvasPng } from '../lib/share-card'
 import { PAGE_UNAVAILABLE, pageCrop, type PageCrop, type PageUnavailable } from '../lib/share-card/page-crop'
 import { itemSource, renderSlide, slideSheetSpace, slideText, type SlideContext } from '../lib/share-card/slides'
@@ -42,7 +44,7 @@ export function useSlides(record: ShareCardRecord | null, look: ShareLook, fileU
   const isSet = record?.source.kind === 'set' && !!record.card?.set
   const card = record?.card && (isSet || carousel) ? record.card : null
   const source = record?.source ?? null
-  const slides = useMemo<SlideSpec[]>(() => !card || !source ? [] : isSet ? setSlides(card, source) : postSlides(card, source), [card, source, isSet])
+  const slides = useMemo<SlideSpec[]>(() => !card || !source ? [] : isSet ? setSlides(card, source) : postSlides(card, source) as SlideSpec[], [card, source, isSet])
   const [index, setIndex] = useState(0)
   const [shown, setShown] = useState<DrawnSlide | null>(null)
   const [drawError, setDrawError] = useState('')

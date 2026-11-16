@@ -2,8 +2,8 @@
 // contract module, never this one, so zod stays out of its bundle (test/unit/visual-bundle.test.ts).
 import { z } from 'zod'
 import {
-  ANGLES, CARD, DESTINATIONS, HIGHLIGHT_COLORS, LINKS, LOOKS, SET, SOURCE_KINDS, STYLES, TAKE_MAX,
-  type Caption, type CardContent, type PageMark, type PageRect, type SetContent, type SetItem, type ShareCardSource,
+  ANGLES, CARD, DESTINATIONS, HIGHLIGHT_COLORS, LINKS, LOOKS, PAPER, SET, SOURCE_KINDS, STYLES, TAKE_MAX,
+  type Caption, type CardContent, type PageMark, type PageRect, type PaperContent, type SetContent, type SetItem, type ShareCardSource,
 } from './share-card.js'
 
 const fraction = z.number().finite().min(0).max(1)
@@ -28,12 +28,13 @@ export const shareCardSourceSchema = z.object({
   color: z.enum(HIGHLIGHT_COLORS),
   region: pageRectSchema.nullable().default(null),
   items: z.array(setItemSchema).max(SET.maxItems).default([]),
-  context: z.string().max(CARD.contextMax),
+  context: z.string().max(CARD.paperContextMax),
   title: z.string().max(2000),
   credit: z.string().max(CARD.creditMax),
   url: z.string().max(4000),
 }).strict().superRefine((source, context) => {
   if (source.kind === 'highlight' && source.passage.length < CARD.passageMin) context.addIssue({ code: 'custom', path: ['passage'], message: `A highlight's passage needs at least ${CARD.passageMin} characters.` })
+  if (source.kind !== 'paper' && source.context.length > CARD.contextMax) context.addIssue({ code: 'custom', path: ['context'], message: `A page text has at most ${CARD.contextMax} characters.` })
   if (source.kind !== 'set' && source.passage.length > CARD.passageMax) context.addIssue({ code: 'custom', path: ['passage'], message: `A passage has at most ${CARD.passageMax} characters.` })
   if ((source.kind === 'region' || source.kind === 'paper') !== (source.region !== null)) context.addIssue({ code: 'custom', path: ['region'], message: 'Only a region or first-page post has a region.' })
   if (source.kind === 'set' ? source.items.length < SET.minItems : source.items.length > 0) context.addIssue({ code: 'custom', path: ['items'], message: `Only a set has items, ${SET.minItems} to ${SET.maxItems}.` })
@@ -46,6 +47,8 @@ export const setContentSchema = z.object({
 
 export const cardTakeawaySchema = z.object({ title: z.string(), detail: z.string() }).strict()
 
+export const paperContentSchema = z.object({ question: z.string(), method: z.string(), results: z.array(z.string()).max(PAPER.maxResults) }).strict()
+
 /** Shape only. Limits and the exact-quote rules are checked by validateCard, whose messages name them. */
 export const cardContentSchema = z.object({
   quote: z.string(), quoteEdited: z.boolean(), emphasis: z.string(), headline: z.string(), pull: z.string(),
@@ -53,6 +56,7 @@ export const cardContentSchema = z.object({
   style: z.enum(STYLES), look: z.enum(LOOKS), crop: pageRectSchema.nullable(),
   set: setContentSchema.nullable().default(null),
   takeaway: z.string().default(''),
+  paper: paperContentSchema.nullable().default(null),
 }).strict()
 
 export const pageMarkSchema = z.object({ rects: z.array(pageRectSchema).max(500), color: z.enum(HIGHLIGHT_COLORS) }).strict()
@@ -82,3 +86,4 @@ same<Same<z.infer<typeof captionSchema>, Caption>>(true)
 same<Same<z.infer<typeof pageMarkSchema>, PageMark>>(true)
 same<Same<z.infer<typeof setItemSchema>, SetItem>>(true)
 same<Same<z.infer<typeof setContentSchema>, SetContent>>(true)
+same<Same<z.infer<typeof paperContentSchema>, PaperContent>>(true)

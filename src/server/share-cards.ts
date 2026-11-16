@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { ANGLES, LINKS, LOOKS, SET, STYLES } from '../shared/share-card.js'
+import { ANGLES, LINKS, LOOKS, PAPER, SET, STYLES } from '../shared/share-card.js'
 import { pageRectSchema } from '../shared/share-card-schema.js'
 import { ShareCardService, changeShareCardInput, startShareCardInput } from '../core/share-cards.js'
 
@@ -16,6 +16,7 @@ const patch = z.union([
   z.object({ link: z.enum(LINKS) }).strict(),
   z.object({ headline: z.string().max(1_000) }).strict(),
   z.object({ takeaway: z.string().max(1_000) }).strict(),
+  z.object({ paper_text: z.object({ field: z.enum(['question', 'method', 'result']), index: z.number().int().min(0).max(PAPER.maxResults).optional(), text: z.string().max(1_000) }).strict() }).strict(),
   z.object({ caption: z.string().max(16_000) }).strict(),
   z.object({ quote: z.string().max(1_000) }).strict(),
   z.object({ credit: z.string().max(1_000) }).strict(),
@@ -49,6 +50,7 @@ export function registerShareCardRoutes(app: FastifyInstance, cards: ShareCardSe
     if ('link' in body) return cards.link(projectId, id, body.link)
     if ('headline' in body) return cards.editHeadline(projectId, id, body.headline)
     if ('takeaway' in body) return cards.editTakeaway(projectId, id, body.takeaway)
+    if ('paper_text' in body) return cards.editPaperText(projectId, id, body.paper_text.field, body.paper_text.text, body.paper_text.index)
     if ('caption' in body) return cards.editCaption(projectId, id, body.caption)
     if ('quote' in body) return cards.editQuote(projectId, id, body.quote)
     return cards.editCredit(projectId, id, body.credit)
