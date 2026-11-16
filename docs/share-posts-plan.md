@@ -303,10 +303,10 @@ Renderer (`frontend/src/lib/share-card/slides.ts`): `renderSlide(slide, context,
 
 **Tasks**
 
-- [ ] **T7 Carousel, server** (`share-posts/server`): the contract above, the prompt variant for a set, parsing and checks, start, the two new edits, `setSlides`, tests.
-- [ ] **T8 Carousel, renderer and export** (`share-posts/renderer`): `slides.ts`, the slide number in the credit strip, a kicker that is not the topic, the PDF and ZIP writers, sample frames for every slide kind.
+- [x] **T7 Carousel, server** (`share-posts/server`): the contract above, the prompt variant for a set, parsing and checks, start, the two new edits, `setSlides`, tests.
+- [x] **T8 Carousel, renderer and export** (`share-posts/renderer`): `slides.ts`, the slide number in the credit strip, a kicker that is not the topic, the PDF and ZIP writers, sample frames for every slide kind.
 - [x] **T9 Carousel, panel** (on `feat/share-posts`, after T7 and T8): choosing and ordering highlights, the slide viewer, per-slide edits and crops, export, browser tests, README.
-- [ ] **G3 Gate** as G1.
+- [x] **G3 Gate** as G1.
 
 ## Acceptance criteria
 
@@ -375,3 +375,42 @@ Still unchecked:
 - Real PDFs: two-column papers, scanned pages and rotated text have unit tests and made-up pages only; the browser tests use small one-column fixtures.
 - A real touch screen and a screen reader.
 - The Windows preview library holds the first build's table; opening it with this build drops those posts.
+
+### G3: stage 3 and the review fixes (16 November 2026)
+
+Revision `8dbdc1ae06efac91f35bcfc0211651d24933064f` on `feat/share-posts`, not pushed.
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | passes |
+| `npm test` | 399 tests: 398 pass, 0 fail, 1 skipped (Firebase rules, no emulator). Lines 88.52%, branches 85.56%; `src/core/share-cards.ts` 99.56% lines, `src/server/share-cards.ts` 100% |
+| `npm run build` | passes; no zod in `frontend/dist/assets` |
+| Frontend Playwright | 168 passed |
+| `npm --prefix desktop test` | 75 passed |
+| `node scripts/check-secrets.mjs` | passed for 524 files |
+
+Tasks done: T7 to T9, and the fixes from an independent review of stages 1 and 2 (11 confirmed defects and 8 plausible ones, all fixed with a test that failed first, except the two noted below).
+
+What the review changed:
+
+1. The numbers check no longer lets a thousands reading match a smaller number ("10,000" against a "10" in the source), and it is lenient on the source side only: digits glued to a word, number words up to thousands, abbreviated ranges.
+2. The checks on the assistant's words use Unicode-aware boundaries; "C#" is not a hashtag; an exact quotation across a line-end hyphen passes; a quotation chopped by ellipses or in single curly quotes is checked; bare domains count as links; a draft with a take must have words of its own.
+3. A reader's edited quote survives a rewrite of a short highlight. A look, style, hashtag or link change made after the last Undo step survives Undo, as the crop does.
+4. A stored post that no longer parses is left out of lists, answers 422 with a plain message, and can be deleted.
+5. The panel: "Adjust crop" stays available when the automatic crop is too tall; status checks retry with backoff and say when they stop; a crop is not redrawn on every check; no image URL is left behind when a post closes mid-render; a refused start forgets its request ID.
+6. The region picker stays on the page it opened on, and region text is chosen word by word.
+7. A carousel's source line names the pages its highlights span.
+
+Left as they are, on purpose or for later:
+
+- An angle chosen after an Undo step is not kept through Undo; Undo returns the angle of the earlier version.
+- A post that no longer parses and belongs to a highlight is left out of the lists, so "Create post" on that highlight shows the message without a post to delete. Only a first-build post restored from the trash in a test library can be in that state.
+- A number's sign is not checked: "-12%" in the source supports "12%" in a draft.
+- One browser test ("a new post for linkedin opens on its frame") timed out once in one agent run, on the highlight menu moving under the pointer; it passed in every other run, including 18 repeats and three whole-suite runs. Its cause was not found.
+
+Still unchecked, beyond the list under G1 and G2:
+
+- No live assistant request for carousels either: whether points stay one claim per highlight, and whether the study and limitations come back empty when the text does not state them.
+- The exported PDF as a real LinkedIn document, and the ZIP opened in Windows Explorer or macOS Finder.
+- Export time and memory for an eight-slide carousel on long pages.
+- The status-check retry against a real backend restart.
