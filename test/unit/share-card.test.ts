@@ -1,8 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  CARD, DESTINATION_DEFAULTS, DRAFT, TAKE_MAX, captionText, cardDescription, cleanPassage, creditLine, defaultLook, draftLimits, firstCommentText,
-  highlightColor, numbersIn, publicUrl, quoteMatches, sourceLine, unsupportedNumbers, validateCard,
+  CARD, DESTINATION_DEFAULTS, DRAFT, REGION_MIN, TAKE_MAX, captionText, cardDescription, cleanPassage, creditLine, defaultLook, draftLimits,
+  firstCommentText, highlightColor, numbersIn, publicUrl, quoteMatches, regionProblem, sourceLine, summaryTitle, unsupportedNumbers, validateCard,
   type Caption, type CardContent, type ShareCardSource,
 } from '../../src/shared/share-card.js'
 import { captionSchema, cardContentSchema, previousVersionSchema, shareCardSourceSchema } from '../../src/shared/share-card-schema.js'
@@ -11,7 +11,7 @@ const passage = 'Attention lets every position look at every other one. However,
 const source: ShareCardSource = {
   version: 1, passage, page: 4, rects: [{ x1: 0.1, y1: 0.2, x2: 0.9, y2: 0.25 }], color: 'yellow',
   context: 'Earlier text. We suspect that sparse patterns may reduce this cost. Later text.', title: 'Attention Is All You Need',
-  credit: 'Vaswani et al., 2017', url: '',
+  credit: 'Vaswani et al., 2017', url: '', kind: 'highlight', region: null,
 }
 const card: CardContent = {
   quote: 'Attention lets every position look at every other one.', quoteEdited: false, emphasis: 'every other one',
@@ -247,4 +247,67 @@ test('unsupportedNumbers compares numbers canonically and lets an ambiguous one 
   // Any of the allowed texts may hold the number.
   assert.deepEqual(unsupportedNumbers('47 points in 2017 on p. 4', ['nothing', 'Vaswani et al., 2017', '4', 'I doubt the 47 points']), [])
   assert.deepEqual(unsupportedNumbers('No numbers here.', []), [])
+})
+
+const REGION = { x1: 0.1, y1: 0.4, x2: 0.9, y2: 0.7 }
+const regionSource: ShareCardSource = { ...source, kind: 'region', region: REGION, rects: [], passage: 'Accuracy Sequence length', page: 3 }
+const regionCard: CardContent = {
+  quote: '', quoteEdited: false, emphasis: '', headline: 'Longer inputs cost more', pull: '', topic: 'Attention', takeawaysTitle: '', takeaways: [],
+  style: 'page', look: 'ink', crop: REGION,
+}
+
+test('a region or paper card has only a headline and a topic, and only the Page and Headline styles', () => {
+  for (const kind of ['region', 'paper'] as const) {
+    const from = { ...regionSource, kind }
+    validateCard(regionCard, from)
+    validateCard({ ...regionCard, style: 'headline', topic: '' }, from)
+    for (const [change, message] of [
+      [{ quote: 'Accuracy' }, /^Error: quote must be empty for a post made from a region\.$/],
+      [{ emphasis: 'x' }, /emphasis must be empty for a post made from a region/],
+      [{ pull: 'Accuracy' }, /pull must be empty/],
+      [{ takeawaysTitle: 'Three lessons' }, /takeawaysTitle must be empty/],
+      [{ takeaways: card.takeaways }, /takeaways must be empty for a post made from a region/],
+      [{ style: 'quote' }, /^Error: A post made from a region has no quote or takeaways, so it uses the Page or Headline style\.$/],
+      [{ style: 'takeaways' }, /uses the Page or Headline style/],
+      [{ headline: '' }, /headline has 0 characters; allowed 1–80/],
+      [{ topic: 't'.repeat(25) }, /topic has 25 characters/],
+    ] as Array<[Partial<CardContent>, RegExp]>) assert.throws(() => validateCard({ ...regionCard, ...change }, from), message, String(message))
+  }
+  // A highlight's card still needs its quote and three takeaways; a source without a kind is a highlight.
+  assert.throws(() => validateCard(regionCard, source), /quote has 0 characters/)
+  assert.throws(() => validateCard(regionCard, { passage: source.passage, context: source.context }), /quote has 0 characters/)
+})
+
+test('the source schema reads a stored source without a kind as a highlight and allows a short region text', () => {
+  const { kind: _kind, region: _region, ...stored } = source
+  assert.deepEqual(shareCardSourceSchema.parse(stored), source)
+  assert.deepEqual(shareCardSourceSchema.parse(regionSource), regionSource)
+  assert.deepEqual(shareCardSourceSchema.parse({ ...regionSource, kind: 'paper', passage: '' }), { ...regionSource, kind: 'paper', passage: '' })
+  assert.throws(() => shareCardSourceSchema.parse({ ...source, passage: 'Too short.' }))
+  assert.throws(() => shareCardSourceSchema.parse({ ...regionSource, passage: 'p'.repeat(CARD.passageMax + 1) }))
+  assert.throws(() => shareCardSourceSchema.parse({ ...regionSource, region: null }))
+  assert.throws(() => shareCardSourceSchema.parse({ ...source, region: REGION }))
+  assert.throws(() => shareCardSourceSchema.parse({ ...regionSource, kind: 'figure' }))
+})
+
+test('regionProblem refuses a region that is inverted, outside the page or under 5% of it', () => {
+  assert.equal(REGION_MIN, 0.05)
+  assert.equal(regionProblem(REGION), null)
+  assert.equal(regionProblem({ x1: 0, y1: 0, x2: 0.05, y2: 0.05 }), null)
+  for (const bad of [{ x1: 0.5, y1: 0.4, x2: 0.4, y2: 0.7 }, { ...REGION, y2: 0.4 }, { ...REGION, x2: 0.14 }, { ...REGION, y2: 0.449 }, { ...REGION, x2: 1.2 }, { ...REGION, y1: -0.1 }])
+    assert.equal(regionProblem(bad), 'A region needs x1 < x2 and y1 < y2 inside the page, and at least 5% of the page in each direction.', JSON.stringify(bad))
+})
+
+test('a region or paper post is described and listed without a quote', () => {
+  assert.equal(cardDescription(regionCard, 'page', regionSource), 'Page card: a region of page 3')
+  assert.equal(cardDescription(regionCard, 'page', { ...regionSource, kind: 'paper', page: 1 }), 'Page card: the first page of the paper')
+  assert.equal(cardDescription(regionCard, 'page'), 'Page card: a region of the page')
+  assert.equal(cardDescription(regionCard, 'headline', regionSource), 'Headline card: Longer inputs cost more.')
+  assert.equal(cardDescription(card, 'page', source), `Page card: “${card.quote}”`)
+  assert.equal(summaryTitle(regionSource, 'Longer inputs cost more'), 'Longer inputs cost more')
+  assert.equal(summaryTitle(regionSource, ''), 'Region on p. 3')
+  assert.equal(summaryTitle({ ...regionSource, kind: 'paper', page: 1 }, ''), 'First page')
+  assert.equal(summaryTitle({ ...regionSource, kind: 'paper', page: 2 }, ''), 'Paper on p. 2')
+  assert.equal(summaryTitle(source, ''), passage.slice(0, 80).replace(/\s+\S*$/, '') + '…')
+  assert.equal(summaryTitle({ ...source, passage: 'A short passage of text.' }, ''), 'A short passage of text.')
 })

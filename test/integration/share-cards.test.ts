@@ -7,7 +7,7 @@ import { buildServer } from '../../src/server/app.js'
 import { openDatabase } from '../../src/core/database.js'
 import { RetrievalService } from '../../src/core/retrieval.js'
 import { CHECK_FAILED, SHARE_CARD_REPAIR, ShareCardService, pageContext, parseShareCardAnswer, sharePostPrompt } from '../../src/core/share-cards.js'
-import { DRAFT, captionText, cleanPassage, draftLimits, type Caption, type Destination, type ShareCardRecord } from '../../src/shared/share-card.js'
+import { DRAFT, REGION_STYLE_REFUSED, captionText, cleanPassage, draftLimits, type Caption, type Destination, type ShareCardRecord, type SourceKind } from '../../src/shared/share-card.js'
 import { testConfig, createSource } from '../helpers/test-utils.js'
 
 const HIGHLIGHT = 'Attention lets every position look at every other position in\nthe sequence. However, the cost grows with the square of the se-\nquence length, so long documents become expensive.'
@@ -101,7 +101,7 @@ test('a highlight becomes a post in one request built from the passage and its p
     assert.equal(record.status, 'complete'); assert.equal(record.error, null); assert.equal(record.can_undo, false)
     assert.equal(s.callCount(), 1)
     assert.deepEqual(record.source, {
-      version: 1, passage: PASSAGE, page: 2, color: 'green', title: 'Test Source', credit: '', url: URL,
+      version: 1, kind: 'highlight', passage: PASSAGE, page: 2, color: 'green', region: null, title: 'Test Source', credit: '', url: URL,
       rects: [{ x1: 0.12, y1: 0.08, x2: 0.88, y2: 0.1 }, { x1: 0.12, y1: 0.1, x2: 0.86, y2: 0.12 }, { x1: 0.12, y1: 0.12, x2: 0.6, y2: 0.14 }],
       context: record.source.context,
     })
@@ -121,7 +121,7 @@ test('a highlight becomes a post in one request built from the passage and its p
     assert.equal(input.title, 'Test Source'); assert.equal(input.credit, '')
     assert.match(sent, /We suspect that sparse patterns/)
     const list = (await s.app.inject({ url: `${s.base}?source_id=${s.source}` })).json()
-    assert.deepEqual(list, [{ id: record.id, status: 'complete', annotation_id: annotation, source_id: s.source, page: 2, title: CARD.headline, updated_at: record.updated_at }])
+    assert.deepEqual(list, [{ id: record.id, status: 'complete', annotation_id: annotation, source_id: s.source, page: 2, kind: 'highlight', title: CARD.headline, updated_at: record.updated_at }])
     assert.equal((await s.app.inject({ url: `${s.base}?source_id=other` })).json().length, 0)
     // A post in another project is not found, whatever the route.
     for (const request of [{ url: `/api/projects/${s.other.id}/share-cards/${record.id}` },
@@ -689,6 +689,184 @@ test('a post outlives its highlight and source, and restoring them reconnects it
     assert.equal((s.db.prepare('SELECT COUNT(*) n FROM share_cards').get() as { n: number }).n, 0)
     assert.equal((await restoreLatest()).linksSkipped, 0)
     assert.deepEqual(link(), { source_id: s.source, annotation_id: annotation })
+    assert.deepEqual((await s.app.inject({ url: `${s.base}/${record.id}` })).json(), record)
+  } finally { await s.close() }
+})
+
+// Posts from a region of a page or from the first page: the reader drew a box; the assistant sees only text.
+const REGION = { x1: 0.1, y1: 0.4, x2: 0.9, y2: 0.75 }
+const REGION_CARD = { headline: 'Longer inputs cost far more', topic: 'Attention' }
+const regionAnswer = (extra: Record<string, unknown> = {}) => JSON.stringify({ ...REGION_CARD, drafts: DRAFTS, hashtags: HASHTAGS, ...extra })
+const regionCard = (extra: Record<string, unknown> = {}) => ({
+  quote: '', quoteEdited: false, emphasis: '', pull: '', takeawaysTitle: '', takeaways: [], style: 'page', look: 'ink', crop: REGION, ...REGION_CARD, ...extra,
+})
+const regionPrompt = (kind: SourceKind, destination: Destination = 'linkedin') => sharePostPrompt(destination, draftLimits(destination, { url: URL }), kind)
+
+async function regionSetup() {
+  const s = await setup()
+  const body = (extra: Record<string, unknown> = {}) => ({ request_id: randomUUID(), source_id: s.source, page: 3, region: REGION, text: ' Sequence\nlength   Cost ', kind: 'region', ...extra })
+  const start = (extra: Record<string, unknown> = {}) => s.app.inject({ method: 'POST', url: s.base, payload: body(extra) })
+  s.respond(1, regionAnswer())
+  return { ...s, body, start }
+}
+
+test('a region of a page becomes a post from its text alone, with the region as its crop', async () => {
+  const s = await regionSetup()
+  try {
+    const payload = s.body()
+    const response = await s.app.inject({ method: 'POST', url: s.base, payload }); assert.equal(response.statusCode, 202, response.body)
+    const record = await s.settle((response.json() as ShareCardRecord).id)
+    assert.equal(record.status, 'complete'); assert.equal(s.callCount(), 1)
+    assert.equal(record.annotation_id, null); assert.equal(record.source_id, s.source)
+    assert.deepEqual(record.source, {
+      version: 1, kind: 'region', passage: 'Sequence length Cost', page: 3, rects: [], color: 'yellow', region: REGION,
+      context: record.source.context, title: 'Test Source', credit: '', url: URL,
+    })
+    assert.match(record.source.context, /^Attention lets every position.*\n\nPage three compares results\.\n\nPage four is out of range\.$/)
+    assert.deepEqual(record.card, regionCard())
+    assert.deepEqual(record.caption, caption())
+    assert.deepEqual(record.marks, [])
+    const sent = s.prompt(1), input = s.input(1)
+    assert.ok(sent.startsWith(`${regionPrompt('region')}\n\n{`))
+    assert.match(sent, /selected a region of the page/); assert.match(sent, /Figure 3/); assert.doesNotMatch(sent, /fixedQuote|takeawaysTitle/)
+    assert.deepEqual(Object.keys(input).sort(), ['credit', 'page', 'pageText', 'regionText', 'title'])
+    assert.equal(input.regionText, 'Sequence length Cost'); assert.equal(input.page, 3); assert.equal(input.pageText, record.source.context)
+    const list = (await s.app.inject({ url: `${s.base}?source_id=${s.source}` })).json()
+    assert.deepEqual(list, [{ id: record.id, status: 'complete', annotation_id: null, source_id: s.source, page: 3, kind: 'region', title: REGION_CARD.headline, updated_at: record.updated_at }])
+
+    // A highlight on the page shows as a mark; the region itself is not one.
+    await s.highlight(HIGHLIGHT, { page_number: 3, color: 'pink', rects: [{ x1: 0.2, y1: 0.5, x2: 0.7, y2: 0.52 }] })
+    assert.deepEqual((await s.app.inject({ url: `${s.base}/${record.id}` })).json().marks, [{ rects: [{ x1: 0.2, y1: 0.5, x2: 0.7, y2: 0.52 }], color: 'pink' }])
+
+    // Only the request ID makes a retry idempotent: the same region again is a second post.
+    const again = await s.app.inject({ method: 'POST', url: s.base, payload }); assert.equal(again.statusCode, 200); assert.equal(again.json().id, record.id)
+    const reused = await s.app.inject({ method: 'POST', url: s.base, payload: { ...payload, page: 2 } })
+    assert.equal(reused.statusCode, 409); assert.equal(reused.json().detail, 'This request ID was already used for another post.')
+    s.fail(2)
+    const second = await s.start(); assert.equal(second.statusCode, 202)
+    const failed = await s.settle((second.json() as ShareCardRecord).id)
+    assert.notEqual(failed.id, record.id); assert.equal(failed.status, 'failed')
+    // Without a headline yet, the list names it by its page.
+    assert.equal(((await s.app.inject({ url: s.base })).json() as Array<{ id: string; title: string }>).find(item => item.id === failed.id)!.title, 'Region on p. 3')
+  } finally { await s.close() }
+})
+
+test('the first page becomes a post about the paper, on the destination\'s default style', async () => {
+  const s = await regionSetup()
+  try {
+    const top = { x1: 0, y1: 0, x2: 1, y2: 0.5 }
+    s.respond(1, regionAnswer({ headline: 'Attention alone can model a sequence' }))
+    const response = await s.start({ kind: 'paper', page: 1, region: top, text: 'Test Source. Page one introduces the model.', destination: 'instagram' })
+    assert.equal(response.statusCode, 202, response.body)
+    const record = await s.settle((response.json() as ShareCardRecord).id)
+    assert.equal(record.source.kind, 'paper'); assert.deepEqual(record.source.region, top); assert.equal(record.source.passage, 'Test Source. Page one introduces the model.')
+    assert.equal(record.card!.style, 'headline'); assert.deepEqual(record.card!.crop, top); assert.equal(record.caption!.showTags, true)
+    assert.ok(s.prompt(1).startsWith(`${regionPrompt('paper', 'instagram')}\n\n{`))
+    assert.match(s.prompt(1), /sharing the paper itself/); assert.match(s.prompt(1), /what the paper studied and its main result/)
+    assert.equal(s.input(1).regionText, 'Test Source. Page one introduces the model.')
+    const [summary] = (await s.app.inject({ url: s.base })).json() as Array<{ kind: string; title: string }>
+    assert.deepEqual({ kind: summary!.kind, title: summary!.title }, { kind: 'paper', title: 'Attention alone can model a sequence' })
+    // An empty region text is allowed: the page text carries the post.
+    s.respond(2, regionAnswer())
+    const empty = await s.settle(((await s.start({ kind: 'paper', page: 1, region: top, text: '' })).json() as ShareCardRecord).id)
+    assert.equal(empty.status, 'complete'); assert.equal(empty.source.passage, ''); assert.equal(s.input(2).regionText, '')
+  } finally { await s.close() }
+})
+
+test('a region post keeps its region as the crop, refuses text cards and quote edits, and changes in one request', async () => {
+  const s = await regionSetup()
+  try {
+    const first = await s.settle(((await s.start()).json() as ShareCardRecord).id), url = `${s.base}/${first.id}`
+    const patch = (payload: unknown) => s.app.inject({ method: 'PATCH', url, payload })
+    const moved = { x1: 0.05, y1: 0.3, x2: 0.95, y2: 0.8 }
+    assert.deepEqual(((await patch({ crop: moved })).json() as ShareCardRecord).card!.crop, moved)
+    assert.deepEqual(((await patch({ crop: null })).json() as ShareCardRecord).card!.crop, REGION)
+    for (const style of ['quote', 'idea', 'takeaways']) {
+      const refused = await patch({ style, look: 'ink' }); assert.equal(refused.statusCode, 400); assert.equal(refused.json().detail, REGION_STYLE_REFUSED)
+    }
+    assert.equal(((await patch({ style: 'headline', look: 'marker' })).json() as ShareCardRecord).card!.style, 'headline')
+    const quote = await patch({ quote: 'Sequence length' })
+    assert.equal(quote.statusCode, 400); assert.equal(quote.json().detail, 'A post made from a region has no quote to edit.')
+    assert.equal(((await patch({ headline: 'My own headline' })).json() as ShareCardRecord).card!.headline, 'My own headline')
+    await patch({ crop: moved })
+
+    s.respond(2, regionAnswer({ headline: 'Cost grows with length', quote: 'ignored', takeaways: [{ title: 'ignored', detail: 'ignored' }], drafts: { finding: X_FINDING, contrast: '', caveat: '' } }))
+    await s.app.inject({ method: 'POST', url: `${url}/change`, payload: { instruction: 'Shorter', destination: 'x' } })
+    const changed = await s.settle(first.id)
+    assert.equal(s.callCount(), 2); assert.equal(changed.status, 'complete')
+    assert.deepEqual(changed.card, regionCard({ headline: 'Cost grows with length', crop: moved, style: 'page', look: 'marker' }))
+    const input = s.input(2)
+    assert.deepEqual(input.previousCard, { headline: 'My own headline', topic: 'Attention' }); assert.equal(input.change, 'Shorter')
+    assert.ok(s.prompt(2).startsWith(`${regionPrompt('region', 'x')}\n\n{`))
+    // Undo returns to LinkedIn and the Headline style; the crop set since stays.
+    const undone = (await s.app.inject({ method: 'POST', url: `${url}/undo`, payload: {} })).json() as ShareCardRecord
+    assert.equal(undone.destination, 'linkedin'); assert.equal(undone.card!.style, 'headline'); assert.deepEqual(undone.card!.crop, moved)
+  } finally { await s.close() }
+})
+
+test('a region post is refused without a request when its region, page, source or text is out of bounds', async () => {
+  const s = await regionSetup()
+  try {
+    const refuse = async (extra: Record<string, unknown>, status: number, detail?: string) => {
+      const response = await s.start(extra)
+      assert.equal(response.statusCode, status, `${JSON.stringify(extra)} ${response.body}`)
+      if (detail) assert.equal(response.json().detail, detail)
+    }
+    const small = 'A region needs x1 < x2 and y1 < y2 inside the page, and at least 5% of the page in each direction.'
+    await refuse({ region: { ...REGION, x2: 0.12 } }, 400, small)
+    await refuse({ region: { ...REGION, y1: 0.8 } }, 400, small)
+    await refuse({ region: { ...REGION, x2: 1.2 } }, 400)
+    await refuse({ region: { x1: 0, y1: 0, x2: 1 } }, 400)
+    await refuse({ page: 5 }, 422, 'This page is not in the PDF.')
+    await refuse({ page: 0 }, 400)
+    await refuse({ kind: 'highlight' }, 400)
+    await refuse({ annotation_id: 'a' }, 400)
+    await refuse({ text: 'word '.repeat(1300) }, 422, 'Choose a smaller region to make a post.')
+    await refuse({ take: 't'.repeat(401) }, 400, 'A take has at most 400 characters.')
+    await refuse({ source_id: 'missing' }, 404, 'Source not found.')
+    const elsewhere = createSource(s.db, s.other.id, PAGES)
+    await refuse({ source_id: elsewhere }, 404, 'Source not found.')
+    s.db.prepare("UPDATE sources SET type='kindle' WHERE id=?").run(s.source)
+    await refuse({}, 422, 'Posts can be made from PDFs only.')
+    s.db.prepare("UPDATE sources SET type='pdf', pages=0 WHERE id=?").run(s.source)
+    // Without a page count, the pages of the extracted text decide.
+    await refuse({ page: 5 }, 422, 'This page is not in the PDF.')
+    assert.equal(s.callCount(), 0)
+    assert.equal((await s.start({ page: 4 })).statusCode, 202)
+  } finally { await s.close() }
+})
+
+test('a region answer has only a headline, a topic, drafts and hashtags, checked against the region text', () => {
+  const source = { kind: 'region' as const, passage: 'Cost grows 4x at 2048 tokens', context: 'Figure 3: The cost of attention by sequence length.', title: 'Attention', credit: '', page: 3, url: URL }
+  const options = { destination: 'linkedin' as const, take: '', changed: false }
+  const parsed = parseShareCardAnswer(regionAnswer({ quote: 'not used', emphasis: 'x', pull: 'y', takeawaysTitle: 'z', takeaways: 'none', headline: 'Figure 3: cost grows 4x at 2048 tokens' }), source, options)
+  assert.deepEqual(parsed.card, regionCard({ headline: 'Figure 3: cost grows 4x at 2048 tokens', crop: null }))
+  assert.deepEqual(parsed.drafts, DRAFTS)
+  const withLine = (line: string) => FINDING.replace('The catch is cost.', line)
+  for (const [raw, reason] of [
+    [regionAnswer({ headline: undefined }), /headline must be a string/],
+    [regionAnswer({ headline: 'H'.repeat(81) }), /headline has 81 characters; allowed 1–80/],
+    [regionAnswer({ topic: '' }), /topic must name the subject/],
+    [regionAnswer({ headline: 'Cost grows 8x' }), /^Error: headline has numbers that are not in regionText, pageText, title, credit, page or readerTake: 8\. Use only numbers stated there\.$/],
+    [regionAnswer({ drafts: { ...DRAFTS, finding: withLine('The catch is cost: 5 times more.') } }), /drafts\.finding has numbers that are not in regionText, .*: 5\./],
+    [regionAnswer({ drafts: { ...DRAFTS, finding: withLine('The regionText says so.') } }), /drafts\.finding must not mention pageText or the supplied text/],
+    [regionAnswer({ drafts: { ...DRAFTS, finding: withLine('The authors write “the cost doubles with every token we add” here.') } }), /quotes words that are not in regionText or pageText/],
+    [regionAnswer({ drafts: { ...DRAFTS, finding: '' } }), /drafts\.finding must not be empty/],
+  ] as Array<[string, RegExp]>) assert.throws(() => parseShareCardAnswer(raw, source, options), reason, String(reason))
+  // Numbers and quotations from the region text and the caption pass.
+  parseShareCardAnswer(regionAnswer({ drafts: { ...DRAFTS, finding: withLine('In Figure 3 the authors chart “the cost of attention by sequence length” up to 2048 tokens.') } }), source, options)
+})
+
+test('a region post outlives its source, and restoring the source reconnects it', async () => {
+  const s = await regionSetup()
+  try {
+    const record = await s.settle(((await s.start()).json() as ShareCardRecord).id)
+    assert.equal((await s.app.inject({ method: 'DELETE', url: `/api/projects/${s.project.id}/sources/${s.source}` })).statusCode, 200)
+    const orphan = (await s.app.inject({ url: `${s.base}/${record.id}` })).json() as ShareCardRecord
+    assert.equal(orphan.source_id, null); assert.deepEqual(orphan.card, record.card); assert.deepEqual(orphan.marks, [])
+    const trash = (await s.app.inject({ url: '/api/recovery/trash' })).json() as Array<{ id: string }>
+    const restored = await s.app.inject({ method: 'POST', url: `/api/recovery/trash/${trash[0]!.id}/restore`, payload: {} })
+    assert.equal(restored.statusCode, 200, restored.body); assert.equal(restored.json().linksSkipped, 0)
     assert.deepEqual((await s.app.inject({ url: `${s.base}/${record.id}` })).json(), record)
   } finally { await s.close() }
 })
