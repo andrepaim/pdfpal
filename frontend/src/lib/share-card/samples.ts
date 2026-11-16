@@ -1,6 +1,7 @@
 // Sample cards for /dev/share-cards and test/unit/share-card-layout.test.ts, ported from DistillPod's
 // ShareCardRendererTest, and a made-up paper page for the Page and Headline frames. Pure data.
 import type { CardContent, CardSize, HighlightColor, PageRect, ShareCardSource } from '../../../../src/shared/share-card'
+import type { SlideSpec } from './slides'
 
 export type Sample = { name: string; card: CardContent; source: ShareCardSource }
 
@@ -165,3 +166,55 @@ export const PAGE_FRAMES: PageFrame[] = [
   { name: 'headline-feed-columns', columns: 2, style: 'headline', size: 'feed', extraLines: 3, crop: null, marks: [RIGHT, OTHERS[0]!], card: { ...pageCard(headline), quote: `${RIGHT.phrase}.` }, source: { ...pageSource, passage: `${RIGHT.phrase}.` } },
   { name: 'headline-feed-word', style: 'headline', size: 'feed', extraLines: 0, crop: null, marks: [OWN, OTHERS[0]!], card: pageCard(longWordEnglish.headline), source: pageSource },
 ]
+
+// ── Carousels ──────────────────────────────────────────────────────────────────────────────────────────────────────
+// Slides for one post made from several highlights on SAMPLE_PAGE: the longest texts the contract allows, and short
+// ones. Points crop the page around their highlight: automatically, a short reader's crop and a tall one.
+
+export type CarouselSample = {
+  name: string
+  slides: SlideSpec[]
+  /**
+   * One per point, in order: the highlight on the made-up page and the reader's crop: null for automatic, 'tight' for
+   * a reader's crop of just the highlight's lines across the column (a short strip).
+   */
+  items: Array<{ mark: FrameMark; crop: PageRect | 'tight' | null }>
+  source: PageFrame['source']
+}
+
+const CAROUSEL_ITEMS: CarouselSample['items'] = [
+  { mark: OWN, crop: null },
+  { mark: OTHERS[0]!, crop: 'tight' },
+  { mark: OTHERS[1]!, crop: { x1: 0.08, y1: 0.06, x2: 0.92, y2: 0.62 } },
+]
+const carouselSlides = (topic: string, text: { cover: string; study: string; points: string[]; takeaway: string; limitations: string }): SlideSpec[] => [
+  { kind: 'cover', kicker: topic, headline: text.cover },
+  { kind: 'study', kicker: 'The study', text: text.study },
+  ...text.points.map((headline, item): SlideSpec => ({ kind: 'point', kicker: topic, headline, item })),
+  { kind: 'takeaway', kicker: 'The takeaway', text: text.takeaway },
+  { kind: 'limitations', kicker: 'Limits', text: text.limitations },
+]
+
+/** Every text at its limit: cover 80, study 160, a point's claim 70, takeaway 140, limitations 160. */
+export const CAROUSEL_MAX: CarouselSample = {
+  name: 'carousel-max', items: CAROUSEL_ITEMS, source: { ...pageSource, title: LONG_TITLE, credit: LONG_CREDIT },
+  slides: carouselSlides('Organisational learning!', {
+    cover: longEnglish.headline,
+    study: 'Over one semester, 312 music and language students were followed through 1,204 recorded practice sessions, each one ending in broad praise or a specific remark.',
+    points: ['Specific comments lifted blind-rated test scores 41% more than praise.', 'Beyond three comments in one session, the gains levelled off entirely.',
+      'Feedback given within ten minutes was remembered twice as often later.'],
+    takeaway: 'Give fewer comments, and make each one point at the gap between what the learner tried and what then happened, soon after each attempt ends.',
+    limitations: 'Students came from four schools in a single country; their teachers knew which style they had been trained in, and motivation was only self-reported at the end.',
+  }),
+}
+
+export const CAROUSEL_SHORT: CarouselSample = {
+  name: 'carousel-short', items: CAROUSEL_ITEMS, source: pageSource,
+  slides: carouselSlides('Learning science', {
+    cover: 'Praise feels good. Specifics teach.',
+    study: '312 students, 1,204 practice sessions.',
+    points: ['41% more gain.', 'More is not better.', 'Sooner sticks.'],
+    takeaway: 'Fewer, specific comments, soon.',
+    limitations: 'One country; self-reported motivation.',
+  }),
+}
