@@ -590,6 +590,28 @@ test('crop, angle, hashtags, link and headline edits; none makes a request', asy
   } finally { await s.close() }
 })
 
+test('choosing an angle keeps an Undo step only when it clears the reader\'s edited text', async () => {
+  const s = await setup()
+  try {
+    const first = await s.post(), url = `${s.base}/${first.id}`
+    const patch = async (payload: unknown) => (await s.app.inject({ method: 'PATCH', url, payload })).json() as ShareCardRecord
+    // Without edited text the angle is written in place: no Undo step appears.
+    const plain = await patch({ angle: 'caveat' })
+    assert.equal(plain.caption!.angle, 'caveat'); assert.equal(plain.can_undo, false)
+    assert.equal((await patch({ angle: 'finding' })).can_undo, false)
+
+    // With edited text the angle clears it, and Undo brings the reader's words back.
+    const edited = await patch({ caption: 'My own words.' })
+    assert.equal(edited.caption!.edited, 'My own words.')
+    const angled = await patch({ angle: 'caveat' })
+    assert.equal(angled.caption!.edited, null); assert.equal(angled.caption!.angle, 'caveat'); assert.equal(angled.can_undo, true)
+    const undone = (await s.app.inject({ method: 'POST', url: `${url}/undo`, payload: {} })).json() as ShareCardRecord
+    assert.equal(undone.caption!.edited, 'My own words.'); assert.equal(undone.caption!.angle, 'finding')
+    assert.equal(captionText(undone.source, undone.caption!), 'My own words.')
+    assert.equal(s.callCount(), 1)
+  } finally { await s.close() }
+})
+
 test('marks are every highlight now on the post\'s page, read live', async () => {
   const s = await setup()
   try {

@@ -503,12 +503,17 @@ export class ShareCardService {
     return this.place(projectId, id, apply, apply)
   }
 
-  /** Picks the draft that is copied. Choosing an angle drops an edited text, so the chosen draft shows. */
+  /**
+   * Picks the draft that is copied. Choosing an angle drops an edited text, so the chosen draft shows; when there is
+   * one, the version with it goes behind Undo so the reader's words can come back. Otherwise it is written in place.
+   */
   angle(projectId: string, id: string, angle: Angle) {
-    return this.place(projectId, id, version => {
+    const choose = (version: Version): Version => {
       if (!version.caption.drafts[angle]) throw new ShareCardError(400, 'This post has no draft for that angle.')
       return { ...version, caption: { ...version.caption, angle, edited: null } }
-    })
+    }
+    const edited = this.record(this.row(projectId, id)).caption?.edited
+    return edited !== null && edited !== undefined ? this.edit(projectId, id, choose) : this.place(projectId, id, choose)
   }
 
   showTags(projectId: string, id: string, showTags: boolean) {
