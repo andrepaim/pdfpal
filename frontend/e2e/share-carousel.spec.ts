@@ -18,6 +18,8 @@ import { cropBox } from '../src/lib/share-card/crop-box';
 const SHOTS = path.resolve('test-results/share-carousel');
 const POST_ID = '9c8b7a6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d';
 const TITLE = 'Share card paper';
+const STAT = { value: '4x', label: 'the work when the input doubles' };
+const STUDY_STATS = [{ value: '3', label: 'long-document benchmarks' }, { value: '12', label: 'models compared' }];
 const WORDS = {
   topic: 'Attention',
   headline: 'Full attention buys reach at a quadratic price',
@@ -56,7 +58,8 @@ function setRecord(state: Fake, projectId: string, sourceId: string | null, ids:
   const items: SetItem[] = ids.map(id => { const h = state.highlights.get(id)!; return { annotation_id: id, passage: cleanPassage(h.text), page: h.page, rects: h.rects, color: h.color }; });
   const card: CardContent = {
     quote: '', quoteEdited: false, emphasis: '', headline: WORDS.headline, pull: '', topic: WORDS.topic, takeawaysTitle: '', takeaways: [], style: 'headline', look: 'ink', crop: null,
-    set: { study: state.study ? WORDS.study : '', points: items.map((_, index) => point(index)), takeaway: WORDS.takeaway, limitations: state.limitations ? WORDS.limitations : '', crops: items.map(() => null) },
+    set: { study: state.study ? WORDS.study : '', points: items.map((_, index) => point(index)), takeaway: WORDS.takeaway, limitations: state.limitations ? WORDS.limitations : '', crops: items.map(() => null), studyStats: state.study ? STUDY_STATS : [] },
+    stat: STAT, takeaway: '', paper: null,
   };
   const setMarks = items.map(item => marksOn(state, item.page));
   return {
@@ -109,10 +112,14 @@ async function routePosts(page: Page, state: Fake) {
         if (body.slide === undefined) return json(400, { detail: 'A carousel has a crop for each highlight slide; name the slide.' });
         next = { ...next, card: { ...card, set: { ...set, crops: set.crops.map((crop, index) => index === body.slide ? body.crop : crop) } } };
       } else if ('set_text' in body) {
-        const { field, index, text } = body.set_text as { field: string; index?: number; text: string };
-        next = { ...next, card: { ...card, set: field === 'point' ? { ...set, points: set.points.map((value, position) => position === index ? text : value) } : { ...set, [field]: text } } };
+        const { field, index, text, stats } = body.set_text as { field: string; index?: number; text?: string; stats?: Array<{ value: string; label: string }> };
+        if (stats !== undefined && field !== 'study') return json(400, { detail: 'Only the study has stats.' });
+        const words = text ?? (field === 'point' ? set.points[index!]! : (set as unknown as Record<string, string>)[field]!);
+        next = { ...next, card: { ...card, set: field === 'point' ? { ...set, points: set.points.map((value, position) => position === index ? words : value) }
+          : { ...set, [field]: words, ...stats ? { studyStats: stats } : {} } } };
         keep = true;
       } else if ('headline' in body) { next = { ...next, card: { ...card, headline: body.headline } }; keep = true; }
+      else if ('stat' in body) { next = { ...next, card: { ...card, stat: body.stat } }; keep = true; }
       else return json(400, { detail: 'Not expected in this test.' });
       // As the server does: the look and the slides' crops also change the version behind Undo, so they survive it.
       if (!keep && state.previous) {
@@ -327,12 +334,12 @@ test.describe('carousels in the reader', () => {
     // Cover, study, three highlights, takeaway, limits.
     await expect(slide(page)).toHaveAttribute('data-slide-count', '7');
     await expect(position(page)).toHaveText('1 of 7 · Cover');
-    await expect(slide(page)).toHaveAttribute('alt', `Slide 1 of 7, cover: ${WORDS.headline}`);
+    await expect(slide(page)).toHaveAttribute('alt', `Slide 1 of 7, cover: ${STAT.value} ${STAT.label}. ${WORDS.headline}`);
     await expect(page.getByRole('button', { name: 'Previous slide' })).toHaveAttribute('aria-disabled', 'true');
     const cover = await slide(page).getAttribute('src');
 
     await page.getByRole('button', { name: 'Next slide' }).click();
-    await expect(slide(page)).toHaveAttribute('alt', `Slide 2 of 7, the study: ${WORDS.study}`);
+    await expect(slide(page)).toHaveAttribute('alt', `Slide 2 of 7, the study: 3 long-document benchmarks; 12 models compared. ${WORDS.study}`);
     await expect(position(page)).toHaveText('2 of 7 · The study');
     await page.getByRole('button', { name: 'Next slide' }).click();
     await expect(slide(page)).toHaveAttribute('alt', `Slide 3 of 7, highlight 1: ${point(0)}`);
@@ -396,7 +403,7 @@ test.describe('carousels in the reader', () => {
     dialog = page.getByRole('dialog', { name: 'Edit slide 1 of 7: Cover' });
     await dialog.getByRole('textbox', { name: 'Headline' }).fill('Reach costs more than it looks');
     await dialog.getByRole('button', { name: 'Save' }).click();
-    await expect(slide(page)).toHaveAttribute('alt', 'Slide 1 of 7, cover: Reach costs more than it looks');
+    await expect(slide(page)).toHaveAttribute('alt', `Slide 1 of 7, cover: ${STAT.value} ${STAT.label}. Reach costs more than it looks`);
     expect(state.patches.at(-1)).toEqual({ headline: 'Reach costs more than it looks' });
 
     await goTo(page, 2);
@@ -405,13 +412,13 @@ test.describe('carousels in the reader', () => {
     await expect(dialog.getByText('Leave it empty to remove this slide; Undo brings it back.')).toBeVisible();
     await dialog.getByRole('textbox', { name: 'The study' }).fill('');
     await dialog.getByRole('button', { name: 'Remove slide' }).click();
-    expect(state.patches.at(-1)).toEqual({ set_text: { field: 'study', text: '' } });
+    expect(state.patches.at(-1)).toEqual({ set_text: { field: 'study', text: '', stats: STUDY_STATS } });
     await expect(page.getByText('The study slide was removed.')).toBeVisible();
     await expect(slide(page)).toHaveAttribute('data-slide-count', '6');
     await expect(slide(page)).toHaveAttribute('alt', `Slide 2 of 6, highlight 1: Doubling the input quadruples the work`);
     await page.locator('[aria-live="polite"]').getByRole('button', { name: 'Undo' }).click();
     await expect(slide(page)).toHaveAttribute('data-slide-count', '7');
-    await expect(slide(page)).toHaveAttribute('alt', `Slide 2 of 7, the study: ${WORDS.study}`);
+    await expect(slide(page)).toHaveAttribute('alt', `Slide 2 of 7, the study: 3 long-document benchmarks; 12 models compared. ${WORDS.study}`);
   });
 
   test('a highlight slide\'s crop is saved with its highlight\'s index and reset; the looks change every slide', async ({ page }) => {
@@ -548,6 +555,29 @@ test.describe('a carousel whose PDF was removed', () => {
 });
 
 // ── For review: the carousel in a narrow and a wider side column ────────────────────────────────────────────────────
+test.describe('the study\'s stats', () => {
+  test.beforeEach(async ({ page }) => { await mockAuth(page); });
+
+  test('are drawn as tiles and edited from the study slide in one request, with Undo', async ({ page }) => {
+    test.setTimeout(60_000);
+    const state = fake();
+    const { ids, project, source, readerUrl } = await paper(page, state);
+    await openCarousel(page, state, readerUrl, [ids.first, ids.second, ids.third], project.id, source.id);
+    await goTo(page, 2);
+    await expect(slide(page)).toHaveAttribute('alt', `Slide 2 of 7, the study: 3 long-document benchmarks; 12 models compared. ${WORDS.study}`);
+    await page.getByRole('button', { name: 'Edit slide' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Edit slide 2 of 7: The study' });
+    await dialog.getByRole('textbox', { name: 'Stat 2 label' }).fill('architectures compared');
+    await dialog.getByRole('button', { name: 'Remove stat 1' }).click();
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    expect(state.patches).toEqual([{ set_text: { field: 'study', text: WORDS.study, stats: [{ value: '12', label: 'architectures compared' }] } }]);
+    // One stat is the reader's to keep: one tile.
+    await expect(slide(page)).toHaveAttribute('alt', `Slide 2 of 7, the study: 12 architectures compared. ${WORDS.study}`);
+    await page.getByRole('button', { name: 'Undo last change' }).click();
+    await expect(slide(page)).toHaveAttribute('alt', `Slide 2 of 7, the study: 3 long-document benchmarks; 12 models compared. ${WORDS.study}`);
+  });
+});
+
 test.describe('carousels: fixes from the review', () => {
   test.beforeEach(async ({ page }) => { await mockAuth(page); });
 

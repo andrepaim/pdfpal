@@ -65,6 +65,7 @@ const CARD: CardContent = {
   headline: 'Reach has a quadratic price', pull: 'long documents become expensive', topic: 'Attention',
   takeawaysTitle: 'What full attention costs', style: 'page', look: 'ink', crop: null, set: null,
   takeaway: 'Long documents need another plan than full attention.', paper: null,
+  stat: { value: '4x', label: 'the work when the input doubles' },
   takeaways: [{ title: 'Reach is global', detail: 'Every position can use every other one.' },
     { title: 'Cost grows fast', detail: 'Doubling the input quadruples the work.' }, { title: 'Long inputs hurt', detail: 'Documents become expensive quickly.' }],
 };
@@ -172,6 +173,7 @@ async function routePosts(page: Page, state: Fake) {
       else if ('link' in body) next = { card, caption: { ...caption, link: body.link } };
       else if ('headline' in body) { next = { card: { ...card, headline: body.headline }, caption }; keep = true; }
       else if ('takeaway' in body) { next = { card: { ...card, takeaway: body.takeaway }, caption }; keep = true; }
+      else if ('stat' in body) { next = { card: { ...card, stat: body.stat }, caption }; keep = true; }
       else if ('paper_text' in body) return json(400, { detail: 'Only a paper post has a question, method and results.' });
       else if ('caption' in body) { next = { card, caption: { ...caption, edited: body.caption } }; keep = true; }
       // As the server does: look, style, crop, hashtags and link also change the version behind Undo, so they survive it.
@@ -704,7 +706,8 @@ test.describe('the Carousel style', () => {
     const viewer = page.locator('[data-slide-viewer]');
     await expect(viewer).toHaveAccessibleName(cardDescription(state.current!.card!, 'carousel', state.current!.source));
     await expect(viewer).toHaveAccessibleName('Carousel of 3 slides: Reach has a quadratic price.');
-    await expect(slide(page)).toHaveAttribute('alt', 'Slide 1 of 3, cover: Reach has a quadratic price');
+    // The hook draws the key number large with the headline; the alt text reads the number, then the headline.
+    await expect(slide(page)).toHaveAttribute('alt', 'Slide 1 of 3, cover: 4x the work when the input doubles. Reach has a quadratic price');
     await expect(page.locator('[data-slide-position]')).toHaveText('1 of 3 · Cover');
     await viewer.focus();
     await page.keyboard.press('ArrowRight');
@@ -770,7 +773,7 @@ test.describe('the Carousel style', () => {
     await hook.getByRole('textbox', { name: 'Headline' }).fill('Reach costs more than it looks');
     await hook.getByRole('button', { name: 'Save' }).click();
     expect(state.bodies.patch.at(-1)).toEqual({ headline: 'Reach costs more than it looks' });
-    await expect(slide(page)).toHaveAttribute('alt', 'Slide 1 of 3, cover: Reach costs more than it looks');
+    await expect(slide(page)).toHaveAttribute('alt', 'Slide 1 of 3, cover: 4x the work when the input doubles. Reach costs more than it looks');
     expect(state.calls.change).toBe(0);
   });
 
@@ -888,6 +891,48 @@ test.describe('the Carousel style', () => {
     await expect(slide(page)).toHaveCount(0);
     expect(state.bodies.change).toEqual([{ destination: 'instagram', take: '' }, { destination: 'linkedin', take: '' }]);
     expect(state.calls.patch).toBe(0);
+  });
+});
+
+// ── The hook's key number ────────────────────────────────────────────────────────────────────────────────────────────
+test.describe('the key number on the hook', () => {
+  test.beforeEach(async ({ page }) => { await mockAuth(page); });
+
+  test('is drawn with the headline, edited and removed from Edit slide, with Undo', async ({ page }) => {
+    test.setTimeout(60_000);
+    const state = fake();
+    const { url } = await paper(page, state);
+    await openPost(page, state, url, { ...written('instagram', ''), destination: 'instagram' });
+    await expect(slide(page)).toHaveAttribute('alt', 'Slide 1 of 3, cover: 4x the work when the input doubles. Reach has a quadratic price', { timeout: 20_000 });
+    await page.getByRole('button', { name: 'Edit slide' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Edit slide 1 of 3: Cover' });
+    await expect(dialog.getByText(/^Shown large with the headline\./)).toBeVisible();
+    const value = dialog.getByRole('textbox', { name: 'Key number value' });
+    await expect(value).toHaveValue('4x');
+    await value.fill('twice');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(value).toHaveAccessibleDescription('A value needs a digit, like 41% or 312.');
+    await value.fill('2x');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).toBeHidden();
+    // Only the number changed: one request, the key number alone.
+    expect(state.bodies.patch).toEqual([{ stat: { value: '2x', label: 'the work when the input doubles' } }]);
+    await expect(slide(page)).toHaveAttribute('alt', 'Slide 1 of 3, cover: 2x the work when the input doubles. Reach has a quadratic price');
+
+    await page.getByRole('button', { name: 'Edit slide' }).click();
+    await dialog.getByRole('button', { name: 'Remove', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    expect(state.bodies.patch.at(-1)).toEqual({ stat: null });
+    await expect(slide(page)).toHaveAttribute('alt', 'Slide 1 of 3, cover: Reach has a quadratic price');
+    await page.getByRole('button', { name: 'Undo last change' }).click();
+    await expect(slide(page)).toHaveAttribute('alt', 'Slide 1 of 3, cover: 2x the work when the input doubles. Reach has a quadratic price');
+
+    // The headline alone: the headline edit alone.
+    await page.getByRole('button', { name: 'Edit slide' }).click();
+    await dialog.getByRole('textbox', { name: 'Headline' }).fill('Reach costs more than it looks');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    expect(state.bodies.patch.at(-1)).toEqual({ headline: 'Reach costs more than it looks' });
+    expect(state.calls.change).toBe(0);
   });
 });
 

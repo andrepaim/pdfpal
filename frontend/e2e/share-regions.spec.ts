@@ -37,7 +37,8 @@ function drafts(destination: Destination): Caption['drafts'] {
 /** A region or first-page post as the server returns it once written. */
 function regionRecord(projectId: string, sourceId: string | null, kind: Exclude<SourceKind, 'highlight'>, page: number, region: PageRect, text: string, destination: Destination = 'linkedin'): ShareCardRecord {
   const defaults = DESTINATION_DEFAULTS[destination];
-  const card: CardContent = { quote: '', quoteEdited: false, emphasis: '', headline: HEADLINE, pull: '', topic: 'Training', takeawaysTitle: '', takeaways: [], style: defaults.style, look: 'ink', crop: region, set: null, takeaway: TAKEAWAY, paper: null };
+  const card: CardContent = { quote: '', quoteEdited: false, emphasis: '', headline: HEADLINE, pull: '', topic: 'Training', takeawaysTitle: '', takeaways: [], style: defaults.style, look: 'ink', crop: region, set: null, takeaway: TAKEAWAY, paper: null,
+    stat: { value: '60k', label: 'steps before the curve flattens' } };
   return {
     id: POST_ID, project_id: projectId, source_id: sourceId, annotation_id: null, status: 'complete', can_undo: false, instruction: '', error: null,
     created_at: '2026-11-15T10:00:00.000Z', updated_at: '2026-11-15T10:00:01.000Z', destination, take: '', marks: [],
@@ -80,6 +81,7 @@ async function routePosts(page: Page, state: Fake) {
         if (!['page', 'headline', 'carousel'].includes(body.style)) return json(400, { detail: 'A post made from a region has no quote or takeaways, so it uses the Page, Headline or Carousel style.' });
         state.current = { ...post, card: { ...post.card!, style: body.style, look: body.look }, updated_at: new Date().toISOString() };
       } else if ('takeaway' in body) state.current = { ...post, card: { ...post.card!, takeaway: body.takeaway }, can_undo: true, updated_at: new Date().toISOString() };
+      else if ('stat' in body) state.current = { ...post, card: { ...post.card!, stat: body.stat }, can_undo: true, updated_at: new Date().toISOString() };
       else return json(409, { detail: 'Not expected in this test.' });
       return json(200, state.current);
     }

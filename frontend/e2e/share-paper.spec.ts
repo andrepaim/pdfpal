@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   DESTINATION_DEFAULTS, PAPER,
-  type CardContent, type Caption, type Destination, type PageRect, type PaperContent, type ShareCardRecord,
+  type CardContent, type Caption, type Destination, type PageRect, type PaperContent, type Row, type ShareCardRecord, type Stat,
 } from '../../src/shared/share-card';
 import { carouselFileName, slideFileName } from '../src/lib/share-card/export';
 import { pdfPages, zipNames } from './export-files';
@@ -18,10 +18,24 @@ const POST_ID = '5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b';
 const TITLE = 'Sparse Attention at a Fraction of the Cost';
 const HEADLINE = 'A third of the cost keeps nearly all of the quality';
 const TAKEAWAY = 'Long documents no longer force a choice between cost and recall.';
+const METHOD_STATS: Stat[] = [{ value: '3', label: 'long-document benchmarks' }, { value: '100k', label: 'training steps per model' }];
+const RESULT_STAT: Stat = { value: '98%', label: 'of the quality of full attention' };
+const ROWS: Row[] = [{ label: 'Full attention', value: '71.2%' }, { label: 'Sparse pattern', value: '70.0%' }, { label: 'Window only', value: '63.4%' }];
+/** The paper deck with numbers: tiles on the method, a big number on the first result, a table on the second. */
 const PAPER_WORDS: PaperContent = {
   question: 'Can a sparse attention pattern keep the quality of full attention on long documents at a fraction of its cost?',
   method: 'Three long-document benchmarks, comparing a fixed window with a few global positions against full attention.',
-  results: ['98% of the quality of full attention at a third of the cost.', 'Training needs no change to the optimiser or the learning-rate schedule.'],
+  methodStats: METHOD_STATS,
+  results: [
+    { text: '98% of the quality of full attention at a third of the cost.', stat: RESULT_STAT, rows: [] },
+    { text: 'Accuracy by attention pattern on the three benchmarks.', stat: null, rows: ROWS },
+  ],
+};
+/** What each slide of the deck says, as its alt text reads it: numbers first for tiles and a big number, a table after its sentence. */
+const SAYS = {
+  method: `3 long-document benchmarks; 100k training steps per model. ${PAPER_WORDS.method}`,
+  result1: `98% of the quality of full attention. ${PAPER_WORDS.results[0]!.text}`,
+  result2: `${PAPER_WORDS.results[1]!.text} Full attention: 71.2%; Sparse pattern: 70.0%; Window only: 63.4%.`,
 };
 
 type Version = { card: CardContent; caption: Caption };
@@ -30,15 +44,21 @@ type Fake = {
   previous: Version | null
   /** How many results a paper post is written with; 0 writes it as a post stored before papers had their own slides. */
   results: number
+  /** False writes the deck without any numbers: every stat null and every list empty. */
+  numbers: boolean
+  /** True sends the paper as an earlier build stored it: results as plain sentences, no stats, no key number. */
+  plain: boolean
   /** While set, a running generation stays running. */
   hold: boolean
   /** When set, the next start is refused with this status and message. */
   refuse?: { status: number; detail: string }
+  /** When set, the next paper_text edit is refused with this message. */
+  refuseNext?: string
   starts: Record<string, any>[]
   changes: Record<string, any>[]
   patches: Record<string, any>[]
 };
-const fake = (): Fake => ({ current: null, previous: null, results: 2, hold: false, starts: [], changes: [], patches: [] });
+const fake = (): Fake => ({ current: null, previous: null, results: 2, numbers: true, plain: false, hold: false, starts: [], changes: [], patches: [] });
 
 function drafts(destination: Destination): Caption['drafts'] {
   if (destination === 'x') return { finding: 'Can sparse attention keep full quality on long documents? On three benchmarks it kept 98% at a third of the cost.', contrast: '', caveat: '' };
@@ -47,12 +67,23 @@ function drafts(destination: Destination): Caption['drafts'] {
 }
 
 /** A paper post as the server returns it once written: `results` results, or none of the paper's own slides. */
-function paperRecord(projectId: string, sourceId: string | null, region: PageRect, text: string, destination: Destination, results: number): ShareCardRecord {
-  const defaults = DESTINATION_DEFAULTS[destination];
+function paperRecord(projectId: string, sourceId: string | null, region: PageRect, text: string, destination: Destination, results: number,
+  shape: { numbers?: boolean; plain?: boolean } = {}): ShareCardRecord {
+  const defaults = DESTINATION_DEFAULTS[destination], numbers = shape.numbers ?? true;
+  const words: PaperContent = numbers ? PAPER_WORDS : { ...PAPER_WORDS, methodStats: [], results: PAPER_WORDS.results.map(result => ({ ...result, stat: null, rows: [] })) };
+  const paper = results ? { ...words, results: words.results.slice(0, results) } : null;
   const card: CardContent = {
     quote: '', quoteEdited: false, emphasis: '', headline: HEADLINE, pull: '', topic: 'Attention', takeawaysTitle: '', takeaways: [], style: defaults.style, look: 'ink',
-    crop: region, set: null, takeaway: TAKEAWAY, paper: results ? { ...PAPER_WORDS, results: PAPER_WORDS.results.slice(0, results) } : null,
+    crop: region, set: null, takeaway: TAKEAWAY, paper,
+    // A paper post's key number is its first result's.
+    stat: paper?.results[0]?.stat ?? null,
   };
+  if (shape.plain && paper) {
+    // As an earlier build stored it: results as sentences, and neither stats nor a key number.
+    const stored = card as unknown as Record<string, any>;
+    delete stored.stat;
+    stored.paper = { question: paper.question, method: paper.method, results: paper.results.map(result => result.text) };
+  }
   return {
     id: POST_ID, project_id: projectId, source_id: sourceId, annotation_id: null, status: 'complete', can_undo: false, instruction: '', error: null,
     created_at: '2026-11-16T10:00:00.000Z', updated_at: '2026-11-16T10:00:01.000Z', destination, take: '', marks: [], set_marks: [],
@@ -73,7 +104,7 @@ async function routePosts(page: Page, state: Fake) {
       // The answer comes a moment later, as a real request's does, so a second click would find the first in flight.
       await new Promise(resolve => setTimeout(resolve, 300));
       if (state.refuse) { const { status, detail } = state.refuse; state.refuse = undefined; return json(status, { detail }); }
-      state.current = { ...paperRecord(projectId, body.source_id, body.region, body.text, body.destination, state.results), status: 'running', card: null, caption: null };
+      state.current = { ...paperRecord(projectId, body.source_id, body.region, body.text, body.destination, state.results, { numbers: state.numbers }), status: 'running', card: null, caption: null };
       return json(202, state.current);
     }
     if (request.method() === 'GET' && tail === '') {
@@ -87,7 +118,7 @@ async function routePosts(page: Page, state: Fake) {
     if (request.method() === 'GET') {
       if (post.status === 'running' && !state.hold) {
         const before = post.card && post.caption ? { card: post.card, caption: post.caption } : null;
-        const next = paperRecord(projectId, post.source_id, post.source.region!, post.source.passage, post.destination, 2);
+        const next = paperRecord(projectId, post.source_id, post.source.region!, post.source.passage, post.destination, 2, { numbers: state.numbers });
         // A rewrite keeps the look and the crop; a new destination takes its default style.
         const card = before ? { ...next.card!, look: before.card.look, crop: before.card.crop, style: before.caption.destination === post.destination ? before.card.style : next.card!.style } : next.card!;
         if (before) state.previous = before;
@@ -117,11 +148,21 @@ async function routePosts(page: Page, state: Fake) {
       else if ('headline' in body) { next = { card: { ...card, headline: body.headline }, caption }; keep = true; }
       else if ('takeaway' in body) { next = { card: { ...card, takeaway: body.takeaway }, caption }; keep = true; }
       else if ('paper_text' in body) {
-        const { field, index, text } = body.paper_text as { field: 'question' | 'method' | 'result'; index?: number; text: string };
+        const { field, index, text, stats, stat, rows } = body.paper_text as { field: 'question' | 'method' | 'result'; index?: number; text?: string; stats?: Stat[]; stat?: Stat | null; rows?: Row[] };
         if (!card.paper) return json(400, { detail: 'This post has no question, method or results yet. Rewrite it first.' });
         if (field === 'result' && (index === undefined || index >= card.paper.results.length)) return json(400, { detail: `This post has no result ${(index ?? 0) + 1}.` });
-        const paper = field === 'result' ? { ...card.paper, results: card.paper.results.map((value, at) => at === index ? text : value) } : { ...card.paper, [field]: text };
-        next = { card: { ...card, paper }, caption }; keep = true;
+        if (stats !== undefined && field !== 'method') return json(400, { detail: 'Only the method has stats.' });
+        if ((stat !== undefined || rows !== undefined) && field !== 'result') return json(400, { detail: 'Only a result has a stat and rows.' });
+        if (rows && (rows.length === 1 || rows.length > 4)) return json(400, { detail: `results[${index}].rows has ${rows.length} items; allowed none, or 2–4.` });
+        if ([...stats ?? [], ...stat ? [stat] : [], ...rows ?? []].some(each => !/\d/.test(each.value))) return json(400, { detail: 'A value must contain a digit.' });
+        if (state.refuseNext) { const detail = state.refuseNext; state.refuseNext = undefined; return json(400, { detail }); }
+        // Read as the server reads a stored card: plain sentences are results without numbers.
+        const stored = { ...card.paper, methodStats: card.paper.methodStats ?? [],
+          results: card.paper.results.map(result => typeof result === 'string' ? { text: result as string, stat: null, rows: [] } : result) };
+        const paper = field === 'result'
+          ? { ...stored, results: stored.results.map((value, at) => at === index ? { text: text ?? value.text, stat: stat === undefined ? value.stat : stat, rows: rows ?? value.rows } : value) }
+          : field === 'method' ? { ...stored, method: text ?? stored.method, methodStats: stats ?? stored.methodStats } : { ...stored, question: text ?? stored.question };
+        next = { card: { ...card, paper, stat: card.stat ?? null }, caption }; keep = true;
       } else return json(400, { detail: 'Not expected in this test.' });
       if (keep) state.previous = { card, caption };
       state.current = { ...post, ...next, can_undo: !!state.previous, updated_at: touched() };
@@ -164,7 +205,7 @@ const inside = (inner: PageRect, outer: PageRect) => inner.x1 >= outer.x1 && inn
 
 /** Opens the fake's paper post through a link, as the reader does after a reload. */
 async function openPost(page: Page, state: Fake, url: string, ids: { project: string; source: string | null }, destination: Destination, results = 2) {
-  state.current = paperRecord(ids.project, ids.source, FIRST_PAGE, TITLE, destination, results);
+  state.current = paperRecord(ids.project, ids.source, FIRST_PAGE, TITLE, destination, results, { numbers: state.numbers, plain: state.plain });
   await page.goto(`${url}?post=${POST_ID}`);
 }
 
@@ -247,7 +288,7 @@ test.describe('share the paper', () => {
     await expect(slide(page)).toHaveAttribute('data-share-crop', fixed(FIRST_PAGE));
     await expect(slide(page)).toHaveAttribute('alt', `Slide 1 of 6, the paper: ${HEADLINE}`);
     const names = ['The paper', 'The question', 'The method', 'Result 1', 'Result 2', 'The takeaway'];
-    const words = [HEADLINE, PAPER_WORDS.question, PAPER_WORDS.method, ...PAPER_WORDS.results, TAKEAWAY];
+    const words = [HEADLINE, PAPER_WORDS.question, SAYS.method, SAYS.result1, SAYS.result2, TAKEAWAY];
     await page.locator('[data-slide-viewer]').focus();
     for (let number = 1; number <= 6; number++) {
       if (number > 1) await page.keyboard.press('ArrowRight');
@@ -270,7 +311,7 @@ test.describe('share the paper', () => {
     await expect(slide(page)).toHaveAttribute('data-slide-count', '5', { timeout: 20_000 });
     await goTo(page, 4);
     await expect(position(page)).toHaveText('4 of 5 · The result');
-    await expect(slide(page)).toHaveAttribute('alt', `Slide 4 of 5, the result: ${PAPER_WORDS.results[0]}`);
+    await expect(slide(page)).toHaveAttribute('alt', `Slide 4 of 5, the result: ${SAYS.result1}`);
   });
 
   test('editing the question, the method and a result, with Undo; a result cannot be emptied', async ({ page }) => {
@@ -295,8 +336,8 @@ test.describe('share the paper', () => {
     dialog = page.getByRole('dialog', { name: 'Edit slide 3 of 6: The method' });
     await dialog.getByRole('textbox', { name: 'The method' }).fill('Three benchmarks, sparse against full attention.');
     await dialog.getByRole('button', { name: 'Save' }).click();
-    expect(state.patches.at(-1)).toEqual({ paper_text: { field: 'method', text: 'Three benchmarks, sparse against full attention.' } });
-    await expect(slide(page)).toHaveAttribute('alt', 'Slide 3 of 6, the method: Three benchmarks, sparse against full attention.');
+    expect(state.patches.at(-1)).toEqual({ paper_text: { field: 'method', text: 'Three benchmarks, sparse against full attention.', stats: METHOD_STATS } });
+    await expect(slide(page)).toHaveAttribute('alt', 'Slide 3 of 6, the method: 3 long-document benchmarks; 100k training steps per model. Three benchmarks, sparse against full attention.');
 
     await goTo(page, 5);
     await page.getByRole('button', { name: 'Edit slide' }).click();
@@ -311,10 +352,10 @@ test.describe('share the paper', () => {
     await expect(dialog.getByText('A result cannot be empty: a paper post keeps at least one.')).toBeVisible();
     await result.fill('It trains with the same schedule as full attention.');
     await dialog.getByRole('button', { name: 'Save' }).click();
-    expect(state.patches.at(-1)).toEqual({ paper_text: { field: 'result', index: 1, text: 'It trains with the same schedule as full attention.' } });
-    await expect(slide(page)).toHaveAttribute('alt', 'Slide 5 of 6, result 2: It trains with the same schedule as full attention.');
+    expect(state.patches.at(-1)).toEqual({ paper_text: { field: 'result', index: 1, text: 'It trains with the same schedule as full attention.', stat: null, rows: ROWS } });
+    await expect(slide(page)).toHaveAttribute('alt', 'Slide 5 of 6, result 2: It trains with the same schedule as full attention. Full attention: 71.2%; Sparse pattern: 70.0%; Window only: 63.4%.');
     await page.getByRole('button', { name: 'Undo last change' }).click();
-    await expect(slide(page)).toHaveAttribute('alt', `Slide 5 of 6, result 2: ${PAPER_WORDS.results[1]}`);
+    await expect(slide(page)).toHaveAttribute('alt', `Slide 5 of 6, result 2: ${SAYS.result2}`);
   });
 
   test('the lead slide\'s headline and crop are edited from it, and the crop resets to the first page\'s box', async ({ page }) => {
@@ -412,6 +453,167 @@ test.describe('share the paper', () => {
     await page.getByRole('menuitem', { name: 'Delete post' }).click();
     await expect(page.getByRole('dialog', { name: 'Delete this post?' })).toContainText('The PDF and your highlights will remain.');
     await noSideScroll(page);
+  });
+});
+
+// ── Numbers on slides ───────────────────────────────────────────────────────────────────────────────────────────────
+test.describe('numbers on the paper deck', () => {
+  test.beforeEach(async ({ page }) => { await mockAuth(page); });
+
+  async function deck(page: Page, state: Fake) {
+    await routePosts(page, state);
+    const { project, source, url } = await openPaper(page);
+    await openPost(page, state, url, { project: project.id, source: source.id }, 'instagram');
+    await expect(slide(page)).toHaveAttribute('data-slide', '1', { timeout: 20_000 });
+  }
+  const say = (page: Page, number: number, name: string, words: string) => expect(slide(page)).toHaveAttribute('alt', `Slide ${number} of 6, ${name}: ${words}`);
+
+  test('the method\'s stats: add, a value without a digit refused next to its field, remove, then clear them for the text slide; with Undo', async ({ page }) => {
+    test.setTimeout(60_000);
+    const state = fake();
+    await deck(page, state);
+    await goTo(page, 3);
+    await say(page, 3, 'the method', SAYS.method);
+    await page.getByRole('button', { name: 'Edit slide' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Edit slide 3 of 6: The method' });
+    await expect(dialog.getByText(/^Shown as tiles above the sentence, up to 4\./)).toBeVisible();
+    await expect(dialog.getByRole('textbox', { name: 'Stat 1 value' })).toHaveValue('3');
+    await expect(dialog.getByRole('textbox', { name: 'Stat 2 label' })).toHaveValue('training steps per model');
+    // Add a third: the focus goes to its value.
+    await dialog.getByRole('button', { name: 'Add a stat' }).click();
+    const value = dialog.getByRole('textbox', { name: 'Stat 3 value' });
+    await expect(value).toBeFocused();
+    await page.keyboard.type('many');
+    await page.keyboard.press('Tab');
+    await expect(dialog.getByRole('textbox', { name: 'Stat 3 label' })).toBeFocused();
+    await page.keyboard.type('sites');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(value).toHaveAttribute('aria-invalid', 'true');
+    await expect(value).toHaveAccessibleDescription('A value needs a digit, like 41% or 312.');
+    await expect(value).toBeFocused();
+    expect(state.patches).toEqual([]);
+    await value.fill('4');
+    // A fourth fills the tiles; a fifth cannot be added.
+    await dialog.getByRole('button', { name: 'Add a stat' }).click();
+    await dialog.getByRole('textbox', { name: 'Stat 4 value' }).fill('12');
+    await dialog.getByRole('textbox', { name: 'Stat 4 label' }).fill('models');
+    await expect(dialog.getByRole('button', { name: 'Add a stat' })).toBeDisabled();
+    await dialog.getByRole('button', { name: 'Remove stat 1' }).click();
+    await expect(dialog.getByRole('textbox', { name: 'Stat 1 value' })).toBeFocused();
+    await expect(dialog.getByRole('textbox', { name: 'Stat 1 value' })).toHaveValue('100k');
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).toBeHidden();
+    const stats = [{ value: '100k', label: 'training steps per model' }, { value: '4', label: 'sites' }, { value: '12', label: 'models' }];
+    expect(state.patches).toEqual([{ paper_text: { field: 'method', text: PAPER_WORDS.method, stats } }]);
+    await say(page, 3, 'the method', `100k training steps per model; 4 sites; 12 models. ${PAPER_WORDS.method}`);
+
+    // Clearing every number on the slide leaves the text slide.
+    await page.getByRole('button', { name: 'Edit slide' }).click();
+    for (let i = 0; i < 3; i++) await dialog.getByRole('button', { name: 'Remove stat 1' }).click();
+    await expect(dialog.getByRole('button', { name: 'Add a stat' })).toBeFocused();
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    expect(state.patches.at(-1)).toEqual({ paper_text: { field: 'method', text: PAPER_WORDS.method, stats: [] } });
+    await say(page, 3, 'the method', PAPER_WORDS.method);
+    await page.getByRole('button', { name: 'Undo last change' }).click();
+    await say(page, 3, 'the method', `100k training steps per model; 4 sites; 12 models. ${PAPER_WORDS.method}`);
+  });
+
+  test('a result\'s key number and comparison: reorder with the keyboard, the two-to-four rule, with Undo; a refusal shows in the dialog', async ({ page }) => {
+    test.setTimeout(60_000);
+    const state = fake();
+    await deck(page, state);
+    await goTo(page, 5);
+    await say(page, 5, 'result 2', SAYS.result2);
+    await page.getByRole('button', { name: 'Edit slide' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Edit slide 5 of 6: Result 2' });
+    await expect(dialog.getByText(/^Shown as a small table; use the same measure in every row\./)).toBeVisible();
+    await expect(dialog.getByRole('textbox', { name: 'Row 3 label' })).toHaveValue('Window only');
+    // The keyboard moves "Window only" to the top; the focus stays on the moved row's button.
+    await dialog.getByRole('button', { name: 'Move row 3 up' }).focus();
+    await page.keyboard.press('Enter');
+    await expect(dialog.getByRole('button', { name: 'Move row 2 up' })).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(dialog.getByRole('button', { name: 'Move row 1 down' })).toBeFocused();
+    await expect(dialog.getByRole('textbox', { name: 'Row 1 label' })).toHaveValue('Window only');
+    // One row is not a comparison: said next to the rows, and Save sends nothing.
+    await dialog.getByRole('button', { name: 'Remove row 3' }).click();
+    await dialog.getByRole('button', { name: 'Remove row 2' }).click();
+    await expect(dialog.getByText('A comparison needs two to four rows, or none: add a row or remove this one.')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).toBeVisible();
+    expect(state.patches).toEqual([]);
+    await dialog.getByRole('button', { name: 'Add a row' }).click();
+    await expect(dialog.getByRole('textbox', { name: 'Row 2 label' })).toBeFocused();
+    await page.keyboard.type('Sparse pattern');
+    await page.keyboard.press('Tab');
+    await page.keyboard.type('70.0%');
+    // A key number too, in the same request.
+    await dialog.getByRole('button', { name: 'Add a key number' }).click();
+    await expect(dialog.getByRole('textbox', { name: 'Key number value' })).toBeFocused();
+    await page.keyboard.type('6.6 points');
+    await dialog.getByRole('textbox', { name: 'Key number label' }).fill('above the window alone');
+    // The server refuses once: the dialog stays open and says why.
+    state.refuseNext = 'results[1].stat.value "6.6 points" is not in the paper.';
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog.getByText('results[1].stat.value "6.6 points" is not in the paper.')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).toBeHidden();
+    const rows = [{ label: 'Window only', value: '63.4%' }, { label: 'Sparse pattern', value: '70.0%' }];
+    expect(state.patches.at(-1)).toEqual({ paper_text: { field: 'result', index: 1, text: PAPER_WORDS.results[1]!.text, stat: { value: '6.6 points', label: 'above the window alone' }, rows } });
+    expect(state.patches).toHaveLength(2);
+    // With rows the table leads; the key number is kept for when there is none.
+    await say(page, 5, 'result 2', `${PAPER_WORDS.results[1]!.text} Window only: 63.4%; Sparse pattern: 70.0%.`);
+    await page.getByRole('button', { name: 'Undo last change' }).click();
+    await say(page, 5, 'result 2', SAYS.result2);
+
+    // The first result's key number removed: the text slide.
+    await goTo(page, 4);
+    await say(page, 4, 'result 1', SAYS.result1);
+    await page.getByRole('button', { name: 'Edit slide' }).click();
+    const first = page.getByRole('dialog', { name: 'Edit slide 4 of 6: Result 1' });
+    await first.getByRole('button', { name: 'Remove', exact: true }).click();
+    await expect(first.getByRole('button', { name: 'Add a key number' })).toBeFocused();
+    await first.getByRole('button', { name: 'Save' }).click();
+    expect(state.patches.at(-1)).toEqual({ paper_text: { field: 'result', index: 0, text: PAPER_WORDS.results[0]!.text, stat: null, rows: [] } });
+    await say(page, 4, 'result 1', PAPER_WORDS.results[0]!.text);
+  });
+
+  test('a deck without any numbers draws every slide as text', async ({ page }) => {
+    test.setTimeout(60_000);
+    const state = fake();
+    state.numbers = false;
+    await deck(page, state);
+    const words = [HEADLINE, PAPER_WORDS.question, PAPER_WORDS.method, PAPER_WORDS.results[0]!.text, PAPER_WORDS.results[1]!.text, TAKEAWAY];
+    const names = ['the paper', 'the question', 'the method', 'result 1', 'result 2', 'the takeaway'];
+    for (let number = 1; number <= 6; number++) {
+      await goTo(page, number);
+      await say(page, number, names[number - 1]!, words[number - 1]!);
+    }
+    await goTo(page, 3);
+    await page.getByRole('button', { name: 'Edit slide' }).click();
+    await expect(page.getByRole('dialog', { name: 'Edit slide 3 of 6: The method' }).getByRole('textbox', { name: /^Stat/ })).toHaveCount(0);
+  });
+
+  test('a paper stored by an earlier build, results as plain sentences on the wire, still draws and takes numbers', async ({ page }) => {
+    test.setTimeout(60_000);
+    const state = fake();
+    state.plain = true;
+    await deck(page, state);
+    expect(typeof (state.current!.card!.paper!.results[0] as unknown)).toBe('string');
+    await goTo(page, 3);
+    await say(page, 3, 'the method', PAPER_WORDS.method);
+    await goTo(page, 5);
+    await say(page, 5, 'result 2', PAPER_WORDS.results[1]!.text);
+    await page.getByRole('button', { name: 'Edit slide' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Edit slide 5 of 6: Result 2' });
+    await expect(dialog.getByRole('button', { name: 'Add a key number' })).toBeVisible();
+    for (const [label, value] of [['Full attention', '71.2%'], ['Sparse pattern', '70.0%']]) {
+      await dialog.getByRole('button', { name: 'Add a row' }).click();
+      await page.keyboard.type(label!); await page.keyboard.press('Tab'); await page.keyboard.type(value!);
+    }
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    expect(state.patches.at(-1)).toEqual({ paper_text: { field: 'result', index: 1, text: PAPER_WORDS.results[1]!.text, stat: null, rows: ROWS.slice(0, 2) } });
+    await say(page, 5, 'result 2', `${PAPER_WORDS.results[1]!.text} Full attention: 71.2%; Sparse pattern: 70.0%.`);
   });
 });
 
