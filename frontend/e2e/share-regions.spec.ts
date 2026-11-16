@@ -195,6 +195,30 @@ test.describe('region and first-page posts in the reader', () => {
     expect(state.starts).toEqual([expect.objectContaining({ kind: 'region', page: 2, region: { x1: 0.12, y1: 0.2, x2: 0.88, y2: 0.52 }, text: FIGURE_TEXT })]);
   });
 
+  test('the picker keeps the page it opened on when the reader moves to another page', async ({ page }) => {
+    test.setTimeout(60_000);
+    const state = fake();
+    await routePosts(page, state);
+    const { source } = await openPaper(page, 2);
+    await postTab(page).click();
+    await page.getByRole('button', { name: 'Share a region' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Choose a region' });
+    await expect(dialog).toHaveAttribute('data-state', 'ready');
+    // The reader scrolls back to page 1 behind the modal: the panel's hint follows it, the picker does not.
+    await page.locator('[data-pdf-page="1"]').evaluate(element => element.scrollIntoView({ block: 'start' }));
+    await expect(page.getByText('A figure or passage on page 1, or the title and abstract.')).toBeAttached();
+    // Give a picker that followed the reader time to read page 1 before the post is created.
+    await page.waitForTimeout(500);
+    await expect(dialog).toHaveAttribute('data-state', 'ready');
+    await cropBox(page).focus();
+    await page.keyboard.press('Shift+ArrowUp');
+    await page.keyboard.press('Shift+ArrowUp');
+    await dialog.getByRole('button', { name: 'Create post' }).click();
+    await expect(card(page)).toHaveAttribute('data-share-card', 'page/ink', { timeout: 20_000 });
+    // The page sent is the one the picker opened on, and the text was read from it.
+    expect(state.starts).toEqual([expect.objectContaining({ source_id: source.id, kind: 'region', page: 2, region: { x1: 0.12, y1: 0.2, x2: 0.88, y2: 0.52 }, text: FIGURE_TEXT })]);
+  });
+
   test('Escape leaves the region modal without starting anything', async ({ page }) => {
     const state = fake();
     await routePosts(page, state);

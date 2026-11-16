@@ -127,12 +127,28 @@ function cut(lines: string[], max: number): string {
 }
 
 /**
- * The text inside `region`: the runs whose centre lies inside it, in reading order, one line per text line, cleaned
- * as the contract cleans a passage and cut to CARD.passageMax characters at a line break. '' when the region holds
- * no text, such as a figure without labels. `page` is the page's size in any unit.
+ * A run split into its words, each with its own horizontal extent. pdf.js gives a run's width but no width per glyph,
+ * so each word's extent is estimated in proportion to its characters' place in the run's string (spaces included),
+ * which is close for running text and exact enough to tell which words a box edge falls between. A word followed
+ * by whitespace in the run keeps one space after it, so linesOf() joins it to the next word as the run wrote them.
+ */
+export function wordsOf(run: TextRun): TextRun[] {
+  const { text, box } = run, length = text.length, width = box.x2 - box.x1
+  if (!length) return []
+  return [...text.matchAll(/\S+(\s?)/gu)].map(match => {
+    const start = match.index, word = match[0].trimEnd(), end = start + word.length
+    return { text: match[0], box: { x1: box.x1 + width * start / length, y1: box.y1, x2: box.x1 + width * end / length, y2: box.y2 } }
+  })
+}
+
+/**
+ * The text inside `region`: the words whose centre lies inside it (wordsOf: a run is often a whole line, so it is
+ * split), in reading order, one line per text line, cleaned as the contract cleans a passage and cut to
+ * CARD.passageMax characters at a line break. '' when the region holds no text, such as a figure without labels.
+ * `page` is the page's size in any unit.
  */
 export function regionText(runs: TextRun[], region: PageRect, page: PageSize): string {
-  const chosen = runs.filter(run => inside(run.box, region))
+  const chosen = runs.flatMap(wordsOf).filter(word => inside(word.box, region))
   return cut(cleanLines(readingOrder(linesOf(chosen, page)).map(line => line.text)), CARD.passageMax)
 }
 

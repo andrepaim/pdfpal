@@ -13,10 +13,10 @@ export const REGION_TITLES: Record<RegionKind, string> = { region: 'Choose a reg
 
 type Props = {
   fileUrl: string
-  /** The page to choose on; a first-page post always uses page 1. */
+  /** The page to choose on, read once when the picker opens; a first-page post always uses page 1. */
   page: number
   kind: RegionKind
-  /** The reader's highlights on that page, drawn in the editor. */
+  /** The reader's highlights on that page, drawn in the editor; read once when the picker opens. */
   marks?: PageMark[]
   onCreate: (choice: { page: number; region: PageRect; text: string }) => void
   onCancel: () => void
@@ -24,11 +24,15 @@ type Props = {
   onError: (message: string) => void
 }
 
-type Loaded = { runs: TextRun[]; size: { width: number; height: number }; start: PageRect }
+/** The page's text and size, kept with the page they were read from so the text sent always belongs to the page sent. */
+type Loaded = { page: number; runs: TextRun[]; size: { width: number; height: number }; start: PageRect }
 
 export default function RegionPicker({ fileUrl, page, kind, marks = [], onCreate, onCancel, onError }: Props) {
   const [loaded, setLoaded] = useState<Loaded | null>(null)
-  const number = kind === 'paper' ? 1 : page
+  // The page in view when the reader chose "Share a region", and its marks. The reader may scroll behind the modal;
+  // the picker never follows, so the box, the text and the page sent all belong to this page.
+  const [opened] = useState(() => ({ page: kind === 'paper' ? 1 : page, marks }))
+  const number = opened.page
 
   // Read the page's text first: the first page's starting box depends on it, and the editor reads its value once.
   useEffect(() => {
@@ -38,7 +42,7 @@ export default function RegionPicker({ fileUrl, page, kind, marks = [], onCreate
       const base = proxy.getViewport({ scale: 1 })
       const size = { width: base.width, height: base.height }
       const runs = await pageTextRuns(proxy)
-      if (!cancelled) setLoaded({ runs, size, start: kind === 'paper' ? firstPageRegion(runs, size) : MIDDLE_REGION })
+      if (!cancelled) setLoaded({ page: number, runs, size, start: kind === 'paper' ? firstPageRegion(runs, size) : MIDDLE_REGION })
     }).catch(() => { if (!cancelled) onError(CROP_PAGE_UNAVAILABLE) })
     return () => { cancelled = true; void task.destroy().catch(() => {}) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -46,8 +50,8 @@ export default function RegionPicker({ fileUrl, page, kind, marks = [], onCreate
 
   if (!loaded) return <span role="status" style={{ fontSize: 11, color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 8 }}><span className="spinner" aria-hidden="true" /> Loading page…</span>
   return (
-    <CropEditor fileUrl={fileUrl} page={number} value={loaded.start} marks={marks} title={REGION_TITLES[kind]} applyLabel="Create post" resetLabel={null}
+    <CropEditor fileUrl={fileUrl} page={loaded.page} value={loaded.start} marks={opened.marks} title={REGION_TITLES[kind]} applyLabel="Create post" resetLabel={null}
       onCancel={onCancel}
-      onApply={region => { if (region) onCreate({ page: number, region, text: regionText(loaded.runs, region, loaded.size) }) }} />
+      onApply={region => { if (region) onCreate({ page: loaded.page, region, text: regionText(loaded.runs, region, loaded.size) }) }} />
   )
 }
