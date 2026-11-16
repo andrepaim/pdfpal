@@ -28,6 +28,7 @@ const CARD = {
   pull: 'sparse patterns may reduce this cost', topic: 'Attention', takeawaysTitle: 'What full attention costs',
   takeaways: [{ title: 'Reach is global', detail: 'Every position can use every other one.' },
     { title: 'Cost grows fast', detail: 'Doubling the input quadruples the work.' }, { title: 'Sparsity may help', detail: 'The authors suspect so; it is untested here.' }],
+  takeaway: 'Long inputs stay costly until a cheaper pattern is proven.',
 }
 const answer = (card: Record<string, unknown> = {}, extra: Record<string, unknown> = {}) =>
   JSON.stringify({ ...CARD, ...card, drafts: DRAFTS, hashtags: HASHTAGS, ...extra })
@@ -458,7 +459,7 @@ test('a destination and a take set the request, the defaults and Undo; each chan
     const first = await s.settle((started.json() as ShareCardRecord).id), url = `${s.base}/${first.id}`
     // Instagram opens on the Headline style with hashtags shown; the take is stored as one line.
     assert.equal(first.status, 'complete'); assert.equal(first.destination, 'instagram'); assert.equal(first.take, take)
-    assert.equal(first.card!.style, 'headline')
+    assert.equal(first.card!.style, 'carousel')
     assert.deepEqual(first.caption, caption({ destination: 'instagram', take, showTags: true, drafts: { finding: withTake(FINDING), contrast: '', caveat: withTake(CAVEAT) } }))
     assert.ok(s.prompt(1).startsWith(`${prompt('instagram', take)}\n\n{`)); assert.match(s.prompt(1), /share it on Instagram/)
     assert.equal(s.input(1).readerTake, take)
@@ -695,7 +696,7 @@ test('a post outlives its highlight and source, and restoring them reconnects it
 
 // Posts from a region of a page or from the first page: the reader drew a box; the assistant sees only text.
 const REGION = { x1: 0.1, y1: 0.4, x2: 0.9, y2: 0.75 }
-const REGION_CARD = { headline: 'Longer inputs cost far more', topic: 'Attention' }
+const REGION_CARD = { headline: 'Longer inputs cost far more', topic: 'Attention', takeaway: 'What a region shows still needs its caption to be read right.' }
 const regionAnswer = (extra: Record<string, unknown> = {}) => JSON.stringify({ ...REGION_CARD, drafts: DRAFTS, hashtags: HASHTAGS, ...extra })
 const regionCard = (extra: Record<string, unknown> = {}) => ({
   quote: '', quoteEdited: false, emphasis: '', pull: '', takeawaysTitle: '', takeaways: [], style: 'page', look: 'ink', crop: REGION, set: null, ...REGION_CARD, ...extra,
@@ -760,7 +761,7 @@ test('the first page becomes a post about the paper, on the destination\'s defau
     assert.equal(response.statusCode, 202, response.body)
     const record = await s.settle((response.json() as ShareCardRecord).id)
     assert.equal(record.source.kind, 'paper'); assert.deepEqual(record.source.region, top); assert.equal(record.source.passage, 'Test Source. Page one introduces the model.')
-    assert.equal(record.card!.style, 'headline'); assert.deepEqual(record.card!.crop, top); assert.equal(record.caption!.showTags, true)
+    assert.equal(record.card!.style, 'carousel'); assert.deepEqual(record.card!.crop, top); assert.equal(record.caption!.showTags, true)
     assert.ok(s.prompt(1).startsWith(`${regionPrompt('paper', 'instagram')}\n\n{`))
     assert.match(s.prompt(1), /sharing the paper itself/); assert.match(s.prompt(1), /what the paper studied and its main result/)
     assert.equal(s.input(1).regionText, 'Test Source. Page one introduces the model.')
@@ -796,7 +797,7 @@ test('a region post keeps its region as the crop, refuses text cards and quote e
     assert.equal(s.callCount(), 2); assert.equal(changed.status, 'complete')
     assert.deepEqual(changed.card, regionCard({ headline: 'Cost grows with length', crop: moved, style: 'page', look: 'marker' }))
     const input = s.input(2)
-    assert.deepEqual(input.previousCard, { headline: 'My own headline', topic: 'Attention' }); assert.equal(input.change, 'Shorter')
+    assert.deepEqual(input.previousCard, { headline: 'My own headline', topic: 'Attention', takeaway: REGION_CARD.takeaway }); assert.equal(input.change, 'Shorter')
     assert.ok(s.prompt(2).startsWith(`${regionPrompt('region', 'x')}\n\n{`))
     // Undo returns to LinkedIn and the Headline style; the crop set since stays.
     const undone = (await s.app.inject({ method: 'POST', url: `${url}/undo`, payload: {} })).json() as ShareCardRecord
@@ -879,7 +880,7 @@ const SET_WORDS = {
 }
 const setAnswer = (extra: Record<string, unknown> = {}) => JSON.stringify({ ...SET_WORDS, drafts: DRAFTS, hashtags: HASHTAGS, ...extra })
 const setCard = (extra: Record<string, unknown> = {}, set: Record<string, unknown> = {}) => ({
-  quote: '', quoteEdited: false, emphasis: '', pull: '', takeawaysTitle: '', takeaways: [], style: 'headline', look: 'ink', crop: null,
+  quote: '', quoteEdited: false, emphasis: '', pull: '', takeawaysTitle: '', takeaways: [], style: 'headline', look: 'ink', crop: null, takeaway: '',
   headline: SET_WORDS.headline, topic: SET_WORDS.topic, ...extra,
   set: { study: SET_WORDS.study, points: POINTS, takeaway: SET_WORDS.takeaway, limitations: SET_WORDS.limitations, crops: [null, null, null], ...set },
 })
@@ -975,7 +976,7 @@ test('a carousel\'s slide words and crops are edited one at a time; text cards a
     await refuse({ crop }, 'A carousel has a crop for each highlight slide; name the slide.')
     await refuse({ crop, slide: 3 }, 'This carousel has no highlight slide 4.')
     await refuse({ crop: { ...crop, x2: 0 }, slide: 0 }, 'A crop needs x1 < x2 and y1 < y2.')
-    for (const style of ['page', 'quote', 'idea', 'takeaways']) await refuse({ style, look: 'ink' }, SET_STYLE_REFUSED)
+    for (const style of ['page', 'carousel', 'quote', 'idea', 'takeaways']) await refuse({ style, look: 'ink' }, SET_STYLE_REFUSED)
     assert.equal(((await patch({ style: 'headline', look: 'paper' })).json() as ShareCardRecord).card!.look, 'paper')
     await refuse({ quote: 'Every position' }, 'A carousel has no quote to edit.')
     assert.equal(((await patch({ headline: 'My own cover' })).json() as ShareCardRecord).card!.headline, 'My own cover')
@@ -1184,4 +1185,88 @@ test('review: a stored post that no longer reads is left out of the list, refuse
     assert.equal((await s.app.inject({ method: 'DELETE', url: `${s.base}/old` })).statusCode, 204)
     assert.equal((s.db.prepare("SELECT COUNT(*) n FROM share_cards WHERE id='old'").get() as { n: number }).n, 0)
   } finally { await s.close() }
+})
+
+// Stage 4: three cards for Instagram. Every highlight, region or first-page answer carries a takeaway.
+test('a highlight post for Instagram opens in the Carousel style with its takeaway, and a move to Instagram sets it', async () => {
+  const s = await setup()
+  try {
+    const started = await s.create(await s.highlight(), { destination: 'instagram' })
+    const record = await s.settle((started.json() as ShareCardRecord).id), url = `${s.base}/${record.id}`
+    assert.equal(record.card!.style, 'carousel'); assert.equal(record.card!.takeaway, CARD.takeaway)
+    assert.match(s.prompt(1), /- takeaway: one sentence of at most 140 characters saying why the finding matters/)
+    // Back to LinkedIn and over to Instagram again: the destination's default style each time.
+    await s.app.inject({ method: 'POST', url: `${url}/change`, payload: { destination: 'linkedin' } })
+    assert.equal((await s.settle(record.id)).card!.style, 'page')
+    await s.app.inject({ method: 'POST', url: `${url}/change`, payload: { destination: 'instagram' } })
+    const back = await s.settle(record.id)
+    assert.equal(back.card!.style, 'carousel'); assert.equal(s.input(3).previousCard.takeaway, CARD.takeaway)
+  } finally { await s.close() }
+})
+
+test('the takeaway is checked as the assistant\'s own words and repaired with them', () => {
+  const source = { passage: PASSAGE, context: 'We suspect that sparse patterns may reduce this cost.', title: 'Attention Is All You Need', credit: '', page: 2, url: URL }
+  const options = { destination: 'linkedin' as const, take: '', changed: false }
+  for (const [takeaway, reason] of [
+    [undefined, /^Error: takeaway must be a string\.$/],
+    ['', /^Error: takeaway has 0 characters; allowed 1–140\.$/],
+    ['t'.repeat(141), /takeaway has 141 characters; allowed 1–140/],
+    ['Long inputs cost 4 times more.', /^Error: takeaway has numbers that are not in highlight, pageText, title, credit, page or readerTake: 4\./],
+    ['Will sparse patterns be enough?', /^Error: takeaway must say why the finding matters, not ask a question\.$/],
+    ['reach has a quadratic price!', /^Error: takeaway must say what follows from the headline, not repeat it\.$/],
+    ['My guess is that long inputs stay costly.', /takeaway must not use the first person \("My"\)/],
+    ['See example.com for why it matters.', /takeaway must not contain links/],
+    ['It matters for #attention research.', /takeaway must not contain hashtags/],
+    ['As pageText says, it matters.', /takeaway must not mention pageText/],
+    ['The authors write “the cost doubles with every token we add” and it matters.', /takeaway quotes words that are not in highlight or pageText/],
+  ] as Array<[string | undefined, RegExp]>) assert.throws(() => parseShareCardAnswer(answer({ takeaway }), source, options), reason, String(reason))
+  assert.equal(parseShareCardAnswer(answer({ takeaway: '  Long inputs   stay costly. ' }), source, options).card.takeaway, 'Long inputs stay costly.')
+  // A region's answer carries one too; a set's goes to its own slide and the card's stays ''.
+  const region = { ...source, kind: 'region' as const, passage: 'Cost by length' }
+  assert.throws(() => parseShareCardAnswer(regionAnswer({ takeaway: '' }), region, options), /takeaway has 0 characters; allowed 1–140/)
+  assert.equal(parseShareCardAnswer(regionAnswer(), region, options).card.takeaway, REGION_CARD.takeaway)
+})
+
+test('a set\'s limitations never repeat one of its points', () => {
+  const items = [{ annotation_id: 'a', passage: 'Attention lets every position look at every other one.', page: 2, rects: [], color: 'yellow' as const },
+    { annotation_id: 'b', passage: 'The sample was small and self-reported, so the effect may not hold.', page: 3, rects: [], color: 'yellow' as const }]
+  const source = { kind: 'set' as const, items, passage: items.map(item => item.passage).join('\n\n'), context: '', title: 'Attention', credit: '', page: 2, url: URL }
+  const options = { destination: 'linkedin' as const, take: '', changed: false }
+  const points = ['Every position sees every other', 'The sample was small and self-reported']
+  const parsed = parseShareCardAnswer(setAnswer({ points, limitations: '' }), source, options)
+  assert.equal(parsed.card.takeaway, ''); assert.equal(parsed.card.set!.takeaway, SET_WORDS.takeaway)
+  assert.throws(() => parseShareCardAnswer(setAnswer({ points, limitations: '  the SAMPLE was small and   self-reported. ' }), source, options),
+    /^Error: limitations repeats points\[1\]; when a highlight is itself the limitation, its point carries it and limitations is ""\.$/)
+  parseShareCardAnswer(setAnswer({ points, limitations: 'The effect may not hold beyond this sample.' }), source, options)
+  assert.match(sharePostPrompt('linkedin', draftLimits('linkedin'), 'set'), /when a highlight is itself the limitation, its point carries it and limitations is ""/)
+})
+
+test('the reader edits the takeaway behind Undo; the Carousel style is a single post\'s, never a set\'s', async () => {
+  const s = await setup()
+  try {
+    const first = await s.post(), url = `${s.base}/${first.id}`
+    const patch = (payload: unknown) => s.app.inject({ method: 'PATCH', url, payload })
+    const edited = (await patch({ takeaway: '  In 2023   it  matters. ' })).json() as ShareCardRecord
+    assert.equal(edited.card!.takeaway, 'In 2023 it matters.'); assert.equal(edited.can_undo, true)
+    for (const bad of [' ', 't'.repeat(141)]) {
+      const response = await patch({ takeaway: bad }); assert.equal(response.statusCode, 400); assert.equal(response.json().detail, 'A takeaway needs 1–140 characters.')
+    }
+    assert.equal(((await s.app.inject({ method: 'POST', url: `${url}/undo`, payload: {} })).json() as ShareCardRecord).card!.takeaway, CARD.takeaway)
+    assert.equal(((await patch({ style: 'carousel', look: 'paper' })).json() as ShareCardRecord).card!.style, 'carousel')
+    assert.equal((await patch({ takeaway: 'x', look: 'ink' })).statusCode, 400)
+    assert.equal(s.callCount(), 1)
+  } finally { await s.close() }
+  const r = await regionSetup()
+  try {
+    const region = await r.settle(((await r.start()).json() as ShareCardRecord).id)
+    const styled = await r.app.inject({ method: 'PATCH', url: `${r.base}/${region.id}`, payload: { style: 'carousel', look: 'ink' } })
+    assert.equal(styled.statusCode, 200); assert.equal((styled.json() as ShareCardRecord).card!.style, 'carousel')
+  } finally { await r.close() }
+  const t = await setSetup()
+  try {
+    const set = await t.settle(((await t.start()).json() as ShareCardRecord).id)
+    const refused = await t.app.inject({ method: 'PATCH', url: `${t.base}/${set.id}`, payload: { takeaway: 'Mine.' } })
+    assert.equal(refused.statusCode, 400)
+    assert.equal(refused.json().detail, 'A carousel of several highlights keeps its takeaway on its own slide; edit it with { set_text: { field: \'takeaway\' } }.')
+  } finally { await t.close() }
 })

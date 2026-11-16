@@ -4,12 +4,12 @@
 // (test/unit/visual-bundle.test.ts). The zod schemas for these shapes are in ./share-card-schema.ts.
 
 export const CARD = {
-  quoteMax: 240, quoteLeadsMax: 120, emphasisMax: 40, headlineMax: 80, pullMax: 140,
+  quoteMax: 240, quoteLeadsMax: 120, emphasisMax: 40, headlineMax: 80, pullMax: 140, takeawayMax: 140,
   topicMax: 24, takeawaysTitleMax: 48, takeawayTitleMax: 32, takeawayDetailMax: 72,
   passageMin: 20, passageMax: 6000, contextMax: 12000, creditMax: 200,
 } as const
 /** Page and Headline show the PDF's own pixels; the other three are text cards. See docs/share-posts-plan.md. */
-export const STYLES = ['page', 'headline', 'quote', 'idea', 'takeaways'] as const
+export const STYLES = ['page', 'headline', 'carousel', 'quote', 'idea', 'takeaways'] as const
 export const TEXT_CARD_STYLES = ['quote', 'idea', 'takeaways'] as const
 export const LOOKS = ['ink', 'paper', 'marker'] as const
 export const SIZES = { feed: { width: 1080, height: 1350 }, story: { width: 1080, height: 1920 } } as const
@@ -112,6 +112,11 @@ export type CardContent = {
    * takeaways, points and crops one per item, and the Headline style.
    */
   set: SetContent | null
+  /**
+   * Why the finding matters, in one sentence of 1 to CARD.takeawayMax characters: the third slide of the Carousel
+   * style. '' for a post stored before it existed, and for a set, which keeps its own in set.takeaway.
+   */
+  takeaway: string
 }
 
 /** The text of a post: up to three drafts for one destination, and how the copied text is composed. */
@@ -161,7 +166,7 @@ export type ShareCardSummary = {
   updated_at: string
 }
 
-export const STYLE_NAMES: Record<ShareStyle, string> = { page: 'Page', headline: 'Headline', quote: 'Quote', idea: 'Big idea', takeaways: 'Takeaways' }
+export const STYLE_NAMES: Record<ShareStyle, string> = { page: 'Page', headline: 'Headline', carousel: 'Carousel', quote: 'Quote', idea: 'Big idea', takeaways: 'Takeaways' }
 export const LOOK_NAMES: Record<ShareLook, string> = { ink: 'Ink', paper: 'Paper', marker: 'Marker' }
 export const DESTINATION_NAMES: Record<Destination, string> = { linkedin: 'LinkedIn', x: 'X · Bluesky · Threads', instagram: 'Instagram' }
 export const ANGLE_NAMES: Record<Angle, string> = { finding: 'The finding', contrast: 'Belief vs. paper', caveat: 'The caveat' }
@@ -170,7 +175,7 @@ export const ANGLE_NAMES: Record<Angle, string> = { finding: 'The finding', cont
 export const DESTINATION_DEFAULTS: Record<Destination, { style: ShareStyle; size: CardSize; extraLines: 0 | 1 | 3; showTags: boolean }> = {
   linkedin: { style: 'page', size: 'fit', extraLines: 3, showTags: false },
   x: { style: 'page', size: 'fit', extraLines: 1, showTags: false },
-  instagram: { style: 'headline', size: 'feed', extraLines: 3, showTags: true },
+  instagram: { style: 'carousel', size: 'feed', extraLines: 3, showTags: true },
 }
 
 /** Limits of one draft, by destination. `hookMax` is the first line, which is what shows before "see more". */
@@ -259,6 +264,7 @@ export function validateCard(card: CardContent, source: Pick<ShareCardSource, 'p
   if (!quoteMatches(card.pull, `${source.passage} ${source.context}`)) throw new Error('pull must be copied exactly from highlight or pageText.')
   limit('topic', card.topic, CARD.topicMax, 0)
   limit('takeawaysTitle', card.takeawaysTitle, CARD.takeawaysTitleMax)
+  limit('takeaway', card.takeaway, CARD.takeawayMax, 0)
   if (!Array.isArray(card.takeaways) || card.takeaways.length !== 3) throw new Error(`takeaways needs exactly three items; it has ${Array.isArray(card.takeaways) ? card.takeaways.length : 0}.`)
   card.takeaways.forEach((item, index) => {
     limit(`takeaways[${index}].title`, item.title, CARD.takeawayTitleMax)
@@ -270,9 +276,9 @@ export function validateCard(card: CardContent, source: Pick<ShareCardSource, 'p
 }
 
 /** Why a region or first-page post cannot take a text-card style. */
-export const REGION_STYLE_REFUSED = 'A post made from a region has no quote or takeaways, so it uses the Page or Headline style.'
+export const REGION_STYLE_REFUSED = 'A post made from a region has no quote or takeaways, so it uses the Page, Headline or Carousel style.'
 /** The styles a region or first-page post can take. */
-export const REGION_STYLES = ['page', 'headline'] as const
+export const REGION_STYLES = ['page', 'headline', 'carousel'] as const
 
 /** A region or first-page card: a headline and a topic, nothing quoted, drawn as Page or Headline. */
 function validateRegionCard(card: CardContent): void {
@@ -280,6 +286,7 @@ function validateRegionCard(card: CardContent): void {
   if (!Array.isArray(card.takeaways) || card.takeaways.length) throw new Error('takeaways must be empty for a post made from a region.')
   limit('headline', card.headline, CARD.headlineMax)
   limit('topic', card.topic, CARD.topicMax, 0)
+  limit('takeaway', card.takeaway, CARD.takeawayMax, 0)
   if (!(STYLES as readonly string[]).includes(card.style)) throw new Error(`Unknown card style: ${card.style}.`)
   if (!(REGION_STYLES as readonly string[]).includes(card.style)) throw new Error(REGION_STYLE_REFUSED)
   if (!(LOOKS as readonly string[]).includes(card.look)) throw new Error(`Unknown card look: ${card.look}.`)
@@ -299,6 +306,7 @@ function validateSetCard(card: CardContent, items: SetItem[]): void {
   for (const name of ['quote', 'emphasis', 'pull', 'takeawaysTitle'] as const) if (card[name]) throw new Error(`${name} must be empty for a carousel.`)
   if (!Array.isArray(card.takeaways) || card.takeaways.length) throw new Error('takeaways must be empty for a carousel.')
   if (card.crop) throw new Error('crop must be empty for a carousel; each highlight slide has its own.')
+  if (card.takeaway) throw new Error('A carousel of several highlights keeps its takeaway on its own slide (set.takeaway).')
   limit('headline', card.headline, CARD.headlineMax)
   limit('topic', card.topic, CARD.topicMax, 0)
   for (const name of ['points', 'crops'] as const)
@@ -312,20 +320,39 @@ function validateSetCard(card: CardContent, items: SetItem[]): void {
   if (!(LOOKS as readonly string[]).includes(card.look)) throw new Error(`Unknown card look: ${card.look}.`)
 }
 
-/** One slide of a carousel, in order. `item` is the index of the highlight a point slide shows. */
+/**
+ * One slide of a carousel, in order. `item` is the index of the highlight a point slide shows. A page slide is the
+ * post's page crop; `fallback` is drawn instead when the PDF file is gone.
+ */
 export type SlideSpec =
   | { kind: 'cover'; kicker: string; headline: string }
   | { kind: 'study' | 'takeaway' | 'limitations'; kicker: string; text: string }
   | { kind: 'point'; kicker: string; headline: string; item: number }
+  | { kind: 'page'; kicker: string; fallback: string }
+/** The slides of a carousel of several highlights: every kind but the single post's page slide. */
+export type SetSlideSpec = Exclude<SlideSpec, { kind: 'page' }>
+
+/**
+ * The slides of a post drawn in the Carousel style: the cover (topic and headline), the page (its fallback is the
+ * quote, or the headline without one), and the takeaway when there is one. [] for a set, whose slides are setSlides'.
+ */
+export function postSlides(card: CardContent, source: Pick<ShareCardSource, 'kind'>): SlideSpec[] {
+  if (source.kind === 'set' || card.set) return []
+  return [
+    { kind: 'cover', kicker: card.topic, headline: card.headline },
+    { kind: 'page', kicker: card.topic, fallback: card.quote || card.headline },
+    ...card.takeaway ? [{ kind: 'takeaway', kicker: 'The takeaway', text: card.takeaway } as const] : [],
+  ]
+}
 
 /**
  * A carousel's slides: the cover; the study when it is not empty; one slide per highlight; the takeaway; the limits
  * when they are not empty. A point slide's kicker is the topic, as the cover's. [] for a card that is not a carousel.
  */
-export function setSlides(card: CardContent, source: Pick<ShareCardSource, 'items'>): SlideSpec[] {
+export function setSlides(card: CardContent, source: Pick<ShareCardSource, 'items'>): SetSlideSpec[] {
   const set = card.set
   if (!set) return []
-  const points = set.points.slice(0, source.items.length).map((headline, item): SlideSpec => ({ kind: 'point', kicker: card.topic, headline, item }))
+  const points = set.points.slice(0, source.items.length).map((headline, item): SetSlideSpec => ({ kind: 'point', kicker: card.topic, headline, item }))
   return [
     { kind: 'cover', kicker: card.topic, headline: card.headline },
     ...set.study ? [{ kind: 'study', kicker: 'The study', text: set.study } as const] : [],
@@ -401,6 +428,7 @@ export function cardDescription(card: CardContent, style: ShareStyle, source?: P
     const count = 2 + (card.set.study ? 1 : 0) + card.set.points.length + (card.set.limitations ? 1 : 0)
     return `Carousel of ${count} slides: ${card.headline.replace(/\.+$/u, '')}.`
   }
+  if (style === 'carousel') return `Carousel of ${postSlides(card, source ?? { kind: 'highlight' }).length} slides: ${card.headline.replace(/\.+$/u, '')}.`
   // A region or first-page post has no quote: the Page card names what it shows, the Headline card reads its headline.
   if (!card.quote && (style === 'page' || style === 'headline')) {
     if (style === 'headline') return `Headline card: ${card.headline.replace(/\.+$/u, '')}.`
