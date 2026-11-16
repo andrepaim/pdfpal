@@ -34,24 +34,45 @@ export type ShareCardChange = { instruction?: string; destination?: Destination;
 /** Exactly one kind of edit per request (see the PATCH route in src/server/share-cards.ts). */
 const patch = (projectId: string, id: string, body: object) => request<ShareCardRecord>(`${base(projectId)}/${id}`, { method: 'PATCH', body })
 
+/** What a region or first-page post starts from: the box as page fractions and the text read inside it. */
+export type RegionStart = { sourceId: string; page: number; region: PageRect; text: string; kind: 'region' | 'paper' }
+
+/**
+ * Sends a start with a request ID kept in sessionStorage under `key` until the server answers, so a reload while the
+ * request is in flight sends the same ID and cannot start a second generation.
+ */
+async function startOnce(projectId: string, key: string, body: object, options: { destination?: Destination; take?: string }): Promise<ShareCardRecord> {
+  const stored = `pdfpal:share-card-request:${key}`
+  const destination = options.destination ?? lastDestination(), take = options.take?.trim() || undefined
+  let requestId: string | undefined
+  try { requestId = sessionStorage.getItem(stored) || undefined } catch { /* Storage may be unavailable; a fresh ID still works. */ }
+  if (!requestId) {
+    requestId = crypto.randomUUID()
+    try { sessionStorage.setItem(stored, requestId) } catch { /* As above. */ }
+  }
+  const record = await request<ShareCardRecord>(base(projectId), { body: { request_id: requestId, ...body, destination, ...(take ? { take } : {}) } })
+  try { sessionStorage.removeItem(stored) } catch { /* As above. */ }
+  return record
+}
+
 export const shareCardApi = {
   /**
    * Starts the post for a highlight, or returns the one it has, written for `destination` (by default the one the
    * reader chose last on this device) around `take`. The request ID is kept in sessionStorage until the server
    * answers, so a reload while the request is in flight cannot start a second generation.
    */
-  async start(projectId: string, annotationId: string, options: { destination?: Destination; take?: string } = {}): Promise<ShareCardRecord> {
-    const key = `pdfpal:share-card-request:${projectId}:${annotationId}`
-    const destination = options.destination ?? lastDestination(), take = options.take?.trim() || undefined
-    let requestId: string | undefined
-    try { requestId = sessionStorage.getItem(key) || undefined } catch { /* Storage may be unavailable; a fresh ID still works. */ }
-    if (!requestId) {
-      requestId = crypto.randomUUID()
-      try { sessionStorage.setItem(key, requestId) } catch { /* As above. */ }
-    }
-    const record = await request<ShareCardRecord>(base(projectId), { body: { request_id: requestId, annotation_id: annotationId, destination, ...(take ? { take } : {}) } })
-    try { sessionStorage.removeItem(key) } catch { /* As above. */ }
-    return record
+  start(projectId: string, annotationId: string, options: { destination?: Destination; take?: string } = {}): Promise<ShareCardRecord> {
+    return startOnce(projectId, `${projectId}:${annotationId}`, { annotation_id: annotationId }, options)
+  },
+  /**
+   * Starts a post from a region the reader chose on a page (`kind` 'region') or from the first page ('paper'), with
+   * the text the browser read inside it. Destination, take and the reload-safe request ID work as in start(); a region
+   * has no annotation ID, so the request is known by its source, page, kind and region.
+   */
+  startRegion(projectId: string, input: RegionStart, options: { destination?: Destination; take?: string } = {}): Promise<ShareCardRecord> {
+    const { sourceId, page, region, text, kind } = input
+    const box = [region.x1, region.y1, region.x2, region.y2].map(value => value.toFixed(4)).join(',')
+    return startOnce(projectId, `${projectId}:${kind}:${sourceId}:${page}:${box}`, { source_id: sourceId, page, region, text, kind }, options)
   },
   list: (projectId: string, sourceId?: string) =>
     request<ShareCardSummary[]>(`${base(projectId)}${sourceId ? `?source_id=${encodeURIComponent(sourceId)}` : ''}`),

@@ -6,7 +6,7 @@ import SearchPaperModal from '../components/SearchPaperModal'
 import CollectionDialog from '../components/CollectionDialog'
 import { timeAgo } from '../lib/time'
 import { kindleLaunchUrl } from '../../../src/shared/kindle-book'
-import SharePostPanel from '../components/SharePostPanel'
+import SharePostPanel, { KIND_LABELS } from '../components/SharePostPanel'
 import { shareCardApi } from '../lib/share-card-api'
 import type { ShareCardSummary } from '../../../src/shared/share-card'
 
@@ -471,7 +471,8 @@ function HighlightsTab({ projectId }: { projectId: string }) {
                   <span style={{ fontSize: 12, color: '#e5e7eb', fontWeight: 600 }}>{post.title}</span>
                   <span style={{ fontSize: 10, color: '#6b7280' }}>
                     {[sourceTitle(post.source_id), `p. ${post.page}`, post.status === 'complete' ? '' : post.status === 'failed' ? 'Couldn’t finish' : post.status === 'cancelled' ? 'Paused' : 'Writing…',
-                      !post.source_id ? 'PDF removed' : !post.annotation_id ? 'Highlight deleted' : ''].filter(Boolean).join(' · ')}
+                      post.kind === 'region' || post.kind === 'paper' ? KIND_LABELS[post.kind] : '',
+                      !post.source_id ? 'PDF removed' : !post.annotation_id && post.kind !== 'region' && post.kind !== 'paper' ? 'Highlight deleted' : ''].filter(Boolean).join(' · ')}
                   </span>
                 </button>
               ))}

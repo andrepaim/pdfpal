@@ -1,17 +1,19 @@
-// The Post tab: one post made from a highlight, or the list of this source's posts. A post is an image of the PDF's
-// own page with the reader's highlights, and a text built around the reader's take, written for one destination.
+// The Post tab: one post, or the list of this source's posts with "Share a region" and "Share the first page". A post
+// starts from a highlight, a region of a page or the first page. Its image is the PDF's own page with the reader's
+// highlights, and its text is built around the reader's take, written for one destination.
 // Top to bottom: destination, image, take, text, actions. Only the destination, the take and "Ask for a change"
 // call the assistant; everything else is drawn locally or saved as a setting. See docs/share-posts-plan.md.
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import {
   ANGLES, ANGLE_NAMES, CARD, DESTINATIONS, DESTINATION_DEFAULTS, DESTINATION_NAMES, LOOKS, LOOK_NAMES, STYLE_NAMES, TAKE_MAX, TEXT_CARD_STYLES,
   captionText, cardDescription, collapse, firstCommentText, isActive,
-  type Angle, type CardSize, type Destination, type PageRect, type ShareCardRecord, type ShareCardSummary, type ShareLook, type ShareStyle,
+  type Angle, type CardSize, type Destination, type PageMark, type PageRect, type ShareCardRecord, type ShareCardSummary, type ShareLook, type ShareStyle,
 } from '../../../src/shared/share-card'
 import { rememberDestination, shareCardApi, watchShareCard, type ShareCardChange } from '../lib/share-card-api'
 import { cardSheetSpace, canvasPng, renderCard, palette } from '../lib/share-card'
 import { PAGE_UNAVAILABLE, pageCrop, type PageCrop, type PageUnavailable } from '../lib/share-card/page-crop'
 import CropEditor from './CropEditor'
+import RegionPicker, { type RegionKind } from './RegionPicker'
 import { ChoiceRow, Modal, PostMenu, Switch, alert, button, faded, field, heading, muted, primary } from './SharePostParts'
 
 export const IMAGE_COPIED = 'Image copied. Paste it into your post.'
@@ -30,6 +32,10 @@ type Props = {
   sourceId?: string
   /** A message from starting a post that did not begin, such as a passage that is too short. */
   notice?: string | null
+  /** The page being read. With `sourceId`, the post list offers "Share a region" on it and "Share the first page". */
+  currentPage?: number
+  /** The reader's highlights on a page, shown while choosing a region. */
+  marksOn?: (page: number) => PageMark[]
   onOpen: (id: string | null) => void
   /** Called when a post is created, finishes, changes its headline or is deleted, so lists and marks refresh. */
   onChanged?: () => void
@@ -46,6 +52,10 @@ export const cardFileName = (title: string, page: number, style: ShareStyle, siz
 export const xLength = (text: string) => [...text.replace(/https?:\/\/\S+/giu, 'x'.repeat(X_LINK))].length
 
 const PICTURED: ReadonlySet<ShareStyle> = new Set(['page', 'headline'])
+/** True for a post made from a region or the first page; a stored source without a kind is a highlight's. */
+const fromRegion = (kind: string | undefined) => kind === 'region' || kind === 'paper'
+/** What a post without a highlight started from, in the post lists. */
+export const KIND_LABELS: Record<'region' | 'paper', string> = { region: 'Region', paper: 'First page' }
 /** What Page and Headline are drawn as without the PDF page. */
 const FALLBACK: Partial<Record<ShareStyle, ShareStyle>> = { page: 'quote', headline: 'idea' }
 
@@ -73,35 +83,78 @@ const versionKey = (record: ShareCardRecord) => {
   return JSON.stringify([words, record.source.title, record.source.credit, record.source.page, record.source.color])
 }
 
+/** Whether two boxes are the same to four decimals, as the browser tests and the crop attribute compare them. */
+const sameBox = (a: PageRect | null, b: PageRect | null) => !!a && !!b && cropText(a) === cropText(b)
 const cropText = (box: PageRect) => [box.x1, box.y1, box.x2, box.y2].map(value => value.toFixed(4)).join(',')
 
-function PostList({ projectId, sourceId, notice, onOpen }: { projectId: string; sourceId?: string; notice?: string | null; onOpen: (id: string) => void }) {
+type ListProps = {
+  projectId: string; sourceId?: string; notice?: string | null; currentPage?: number; marksOn?: (page: number) => PageMark[]
+  onOpen: (id: string) => void; onChanged?: () => void
+}
+
+function PostList({ projectId, sourceId, notice, currentPage, marksOn, onOpen, onChanged }: ListProps) {
   const [posts, setPosts] = useState<ShareCardSummary[] | null>(null)
   const [error, setError] = useState('')
+  const [choosing, setChoosing] = useState<RegionKind | null>(null)
+  const [starting, setStarting] = useState(false)
+  const [failure, setFailure] = useState('')
   useEffect(() => {
     let live = true
     shareCardApi.list(projectId, sourceId).then(list => { if (live) setPosts(list) }).catch(e => { if (live) setError((e as Error).message) })
     return () => { live = false }
   }, [projectId, sourceId])
+  const fileUrl = sourceId ? `/api/projects/${encodeURIComponent(projectId)}/sources/${encodeURIComponent(sourceId)}/file` : null
+  const canChoose = !!fileUrl && !!sourceId && !!currentPage
+  const choose = (kind: RegionKind) => { if (!choosing && !starting) { setFailure(''); setChoosing(kind) } }
+  const create = async (kind: RegionKind, choice: { page: number; region: PageRect; text: string }) => {
+    setChoosing(null); setStarting(true); setFailure('')
+    try {
+      const record = await shareCardApi.startRegion(projectId, { sourceId: sourceId!, kind, ...choice })
+      onChanged?.()
+      onOpen(record.id)
+    } catch (e) { setFailure((e as Error).message) }
+    finally { setStarting(false) }
+  }
   return (
     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <h2 style={{ fontSize: 14, margin: 0, color: '#e5e7eb' }}>Posts</h2>
+      {canChoose && (
+        <div role="group" aria-label="Start a post" aria-describedby="share-region-hint" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <button type="button" onClick={() => choose('region')} aria-disabled={starting || !!choosing} style={faded({ ...button, flex: '1 1 140px' }, starting || !!choosing)}>Share a region</button>
+            <button type="button" onClick={() => choose('paper')} aria-disabled={starting || !!choosing} style={faded({ ...button, flex: '1 1 140px' }, starting || !!choosing)}>Share the first page</button>
+          </div>
+          <span id="share-region-hint" style={muted}>A figure or passage on page {currentPage}, or the title and abstract.</span>
+          {starting && <span role="status" style={{ ...muted, display: 'flex', alignItems: 'center', gap: 8 }}><span className="spinner" aria-hidden="true" /> Starting your post…</span>}
+          {choosing && fileUrl && (
+            <RegionPicker fileUrl={fileUrl} page={currentPage!} kind={choosing} marks={marksOn?.(choosing === 'paper' ? 1 : currentPage!)}
+              onCancel={() => setChoosing(null)} onError={message => { setChoosing(null); setFailure(message) }}
+              onCreate={choice => void create(choosing, choice)} />
+          )}
+          {failure && <p role="alert" style={alert}>{failure}</p>}
+        </div>
+      )}
       {notice && <p role="alert" style={alert}>{notice}</p>}
       {error && <p role="alert" style={alert}>{error}</p>}
       {posts === null && !error ? <span className="spinner" /> : posts?.length === 0
-        ? <p style={{ ...muted, fontSize: 12 }}>Click a highlight and choose Create post to share the page with your highlights and a text built around your take.</p>
+        ? <p style={{ ...muted, fontSize: 12 }}>Or click a highlight and choose Create post to share the page with your highlights and a text built around your take.</p>
         : posts?.map(post => (
           <button key={post.id} onClick={() => onOpen(post.id)} style={{ ...button, textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 3, padding: '9px 12px' }}>
             <span style={{ fontSize: 13, color: '#e5e7eb', fontWeight: 600, overflowWrap: 'anywhere' }}>{post.title}</span>
-            <span style={muted}>p. {post.page}{post.status === 'complete' ? '' : post.status === 'failed' ? ' · Couldn’t finish' : post.status === 'cancelled' ? ' · Paused' : ' · Writing…'}{post.annotation_id ? '' : ' · Highlight deleted'}</span>
+            <span style={muted}>{[
+              `p. ${post.page}`,
+              post.kind === 'region' || post.kind === 'paper' ? KIND_LABELS[post.kind] : '',
+              post.status === 'complete' ? '' : post.status === 'failed' ? 'Couldn’t finish' : post.status === 'cancelled' ? 'Paused' : 'Writing…',
+              fromRegion(post.kind) || post.annotation_id ? '' : 'Highlight deleted',
+            ].filter(Boolean).join(' · ')}</span>
           </button>
         ))}
     </div>
   )
 }
 
-export default function SharePostPanel({ projectId, postId, sourceId, notice, onOpen, onChanged }: Props) {
-  if (!postId) return <PostList projectId={projectId} sourceId={sourceId} notice={notice} onOpen={onOpen} />
+export default function SharePostPanel({ projectId, postId, sourceId, notice, currentPage, marksOn, onOpen, onChanged }: Props) {
+  if (!postId) return <PostList projectId={projectId} sourceId={sourceId} notice={notice} currentPage={currentPage} marksOn={marksOn} onOpen={onOpen} onChanged={onChanged} />
   return <PostView key={postId} projectId={projectId} postId={postId} onOpen={onOpen} onChanged={onChanged} />
 }
 
@@ -169,6 +222,8 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
   const look: ShareLook = desired?.look ?? card?.look ?? 'ink'
   const pictured = PICTURED.has(style)
   const size: CardSize = style === 'page' ? defaults.size : 'feed'
+  // A region or first-page post has only a headline and a topic: no quote, no takeaways, no text cards.
+  const regionPost = fromRegion(record?.source.kind)
 
   // The stored choice has arrived: the shown choice no longer needs to lead it.
   useEffect(() => { if (desired && card && desired.style === card.style && desired.look === card.look) setDesired(null) }, [card, desired])
@@ -196,8 +251,9 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
 
   const cropReady = pictured && crop?.key === cropKey ? crop : null
   const unavailable: PageUnavailable | null = !record ? null : !fileUrl ? 'no-source' : cropReady?.reason ?? null
-  // The style drawn: Page and Headline fall back to Quote and Big idea without the page.
-  const drawn: ShareStyle = pictured && (unavailable === 'no-source' || cropReady?.reason) ? FALLBACK[style]! : style
+  // The style drawn: Page and Headline fall back to Quote and Big idea without the page. A region post has no quote,
+  // so both fall back to Big idea, drawn from its headline.
+  const drawn: ShareStyle = pictured && (unavailable === 'no-source' || cropReady?.reason) ? (regionPost ? 'idea' : FALLBACK[style]!) : style
 
   // Draws the preview, keeping the previous picture on screen while the next one renders.
   useEffect(() => {
@@ -207,11 +263,11 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
     const cached = cache.current.get(key)
     if (cached) { setShown(cached); return }
     let live = true
-    renderCard({ card, source: record.source }, { style, look, size, crop: cropReady?.crop })
+    renderCard({ card, source: record.source }, { style: drawn, look, size, crop: cropReady?.crop })
       .then(async canvas => {
-        const drawnStyle = (canvas.dataset.style as ShareStyle | undefined) ?? style
+        const drawnStyle = (canvas.dataset.style as ShareStyle | undefined) ?? drawn
         const blob = await canvasPng(canvas)
-        const item: Shown = { key, url: URL.createObjectURL(blob), alt: cardDescription(card, drawnStyle), style: drawnStyle, look, width: canvas.width, height: canvas.height,
+        const item: Shown = { key, url: URL.createObjectURL(blob), alt: cardDescription(card, drawnStyle, record.source), style: drawnStyle, look, width: canvas.width, height: canvas.height,
           crop: PICTURED.has(drawnStyle) ? cropReady?.crop : undefined }
         cache.current.set(key, item)
         // Full-size pictures are large: keep a few per post.
@@ -224,7 +280,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
       })
       .catch(error => { if (live) setDrawError((error as Error).message) })
     return () => { live = false }
-  }, [record, card, version, style, look, size, pictured, cropReady, cropKey])
+  }, [record, card, version, style, drawn, look, size, pictured, cropReady, cropKey])
 
   // A text card in use opens its disclosure.
   useEffect(() => { if ((TEXT_CARD_STYLES as readonly string[]).includes(drawn)) setCardsOpen(true) }, [drawn])
@@ -251,7 +307,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
           .then(sheet => pageCrop(fileUrl, record.source, { sheet, crop: card.crop, marks: record.marks, extraLines: defaults.extraLines }))
           .catch(() => undefined)
     }
-    const canvas = await renderCard({ card, source: record.source }, { style, look, size: exportSize, crop: pageImage })
+    const canvas = await renderCard({ card, source: record.source }, { style: pageImage ? style : drawn, look, size: exportSize, crop: pageImage })
     return { blob: await canvasPng(canvas), style: (canvas.dataset.style as ShareStyle | undefined) ?? drawn }
   }
 
@@ -354,7 +410,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
         {record.can_undo && !active && <button onClick={undo} disabled={busy} aria-label="Undo last change" title="Undo last change" style={faded({ ...button, padding: '4px 10px' }, busy)}>↶ Undo</button>}
         <PostMenu items={[
           { label: 'Ask for a change…', onSelect: () => open('change'), disabled: busy || active },
-          !!card && { label: 'Edit quote', onSelect: () => open('quote'), disabled: active },
+          !!card && !regionPost && { label: 'Edit quote', onSelect: () => open('quote'), disabled: active },
           { label: 'Edit credit', onSelect: () => open('credit') },
           { label: 'Delete post', onSelect: () => open('delete'), danger: true },
         ]} />
@@ -418,17 +474,19 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
               {hasHeadline && !active && <button type="button" onClick={() => open('headline')} style={button}>Edit headline</button>}
               {canAdjust && <button type="button" onClick={() => setEditingCrop(true)} style={button}>Adjust crop</button>}
-              {canAdjust && <span style={muted}>{card.crop ? 'Your crop' : 'Automatic crop'}</span>}
+              {canAdjust && <span style={muted}>{regionPost ? (sameBox(card.crop, record.source.region) ? 'The region you chose' : 'Your crop') : card.crop ? 'Your crop' : 'Automatic crop'}</span>}
             </div>
           )}
-          <details open={cardsOpen} onToggle={event => setCardsOpen(event.currentTarget.open)} style={{ fontSize: 12, color: '#d1d5db' }}>
-            <summary style={{ cursor: 'pointer', color: '#9ca3af', fontSize: 12 }}>Text cards</summary>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
-              <span style={muted}>Typeset words instead of the page.</span>
-              <ChoiceRow label="Text card style" disabled={active} value={drawn} onChoose={option => void choose({ style: option, look })} compact
-                options={TEXT_CARD_STYLES.map(styleChoice)} />
-            </div>
-          </details>
+          {!regionPost && (
+            <details open={cardsOpen} onToggle={event => setCardsOpen(event.currentTarget.open)} style={{ fontSize: 12, color: '#d1d5db' }}>
+              <summary style={{ cursor: 'pointer', color: '#9ca3af', fontSize: 12 }}>Text cards</summary>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+                <span style={muted}>Typeset words instead of the page.</span>
+                <ChoiceRow label="Text card style" disabled={active} value={drawn} onChoose={option => void choose({ style: option, look })} compact
+                  options={TEXT_CARD_STYLES.map(styleChoice)} />
+              </div>
+            </details>
+          )}
           {restyleFailure && <p role="alert" style={alert}>{restyleFailure}</p>}
         </div>
 
@@ -517,8 +575,13 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
 
       {editingCrop && fileUrl && card && cropReady?.crop && (
         <CropEditor fileUrl={fileUrl} page={record.source.page} value={card.crop ?? cropReady.crop.box} marks={record.marks}
+          resetLabel={regionPost ? 'Back to the original region' : undefined}
           onCancel={() => setEditingCrop(false)}
-          onApply={next => { setEditingCrop(false); void act(() => shareCardApi.crop(projectId, record.id, next), { done: { text: next ? 'Crop saved.' : 'Back to the automatic crop.' } }) }} />
+          onApply={next => {
+            setEditingCrop(false)
+            const done = next ? 'Crop saved.' : regionPost ? 'Back to the original region.' : 'Back to the automatic crop.'
+            void act(() => shareCardApi.crop(projectId, record.id, next), { done: { text: done } })
+          }} />
       )}
 
       <Modal open={dialog === 'change'} title="What should change?" onClose={close} actions={<>
@@ -561,7 +624,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
         <button onClick={close} style={button}>Cancel</button>
         <button onClick={submit} style={{ ...primary, background: '#b91c1c', borderColor: '#b91c1c' }}>Delete</button>
       </>}>
-        <p style={{ fontSize: 13, margin: 0, color: '#d1d5db' }}>Your highlight will remain.</p>
+        <p style={{ fontSize: 13, margin: 0, color: '#d1d5db' }}>{regionPost ? 'The PDF and your highlights will remain.' : 'Your highlight will remain.'}</p>
       </Modal>
     </div>
   )
