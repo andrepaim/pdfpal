@@ -12,7 +12,7 @@ import { rememberDestination, shareCardApi, watchShareCard, type ShareCardChange
 import { cardSheetSpace, canvasPng, renderCard, palette } from '../lib/share-card'
 import { PAGE_UNAVAILABLE, pageCrop, type PageCrop, type PageUnavailable } from '../lib/share-card/page-crop'
 import CropEditor from './CropEditor'
-import { ChoiceRow, Modal, PostMenu, Switch, alert, button, field, heading, muted, primary } from './SharePostParts'
+import { ChoiceRow, Modal, PostMenu, Switch, alert, button, faded, field, heading, muted, primary } from './SharePostParts'
 
 export const IMAGE_COPIED = 'Image copied. Paste it into your post.'
 export const CAPTION_COPIED = 'Caption copied.'
@@ -351,7 +351,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
           <h2 style={{ fontSize: 14, margin: 0, color: '#e5e7eb', overflowWrap: 'anywhere' }}>{card?.headline || 'Post'}</h2>
           <div style={{ ...muted, overflowWrap: 'anywhere' }}>{[record.source.title, `p. ${record.source.page}`].filter(Boolean).join(' · ')}</div>
         </div>
-        {record.can_undo && !active && <button onClick={undo} disabled={busy} aria-label="Undo last change" title="Undo last change" style={{ ...button, padding: '4px 10px' }}>↶ Undo</button>}
+        {record.can_undo && !active && <button onClick={undo} disabled={busy} aria-label="Undo last change" title="Undo last change" style={faded({ ...button, padding: '4px 10px' }, busy)}>↶ Undo</button>}
         <PostMenu items={[
           { label: 'Ask for a change…', onSelect: () => open('change'), disabled: busy || active },
           !!card && { label: 'Edit quote', onSelect: () => open('quote'), disabled: active },
@@ -374,13 +374,13 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
           <style>{'@keyframes share-progress { 0% { margin-left: -40% } 100% { margin-left: 100% } }'}</style>
           <span style={{ fontSize: 13, color: '#e5e7eb' }}>{working}</span>
           <span style={muted}>You can keep reading. Your post will stay here.</span>
-          <div><button onClick={() => void act(() => shareCardApi.cancel(projectId, record.id))} disabled={busy} style={button}>Cancel</button></div>
+          <div><button onClick={() => void act(() => shareCardApi.cancel(projectId, record.id))} disabled={busy} style={faded(button, busy)}>Cancel</button></div>
         </div>
       )}
       {(record.status === 'failed' || record.status === 'cancelled') && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
           <p role="alert" style={alert}>{record.error || 'Creation paused. Your previous version is safe.'}</p>
-          <button onClick={() => void act(() => shareCardApi.retry(projectId, record.id), { regenerates: true })} disabled={busy} style={button}>Try again</button>
+          <button onClick={() => void act(() => shareCardApi.retry(projectId, record.id), { regenerates: true })} disabled={busy} style={faded(button, busy)}>Try again</button>
         </div>
       )}
       {failure && <p role="alert" style={alert}>{failure}</p>}
@@ -416,9 +416,9 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
           </div>
           {(canAdjust || (hasHeadline && !active)) && (
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+              {hasHeadline && !active && <button type="button" onClick={() => open('headline')} style={button}>Edit headline</button>}
               {canAdjust && <button type="button" onClick={() => setEditingCrop(true)} style={button}>Adjust crop</button>}
               {canAdjust && <span style={muted}>{card.crop ? 'Your crop' : 'Automatic crop'}</span>}
-              {hasHeadline && !active && <button type="button" onClick={() => open('headline')} style={button}>Edit headline</button>}
             </div>
           )}
           <details open={cardsOpen} onToggle={event => setCardsOpen(event.currentTarget.open)} style={{ fontSize: 12, color: '#d1d5db' }}>
@@ -441,7 +441,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
             <span style={{ ...muted, flexShrink: 0 }} aria-hidden="true">{take.length}/{TAKE_MAX}</span>
           </div>
           <div>
-            <button type="button" onClick={() => rewrite({ take: collapse(take) })} disabled={busy || active || !takeChanged} style={{ ...button, opacity: busy || active || !takeChanged ? 0.5 : 1 }}>
+            <button type="button" onClick={() => rewrite({ take: collapse(take) })} disabled={busy || active || !takeChanged} style={faded(button, busy || active || !takeChanged)}>
               {!collapse(take) && caption.take ? 'Rewrite without a take' : 'Rewrite around my take'}
             </button>
           </div>
@@ -451,7 +451,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <h3 style={{ ...heading, flex: 1 }}>Caption</h3>
             {edited && <span style={muted}>Edited by you</span>}
-            <button type="button" onClick={() => open('caption')} disabled={active} style={{ ...button, padding: '3px 10px' }} aria-label="Edit caption">Edit</button>
+            <button type="button" onClick={() => open('caption')} disabled={active} style={faded({ ...button, padding: '3px 10px' }, active)} aria-label="Edit caption">Edit</button>
           </div>
           {angles.length > 1 && (
             <ChoiceRow label="Draft angle" compact disabled={active || busy} value={edited ? null : angle} rechoose onChoose={pickAngle}

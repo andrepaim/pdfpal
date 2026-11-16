@@ -7,6 +7,8 @@ export const primary: CSSProperties = { ...button, background: 'var(--accent)', 
 export const muted: CSSProperties = { fontSize: 11, color: '#9ca3af' }
 export const field: CSSProperties = { width: '100%', boxSizing: 'border-box', background: 'var(--bg)', color: '#e5e7eb', border: '1px solid var(--border)', borderRadius: 8, padding: 10, fontSize: 13, fontFamily: 'inherit' }
 export const heading: CSSProperties = { fontSize: 12, margin: 0, color: '#e5e7eb', fontWeight: 600 }
+/** A button's style, faded while it is disabled. */
+export const faded = (style: CSSProperties, disabled: boolean | undefined): CSSProperties => disabled ? { ...style, opacity: 0.5, cursor: 'default' } : style
 export const alert: CSSProperties = { color: '#f87171', fontSize: 12, margin: 0 }
 
 export function Modal({ open, title, onClose, children, actions }: { open: boolean; title: string; onClose: () => void; children?: ReactNode; actions: ReactNode }) {
@@ -100,7 +102,7 @@ export function ChoiceRow<T extends string>({ label, options, value, onChoose, d
             tabIndex={option.value === focusable ? 0 : -1}
             onClick={() => { if (!selected || rechoose) onChoose(option.value) }}
             style={{ ...button, borderRadius: 16, padding: compact ? '4px 10px' : '5px 12px', background: selected ? '#1e1b4b' : 'none', borderColor: selected ? 'var(--accent)' : 'var(--border)',
-              color: selected ? '#c7d2fe' : '#d1d5db', opacity: off ? 0.45 : 1, cursor: off ? 'default' : 'pointer', maxWidth: '100%' }}>
+              color: selected ? '#c7d2fe' : '#d1d5db', opacity: off ? (selected ? 0.75 : 0.45) : 1, cursor: off ? 'default' : 'pointer', maxWidth: '100%' }}>
             {option.label}
           </button>
         )

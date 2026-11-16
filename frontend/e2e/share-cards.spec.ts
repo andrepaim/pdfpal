@@ -606,5 +606,62 @@ test.describe('a post whose PDF was removed', () => {
     // Only the finding was written, so there are no angles to pick.
     await expect(page.getByRole('radiogroup', { name: 'Draft angle' })).toHaveCount(0);
     await noSideScroll(page);
+    fs.mkdirSync(SHOTS, { recursive: true });
+    for (const width of [360, 480]) {
+      await page.setViewportSize({ width: Math.round(width / 0.45), height: 2000 });
+      await page.locator('[data-share-post]').screenshot({ path: path.join(SHOTS, `${width}-removed-pdf.png`) });
+    }
+  });
+});
+
+// ── For review: the panel in a narrow and a wider side column ────────────────────────────────────────────────────────
+test.describe('the post panel, for review', () => {
+  test.beforeEach(async ({ page }) => { await mockAuth(page); });
+
+  test('each destination at 360 and 480 px: new, with a take, rewriting, text cards and the crop editor', async ({ page }) => {
+    test.setTimeout(180_000);
+    fs.mkdirSync(SHOTS, { recursive: true });
+    const state = fake();
+    // The reader's right column is 45% of the window, less the 5 px divider.
+    await page.setViewportSize({ width: 806, height: 2400 });
+    const { url } = await paper(page, state);
+    for (const width of [360, 480]) {
+      await page.setViewportSize({ width: Math.round((width + 5) / 0.45), height: 2400 });
+      for (const destination of ['linkedin', 'x', 'instagram'] as const) {
+        const name = (what: string) => path.join(SHOTS, `${width}-${destination}-${what}.png`);
+        const panel = page.locator('[data-share-post]');
+        state.previous = null; state.hold = false;
+        await openPost(page, state, url, { ...written(destination, ''), destination });
+        await expect(card(page)).toHaveAttribute('data-share-card', `${DESTINATION_DEFAULTS[destination].style}/ink`, { timeout: 20_000 });
+        const columnWidth = (await panel.boundingBox())!.width;
+        expect(Math.abs(columnWidth - width)).toBeLessThanOrEqual(4);
+        await noSideScroll(page);
+        await panel.screenshot({ path: name('new') });
+
+        await openPost(page, state, url, { ...written(destination, TAKE), destination, take: TAKE, can_undo: true });
+        await expect(caption(page)).toContainText(TAKE);
+        await page.getByText('Text cards').click();
+        await expect(page.getByRole('radio', { name: 'Takeaways' })).toBeVisible();
+        await noSideScroll(page);
+        await panel.screenshot({ path: name('take-and-text-cards') });
+
+        state.hold = true;
+        await page.getByRole('radio', { name: DESTINATION_NAMES[destination === 'x' ? 'linkedin' : 'x'] }).click();
+        await expect(page.getByText(/Rewriting for/)).toBeVisible();
+        await noSideScroll(page);
+        await panel.screenshot({ path: name('rewriting') });
+        await page.getByRole('button', { name: 'Cancel' }).click();
+        await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+
+        if (destination === 'linkedin') {
+          await page.setViewportSize({ width: Math.round((width + 5) / 0.45), height: 900 });
+          await page.getByRole('button', { name: 'Adjust crop' }).click();
+          await expect(page.getByRole('dialog', { name: 'Adjust crop' })).toHaveAttribute('data-state', 'ready');
+          await page.screenshot({ path: name('crop-editor') });
+          await page.getByRole('dialog', { name: 'Adjust crop' }).getByRole('button', { name: 'Cancel' }).click();
+          await page.setViewportSize({ width: Math.round((width + 5) / 0.45), height: 2400 });
+        }
+      }
+    }
   });
 });
