@@ -81,6 +81,13 @@ const SNAP_X = 0.03
 const SNAP_Y = 0.45
 /** Lines whose centres are further apart than this many times the usual distance start a new block. */
 const BLOCK_GAP = 1.3
+/**
+ * How many lines taller than the plain crop a snapped minimum crop may be: a straddling line and a margin at each
+ * end, and a heading's next line. Taller means the text layer misled the snapping, and the plain crop is used.
+ */
+const SLACK_LINES = 4
+/** Text reaching into a crop's lines by more than this share of its height is taken in whole; less is a neighbour. */
+const STRADDLE = 0.25
 /** How far around the highlight, in lines, text beside it marks the edge of its column. */
 const NEAR_LINES = 3
 
@@ -127,9 +134,11 @@ export function textLines(runs: PageRect[], page: { width: number; height: numbe
  * The automatic crop snapped to the text: the lines of the highlight's column, `extraLines` of context above and
  * below at least (stepping down to 1 and 0 when that is too tall), then more whole lines, balanced, while the sheet
  * stays within `sheet.fill`. A side whose text runs out, meets text across the column's edge or a wide gap gives
- * its lines to the other side. Undefined when the highlight is on none of the text (no usable text layer).
+ * its lines to the other side. Undefined, so the plain rule decides, when the highlight is on none of the text (no
+ * usable text layer), when the text would make the minimum crop taller than the highlight's lines and context, or
+ * when no snapped crop fits.
  */
-function snappedCrop(rects: PageRect[], page: { width: number; height: number }, sheet: SheetRoom, extraLines: 0 | 1 | 3, runs: PageRect[]): PageRect | null | undefined {
+function snappedCrop(rects: PageRect[], page: { width: number; height: number }, sheet: SheetRoom, extraLines: 0 | 1 | 3, runs: PageRect[]): PageRect | undefined {
   const EPS = 1e-9
   const pieces = textLines(runs, page)
   const hit = pieces.filter(p => rects.some(r => r.x2 > p.x1 && r.x1 < p.x2 && verticalOverlap(r, p) >= 0.5 * Math.min(heightOf(r), heightOf(p))))
@@ -160,17 +169,20 @@ function snappedCrop(rects: PageRect[], page: { width: number; height: number },
     const margin = Math.min(SNAP_X, left === null ? SNAP_X : (minX - left) / 2, right === null ? SNAP_X : (right - maxX) / 2)
     const x1 = Math.max(0, minX - margin), x2 = Math.min(1, maxX + margin)
     const across = pieces.filter(p => p.x2 > x1 && p.x1 < x2)
-    // Text half inside the lines' span (the other column's line on an offset baseline) is taken in whole.
+    // Text largely inside the lines' span (the other column's line on an offset baseline) is taken in whole. A line
+    // whose box only reaches into the span (tight leading) is not: it is the next line, not part of these.
     let top = chosen[0]!.y1, bottom = chosen.at(-1)!.y2
+    const inside = (p: PageRect) => Math.min(p.y2, bottom) - Math.max(p.y1, top) > STRADDLE * heightOf(p)
     for (let moved = true; moved;) {
       moved = false
       for (const p of across) {
-        if (p.y1 < top - EPS && p.y2 > top + EPS) { top = p.y1; moved = true }
-        if (p.y1 < bottom - EPS && p.y2 > bottom + EPS) { bottom = p.y2; moved = true }
+        if (p.y1 < top - EPS && inside(p)) { top = p.y1; moved = true }
+        if (p.y2 > bottom + EPS && inside(p)) { bottom = p.y2; moved = true }
       }
     }
-    // The edges sit between lines: never past the middle of the gap to the next text above or below.
-    const above = across.filter(p => p.y2 <= top + EPS).map(p => p.y2), below = across.filter(p => p.y1 >= bottom - EPS).map(p => p.y1)
+    // The edges sit between lines: never past the middle of the gap to the next text above or below. When the boxes
+    // overlap (tight leading), in the middle of the overlap, where neither line's ink reaches.
+    const above = across.filter(p => p.y1 < top - EPS && !inside(p)).map(p => p.y2), below = across.filter(p => p.y2 > bottom + EPS && !inside(p)).map(p => p.y1)
     return {
       x1, x2,
       y1: Math.max(0, top - SNAP_Y * line, above.length ? (Math.max(...above) + top) / 2 : 0),
@@ -194,6 +206,10 @@ function snappedCrop(rects: PageRect[], page: { width: number; height: number },
   const fill = Math.min(sheet.fill ?? 0, sheet.height)
   for (const extra of EXTRA_LINES.filter(lines => lines <= extraLines)) {
     let index = Math.min(2 * extra, states.length - 1), crop = box(states[index]!)
+    // The text layer must not make the minimum crop taller than the highlight's lines and their context: when it
+    // does (lines it misreads as one), the plain crop is used instead.
+    const plain = cropBox(rects, extra)
+    if (crop.y2 - crop.y1 > plain.y2 - plain.y1 + SLACK_LINES * line + EPS) return undefined
     if (sheetHeight(crop) > sheet.height + EPS) continue
     while (index + 1 < states.length) {
       const larger = box(states[index + 1]!)
@@ -202,7 +218,8 @@ function snappedCrop(rects: PageRect[], page: { width: number; height: number },
     }
     return crop
   }
-  return null
+  // Nothing snapped fits (a narrow column draws taller than the plain crop): the plain rule decides.
+  return undefined
 }
 
 /**
