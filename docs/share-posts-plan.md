@@ -451,10 +451,10 @@ Settled in T16:
 
 **Tasks**
 
-- [ ] **T16 Server** (`share-posts/server`): the fields, the prompt, the checks (numbers, and a value near its label), the edit, reading older cards, tests.
-- [ ] **T17 Renderer** (`share-posts/renderer`): the stat tiles, the big number, the comparison table, the question and takeaway treatments, sample frames.
+- [x] **T16 Server** (`share-posts/server`): the fields, the prompt, the checks (numbers, and a value near its label), the edit, reading older cards, tests.
+- [x] **T17 Renderer** (`share-posts/renderer`): the stat tiles, the big number, the comparison table, the question and takeaway treatments, sample frames.
 - [x] **T18 Panel** (on `feat/share-posts`, after T16 and T17): editing values, labels and rows; fakes; browser tests; README.
-- [ ] **G6 Gate** as G1.
+- [x] **G6 Gate** as G1.
 
 ## Acceptance criteria
 
@@ -614,3 +614,29 @@ Found on the way:
 - The screenshot test for the paper post assumed page 1 was in view; at some window sizes it is page 2, and the test failed in about half its runs. It no longer checks the page number.
 
 Still unchecked: the paper prompt against real answers (whether the drafts run question, method, results, and whether the headline is a hook and not the title); the wider text on papers other than those two (two-column layouts, unnumbered headings, results sections named after the experiment); the six exported slides posted to Instagram or uploaded to LinkedIn as a document.
+
+### G6: numbers as numbers (16 November 2026)
+
+Revision `af1b34522f53fbd13098572530cb4c0d2f2336fd` on `feat/share-posts`, not pushed.
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | passes |
+| `npm test` | 443 tests: 442 pass, 0 fail, 1 skipped (Firebase rules, no emulator). Lines 89.17%, branches 86.61%; `src/core/share-cards.ts` and `src/server/share-cards.ts` 100% lines |
+| `npm run build` | passes; no zod in `frontend/dist/assets` |
+| Frontend Playwright | 197 passed |
+| `npm --prefix desktop test` | 75 passed |
+| `node scripts/check-secrets.mjs` | passed for 528 files |
+
+Tasks done: T16 to T18. Slides take their layout from their numbers: stat tiles on the method and study slides, a very large key number, a comparison table with bars from a common zero, the key number on a hook or cover, a mark on a question, the takeaway at the foot. A post without numbers keeps text slides, drawn lighter than before. Every value, label and row can be edited.
+
+Differences from the plan:
+
+1. A cover whose headline and key number both change is saved as two edits, so two Undo steps: the route takes one kind of edit per request.
+2. The alt text for tiles, the big number and the table is built in the panel; the renderer's `slideText` gives words only.
+3. Bars are drawn only when every row is one non-negative number in one unit.
+4. When a headline already contains the key number, the cover highlights it inside the headline and does not repeat it above.
+
+Known limits: in a dense table a value can pass the value-near-its-label check with a neighbouring row's label, because the window covers several rows; a number's sign is still not checked.
+
+Still unchecked: no real answer has been through any of stage 4, 5 or 6 (the takeaway, the paper's question, method and results, the key number, stats and rows, and how often the new checks cost a repair); a screen reader on the new alt text and the edit dialog.
