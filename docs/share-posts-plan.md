@@ -257,12 +257,45 @@ Each task: write the failing test first, then the code; keep `npm run typecheck`
 
 ### Stage 3: several highlights, one post
 
-**T7 Carousel, server**: a post made from two to eight highlights of one source: one request returns a hook, the study in one sentence, one line per highlight, a takeaway and, when the text states them, limitations.
-**T8 Carousel, renderer and export**: one 4:5 slide per part with the credit strip on each; the set saved as PNG files and as one PDF for a LinkedIn document.
-**T9 Carousel, panel**: choose highlights in the Highlights tab, reorder slides, export.
-**G3 Gate** as G1.
+Designed after G2. A reader picks two to eight highlights from one PDF and gets a carousel: the format whole-paper posts use on Instagram and, as a document, on LinkedIn.
 
-Stage 3 is designed in detail after G2, because its slide types reuse what stages 1 and 2 settle.
+**Behaviour**
+
+- The slides, in order: a cover (topic and a headline that works as the hook); the study in one sentence, when the text states what was studied; one slide per highlight (a short claim above that highlight's page crop, drawn like the Headline style, with every highlight inside the crop); the takeaway; the limitations, when the text states any. Every slide carries the credit strip and its number ("3 / 7").
+- Slides are 1080 x 1350 for every destination. The destination still sets the text's length and options.
+- The text is the same three drafts, written about the set as a whole.
+- The reader can edit every slide's words, adjust the crop of each highlight slide, and choose the look. The highlights' order is chosen when the post is made.
+- Export: copy or save the slide in view; save all slides as one ZIP of PNG files; save all slides as one PDF (a LinkedIn document). Both files are built in the browser with no new dependency.
+- The post keeps its own copy of each highlight's words and boxes, so it outlives them.
+
+**Contract**
+
+```ts
+export const SET = { minItems: 2, maxItems: 8, studyMax: 160, pointMax: 70, takeawayMax: 140, limitationsMax: 160 } as const
+export type SetItem = { annotation_id: string | null; passage: string; page: number; rects: PageRect[]; color: HighlightColor }
+// ShareCardSource: kind gains 'set'; `items: SetItem[]` ([] for every other kind). For a set: passage is the items'
+// passages joined by blank lines, page is the first item's page, rects is [], region is null, and context is the
+// text of the items' pages within CARD.contextMax.
+export type SetContent = { study: string; points: string[]; takeaway: string; limitations: string; crops: Array<PageRect | null> }
+// CardContent: `set: SetContent | null` (null for every other kind). For a set the card has headline and topic,
+// no quote and no takeaways, points.length === crops.length === items.length, and its style is always 'headline'.
+export type SlideSpec =
+  | { kind: 'cover'; kicker: string; headline: string }
+  | { kind: 'study' | 'takeaway' | 'limitations'; kicker: string; text: string }
+  | { kind: 'point'; kicker: string; headline: string; item: number }
+export function setSlides(card: CardContent, source: ShareCardSource): SlideSpec[]   // pure; kickers are the topic, 'The study', 'The takeaway', 'Limits'
+```
+
+Server: `POST` base also accepts `{ request_id, source_id, annotation_ids: string[], kind: 'set', destination?, take?, agent?, model? }` (2 to 8 highlights of that source, in the reader's order, each passing the highlight rules). The answer is `{ topic, headline, study, points: string[], takeaway, limitations, drafts, hashtags }`; `points` has one claim per highlight in order; `study` and `limitations` may be `''`. The numbers check, the take rule and the single repair apply to all of it. `PATCH /:id` gains `{ set_text: { field: 'study' | 'takeaway' | 'limitations' | 'point', index?, text } }` (keeps an Undo step; the cover uses the existing `{ headline }`) and `{ crop, slide }` for one highlight slide's crop. Text-card styles, `quote` edits and `{ style }` other than the looks are refused for a set. Summaries read "N highlights" until there is a headline.
+
+Renderer (`frontend/src/lib/share-card/slides.ts`): `renderSlide(slide, context, options)` draws one slide from a `SlideSpec`-shaped value with the layout engine's existing parts: the cover and the text slides as a headline card without a pull quote, a highlight slide as the Headline style. `context` carries the credit strip's fields, the look, the slide's number and count, and, for a highlight slide, its `PageCrop`. Export helpers, pure and tested in Node: `pdfFromJpegs(pages)` (one page per slide) and `zipStore(files)`.
+
+**Tasks**
+
+- [ ] **T7 Carousel, server** (`share-posts/server`): the contract above, the prompt variant for a set, parsing and checks, start, the two new edits, `setSlides`, tests.
+- [ ] **T8 Carousel, renderer and export** (`share-posts/renderer`): `slides.ts`, the slide number in the credit strip, a kicker that is not the topic, the PDF and ZIP writers, sample frames for every slide kind.
+- [ ] **T9 Carousel, panel** (on `feat/share-posts`, after T7 and T8): choosing and ordering highlights, the slide viewer, per-slide edits and crops, export, browser tests, README.
+- [ ] **G3 Gate** as G1.
 
 ## Acceptance criteria
 
@@ -296,4 +329,38 @@ Stage 1:
 
 ## Result
 
-To be filled at each gate: revision, checks and results, differences from this plan, what is still unchecked.
+### G1 and G2: stages 1 and 2 (16 November 2026)
+
+Revision `3429cba6f7bd8340028bc8d90de7ce4cb510750a` on `feat/share-posts`, not pushed. Built by parallel agents on task branches (`share-posts/server`, `share-posts/renderer`, `share-posts/crop-editor`, `share-posts/region-ui`) and merged by the lead.
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | passes |
+| `npm test` | 363 tests: 362 pass, 0 fail, 1 skipped (Firebase rules, no emulator). Lines 88.18%, branches 85.16%; `src/core/share-cards.ts` 99.45% lines, `src/server/share-cards.ts` 100% |
+| `npm run build` | passes |
+| Frontend Playwright | 147 passed |
+| `npm --prefix desktop test` | 75 passed |
+| `node scripts/check-secrets.mjs` | passed for 516 files |
+
+Tasks done: T1 to T6, plus a follow-up to T2 (automatic crops snap to whole lines and the highlight's text column, and grow to fill the card's room).
+
+Differences from the plan as first written:
+
+1. The automatic crop reads the page's text layer. It never cuts a line, keeps to the highlight's column on a two-column page, and treats the destination's lines of context as a minimum, growing until the card is full. A page without a text layer keeps the first build's rule.
+2. "Share a region" and "Share the first page" open the crop editor on the page instead of a drag mode in the reader, so both work with the keyboard. The first-page box is worked out from the text: from the first line to the line before the Introduction heading.
+3. An angle that replaces hand-edited text keeps an Undo step.
+4. Checks added to the assistant's answer beyond the plan: first person without a take, stock endings and closing questions, quotations of six or more words that are not in the source, and `contrast` or `caveat` that repeat the finding.
+5. On X a draft may be 255 characters when the source has a link, so the copied text with its link stays within 280.
+6. The source line under the text keeps the first build's form (title, credit, page).
+7. A region post whose PDF is gone is drawn as a Big idea card from its headline.
+8. A real bug found by a flaky test: on a touch screen a tap on Apply straight after a quick drag was swallowed by the browser. The crop editor now cancels touch moves during its own drags; the test reproduces the case every run.
+9. `frontend/playwright.config.ts` takes its port from `PDFPAL_E2E_PORT`, so two checkouts can run browser tests at once.
+10. `CARD.caption*`, `hookMax` and `defaultStyle` from the first build are gone; `DRAFT` and `DESTINATION_DEFAULTS` replace them.
+
+Still unchecked:
+
+- No live assistant request has been made on this branch. The prompts for highlights, regions and first pages, and the first-person, stock-ending and quotation checks, are unread against real answers.
+- Copy image in the Windows and Linux apps; pasting into LinkedIn, Instagram and X.
+- Real PDFs: two-column papers, scanned pages and rotated text have unit tests and made-up pages only; the browser tests use small one-column fixtures.
+- A real touch screen and a screen reader.
+- The Windows preview library holds the first build's table; opening it with this build drops those posts.
