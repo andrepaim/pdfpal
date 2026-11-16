@@ -396,7 +396,7 @@ Settled in T13:
 
 - [ ] **T13 Server** (`share-posts/server`): the wider text, the prompt variant, the fields and their checks, the edit, `postSlides`, tests.
 - [ ] **T14 Renderer** (`share-posts/renderer`): the `lead`, `question`, `method` and `result` slides, sample frames.
-- [ ] **T15 Panel** (on `feat/share-posts`, after T13 and T14): "Share the paper" with one click, the viewer and edits for the new slides, labels, browser tests, README.
+- [x] **T15 Panel** (on `feat/share-posts`, after T13 and T14): "Share the paper" with one click, the viewer and edits for the new slides, labels, browser tests, README.
 - [ ] **G5 Gate** as G1.
 
 ## Acceptance criteria
