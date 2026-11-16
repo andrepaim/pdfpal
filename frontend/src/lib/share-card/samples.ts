@@ -231,6 +231,9 @@ export type PostCarouselSample = {
   source: PageFrame['source']
 }
 
+/** The other highlights on the made-up page, drawn as marks around the post's own. */
+export const OTHERS_ON_PAGE: FrameMark[] = OTHERS
+
 /** Cover, the page with the highlight, and the takeaway; the page slide's fallback is a quote at its longest. */
 export const POST_CAROUSEL: PostCarouselSample = {
   name: 'post-carousel', mark: OWN, source: pageSource,
