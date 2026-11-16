@@ -6,7 +6,7 @@ import {
   validateCard, postSlides, PAPER, type PaperContent, STYLES, STYLE_NAMES, REGION_STYLES, type Caption, type CardContent, type SetContent, type SetItem, type ShareCardSource,
 } from '../../src/shared/share-card.js'
 import { captionSchema, cardContentSchema, previousVersionSchema, shareCardSourceSchema } from '../../src/shared/share-card-schema.js'
-import { paperText } from '../../src/core/share-cards.js'
+import { paperParts, paperText } from '../../src/core/share-cards.js'
 
 const passage = 'Attention lets every position look at every other one. However, the cost grows with the square of the sequence length.'
 const source: ShareCardSource = {
@@ -604,4 +604,63 @@ test('paperText keeps a short paper whole, cuts a very long first page, and igno
   assert.equal(picked.indexOf('\n\n2 Methods'), picked.indexOf('\n\n2 Methods Nurses'))
   assert.ok(!picked.includes('\n\nMethods') && !picked.includes('\n\nResults') && !picked.includes('\n\nAs in Section'))
   assert.equal(paperText([]), '')
+})
+
+test('paperParts keeps a limitations-and-discussion section, finds a method named after itself, and drops what follows the references', () => {
+  const pages = pagesOf(
+    `FooNet. Abstract We propose FooNet. 1 Introduction ${filler('intro', 8000)}`,
+    `${filler('intro', 5000)} 2 Background Earlier work used recurrence. ${filler('background', 6000)}`,
+    `${filler('background', 3000)} 3 FooNet Training We train FooNet on two tasks. ${filler('method', 6000)} Summary Our results consistently show gains. ${filler('method', 3000)}`,
+    `${filler('method', 3000)} 4 Results FooNet beats the baseline. ${filler('result', 9000)}`,
+    `${filler('result', 4000)} 5 Related Work Many models exist. ${filler('related', 8000)}`,
+    `${filler('related', 3000)} 6 Limitations and Discussion An additional limitation is that we did not test larger models. ${filler('limit', 3000)} 7 Broader Impacts Our method could be misused. ${filler('impact', 2000)} Acknowledgements We thank our colleagues. ${filler('thanks', 500)} References [1] A. Author. ${filler('reference', 3000)}`,
+    `${filler('reference', 6000)} A Appendix Extra results follow. ${filler('appendix', 6000)}`,
+    filler('appendix', 9000),
+  )
+  const parts = paperParts(pages)
+  assert.deepEqual(parts.map(part => [part.part, part.page, part.text.slice(0, 30)]), [
+    ['start', 1, 'FooNet. Abstract We propose Fo'],
+    ['method', 3, '3 FooNet Training We train Foo'],
+    ['results', 4, '4 Results FooNet beats the bas'],
+    ['limitations', 6, '6 Limitations and Discussion A'],
+  ])
+  const text = paperText(pages)
+  assert.equal(text, parts.map(part => part.text).join('\n\n'))
+  assert.ok(text.length <= 24_000)
+  assert.match(text, /An additional limitation is that we did not test larger models\./)
+  // Broader impacts, acknowledgements, the references and the appendices are left out; a paragraph called "Summary"
+  // in the method section is not the conclusion; "2 Background" is not the method.
+  for (const word of ['impact', 'thanks', 'reference', 'appendix', 'Broader', 'Acknowledgements']) assert.ok(!text.includes(word), word)
+  assert.ok(!text.includes('\n\nSummary') && !text.includes('\n\n2 Background'))
+})
+
+test('paperParts keeps limitations and a conclusion that follows them, and cuts appendices when there are no references', () => {
+  const pages = pagesOf(
+    `Title. Abstract A study. ${filler('intro', 9000)}`,
+    `${filler('intro', 3000)} 2 Methods We ran a trial. ${filler('method', 9000)}`,
+    `${filler('method', 3000)} 3 Results The trial worked. ${filler('result', 9000)}`,
+    `${filler('result', 3000)} 4 Limitations The sample was small. ${filler('limit', 2000)} 5 Conclusion Trials help. ${filler('conclusion', 2000)}`,
+    `Appendix A Proofs The proof follows. ${filler('appendix', 9000)}`,
+  )
+  assert.deepEqual(paperParts(pages).map(part => [part.part, part.page]), [['start', 1], ['method', 2], ['results', 3], ['limitations', 4], ['conclusion', 4]])
+  const text = paperText(pages)
+  assert.match(text, /4 Limitations The sample was small\./); assert.match(text, /5 Conclusion Trials help\./); assert.ok(!text.includes('appendix'))
+  // A method fallback only counts before the results: a numbered section after them is not the method.
+  const late = pagesOf(`Title. ${filler('intro', 9000)}`, `${filler('intro', 9000)} 2 Results It worked. ${filler('result', 9000)}`,
+    `${filler('result', 3000)} 3 Training Details We trained it. ${filler('detail', 9000)}`)
+  assert.deepEqual(paperParts(late).map(part => part.part), ['start', 'results', 'last page'])
+  // A short paper is one part.
+  assert.deepEqual(paperParts(pagesOf('Title. A short paper. 2 Method Few words.')).map(part => [part.part, part.page]), [['start', 1]])
+  assert.deepEqual(paperParts([]), [])
+})
+
+test('paperParts reads a heading that opens a page, and never joins a page number to the next page\'s first words', () => {
+  // A page ending on its page number, then the references opening the next page.
+  const short = pagesOf('Title. A short paper. 1 Introduction Few words.', 'More words here. 2', 'References [1] A. Author.', 'Appendix text.')
+  assert.equal(paperText(short), 'Title. A short paper. 1 Introduction Few words.\n\nMore words here. 2')
+  // "… text. 2" closing a page and "Figure 1: …" opening the next are not a section "2 Figure".
+  const pages = pagesOf(`Title. Abstract ${filler('intro', 9000)}`, `${filler('intro', 6000)}. 2`, `Figure 1: A diagram. ${filler('figure', 6000)} 3 Model Design We build it. ${filler('method', 9000)}`,
+    `${filler('method', 3000)} 4 Results It works. ${filler('result', 9000)}`)
+  assert.deepEqual(paperParts(pages).map(part => [part.part, part.page, part.text.slice(0, 14)]),
+    [['start', 1, 'Title. Abstrac'], ['method', 3, '3 Model Design'], ['results', 4, '4 Results It w']])
 })
