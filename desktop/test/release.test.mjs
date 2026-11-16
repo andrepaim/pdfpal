@@ -245,6 +245,23 @@ test('combined preparation binds all six files and both clean native source revi
     await assert.rejects(prepareCombinedRelease(f.directory, f.options), /Linux checksums/)
   } finally { await f.cleanup() }
 })
+test('beta.7 combined release notes describe share posts, and beta.6 keeps its own changes', { skip: !hasDpkg }, async () => {
+  const f = await combinedFixture('2.8.0-beta.7'), earlier = await combinedFixture('2.8.0-beta.6')
+  try {
+    await prepareCombinedRelease(f.directory)
+    await prepareCombinedRelease(earlier.directory)
+    const notes = await fs.readFile(path.join(f.directory, 'release-notes.md'), 'utf8')
+    assert.match(notes, /Changes since 2\.8\.0-beta\.6/)
+    assert.match(notes, /Share what you read as a post/)
+    assert.match(notes, /never synced/)
+    assert.match(notes, /Unsigned engineering preview/)
+    assert.doesNotMatch(notes, /Changes since Windows 2\.8\.0-beta\.4/)
+    const before = await fs.readFile(path.join(earlier.directory, 'release-notes.md'), 'utf8')
+    assert.match(before, /Changes since Windows 2\.8\.0-beta\.4/)
+    assert.doesNotMatch(before, /Share what you read as a post/)
+  } finally { await f.cleanup(); await earlier.cleanup() }
+})
+
 test('combined preparation verifies Debian identity from actual package bytes', { skip: !hasDpkg }, async () => {
   const f = await combinedFixture()
   try {
