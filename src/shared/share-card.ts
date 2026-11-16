@@ -363,9 +363,16 @@ export const highlightColor = (color: string | null | undefined): HighlightColor
 export const creditLine = (source: Pick<ShareCardSource, 'credit' | 'page'>) =>
   [collapse(source.credit), `p. ${source.page}`].filter(Boolean).join(' · ')
 
-/** The typed source line under a post's text: title, credit and page. */
-export const sourceLine = (source: Pick<ShareCardSource, 'title' | 'credit' | 'page'>) =>
-  '📄 ' + [collapse(source.title), collapse(source.credit), `p. ${source.page}`].filter(Boolean).join(' · ')
+/** The typed source line under a post's text: title, credit and page (for a carousel, the pages its highlights span). */
+export const sourceLine = (source: Pick<ShareCardSource, 'title' | 'credit' | 'page'> & Partial<Pick<ShareCardSource, 'kind' | 'items'>>) =>
+  '📄 ' + [collapse(source.title), collapse(source.credit), pagesOf(source)].filter(Boolean).join(' · ')
+
+/** "p. N" for a post; for a carousel the pages its highlights span: "p. 3" on one page, "pp. 1–3" across several. */
+function pagesOf(source: Pick<ShareCardSource, 'page'> & Partial<Pick<ShareCardSource, 'kind' | 'items'>>): string {
+  if (source.kind !== 'set' || !source.items?.length) return `p. ${source.page}`
+  const pages = source.items.map(item => item.page), first = Math.min(...pages), last = Math.max(...pages)
+  return first === last ? `p. ${first}` : `pp. ${first}–${last}`
+}
 
 /**
  * The post's text exactly as it is copied: the edited text, or the chosen draft (the finding when that angle is

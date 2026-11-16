@@ -124,6 +124,21 @@ test('captionText composes the chosen draft, source line, link and hashtags for 
   assert.equal(creditLine({ credit: '', page: 9 }), 'p. 9')
 })
 
+test('a carousel\'s source line names the pages its highlights span, in the copied text and the first comment', () => {
+  const item = (page: number) => ({ annotation_id: null, passage: 'A passage long enough to be a highlight.', page, rects: [], color: 'yellow' as const })
+  const set = { ...linked, kind: 'set' as const, page: 3, items: [item(3), item(1), item(3)] }
+  const spanning = '📄 Attention Is All You Need · Vaswani et al., 2017 · pp. 1–3'
+  assert.equal(sourceLine(set), spanning)
+  assert.equal(captionText(set, caption), `Hook line.\n\nBody text.\n\n${spanning}\nhttps://arxiv.org/abs/1706.03762`)
+  assert.equal(firstCommentText(set), `${spanning}\nhttps://arxiv.org/abs/1706.03762`)
+  // Highlights on one page name it once.
+  const onePage = { ...set, items: [item(3), item(3)] }
+  assert.equal(sourceLine(onePage), '📄 Attention Is All You Need · Vaswani et al., 2017 · p. 3')
+  assert.equal(captionText(onePage, { ...caption, destination: 'instagram' }), 'Hook line.\n\nBody text.\n\n📄 Attention Is All You Need · Vaswani et al., 2017 · p. 3\nhttps://arxiv.org/abs/1706.03762')
+  // Every other post keeps its own page, whatever it carries in items.
+  assert.equal(sourceLine({ ...linked, items: [item(1), item(9)] }), SOURCE_LINE)
+})
+
 test('captionText gives X the draft and the link only, and Instagram the source line, link and hashtags', () => {
   const x: Caption = { ...caption, destination: 'x', showTags: true, link: 'comment' }
   assert.equal(captionText(linked, x), 'Hook line.\n\nBody text.\n\nhttps://arxiv.org/abs/1706.03762')
