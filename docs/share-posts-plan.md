@@ -349,7 +349,7 @@ Settled in T10:
 
 - [ ] **T10 Server** (`share-posts/server`): the contract, the prompt and checks for `takeaway`, the edit, `postSlides`, the rule for a set's limitations, tests.
 - [ ] **T11 Renderer** (`share-posts/renderer`): the `page` slide, its fallback, sample frames.
-- [ ] **T12 Panel** (on `feat/share-posts`, after T10 and T11): the slide viewer for the Carousel style, the style choice, the takeaway edit, export, browser tests, README.
+- [x] **T12 Panel** (on `feat/share-posts`, after T10 and T11): the slide viewer for the Carousel style, the style choice, the takeaway edit, export, browser tests, README.
 - [ ] **G4 Gate** as G1.
 
 ## Acceptance criteria
