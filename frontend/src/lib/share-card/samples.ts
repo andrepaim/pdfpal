@@ -7,7 +7,7 @@ export type Sample = { name: string; card: CardContent; source: ShareCardSource 
 const base = { quoteEdited: false, style: 'quote', look: 'ink', crop: null } as const
 const takeaways = (...items: Array<[string, string]>) => items.map(([title, detail]) => ({ title, detail }))
 const source = (card: CardContent, extra: Partial<ShareCardSource>): ShareCardSource => ({
-  version: 1, passage: `${card.quote} ${card.pull}`.trim(), page: 4, rects: [{ x1: 0.12, y1: 0.3, x2: 0.88, y2: 0.33 }], color: 'yellow',
+  version: 1, kind: 'highlight', region: null, passage: `${card.quote} ${card.pull}`.trim(), page: 4, rects: [{ x1: 0.12, y1: 0.3, x2: 0.88, y2: 0.33 }], color: 'yellow',
   context: '', title: 'Learning from feedback', credit: 'Ericsson and Pool, 2016', url: '', ...extra,
 })
 
@@ -136,7 +136,7 @@ const OTHERS: FrameMark[] = [
 ]
 const pageCard = (headline: string, topic = 'Learning science'): CardContent => ({ ...english, quote: `${OWN.phrase}.`, emphasis: '', headline, topic, pull: '' })
 const pageSource: PageFrame['source'] = {
-  version: 1, passage: `${OWN.phrase}.`, page: 1, context: SAMPLE_PAGE.sections.map(section => section.text).join(' '),
+  version: 1, kind: 'highlight', region: null, passage: `${OWN.phrase}.`, page: 1, context: SAMPLE_PAGE.sections.map(section => section.text).join(' '),
   title: 'Specific feedback speeds up skill learning', credit: 'Moreau, Lindqvist and Ribeiro, 2025', url: '',
 }
 /** The title, authors and abstract, as people crop them for LinkedIn and Instagram. */

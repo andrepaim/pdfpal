@@ -20,6 +20,10 @@ export const HIGHLIGHT_COLORS = ['yellow', 'green', 'blue', 'pink'] as const
 export const DESTINATIONS = ['linkedin', 'x', 'instagram'] as const
 /** The three drafts one request may return. */
 export const ANGLES = ['finding', 'contrast', 'caveat'] as const
+/** What a post started from: a highlight, a box the reader drew on a page, or the first page of the paper. */
+export const SOURCE_KINDS = ['highlight', 'region', 'paper'] as const
+/** The smallest region, as a fraction of the page in each direction. */
+export const REGION_MIN = 0.05
 /** Where the link goes in a LinkedIn post: in the post, or held back as a ready first-comment line. */
 export const LINKS = ['post', 'comment'] as const
 
@@ -30,6 +34,7 @@ export type CardSize = keyof typeof SIZES | 'fit'
 export type Destination = (typeof DESTINATIONS)[number]
 export type Angle = (typeof ANGLES)[number]
 export type LinkPlacement = (typeof LINKS)[number]
+export type SourceKind = (typeof SOURCE_KINDS)[number]
 export type HighlightColor = (typeof HIGHLIGHT_COLORS)[number]
 export type ShareCardStatus = 'pending' | 'running' | 'complete' | 'failed' | 'cancelled'
 
@@ -42,13 +47,21 @@ export type PageMark = { rects: PageRect[]; color: HighlightColor }
 /** Fixed when the post is created. Only `credit` may change later. */
 export type ShareCardSource = {
   version: 1
-  /** The highlight after cleanPassage(); CARD.passageMin..passageMax characters. */
+  /** Unknown in sources stored before region posts, which are highlights. */
+  kind: SourceKind
+  /**
+   * For a highlight, the highlight after cleanPassage(), CARD.passageMin..passageMax characters. For a region or the
+   * first page, the text the reader's browser read inside the region, cleaned the same way: at most CARD.passageMax
+   * characters, possibly short or empty (a figure may hold only axis labels).
+   */
   passage: string
   page: number
-  /** Per-line boxes; the single bounding box for highlights made before per-line boxes existed. */
+  /** Per-line boxes; the single bounding box for highlights made before per-line boxes existed. Empty for a region. */
   rects: PageRect[]
-  /** Unknown stored colours become 'yellow'. */
+  /** Unknown stored colours become 'yellow'; always 'yellow' for a region. */
   color: HighlightColor
+  /** The box a region or first-page post started from, as page fractions; null for a highlight. */
+  region: PageRect | null
   /** Text of the page and its two neighbours, at most CARD.contextMax characters. */
   context: string
   title: string
@@ -118,7 +131,8 @@ export type ShareCardRecord = {
 export type ShareCardSummary = {
   id: string; status: ShareCardStatus; annotation_id: string | null; source_id: string | null
   page: number
-  /** The headline, else the start of the passage. */
+  kind: SourceKind
+  /** See summaryTitle(). */
   title: string
   updated_at: string
 }
@@ -208,7 +222,8 @@ function limit(name: string, value: string, max: number, min = 1) {
  * Throws unless the card can be drawn and every quoted word comes from the source. Messages name the field
  * and the limit, because they are handed back to the model as the repair reason.
  */
-export function validateCard(card: CardContent, source: Pick<ShareCardSource, 'passage' | 'context'>): void {
+export function validateCard(card: CardContent, source: Pick<ShareCardSource, 'passage' | 'context'> & { kind?: SourceKind }): void {
+  if (source.kind && source.kind !== 'highlight') return validateRegionCard(card)
   limit('quote', card.quote, CARD.quoteMax)
   if (!card.quoteEdited && !quoteMatches(card.quote, source.passage)) throw new Error('quote must be copied exactly from highlight.')
   limit('emphasis', card.emphasis, CARD.emphasisMax, 0)
@@ -225,6 +240,39 @@ export function validateCard(card: CardContent, source: Pick<ShareCardSource, 'p
   })
   if (!(STYLES as readonly string[]).includes(card.style)) throw new Error(`Unknown card style: ${card.style}.`)
   if (!(LOOKS as readonly string[]).includes(card.look)) throw new Error(`Unknown card look: ${card.look}.`)
+}
+
+/** Why a region or first-page post cannot take a text-card style. */
+export const REGION_STYLE_REFUSED = 'A post made from a region has no quote or takeaways, so it uses the Page or Headline style.'
+/** The styles a region or first-page post can take. */
+export const REGION_STYLES = ['page', 'headline'] as const
+
+/** A region or first-page card: a headline and a topic, nothing quoted, drawn as Page or Headline. */
+function validateRegionCard(card: CardContent): void {
+  for (const name of ['quote', 'emphasis', 'pull', 'takeawaysTitle'] as const) if (card[name]) throw new Error(`${name} must be empty for a post made from a region.`)
+  if (!Array.isArray(card.takeaways) || card.takeaways.length) throw new Error('takeaways must be empty for a post made from a region.')
+  limit('headline', card.headline, CARD.headlineMax)
+  limit('topic', card.topic, CARD.topicMax, 0)
+  if (!(STYLES as readonly string[]).includes(card.style)) throw new Error(`Unknown card style: ${card.style}.`)
+  if (!(REGION_STYLES as readonly string[]).includes(card.style)) throw new Error(REGION_STYLE_REFUSED)
+  if (!(LOOKS as readonly string[]).includes(card.look)) throw new Error(`Unknown card look: ${card.look}.`)
+}
+
+/** Why a region cannot start a post, or null when it can: ordered, inside the page, at least REGION_MIN each way. */
+export function regionProblem(region: PageRect): string | null {
+  const { x1, y1, x2, y2 } = region
+  const inside = [x1, y1, x2, y2].every(value => Number.isFinite(value) && value >= 0 && value <= 1)
+  // A small tolerance, so that a region of exactly 5% computed in floating point is not refused.
+  return inside && x2 - x1 >= REGION_MIN - 1e-9 && y2 - y1 >= REGION_MIN - 1e-9 ? null
+    : 'A region needs x1 < x2 and y1 < y2 inside the page, and at least 5% of the page in each direction.'
+}
+
+/** A post's name in lists: the headline, else the start of the highlight, "Region on p. N" or "First page". */
+export function summaryTitle(source: Pick<ShareCardSource, 'kind' | 'passage' | 'page'>, headline: string): string {
+  if (headline) return headline
+  if (source.kind === 'region') return `Region on p. ${source.page}`
+  if (source.kind === 'paper') return source.page === 1 ? 'First page' : `Paper on p. ${source.page}`
+  return source.passage.length > 80 ? `${source.passage.slice(0, 80).replace(/\s+\S*$/u, '')}…` : source.passage
 }
 
 export const defaultLook = (): ShareLook => 'ink'
@@ -263,7 +311,12 @@ export function firstCommentText(source: ShareCardSource): string {
 }
 
 /** What a screen reader hears for the card: the words drawn in `style`. */
-export function cardDescription(card: CardContent, style: ShareStyle): string {
+export function cardDescription(card: CardContent, style: ShareStyle, source?: Pick<ShareCardSource, 'kind' | 'page'>): string {
+  // A region or first-page post has no quote: the Page card names what it shows, the Headline card reads its headline.
+  if (!card.quote && (style === 'page' || style === 'headline')) {
+    if (style === 'headline') return `Headline card: ${card.headline.replace(/\.+$/u, '')}.`
+    return source?.kind === 'paper' ? 'Page card: the first page of the paper' : `Page card: a region of ${source ? `page ${source.page}` : 'the page'}`
+  }
   switch (style) {
     case 'quote': return `Quote card: “${card.quote}”`
     case 'page': return `Page card: “${card.quote}”`
