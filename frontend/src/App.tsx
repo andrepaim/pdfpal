@@ -552,6 +552,7 @@ export default function App({ user }: { user: User }) {
           {rightPanel === 'post' && projectId && sourceId && (
             <SharePostPanel projectId={projectId} sourceId={sourceId} postId={postId} notice={postNotice}
               currentPage={source?.type === 'pdf' ? viewedPage ?? 1 : undefined} marksOn={marksOn}
+              highlights={source?.type === 'pdf' ? annotations.map(annotation => ({ id: annotation.id, page: annotation.page_number, color: annotation.color, text: annotation.text, y: annotation.y1 })) : undefined}
               onOpen={id => openPost(id, id ? posts.find(post => post.id === id)?.page : undefined)} onChanged={loadPosts} />
           )}
         </div>

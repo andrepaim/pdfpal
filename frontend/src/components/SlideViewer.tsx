@@ -1,0 +1,225 @@
+// A carousel in the Post tab: its slides (setSlides) drawn one at a time with renderSlide, a viewer that steps
+// through them, and the dialog that edits one slide's words. Slides are drawn lazily, the one in view first and then
+// its neighbours, and kept per slide, look and crop, so stepping through is instant and nothing is drawn twice. A slow
+// drawing never replaces a newer one. See "Stage 3" in docs/share-posts-plan.md.
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { CARD, SET, collapse, setSlides, type PageRect, type ShareCardRecord, type ShareLook, type SlideSpec } from '../../../src/shared/share-card'
+import { canvasPng } from '../lib/share-card'
+import { PAGE_UNAVAILABLE, pageCrop, type PageCrop, type PageUnavailable } from '../lib/share-card/page-crop'
+import { itemSource, renderSlide, slideSheetSpace, slideText, type SlideContext } from '../lib/share-card/slides'
+import { Modal, button, faded, field, muted, primary } from './SharePostParts'
+
+/** What each kind of slide is called in the viewer and the edit dialog. */
+export const SLIDE_NAMES: Record<SlideSpec['kind'], string> = { cover: 'Cover', study: 'The study', point: 'Highlight', takeaway: 'The takeaway', limitations: 'Limits' }
+
+/** A slide's name: "Cover", "Highlight 2", "The study"… */
+export const slideName = (slide: SlideSpec) => slide.kind === 'point' ? `Highlight ${slide.item + 1}` : SLIDE_NAMES[slide.kind]
+
+/** What a screen reader hears for a slide: its place, its kind and its words. */
+export const slideAlt = (slide: SlideSpec, index: number, count: number) => `Slide ${index + 1} of ${count}, ${slideName(slide).toLowerCase()}: ${slideText(slide)}`
+
+/** The longest text a slide holds, and whether emptying it removes the slide. */
+export const SLIDE_FIELDS: Record<SlideSpec['kind'], { label: string; max: number; removable: boolean }> = {
+  cover: { label: 'Headline', max: CARD.headlineMax, removable: false },
+  study: { label: 'The study', max: SET.studyMax, removable: true },
+  point: { label: 'Claim', max: SET.pointMax, removable: false },
+  takeaway: { label: 'The takeaway', max: SET.takeawayMax, removable: false },
+  limitations: { label: 'Limits', max: SET.limitationsMax, removable: true },
+}
+
+export type DrawnSlide = { key: string; url: string; alt: string; style: string; look: ShareLook; index: number; crop?: PageCrop }
+type CropResult = { crop?: PageCrop; reason?: PageUnavailable }
+
+const reasonOf = (error: unknown): PageUnavailable => ((error as Error).message in PAGE_UNAVAILABLE ? (error as Error).message : 'no-file') as PageUnavailable
+const cropText = (box: PageRect) => [box.x1, box.y1, box.x2, box.y2].map(value => value.toFixed(4)).join(',')
+
+/**
+ * A carousel's slides and their pictures. `record` is null, or not a set, for every other post: then there are no
+ * slides and nothing is drawn.
+ */
+export function useSlides(record: ShareCardRecord | null, look: ShareLook, fileUrl: string | null) {
+  const card = record?.source.kind === 'set' && record.card?.set ? record.card : null
+  const source = record?.source ?? null
+  const slides = useMemo(() => card && source ? setSlides(card, source) : [], [card, source])
+  const [index, setIndex] = useState(0)
+  const [shown, setShown] = useState<DrawnSlide | null>(null)
+  const [drawError, setDrawError] = useState('')
+  const [reasons, setReasons] = useState<Record<string, PageUnavailable>>({})
+  const crops = useRef(new Map<string, Promise<CropResult>>())
+  const pictures = useRef(new Map<string, DrawnSlide>())
+  const wanted = useRef('')
+  const count = slides.length
+  const current = Math.min(index, Math.max(0, count - 1))
+
+  // A removed slide can leave the index past the end: show the last one.
+  useEffect(() => { if (count && index >= count) setIndex(count - 1) }, [count, index])
+  // Revoke the pictures when the post closes.
+  useEffect(() => () => { for (const item of pictures.current.values()) URL.revokeObjectURL(item.url); pictures.current.clear() }, [])
+
+  const context = useCallback((at: number): SlideContext => ({
+    source: { title: source!.title, credit: source!.credit, page: source!.page, color: source!.color },
+    items: source!.items, number: at + 1, count,
+  }), [source, count])
+
+  /** What a point slide's crop depends on: its words and place (the room under them), the look, the crop and the marks. */
+  const cropKey = useCallback((at: number) => {
+    const slide = slides[at]
+    if (!slide || slide.kind !== 'point' || !card || !source || !record) return ''
+    return JSON.stringify([slide, at, count, look, source.title, source.credit, source.items[slide.item], card.set!.crops[slide.item] ?? null, record.set_marks[slide.item] ?? [], fileUrl])
+  }, [slides, card, source, record, count, look, fileUrl])
+
+  const pictureKey = useCallback((at: number) => {
+    const slide = slides[at]
+    if (!slide || !source) return ''
+    return JSON.stringify([slide, at, count, look, source.title, source.credit, source.color, cropKey(at)])
+  }, [slides, source, count, look, cropKey])
+
+  const cropFor = useCallback((at: number): Promise<CropResult> => {
+    const slide = slides[at], key = cropKey(at)
+    if (!slide || slide.kind !== 'point' || !key || !card || !source || !record) return Promise.resolve({})
+    let result = crops.current.get(key)
+    if (!result) {
+      const item = source.items[slide.item]!
+      result = slideSheetSpace(slide, context(at), { look })
+        .then(sheet => pageCrop(fileUrl, itemSource(source, item), { sheet, crop: card.set!.crops[slide.item] ?? null, marks: record.set_marks[slide.item] ?? [], extraLines: 3 }))
+        .then(crop => ({ crop }), error => {
+          const reason = reasonOf(error)
+          setReasons(previous => previous[key] === reason ? previous : { ...previous, [key]: reason })
+          return { reason }
+        })
+      crops.current.set(key, result)
+      // Each crop holds a rendered page: keep the latest few.
+      while (crops.current.size > 24) crops.current.delete(crops.current.keys().next().value!)
+    }
+    return result
+  }, [slides, cropKey, card, source, record, context, look, fileUrl])
+
+  /** Draws one slide on a new canvas, with its crop when it has one. */
+  const draw = useCallback(async (at: number) => {
+    const slide = slides[at]
+    if (!slide) throw new Error('This carousel has no such slide.')
+    const { crop } = await cropFor(at)
+    const canvas = await renderSlide(slide, context(at), { look, crop })
+    return { canvas, style: canvas.dataset.style ?? 'idea', crop }
+  }, [slides, cropFor, context, look])
+
+  /** The slide's picture, drawn once per key and kept. */
+  const picture = useCallback(async (at: number): Promise<DrawnSlide> => {
+    const key = pictureKey(at)
+    const cached = pictures.current.get(key)
+    if (cached) return cached
+    const { canvas, style, crop } = await draw(at)
+    const blob = await canvasPng(canvas)
+    canvas.width = 0
+    const item: DrawnSlide = { key, url: URL.createObjectURL(blob), alt: slideAlt(slides[at]!, at, count), style, look, index: at, crop: style === 'headline' ? crop : undefined }
+    pictures.current.set(key, item)
+    while (pictures.current.size > 32) {
+      const oldest = pictures.current.keys().next().value!
+      if (oldest === key) break
+      URL.revokeObjectURL(pictures.current.get(oldest)!.url); pictures.current.delete(oldest)
+    }
+    return item
+  }, [pictureKey, draw, slides, count, look])
+
+  // The slide in view first; then its neighbours, so that stepping is instant.
+  const key = count ? pictureKey(current) : ''
+  useEffect(() => {
+    if (!key) return
+    wanted.current = key
+    let live = true
+    const cached = pictures.current.get(key)
+    if (cached) setShown(cached)
+    void (async () => {
+      try {
+        const item = cached ?? await picture(current)
+        if (!live || wanted.current !== key) return
+        setShown(item); setDrawError('')
+        for (const next of [current + 1, current - 1]) {
+          if (!live || next < 0 || next >= count) continue
+          await picture(next).catch(() => {})
+        }
+      } catch (error) { if (live && wanted.current === key) setDrawError((error as Error).message) }
+    })()
+    return () => { live = false }
+  }, [key, current, count, picture])
+
+  /** Every slide, in order, drawn fresh for export; `progress` hears each one finished. */
+  const drawAll = useCallback(async (progress: (done: number, total: number) => void) => {
+    const canvases: HTMLCanvasElement[] = []
+    for (let at = 0; at < count; at++) { canvases.push((await draw(at)).canvas); progress(at + 1, count) }
+    return canvases
+  }, [count, draw])
+
+  const slide = slides[current] ?? null
+  const reason = slide?.kind === 'point' ? reasons[cropKey(current)] ?? null : null
+  return {
+    slides, index: current, setIndex, slide, shown,
+    drawError, draw, drawAll, reason, cropOf: cropFor,
+  }
+}
+
+type ViewerProps = {
+  slides: SlideSpec[]
+  index: number
+  onIndex: (index: number) => void
+  shown: DrawnSlide | null
+}
+
+/** The slide in view with Previous and Next; the arrow keys, Home and End step through when the viewer has focus. */
+export function SlideViewer({ slides, index, onIndex, shown }: ViewerProps) {
+  const count = slides.length, slide = slides[index]
+  const go = (next: number) => onIndex(Math.max(0, Math.min(count - 1, next)))
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[event.key]
+    if (step) { event.preventDefault(); go(index + step) }
+    else if (event.key === 'Home') { event.preventDefault(); go(0) }
+    else if (event.key === 'End') { event.preventDefault(); go(count - 1) }
+  }
+  const position = `${index + 1} of ${count}`
+  return (
+    <div role="group" aria-roledescription="carousel" aria-label="Slides" data-slide-viewer tabIndex={0} onKeyDown={onKeyDown}
+      style={{ display: 'flex', flexDirection: 'column', gap: 8, outlineOffset: 3, borderRadius: 8 }}>
+      <div style={{ width: '100%', maxWidth: 440, alignSelf: 'center', aspectRatio: '1080 / 1350', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', background: '#111114' }}>
+        {shown && <img src={shown.url} alt={shown.alt} data-slide={shown.index + 1} data-slide-count={count} data-slide-kind={slides[shown.index]?.kind}
+          data-share-card={`${shown.style}/${shown.look}`} data-share-marks={shown.crop ? shown.crop.marks.length : undefined}
+          data-share-crop={shown.crop ? cropText(shown.crop.box) : undefined} style={{ width: '100%', height: '100%', display: 'block' }} />}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <button type="button" onClick={() => go(index - 1)} aria-disabled={index === 0} aria-label="Previous slide" style={faded({ ...button, padding: '4px 12px' }, index === 0)}>‹ Previous</button>
+        <span aria-live="polite" data-slide-position style={{ fontSize: 12, color: '#d1d5db', textAlign: 'center', minWidth: 0 }}>
+          <span style={{ fontWeight: 600 }}>{position}</span>
+          {slide && <span style={muted}> · {slideName(slide)}</span>}
+        </span>
+        <button type="button" onClick={() => go(index + 1)} aria-disabled={index === count - 1} aria-label="Next slide" style={faded({ ...button, padding: '4px 12px' }, index === count - 1)}>Next ›</button>
+      </div>
+    </div>
+  )
+}
+
+/** Edits the words of the slide in view: the cover's headline, or one slide's text within SET's limits. */
+export function SlideEditDialog({ open, slide, index, count, onSave, onCancel }: {
+  open: boolean; slide: SlideSpec | null; index: number; count: number; onSave: (text: string) => void; onCancel: () => void
+}) {
+  const [text, setText] = useState('')
+  useEffect(() => { if (open && slide) setText(slideText(slide)) }, [open, slide])
+  const spec = slide ? SLIDE_FIELDS[slide.kind] : null
+  const words = collapse(text)
+  const empty = !words, canSave = !!spec && (!empty || spec.removable) && words.length <= spec.max
+  return (
+    <Modal open={open && !!slide} title={slide ? `Edit slide ${index + 1} of ${count}: ${slideName(slide)}` : 'Edit slide'} onClose={onCancel} actions={<>
+      <button type="button" onClick={onCancel} style={button}>Cancel</button>
+      <button type="button" onClick={() => { if (canSave) onSave(words) }} disabled={!canSave} style={faded(primary, !canSave)}>
+        {empty && spec?.removable ? 'Remove slide' : 'Save'}
+      </button>
+    </>}>
+      {slide && spec && <>
+        <p id="slide-edit-hint" style={{ ...muted, margin: '0 0 8px' }}>
+          Up to {spec.max} characters.{spec.removable ? ' Leave it empty to remove this slide; Undo brings it back.' : ''}
+        </p>
+        <textarea value={text} onChange={event => setText(event.target.value.slice(0, spec.max))} maxLength={spec.max} rows={spec.max > 100 ? 4 : 2} autoFocus
+          aria-label={spec.label} aria-describedby="slide-edit-hint" style={field} />
+        <div style={{ ...muted, textAlign: 'right' }}>{text.length}/{spec.max}</div>
+      </>}
+    </Modal>
+  )
+}

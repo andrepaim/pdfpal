@@ -14,12 +14,17 @@ import { cardSheetSpace, canvasPng, renderCard, palette } from '../lib/share-car
 import { PAGE_UNAVAILABLE, pageCrop, type PageCrop, type PageUnavailable } from '../lib/share-card/page-crop'
 import CropEditor from './CropEditor'
 import RegionPicker, { type RegionKind } from './RegionPicker'
+import HighlightChooser, { eligibleHighlights, type ChooserHighlight } from './HighlightChooser'
+import { SlideEditDialog, SlideViewer, slideName, useSlides } from './SlideViewer'
+import { carouselFileName, slideFileName, slidesPdf, slidesZip } from '../lib/share-card/export'
 import { ChoiceRow, Modal, PostMenu, Switch, alert, button, faded, field, heading, muted, primary } from './SharePostParts'
 
 export const IMAGE_COPIED = 'Image copied. Paste it into your post.'
 export const CAPTION_COPIED = 'Caption copied.'
 export const FIRST_COMMENT_COPIED = 'First comment copied. Paste it under your post.'
 export const COPY_UNAVAILABLE = "Copying isn't available here. Use Save image."
+export const SLIDE_COPIED = 'Slide copied. Paste it into your post.'
+export const PDF_HINT = 'LinkedIn takes the PDF as a document post: one page per slide.'
 /** What X allows in one post, and what it counts any link as. */
 export const X_LIMIT = 280
 const X_LINK = 23
@@ -36,6 +41,8 @@ type Props = {
   currentPage?: number
   /** The reader's highlights on a page, shown while choosing a region. */
   marksOn?: (page: number) => PageMark[]
+  /** The open PDF's highlights. With two or more that can make a post, the list offers "Share several highlights". */
+  highlights?: ChooserHighlight[]
   onOpen: (id: string | null) => void
   /** Called when a post is created, finishes, changes its headline or is deleted, so lists and marks refresh. */
   onChanged?: () => void
@@ -55,7 +62,9 @@ const PICTURED: ReadonlySet<ShareStyle> = new Set(['page', 'headline'])
 /** True for a post made from a region or the first page; a stored source without a kind is a highlight's. */
 const fromRegion = (kind: string | undefined) => kind === 'region' || kind === 'paper'
 /** What a post without a highlight started from, in the post lists. */
-export const KIND_LABELS: Record<'region' | 'paper', string> = { region: 'Region', paper: 'First page' }
+export const KIND_LABELS: Record<'region' | 'paper' | 'set', string> = { region: 'Region', paper: 'First page', set: 'Carousel' }
+/** The label a post list shows for what a post started from, or '' for a highlight. */
+export const kindLabel = (kind: string | undefined) => kind === 'region' || kind === 'paper' || kind === 'set' ? KIND_LABELS[kind] : ''
 /** What Page and Headline are drawn as without the PDF page. */
 const FALLBACK: Partial<Record<ShareStyle, ShareStyle>> = { page: 'quote', headline: 'idea' }
 
@@ -88,14 +97,16 @@ const sameBox = (a: PageRect | null, b: PageRect | null) => !!a && !!b && cropTe
 const cropText = (box: PageRect) => [box.x1, box.y1, box.x2, box.y2].map(value => value.toFixed(4)).join(',')
 
 type ListProps = {
-  projectId: string; sourceId?: string; notice?: string | null; currentPage?: number; marksOn?: (page: number) => PageMark[]
+  projectId: string; sourceId?: string; notice?: string | null; currentPage?: number; marksOn?: (page: number) => PageMark[]; highlights?: ChooserHighlight[]
   onOpen: (id: string) => void; onChanged?: () => void
 }
 
-function PostList({ projectId, sourceId, notice, currentPage, marksOn, onOpen, onChanged }: ListProps) {
+function PostList({ projectId, sourceId, notice, currentPage, marksOn, highlights = [], onOpen, onChanged }: ListProps) {
   const [posts, setPosts] = useState<ShareCardSummary[] | null>(null)
   const [error, setError] = useState('')
   const [choosing, setChoosing] = useState<RegionKind | null>(null)
+  const [choosingSet, setChoosingSet] = useState(false)
+  const [chosen, setChosen] = useState<string[]>([])
   const [starting, setStarting] = useState(false)
   const [failure, setFailure] = useState('')
   useEffect(() => {
@@ -105,7 +116,19 @@ function PostList({ projectId, sourceId, notice, currentPage, marksOn, onOpen, o
   }, [projectId, sourceId])
   const fileUrl = sourceId ? `/api/projects/${encodeURIComponent(projectId)}/sources/${encodeURIComponent(sourceId)}/file` : null
   const canChoose = !!fileUrl && !!sourceId && !!currentPage
+  const eligible = useMemo(() => eligibleHighlights(highlights), [highlights])
+  const canSet = !!fileUrl && !!sourceId && eligible.length >= 2
   const choose = (kind: RegionKind) => { if (!choosing && !starting) { setFailure(''); setChoosing(kind) } }
+  const createSet = async (ids: string[]) => {
+    setChoosingSet(false); setStarting(true); setFailure('')
+    try {
+      const record = await shareCardApi.startSet(projectId, { sourceId: sourceId!, annotationIds: ids })
+      setChosen([])
+      onChanged?.()
+      onOpen(record.id)
+    } catch (e) { setFailure((e as Error).message) }
+    finally { setStarting(false) }
+  }
   const create = async (kind: RegionKind, choice: { page: number; region: PageRect; text: string }) => {
     setChoosing(null); setStarting(true); setFailure('')
     try {
@@ -118,13 +141,20 @@ function PostList({ projectId, sourceId, notice, currentPage, marksOn, onOpen, o
   return (
     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <h2 style={{ fontSize: 14, margin: 0, color: '#e5e7eb' }}>Posts</h2>
-      {canChoose && (
+      {(canChoose || canSet) && (
         <div role="group" aria-label="Start a post" aria-describedby="share-region-hint" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            <button type="button" onClick={() => choose('region')} aria-disabled={starting || !!choosing} style={faded({ ...button, flex: '1 1 140px' }, starting || !!choosing)}>Share a region</button>
-            <button type="button" onClick={() => choose('paper')} aria-disabled={starting || !!choosing} style={faded({ ...button, flex: '1 1 140px' }, starting || !!choosing)}>Share the first page</button>
+            {canChoose && <button type="button" onClick={() => choose('region')} aria-disabled={starting || !!choosing} style={faded({ ...button, flex: '1 1 140px' }, starting || !!choosing)}>Share a region</button>}
+            {canChoose && <button type="button" onClick={() => choose('paper')} aria-disabled={starting || !!choosing} style={faded({ ...button, flex: '1 1 140px' }, starting || !!choosing)}>Share the first page</button>}
+            {canSet && <button type="button" onClick={() => { if (!starting && !choosing) { setFailure(''); setChoosingSet(true) } }} aria-disabled={starting || !!choosing}
+              style={faded({ ...button, flex: '1 1 140px' }, starting || !!choosing)}>Share several highlights</button>}
           </div>
-          <span id="share-region-hint" style={muted}>A figure or passage on page {currentPage}, or the title and abstract.</span>
+          <span id="share-region-hint" style={muted}>{[
+            canChoose ? `A figure or passage on page ${currentPage}, or the title and abstract` : '',
+            canSet ? 'or a carousel of your highlights' : '',
+          ].filter(Boolean).join(', ').replace(/^or a/u, 'A')}.</span>
+          {canSet && <HighlightChooser open={choosingSet} highlights={eligible} chosen={chosen} onChange={setChosen}
+            onCancel={() => setChoosingSet(false)} onCreate={ids => void createSet(ids)} />}
           {starting && <span role="status" style={{ ...muted, display: 'flex', alignItems: 'center', gap: 8 }}><span className="spinner" aria-hidden="true" /> Starting your post…</span>}
           {choosing && fileUrl && (
             <RegionPicker fileUrl={fileUrl} page={currentPage!} kind={choosing} marks={marksOn?.(choosing === 'paper' ? 1 : currentPage!)}
@@ -143,9 +173,9 @@ function PostList({ projectId, sourceId, notice, currentPage, marksOn, onOpen, o
             <span style={{ fontSize: 13, color: '#e5e7eb', fontWeight: 600, overflowWrap: 'anywhere' }}>{post.title}</span>
             <span style={muted}>{[
               `p. ${post.page}`,
-              post.kind === 'region' || post.kind === 'paper' ? KIND_LABELS[post.kind] : '',
+              kindLabel(post.kind),
               post.status === 'complete' ? '' : post.status === 'failed' ? 'Couldn’t finish' : post.status === 'cancelled' ? 'Paused' : 'Writing…',
-              fromRegion(post.kind) || post.annotation_id ? '' : 'Highlight deleted',
+              kindLabel(post.kind) || post.annotation_id ? '' : 'Highlight deleted',
             ].filter(Boolean).join(' · ')}</span>
           </button>
         ))}
@@ -153,8 +183,8 @@ function PostList({ projectId, sourceId, notice, currentPage, marksOn, onOpen, o
   )
 }
 
-export default function SharePostPanel({ projectId, postId, sourceId, notice, currentPage, marksOn, onOpen, onChanged }: Props) {
-  if (!postId) return <PostList projectId={projectId} sourceId={sourceId} notice={notice} currentPage={currentPage} marksOn={marksOn} onOpen={onOpen} onChanged={onChanged} />
+export default function SharePostPanel({ projectId, postId, sourceId, notice, currentPage, marksOn, highlights, onOpen, onChanged }: Props) {
+  if (!postId) return <PostList projectId={projectId} sourceId={sourceId} notice={notice} currentPage={currentPage} marksOn={marksOn} highlights={highlights} onOpen={onOpen} onChanged={onChanged} />
   return <PostView key={postId} projectId={projectId} postId={postId} onOpen={onOpen} onChanged={onChanged} />
 }
 
@@ -224,6 +254,12 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
   const size: CardSize = style === 'page' ? defaults.size : 'feed'
   // A region or first-page post has only a headline and a topic: no quote, no takeaways, no text cards.
   const regionPost = fromRegion(record?.source.kind)
+  // A carousel: its slides replace the single card, with their own crops and words.
+  const isSet = record?.source.kind === 'set'
+  const carousel = useSlides(isSet ? record : null, look, fileUrl)
+  const [editingSlide, setEditingSlide] = useState(false)
+  const [slideCrop, setSlideCrop] = useState<{ item: number; page: number; value: PageRect } | null>(null)
+  const [exporting, setExporting] = useState<{ what: string; done: number; total: number } | null>(null)
 
   // The stored choice has arrived: the shown choice no longer needs to lead it.
   useEffect(() => { if (desired && card && desired.style === card.style && desired.look === card.look) setDesired(null) }, [card, desired])
@@ -239,7 +275,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
   // The page crop for Page and Headline: it depends on the style, look and size, the reader's crop and the marks.
   const cropKey = record && card ? JSON.stringify([version, style, look, size, card.crop, record.marks, defaults.extraLines, fileUrl]) : ''
   useEffect(() => {
-    if (!record || !card || !pictured || crop?.key === cropKey) return
+    if (!record || !card || !pictured || isSet || crop?.key === cropKey) return
     let live = true
     const content = { card, source: record.source }
     cardSheetSpace(content, { style, look, size })
@@ -247,7 +283,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
       .then(result => { if (live) setCrop({ key: cropKey, crop: result }) })
       .catch(error => { if (live) setCrop({ key: cropKey, reason: ((error as Error).message in PAGE_UNAVAILABLE ? (error as Error).message : 'no-file') as PageUnavailable }) })
     return () => { live = false }
-  }, [record, card, pictured, style, look, size, cropKey, crop?.key, fileUrl, defaults.extraLines])
+  }, [record, card, pictured, isSet, style, look, size, cropKey, crop?.key, fileUrl, defaults.extraLines])
 
   const cropReady = pictured && crop?.key === cropKey ? crop : null
   const unavailable: PageUnavailable | null = !record ? null : !fileUrl ? 'no-source' : cropReady?.reason ?? null
@@ -257,7 +293,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
 
   // Draws the preview, keeping the previous picture on screen while the next one renders.
   useEffect(() => {
-    if (!record || !card) return
+    if (!record || !card || isSet) return
     if (pictured && !cropReady) return
     const key = pictured ? cropKey : JSON.stringify([version, style, look, size])
     const cached = cache.current.get(key)
@@ -280,7 +316,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
       })
       .catch(error => { if (live) setDrawError((error as Error).message) })
     return () => { live = false }
-  }, [record, card, version, style, drawn, look, size, pictured, cropReady, cropKey])
+  }, [record, card, isSet, version, style, drawn, look, size, pictured, cropReady, cropKey])
 
   // A text card in use opens its disclosure.
   useEffect(() => { if ((TEXT_CARD_STYLES as readonly string[]).includes(drawn)) setCardsOpen(true) }, [drawn])
@@ -311,17 +347,52 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
     return { blob: await canvasPng(canvas), style: (canvas.dataset.style as ShareStyle | undefined) ?? drawn }
   }
 
+  /** The picture that Copy copies: the card at the destination's size, or the carousel's slide in view. */
+  const picture = async () => isSet ? canvasPng((await carousel.draw(carousel.index)).canvas) : (await image(size)).blob
   const copyImage = () => act(async () => {
     const desktop = window.pdfpalDesktop?.copyImage
     if (desktop) {
-      const { blob } = await image(size)
+      const blob = await picture()
       await desktop(new Uint8Array(await blob.arrayBuffer())).catch(() => { throw new Error(COPY_UNAVAILABLE) })
       return
     }
     if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) throw new Error(COPY_UNAVAILABLE)
     // A promise keeps the click's permission to write while the card renders.
-    await navigator.clipboard.write([new ClipboardItem({ 'image/png': image(size).then(result => result.blob) })]).catch(() => { throw new Error(COPY_UNAVAILABLE) })
-  }, { done: { text: IMAGE_COPIED } })
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': picture() })]).catch(() => { throw new Error(COPY_UNAVAILABLE) })
+  }, { done: { text: isSet ? SLIDE_COPIED : IMAGE_COPIED } })
+
+  const carouselTitle = record?.source.title || 'post'
+  const saveSlide = () => act(async () => {
+    const blob = await picture()
+    download(blob, slideFileName(carouselTitle, carousel.index + 1, carousel.slides.length))
+  }, { done: { text: 'Slide saved.' } })
+  /** Every slide, drawn afresh, as one ZIP of PNG files or one PDF. */
+  const saveAll = (kind: 'zip' | 'pdf') => act(async () => {
+    const what = kind === 'zip' ? 'ZIP' : 'PDF'
+    let canvases: HTMLCanvasElement[] = []
+    setExporting({ what, done: 0, total: carousel.slides.length })
+    try {
+      canvases = await carousel.drawAll((done, total) => setExporting({ what, done, total }))
+      const blob = kind === 'zip' ? await slidesZip(canvases, carouselTitle) : await slidesPdf(canvases)
+      download(blob, carouselFileName(carouselTitle, kind))
+    } catch (error) {
+      throw new Error(`The ${what} could not be made: ${(error as Error).message}`)
+    } finally {
+      for (const canvas of canvases) canvas.width = 0
+      setExporting(null)
+    }
+  }, { done: { text: kind === 'zip' ? 'All slides saved as a ZIP.' : 'Carousel saved as a PDF.' } })
+
+  /** Saves the words of the slide in view: the cover's headline, or one slide's text; an empty study or limits removes it. */
+  const saveSlideText = (text: string) => {
+    const slide = carousel.slide
+    setEditingSlide(false)
+    if (!record || !slide) return
+    const removed = !text && (slide.kind === 'study' || slide.kind === 'limitations')
+    const done = removed ? { text: `The ${slideName(slide).toLowerCase().replace(/^the /u, '')} slide was removed.`, undo: true } : { text: 'Slide saved.' }
+    if (slide.kind === 'cover') void act(() => shareCardApi.editHeadline(projectId, record.id, text), { done })
+    else void act(() => shareCardApi.editSetText(projectId, record.id, slide.kind === 'point' ? { field: 'point', index: slide.item, text } : { field: slide.kind, text }), { done })
+  }
 
   const saveImage = (exportSize: CardSize) => act(async () => {
     const { blob, style: saved } = await image(exportSize)
@@ -398,6 +469,68 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
   const canAdjust = PICTURED.has(drawn) && !!cropReady?.crop && !active
   const hasHeadline = drawn === 'headline' || drawn === 'idea'
   const ratio = shown ? `${shown.width} / ${shown.height}` : '1080 / 1350'
+  const looksRow = (
+      <div role="radiogroup" aria-label="Card look" style={{ display: 'flex', gap: 8 }}>
+        {LOOKS.map(option => {
+          const colors = swatches[option]!, selected = option === look
+          return (
+            <button key={option} type="button" role="radio" aria-checked={selected} aria-label={`${LOOK_NAMES[option]} look`} title={LOOK_NAMES[option]} disabled={active}
+              onClick={() => void choose({ style: isSet ? 'headline' : style, look: option })}
+              style={{ width: 32, height: 32, borderRadius: '50%', padding: 3, cursor: active ? 'default' : 'pointer', background: 'none', border: `${selected ? 2.5 : 1}px solid ${selected ? 'var(--accent)' : 'var(--border)'}`, opacity: active ? 0.45 : 1 }}>
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', borderRadius: '50%', background: colors.ground }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: colors.accent }} />
+              </span>
+            </button>
+          )
+        })}
+      </div>
+  )
+
+  // ── A carousel's image area and export ──
+  const slide = carousel.slide
+  const slideShown = carousel.shown && carousel.shown.index === carousel.index ? carousel.shown : null
+  const slideItem = slide?.kind === 'point' ? slide.item : null
+  const canAdjustSlide = slideItem !== null && !!fileUrl && !!slideShown?.crop && !active
+  const slideCropIsYours = slideItem !== null && !!card?.set?.crops[slideItem]
+  const carouselImage = isSet && card?.set ? (
+    <div style={section}>
+      {(active || record.status === 'failed' || record.status === 'cancelled') && <div style={{ ...muted, fontWeight: 600 }}>Your last completed version</div>}
+      <SlideViewer slides={carousel.slides} index={carousel.index} onIndex={carousel.setIndex} shown={carousel.shown} />
+      {carousel.drawError && <p role="alert" style={alert}>{carousel.drawError}</p>}
+      {!fileUrl && <div style={{ ...muted, textAlign: 'center' }}>{PAGE_UNAVAILABLE['no-source']} Highlight slides show their claim without the page.</div>}
+      {fileUrl && carousel.reason && <div style={{ ...muted, textAlign: 'center' }}>{PAGE_UNAVAILABLE[carousel.reason]} This slide shows its claim without the page.</div>}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+          {!active && slide && <button type="button" onClick={() => setEditingSlide(true)} style={button}>Edit slide</button>}
+          {canAdjustSlide && <button type="button" onClick={() => setSlideCrop({ item: slideItem!, page: record.source.items[slideItem!]!.page, value: card.set!.crops[slideItem!] ?? slideShown!.crop!.box })} style={button}>Adjust crop</button>}
+          {canAdjustSlide && <span style={muted}>{slideCropIsYours ? 'Your crop' : 'Automatic crop'}</span>}
+        </div>
+        {looksRow}
+      </div>
+      {restyleFailure && <p role="alert" style={alert}>{restyleFailure}</p>}
+    </div>
+  ) : null
+  const carouselExport = isSet ? (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button type="button" onClick={() => void copyImage()} disabled={busy} style={{ ...primary, flex: 1, minWidth: 120 }}>Copy slide</button>
+        <button type="button" onClick={() => void act(() => copyText(text), { done: { text: CAPTION_COPIED } })} disabled={busy || !text} style={{ ...primary, flex: 1, minWidth: 120 }}>Copy caption</button>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button type="button" onClick={() => void saveSlide()} disabled={busy} style={faded({ ...button, flex: 1, minWidth: 120 }, busy)}>Save slide</button>
+        <button type="button" onClick={() => void saveAll('zip')} disabled={busy} style={faded({ ...button, flex: 1, minWidth: 120 }, busy)}>Save all slides (ZIP)</button>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <button type="button" onClick={() => void saveAll('pdf')} disabled={busy} aria-describedby="share-pdf-hint" style={faded({ ...button, flex: '1 1 120px' }, busy)}>Save as PDF</button>
+        <span id="share-pdf-hint" style={{ ...muted, flex: '2 1 160px' }}>{PDF_HINT}</span>
+      </div>
+      {exporting && (
+        <span role="status" style={{ ...muted, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span className="spinner" aria-hidden="true" /> Drawing slides for the {exporting.what}… {exporting.done} of {exporting.total}
+        </span>
+      )}
+    </div>
+  ) : null
 
   return (
     <div data-share-post style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -405,12 +538,12 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
         <button onClick={() => onOpen(null)} style={{ ...button, padding: '4px 10px' }} aria-label="All posts">←</button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <h2 style={{ fontSize: 14, margin: 0, color: '#e5e7eb', overflowWrap: 'anywhere' }}>{card?.headline || 'Post'}</h2>
-          <div style={{ ...muted, overflowWrap: 'anywhere' }}>{[record.source.title, `p. ${record.source.page}`].filter(Boolean).join(' · ')}</div>
+          <div style={{ ...muted, overflowWrap: 'anywhere' }}>{[record.source.title, isSet ? `Carousel of ${record.source.items.length} highlights` : `p. ${record.source.page}`].filter(Boolean).join(' · ')}</div>
         </div>
         {record.can_undo && !active && <button onClick={undo} disabled={busy} aria-label="Undo last change" title="Undo last change" style={faded({ ...button, padding: '4px 10px' }, busy)}>↶ Undo</button>}
         <PostMenu items={[
           { label: 'Ask for a change…', onSelect: () => open('change'), disabled: busy || active },
-          !!card && !regionPost && { label: 'Edit quote', onSelect: () => open('quote'), disabled: active },
+          !!card && !regionPost && !isSet && { label: 'Edit quote', onSelect: () => open('quote'), disabled: active },
           { label: 'Edit credit', onSelect: () => open('credit') },
           { label: 'Delete post', onSelect: () => open('delete'), danger: true },
         ]} />
@@ -442,7 +575,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
       {failure && <p role="alert" style={alert}>{failure}</p>}
 
       {card && caption && <>
-        <div style={section}>
+        {isSet ? carouselImage : <div style={section}>
           {(active || record.status === 'failed' || record.status === 'cancelled') && <div style={{ ...muted, fontWeight: 600 }}>Your last completed version</div>}
           <div style={{ width: '100%', maxWidth: 440, alignSelf: 'center', aspectRatio: ratio, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)', background: '#111114' }}>
             {shown && <img src={shown.url} alt={shown.alt} data-share-card={`${shown.style}/${shown.look}`} data-share-size={`${shown.width}x${shown.height}`}
@@ -455,20 +588,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
             <ChoiceRow label="Card style" disabled={active} value={drawn} onChoose={option => void choose({ style: option, look })}
               options={(['page', 'headline'] as ShareStyle[]).map(styleChoice)} />
-            <div role="radiogroup" aria-label="Card look" style={{ display: 'flex', gap: 8 }}>
-              {LOOKS.map(option => {
-                const colors = swatches[option]!, selected = option === look
-                return (
-                  <button key={option} type="button" role="radio" aria-checked={selected} aria-label={`${LOOK_NAMES[option]} look`} title={LOOK_NAMES[option]} disabled={active}
-                    onClick={() => void choose({ style, look: option })}
-                    style={{ width: 32, height: 32, borderRadius: '50%', padding: 3, cursor: active ? 'default' : 'pointer', background: 'none', border: `${selected ? 2.5 : 1}px solid ${selected ? 'var(--accent)' : 'var(--border)'}`, opacity: active ? 0.45 : 1 }}>
-                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', borderRadius: '50%', background: colors.ground }}>
-                      <span style={{ width: 7, height: 7, borderRadius: '50%', background: colors.accent }} />
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
+            {looksRow}
           </div>
           {(canAdjust || (hasHeadline && !active)) && (
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
@@ -488,7 +608,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
             </details>
           )}
           {restyleFailure && <p role="alert" style={alert}>{restyleFailure}</p>}
-        </div>
+        </div>}
 
         <div style={section}>
           <label htmlFor="share-take" style={heading}>Your take</label>
@@ -551,7 +671,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {isSet ? carouselExport : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" onClick={() => void copyImage()} disabled={busy} style={{ ...primary, flex: 1, minWidth: 120 }}>Copy image</button>
             <button type="button" onClick={() => void act(() => copyText(text), { done: { text: CAPTION_COPIED } })} disabled={busy || !text} style={{ ...primary, flex: 1, minWidth: 120 }}>Copy caption</button>
@@ -560,7 +680,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
             <button type="button" onClick={() => void saveImage(size)} disabled={busy} style={{ ...button, flex: 1, minWidth: 120 }}>Save image</button>
             {destination === 'instagram' && <button type="button" onClick={() => void saveImage('story')} disabled={busy} style={{ ...button, flex: 1, minWidth: 120 }}>Save Story (9:16)</button>}
           </div>
-        </div>
+        </div>}
       </>}
       {!card && !active && record.status === 'complete' && <p style={muted}>This post has no card yet.</p>}
 
@@ -573,6 +693,18 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
         )}
       </div>
 
+      {slideCrop && fileUrl && (
+        <CropEditor fileUrl={fileUrl} page={slideCrop.page} value={slideCrop.value} marks={record.set_marks[slideCrop.item] ?? []}
+          title={`Adjust crop: highlight ${slideCrop.item + 1}`}
+          onCancel={() => setSlideCrop(null)}
+          onApply={next => {
+            const item = slideCrop.item
+            setSlideCrop(null)
+            void act(() => shareCardApi.cropSlide(projectId, record.id, item, next), { done: { text: next ? 'Crop saved.' : 'Back to the automatic crop.' } })
+          }} />
+      )}
+      {isSet && <SlideEditDialog open={editingSlide} slide={carousel.slide} index={carousel.index} count={carousel.slides.length}
+        onCancel={() => setEditingSlide(false)} onSave={saveSlideText} />}
       {editingCrop && fileUrl && card && cropReady?.crop && (
         <CropEditor fileUrl={fileUrl} page={record.source.page} value={card.crop ?? cropReady.crop.box} marks={record.marks}
           resetLabel={regionPost ? 'Back to the original region' : undefined}
@@ -624,7 +756,7 @@ function PostView({ projectId, postId, onOpen, onChanged }: { projectId: string;
         <button onClick={close} style={button}>Cancel</button>
         <button onClick={submit} style={{ ...primary, background: '#b91c1c', borderColor: '#b91c1c' }}>Delete</button>
       </>}>
-        <p style={{ fontSize: 13, margin: 0, color: '#d1d5db' }}>{regionPost ? 'The PDF and your highlights will remain.' : 'Your highlight will remain.'}</p>
+        <p style={{ fontSize: 13, margin: 0, color: '#d1d5db' }}>{regionPost || isSet ? 'The PDF and your highlights will remain.' : 'Your highlight will remain.'}</p>
       </Modal>
     </div>
   )
