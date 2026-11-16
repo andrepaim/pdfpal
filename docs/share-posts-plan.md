@@ -337,6 +337,14 @@ export function postSlides(card: CardContent, source: ShareCardSource): SlideSpe
 
 Server: every answer carries `takeaway` (the take rule, numbers check, leak checks and the repair apply to it); `PATCH { takeaway }` edits it and keeps an Undo step; `{ style: 'carousel' }` is allowed for highlight, region and first-page posts and refused for a set. Renderer: `renderSlide` draws a `page` slide as the Page style at Feed with the slide's number; without a crop it draws `fallback` as a text slide.
 
+Settled in T10:
+
+- **Answer.** Highlight, region and first-page answers gain `takeaway`; a set's answer keeps its own `takeaway`, which goes to `set.takeaway`, and the card's stays `''`. The answer's takeaway is 1 to 140 characters after collapsing whitespace; it passes the checks every other piece of the assistant's own words passes (numbers, leaks, quotations, first person, links, hashtags, Markdown), may not end on a question, and may not be the headline again (compared ignoring case, whitespace and final punctuation). Whether it is an instruction to the reader is left to the prompt. "The take rule" applies as it does to the headline: only the drafts carry the take, and the takeaway has no first person.
+- **Prompt.** One new line per single-post kind: the takeaway is what follows from the headline's claim, not the claim again. The numbers rule names the takeaway. For a set, the limitations line says never to repeat a point; the check refuses a `limitations` that is a point again (same comparison as above).
+- **Card.** `validateCard` allows `''` to 140 for a single post (so stored cards read) and refuses a non-empty `card.takeaway` on a set. `REGION_STYLES` is `['page', 'headline', 'carousel']` and `REGION_STYLE_REFUSED` names Carousel. A set refuses `carousel` with `SET_STYLE_REFUSED`. A previous version sent with a change includes `takeaway` (for a region: `{ headline, topic, takeaway }`).
+- **Edit.** `PATCH { takeaway }`: collapsed, 1 to 140 characters ("A takeaway needs 1–140 characters."), not number-checked, behind Undo; on a set, 400 "A carousel of several highlights keeps its takeaway on its own slide; edit it with { set_text: { field: 'takeaway' } }.".
+- **Types.** `setSlides` returns `SetSlideSpec[]` (`SlideSpec` without the `page` kind, which a set never has), so code that shows a set's slides need not handle `page`. `postSlides(card, source)` takes any value with `kind`. `cardDescription(card, 'carousel', source?)` reads "Carousel of N slides: <headline>." counting `postSlides`.
+
 **Tasks**
 
 - [ ] **T10 Server** (`share-posts/server`): the contract, the prompt and checks for `takeaway`, the edit, `postSlides`, the rule for a set's limitations, tests.
