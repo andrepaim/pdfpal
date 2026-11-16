@@ -1,0 +1,37 @@
+# Sharing posts
+
+Turn something from a PDF into a post for LinkedIn, X or Instagram: an image made from the paper's own page, and a draft text built around your point of view. Your configured assistant writes the words; the image is drawn on your computer. Posts are made from PDF sources.
+
+Start from the [project README](../README.md#share-what-you-read) for a summary.
+
+## From a highlight
+
+Click a highlight in a PDF and choose **Create post**. A post is the PDF's own page with your highlights on it, plus a text built around your point of view, for one destination: **LinkedIn**, **X · Bluesky · Threads** or **Instagram**. The destination you chose last is remembered on this device. Your configured assistant writes the text in a single request while you keep reading; choosing another destination later asks for the text again for that destination, and **Undo** returns to the earlier version.
+
+## The image: styles, crops and looks
+
+The image is drawn on your computer. LinkedIn and X start on **Page**: a crop of the page, as tall as it needs to be, with every highlight inside it in its own colour. Instagram starts on **Carousel**: three cards at 4:5, swiped in order: the hook (your post's headline), the page with your highlights, and the takeaway, one sentence on why the finding matters. Step through them with **Previous** and **Next** or the arrow keys; **Edit slide** changes the hook or the takeaway, and **Adjust crop** on the page card changes its crop. A post made before posts had a takeaway shows two cards and **Add a takeaway**. You can choose **Page**, **Headline** or **Carousel** for any destination; **Headline** puts a headline above the crop on one card. **Adjust crop** opens the whole page: drag the box or its handles, or use the arrow keys, and **Reset to automatic** returns to the crop around your highlight. **Edit headline** puts your own words above the page. The **Ink**, **Paper** and **Marker** looks, and the **Quote**, **Big idea** and **Takeaways** text cards under **Text cards**, change instantly and make no request. When the PDF has been removed, a post shows its text card instead, and a Carousel's page card shows the quote (or, for a region, the headline).
+
+## Your take and the drafts
+
+Type **Your take**, one line of what you think, and choose **Rewrite around my take**: every draft quotes it word for word and leads into it. Without a take the drafts state what the paper says, with no opinion. A request returns up to three drafts, shown as tabs: **The finding** always, **Belief vs. paper** and **The caveat** only when the page supports them. Picking a tab changes the text at once. Every number in a draft must appear in the highlight, its page, the title, the credit or your take. pdfpal adds the source line, the link and, when switched on, the hashtags. On LinkedIn you can keep the link out of the post and paste it as the first comment with **Copy first comment**; on X a counter shows the length as X counts it, with a link as 23 characters. You can also **Edit** the text by hand; picking a tab afterwards replaces your edits, and **Undo** brings them back.
+
+## From a region
+
+A post can also start without a highlight. In the **Post** tab, **Share a region** opens the page you are reading with a box on it: move and resize it over a figure, a table, an equation or a passage, with the pointer or the arrow keys, and choose **Create post**. The image is that part of the page; the assistant never sees it and writes from the words inside the box and the text of the page, so a figure's caption on the page matters. A region post has a headline, a takeaway and the **Page**, **Headline** and **Carousel** styles, but no quote and no text cards; **Adjust crop** offers **Back to the original region** instead of an automatic crop, and when the PDF has been removed the post shows its headline as a **Big idea** card.
+
+## The whole paper
+
+**Share the paper** makes a post about the paper as a whole, with one click. Its picture is the first page's title, authors and abstract (everything above the Introduction heading), worked out from the text; you can adjust the crop afterwards. The assistant reads more than the first page (the opening pages, the start of the method and results, and the conclusion) and writes what the paper set out to answer, how it was done and what it found, besides the headline, the takeaway and the drafts, which give that general view in the same order. On Instagram a paper post is a carousel of five or six slides: the paper (the headline above the first page), the question, the method, one or two results and the takeaway; on LinkedIn and X it opens on **Page**, with **Carousel** one click away. **Edit slide** changes the words of any slide; a result cannot be left empty. A paper post made before papers had their own slides keeps its three cards and offers **Rewrite** to add them.
+
+## Several highlights as a carousel
+
+Several highlights of one PDF can become a carousel, the format whole-paper posts use. In the **Post** tab, **Share several highlights** lists the PDF's highlights in page order: choose 2 to 8 and put them in order with the arrow buttons, then choose **Create carousel**. The slides, all 1080 × 1350, are a cover, the study in one sentence when the text states what was studied, one slide per highlight (a short claim above that highlight's page, with every highlight on it), the takeaway and, when the text states any, the limits; each carries the credit strip and its number. Step through them with **Previous** and **Next** or the arrow keys. **Edit slide** changes the words of the slide in view, and emptying the study or the limits removes that slide (**Undo** brings it back); **Adjust crop** on a highlight slide changes that slide's crop only. The destination, your take, the drafts and the caption options work as for any post. **Copy slide** and **Save slide** take the slide in view; **Save all slides (ZIP)** saves every slide as a PNG file, and **Save as PDF** saves them as one PDF with a page per slide, which LinkedIn takes as a document post. When the PDF has been removed, the highlight slides show their claims without the page.
+
+## Numbers on slides
+
+Slides show numbers as numbers. A post's key number, the one number that carries the finding, is drawn large on its hook; the study of a carousel and the method of a paper post show their design's numbers as tiles; and a paper's result shows its key number very large, or the comparison it reports as a small table. Every number comes from the text, and **Edit slide** changes them with the slide's sentence: each value and label, adding or removing tiles and rows, and reordering a table's rows. A slide whose numbers are all removed is drawn as text.
+
+## Copy, save and where posts live
+
+Use **Copy image** and **Copy caption** to paste into a post, or **Save image** at the destination's size; on Instagram, **Headline** and **Page** also offer a Story (9:16). In the Carousel style, **Copy slide** and **Save slide** take the card in view, and **Save all slides (ZIP)** and **Save as PDF** save every card. **Ask for a change** in the ⋯ menu requests a revision in your own words. Each highlight has at most one post; highlights with a post are marked in the reader and in the project's **Highlights** tab, which lists every post. Posts stay on this device: they are not part of cloud sync. A post keeps its own copy of the passage (or of the region's text), so deleting the highlight or the PDF does not delete it.
