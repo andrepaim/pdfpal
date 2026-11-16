@@ -281,3 +281,48 @@ test('a reader\'s crop is drawn exactly as set, with or without the post\'s own 
   assert.deepEqual(planCrop({ rects: [mark(250, 330, 230)], color: 'yellow' }, LETTER, { sheet, crop: null, marks: [], extraLines: 1 }, runs)!.box,
     autoCrop([mark(250, 330, 230)], LETTER, sheet, 1, runs))
 })
+
+test('lines set so tight that their boxes overlap still give a crop of just the lines asked for', () => {
+  // Pitch 11 for 10-point text: each line's box reaches a little into the next one's, as in a dense abstract.
+  const runs = column(100, 500, 100, 40, 11), centre = (r: { y1: number; y2: number }) => (r.y1 + r.y2) / 2
+  const highlight = [16, 17, 18, 19].map(line => mark(100, 500, 100 + 11 * line))
+  const lines = (box: { y1: number; y2: number }) => runs.filter(r => centre(r) > box.y1 && centre(r) < box.y2).length
+  for (const [extra, count] of [[3, 10], [1, 6], [0, 4]] as const) {
+    const box = autoCrop(highlight, LETTER, { width: 896, height: 600 }, extra, runs)!
+    assert.ok(box, `extra ${extra}: no crop`)
+    assert.equal(lines(box), count, `extra ${extra}: ${JSON.stringify(box)}`)
+  }
+  // A room that fits the highlighted lines and some context: never refused.
+  const own = autoCrop(highlight, LETTER, { width: 896, height: 260 }, 0, runs)
+  assert.ok(own && lines(own) === 4)
+})
+
+test('an automatic crop is never refused when the plain rule fits, whatever the text layer', () => {
+  // A small seeded generator, so a failure can be replayed.
+  let seed = 20261116
+  const random = () => (seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31
+  const pick = <T,>(values: readonly T[]) => values[Math.floor(random() * values.length)]!
+  for (let round = 0; round < 400; round++) {
+    const size = 7 + random() * 6, pitch = size * (0.95 + random() * 0.6), columns = pick([1, 1, 2] as const)
+    const left = 40 + random() * 80, right = 612 - 40 - random() * 80, gutter = 10 + random() * 20
+    const spans = columns === 1 ? [[left, right]] : [[left, (left + right - gutter) / 2], [(left + right + gutter) / 2, right]]
+    const first = 60 + random() * 200, count = 10 + Math.floor(random() * 40)
+    const offsets = spans.map((_, index) => index ? random() * pitch : 0)
+    const runs = spans.flatMap(([a, b], index) => column(a!, b!, first + offsets[index]!, count, pitch, size))
+    // Noise: small raised markers, stray words beside the text, a wide heading.
+    for (let i = 0; i < 6; i++) { const x = left + random() * (right - left - 20); runs.push(run(x, x + 6, first + random() * count * pitch - size * 0.3, size * 0.7)) }
+    if (random() < 0.5) runs.push(run(left, right, first - 2 * pitch, size * 1.4))
+    const which = Math.floor(random() * spans.length), [a, b] = spans[which]!
+    const lineCount = 1 + Math.floor(random() * 6), start = Math.floor(random() * (count - lineCount))
+    const baseline = (line: number) => first + offsets[which]! + line * pitch
+    const highlight = Array.from({ length: lineCount }, (_, i) => mark(a! + (i ? 0 : random() * 50), b! - (i === lineCount - 1 ? random() * 50 : 0), baseline(start + i), size))
+    const extra = pick([0, 1, 3] as const)
+    const plainHeight = sheetHeight(cropBox(highlight, 0))
+    const sheet = { width: 896, height: plainHeight * (1 + random() * 3), fill: random() < 0.5 ? undefined : plainHeight * (1 + random() * 4) }
+    const plain = autoCrop(highlight, LETTER, sheet, extra, [])
+    const snapped = autoCrop(highlight, LETTER, sheet, extra, runs)
+    const name = `round ${round}: ${columns} column(s), ${lineCount} line(s), extra ${extra}`
+    if (plain) assert.ok(snapped, `${name}: refused though the plain rule fits`)
+    if (snapped) assert.ok(sheetHeight(snapped) <= sheet.height + 1e-6, `${name}: taller than the room`)
+  }
+})
