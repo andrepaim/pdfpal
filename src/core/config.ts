@@ -18,6 +18,11 @@ const ConfigSchema = z.object({
   codexBin: z.string(),
   opencodeBin: z.string(),
   semanticScholarApiKey: z.string(),
+  // Contextual definition order (English, opt-in): see docs/contextual-definitions.md.
+  contextualDefinitions: z.boolean(),
+  contextualDefinitionsBudgetMs: z.number().int().min(20).max(1000),
+  senseModelDir: z.string(),
+  senseRuntimeDir: z.string(),
 })
 
 export type PdfpalConfig = z.infer<typeof ConfigSchema>
@@ -31,7 +36,24 @@ type ConfigFile = Partial<{
   codex_bin: string
   opencode_bin: string
   semantic_scholar_api_key: string
+  contextual_definitions: boolean
+  contextual_definitions_budget_ms: number
+  sense_model_dir: string
+  sense_runtime_dir: string
 }>
+
+/** A lookup budget in milliseconds, kept within 20-1000; anything else is undefined. */
+function budget(value: unknown): number | undefined {
+  const number = typeof value === 'string' && value.trim() ? Number(value) : value
+  return typeof number === 'number' && Number.isFinite(number) ? Math.min(1000, Math.max(20, Math.round(number))) : undefined
+}
+
+/** "1"/"true"/"on" and "0"/"false"/"off"; anything else, including an unset variable, is undefined. */
+function envFlag(value: string | undefined): boolean | undefined {
+  const normalized = value?.trim().toLowerCase()
+  if (!normalized) return undefined
+  return ['1', 'true', 'on', 'yes'].includes(normalized)
+}
 
 function parseLegacy(text: string): Record<string, string> {
   const result: Record<string, string> = {}
@@ -82,6 +104,10 @@ export function loadConfig(overrides: Partial<PdfpalConfig> = {}): PdfpalConfig 
     codexBin: overrides.codexBin ?? process.env.CODEX_BIN ?? file.codex_bin ?? 'codex',
     opencodeBin: overrides.opencodeBin ?? process.env.OPENCODE_BIN ?? file.opencode_bin ?? 'opencode',
     semanticScholarApiKey: overrides.semanticScholarApiKey ?? process.env.SEMANTIC_SCHOLAR_API_KEY ?? file.semantic_scholar_api_key ?? '',
+    contextualDefinitions: overrides.contextualDefinitions ?? envFlag(process.env.PDFPAL_CONTEXTUAL_DEFINITIONS) ?? file.contextual_definitions === true,
+    contextualDefinitionsBudgetMs: overrides.contextualDefinitionsBudgetMs ?? budget(process.env.PDFPAL_CONTEXTUAL_DEFINITIONS_BUDGET_MS) ?? budget(file.contextual_definitions_budget_ms) ?? 120,
+    senseModelDir: overrides.senseModelDir ?? (process.env.PDFPAL_SENSE_MODEL_DIR || undefined) ?? file.sense_model_dir ?? path.join(dataDir, 'models', 'ettin-150m-wsd-int8'),
+    senseRuntimeDir: overrides.senseRuntimeDir ?? (process.env.PDFPAL_SENSE_RUNTIME_DIR || undefined) ?? file.sense_runtime_dir ?? path.join(dataDir, 'models', 'sense-runtime'),
   })
 }
 
@@ -132,5 +158,17 @@ export function saveAIModePreference(config: PdfpalConfig, selected: 'chatgpt' |
     fs.renameSync(temporary, filename);config.aiMode=aiMode
     if (selected !== 'chatgpt') config.agent=selected
     return selected
+  } finally { release() }
+}
+
+/** Turns contextual definition order on or off in config.json; the environment still takes precedence at startup. */
+export function saveContextualDefinitionsPreference(config: PdfpalConfig, enabled: boolean): void {
+  const filename = path.join(config.dataDir, 'config.json'), release = acquireLease(`${filename}.write-lock`, 5000)
+  try {
+    const existing = fs.existsSync(filename) ? JSON.parse(fs.readFileSync(filename, 'utf8')) : {}
+    const temporary = `${filename}.${process.pid}.tmp`
+    fs.writeFileSync(temporary, `${JSON.stringify({ ...existing, contextual_definitions: enabled }, null, 2)}\n`, { mode: 0o600 })
+    fs.renameSync(temporary, filename)
+    config.contextualDefinitions = envFlag(process.env.PDFPAL_CONTEXTUAL_DEFINITIONS) ?? enabled
   } finally { release() }
 }

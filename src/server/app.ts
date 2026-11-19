@@ -23,7 +23,8 @@ import type { ProviderName as AgentName } from '../core/ai.js'
 import { AgentService } from '../core/agents.js'
 import { resolvePdf, excerptFromText } from '../core/pdf.js'
 import { relatedPapers } from '../core/research.js'
-import { DictionaryService } from '../core/dictionary.js'
+import { registerDictionaryRoutes } from './dictionary.js'
+import { ContextualDefinitions } from '../core/contextual-definitions.js'
 import { PdfpalError } from '../core/types.js'
 import { registerExtensionRoutes } from './extension.js'
 import { registerExtensionManagement } from './extension-management.js'
@@ -189,7 +190,11 @@ export async function buildServer(config: PdfpalConfig, cli?: CliRuntime) {
   registerDocumentRoutes(app, notes)
   registerAnnotationRoutes(app, db)
   registerResearchRoutes(app, db, config)
-  registerDictionaryRoutes(app)
+  // Opt-in, English only: the model loads in the background and every lookup
+  // keeps WordNet order until it is ready.
+  const contextual = config.contextualDefinitions ? new ContextualDefinitions({ directory: config.senseModelDir, runtimeDirectory: config.senseRuntimeDir, budgetMs: config.contextualDefinitionsBudgetMs }) : undefined
+  registerDictionaryRoutes(app, contextual)
+  contextual?.warm()
   registerVisualRoutes(app, visuals)
   registerShareCardRoutes(app, shareCards)
   const kindle = await registerExtensionRoutes(app, db, config, visuals)
@@ -283,24 +288,6 @@ function registerResearchRoutes(app: any, db: import('better-sqlite3').Database,
     }) }
   })
   app.get('/api/projects/:projectId/sources/:sourceId/related', async (request: any) => relatedPapers(db, request.params.projectId, request.params.sourceId, config.semanticScholarApiKey, request.query.refresh === 'true'))
-}
-
-// Definitions for the reader's definition card, from the offline WordNet
-// file. `before` and `after` are the text around the selection; they stay on
-// this machine and are only used to recognise a compound around the word.
-const DICTIONARY_TEXT_LIMIT = 120, DICTIONARY_CONTEXT_LIMIT = 200
-function registerDictionaryRoutes(app: any) {
-  const dictionary = new DictionaryService()
-  app.addHook('onClose', async () => dictionary.close())
-  app.get('/api/dictionary/define', async (request: any) => {
-    const text = String(request.query.text ?? '')
-    if (!text.trim()) throw new PdfpalError('WORD_REQUIRED', 'Choose a word to define.', 2)
-    if (text.length > DICTIONARY_TEXT_LIMIT) throw new PdfpalError('WORD_TOO_LONG', 'Choose a shorter word or phrase to define.', 2)
-    return dictionary.define(text, {
-      before: String(request.query.before ?? '').slice(-DICTIONARY_CONTEXT_LIMIT),
-      after: String(request.query.after ?? '').slice(0, DICTIONARY_CONTEXT_LIMIT),
-    })
-  })
 }
 
 export async function startServer(config: PdfpalConfig, options: { openBrowser: boolean }): Promise<void> {

@@ -16,18 +16,24 @@ if (requestIndex >= 0) {
     reportError(new PdfpalError('INVALID_REQUEST_FILE', 'Supply a UTF-8 JSON file containing an args array of strings (at most 8 MB).', 2), args.includes('--json'))
   }
 }
-const valued = new Set(['--profile','--library','--expect-library','--operation','--wait-ms','--data-dir','--content','--content-file','--title','--description','--source','--collection','--parent','--model','--agent','--port','--limit','--offset','--page','--expect-updated-at','-c','-t','-d','-s','-p','-a','-m','-l'])
+const valued = new Set(['--profile','--library','--expect-library','--operation','--wait-ms','--data-dir','--platform','--content','--content-file','--title','--description','--source','--collection','--parent','--model','--agent','--port','--limit','--offset','--page','--expect-updated-at','-c','-t','-d','-s','-p','-a','-m','-l'])
 const flags = new Map<string, number>()
+let command: string | undefined
 for (let i = 0; i < args.length; i++) {
   const arg = args[i]!
   if (arg === '--') break
   if (arg.startsWith('-')) flags.set(arg.split('=')[0]!, i)
+  else command ??= arg
   if (valued.has(arg)) i++
 }
 const standalone = flags.has('--standalone')
 if (standalone) process.argv.splice(flags.get('--standalone')! + 2, 1)
 const first = args.filter(arg => arg !== '--json')[0]
-const desktop = !standalone && (process.env.PDFPAL_CLI_DESKTOP === '1' || flags.has('--desktop') || flags.has('--profile') || ['status', 'doctor', 'library', 'skill', 'operation'].includes(first ?? ''))
+// `dictionary` only edits config.json and the models folder of a library, so the
+// desktop CLI runs it locally too, against the default or --data-dir library,
+// wherever global options appear. An explicit --desktop or --profile still asks the app.
+const localDictionary = command === 'dictionary' && !flags.has('--desktop') && !flags.has('--profile')
+const desktop = !standalone && !localDictionary && (process.env.PDFPAL_CLI_DESKTOP === '1' || flags.has('--desktop') || flags.has('--profile') || ['status', 'doctor', 'library', 'skill', 'operation'].includes(first ?? ''))
 if (desktop) {
   const { runDesktopCli } = await import('./desktop.js')
   await runDesktopCli(process.argv)

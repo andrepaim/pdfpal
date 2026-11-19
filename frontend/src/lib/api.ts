@@ -247,9 +247,11 @@ export interface DictionaryResult {
 
 export const dictionaryApi = {
   // The text around the selection goes only to the local server, which uses
-  // it to recognise a compound such as "neural network" around one word.
-  define: (text: string, context: { before: string; after: string }) =>
-    apiFetch<DictionaryResult>(`/dictionary/define?${new URLSearchParams({ text, ...context })}`),
+  // it to recognise a compound such as "neural network" around one word and,
+  // when contextual definitions are on, to order meanings with a local model.
+  // The answer arrives once, already in its final order.
+  define: (text: string, context: { before: string; after: string }, signal?: AbortSignal) =>
+    apiFetch<DictionaryResult>(`/dictionary/define?${new URLSearchParams({ text, ...context })}`, { signal }),
 }
 
 export const chatApi = {

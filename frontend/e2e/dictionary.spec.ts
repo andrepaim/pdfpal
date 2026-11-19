@@ -153,4 +153,65 @@ test.describe('reader dictionary', () => {
     await expect(card(page)).toHaveCount(0);
     expect(lookups).toBe(0);
   });
+  test('a contextually ordered answer renders once, in the order the server sent, with nothing added', async ({ page }) => {
+    await openReader(page);
+    // Stand in for the server with contextual definitions on: the same WordNet
+    // entries, the noun's meanings reordered, after a model-sized delay.
+    let served: { entries: Array<{ senses: Array<{ definition: string; examples: string[] }> }> } | undefined;
+    await page.route('**/api/dictionary/define?*', async route => {
+      const result = await (await route.fetch()).json();
+      result.entries[0].senses.reverse();
+      served = result;
+      await new Promise(resolve => setTimeout(resolve, 120));
+      await route.fulfill({ json: result });
+    });
+    // Record every card that appears and every change to its list of meanings.
+    await page.evaluate(() => {
+      const record = (window as unknown as { cardLog: string[] }).cardLog = [];
+      new MutationObserver(mutations => {
+        for (const mutation of mutations) {
+          for (const node of mutation.addedNodes) {
+            if (node instanceof HTMLElement && node.matches('[data-definition-card]')) record.push('card');
+            else if (node instanceof HTMLElement && node.closest('[data-definition-card]')) record.push('change');
+          }
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    });
+
+    const box = await boxOf(page, 'bank');
+    await page.mouse.dblclick(box.x, box.y);
+    await expect(card(page)).toBeVisible();
+    const items = card(page).locator('section').first().locator('li');
+    const expected = served!.entries[0]!.senses.slice(0, 3).map(sense => sense.definition + (sense.examples[0] ? `“${sense.examples[0]}”` : ''));
+    await expect(items).toHaveText(expected);
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => (window as unknown as { cardLog: string[] }).cardLog)).toEqual(['card']);
+    // Only the meanings and their examples: no marks, badges or scores.
+    await expect(card(page).locator('li')).toHaveText(served!.entries.flatMap(entry => entry.senses.slice(0, 3)).map(sense => sense.definition + (sense.examples[0] ? `“${sense.examples[0]}”` : '')));
+    await expect(card(page)).not.toContainText(/%|score|best|likely/i);
+  });
+
+  test('a lookup replaced by a newer selection is cancelled and never opens its card', async ({ page }) => {
+    await openReader(page);
+    const aborted: string[] = [];
+    page.on('requestfailed', request => { if (request.url().includes('text=bank')) aborted.push(request.failure()?.errorText ?? ''); });
+    const lookups: string[] = [];
+    page.on('request', request => { if (request.url().includes('/api/dictionary/define')) lookups.push(new URL(request.url()).searchParams.get('text')!); });
+    await page.route('**/api/dictionary/define?*', async route => {
+      if (route.request().url().includes('text=bank')) await new Promise(resolve => setTimeout(resolve, 800));
+      await route.continue().catch(() => { /* The reader already cancelled it. */ });
+    });
+    const bank = await boxOf(page, 'bank');
+    await page.mouse.dblclick(bank.x, bank.y);
+    await page.waitForTimeout(150);
+    const mice = await boxOf(page, 'mice');
+    await page.mouse.dblclick(mice.x, mice.y);
+    await expect(card(page).locator('section').first()).toContainText('mouse noun');
+    await page.waitForTimeout(1000);
+    await expect(card(page)).toHaveCount(1);
+    await expect(card(page).locator('section').first()).toContainText('mouse noun');
+    expect(aborted).toEqual(['net::ERR_ABORTED']);
+    // One lookup per double-click, although both clicks end with the word selected.
+    expect(lookups).toEqual(['bank', 'mice']);
+  });
 });
