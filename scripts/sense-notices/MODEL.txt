@@ -1,0 +1,16 @@
+Ettin-150m-WSD English sense selection model by sign (Nagish Inc.)
+Upstream checkpoint and model card:
+https://huggingface.co/sign/Ettin-150m-WSD/tree/8751b577199d1bb95b74fa2457da7065d57100ae
+Checkpoint license: Apache License, Version 2.0 (Apache-2.0.txt).
+Base model: jhu-clsp/ettin-encoder-150m, by the Ettin authors (MIT).
+The checkpoint card identifies the base model by name and does not pin a base revision.
+https://huggingface.co/jhu-clsp/ettin-encoder-150m
+
+Changes for pdfpal: the upstream classifier was exported using sense-model's
+compact-v1 inference contract and converted to a dynamically quantized INT8
+ONNX graph. The package includes the tokenizer and inference metadata. It is
+an English CPU inference distribution, with no training data included.
+
+Upstream training sources as documented by the authors: generated synset
+examples, WordNet usage examples, SemCor, Princeton WordNet Gloss Corpus,
+and teacher-scored Wikipedia prompts.

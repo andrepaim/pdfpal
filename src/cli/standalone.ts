@@ -16,6 +16,10 @@ import type { AgentName } from '../core/agents.js'
 import { confirm, print, readStdin, reportError } from './output.js'
 import { startServer } from '../server/app.js'
 import { ExtensionAuth } from '../core/extension-auth.js'
+import { saveContextualDefinitionsPreference } from '../core/config.js'
+import { ETTIN_ENGLISH_INT8, inspectRuntime, installModel, installRuntime, platformTag, verifyModel } from '../core/sense-model.js'
+import { SENSE_RUNTIME } from '../core/sense-runtime-manifest.js'
+import { inspectInstall, modelTarget, runtimeTarget } from '../core/sense-download.js'
 
 const program = new Command()
   .name('pdfpal')
@@ -68,6 +72,43 @@ program.command('serve')
     const selected=directory?loadConfig({dataDir:directory,dbPath:path.join(directory,'pdfpal.db')}):config
     return startServer({ ...selected, port: options.port ?? selected.port }, { openBrowser: options.open })
   })
+
+// Contextual definition order (English, opt-in). These commands touch only
+// config.json and the library's models folder, never the database, and use
+// no network. The desktop app reads the setting when it starts.
+const dictionary = program.command('dictionary').description('set up contextual definition order for the reader (English, opt-in, local only)')
+const printLines = (value: Record<string, unknown>, command: Command) => {
+  if (json(command)) return print(value, true)
+  const lines = (object: Record<string, unknown>, indent = ''): string[] => Object.entries(object).flatMap(([key, item]) =>
+    item && typeof item === 'object' ? [`${indent}${key}:`, ...lines(item as Record<string, unknown>, `${indent}  `)] : [`${indent}${key}: ${item}`])
+  print(lines(value).join('\n'))
+}
+dictionary.command('status').description('show the setting and verify the installed model and runtime')
+  .action(async (_options, command) => {
+    const model = await verifyModel(config.senseModelDir)
+    printLines({
+      contextual_definitions: config.contextualDefinitions, language: 'en', budget_ms: config.contextualDefinitionsBudgetMs,
+      model: { directory: config.senseModelDir, name: ETTIN_ENGLISH_INT8.name, revision: ETTIN_ENGLISH_INT8.revision, status: model.ok ? 'verified' : model.code },
+      runtime: { directory: config.senseRuntimeDir, name: SENSE_RUNTIME.name, platform: platformTag(), status: await inspectRuntime(config.senseRuntimeDir, SENSE_RUNTIME) },
+      // Downloads from the reader's "Order meanings by context", shared by every library of this user.
+      cache: {
+        directory: config.senseCacheDir,
+        model: await inspectInstall(modelTarget(config.senseCacheDir, ETTIN_ENGLISH_INT8)),
+        runtime: await (async () => { const target = runtimeTarget(config.senseCacheDir, SENSE_RUNTIME, platformTag()); return target ? inspectInstall(target) : 'unsupported' })(),
+      },
+    }, command)
+  })
+dictionary.command('enable').description('order definitions by context (restart pdfpal to apply)')
+  .action((_options, command) => { saveContextualDefinitionsPreference(config, true); printLines({ contextual_definitions: true }, command) })
+dictionary.command('disable').description('show definitions in WordNet order (restart pdfpal to apply)')
+  .action((_options, command) => { saveContextualDefinitionsPreference(config, false); printLines({ contextual_definitions: false }, command) })
+dictionary.command('install-model').argument('<directory>', 'a local sense-model export of Ettin-150m-WSD (model_metadata.json, tokenizer files, onnx/model.int8.onnx)')
+  .description('copy and verify the pinned English model into this library')
+  .action(async (directory, _options, command) => printLines(await installModel(directory, config.senseModelDir), command))
+dictionary.command('install-runtime').argument('<directory>', 'a directory whose node_modules holds onnxruntime-node and @huggingface/tokenizers at the pinned versions')
+  .option('--platform <platform>', 'install the binaries for another platform, such as win32-x64 or linux-x64', platformTag())
+  .description('copy and verify the pinned ONNX Runtime into this library, for the desktop app')
+  .action(async (directory, options, command) => printLines(await installRuntime(directory, config.senseRuntimeDir, SENSE_RUNTIME, options.platform), command))
 
 const project = program.command('project').description('manage projects')
 project.command('list').action((_options, command) => print(new ProjectService(db()).list(), json(command)))

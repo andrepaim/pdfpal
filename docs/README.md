@@ -12,6 +12,7 @@ Start with the [project README](../README.md) for installation, a PDF/Kindle wal
 | Step through a visual explanation, save it or export it | [Visual explanations](visual-explanations.md) |
 | Turn a highlight, a region or a whole paper into a post | [Sharing posts](share-posts.md) |
 | Define an English word without an AI request | [Offline dictionary](reader-guide.md#offline-dictionary) |
+| Order definitions by the passage with a local model (English, opt-in, one-time download) | [Contextual definition order](contextual-definitions.md) |
 | Understand selection context, citations and project chat | [Reader guide](reader-guide.md) |
 | Connect Kindle for Web, capture text and troubleshoot OCR | [Kindle companion](../extension/README.md) |
 | Use the Windows bundled CLI or ChatGPT skill | [Windows CLI](windows-cli.md) |

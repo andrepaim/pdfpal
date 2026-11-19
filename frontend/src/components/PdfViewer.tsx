@@ -6,6 +6,7 @@ import 'react-pdf/dist/Page/TextLayer.css'
 import { dictionaryApi, type Annotation, type DictionaryResult } from '../lib/api'
 import { isDefinable, selectionContext } from '../lib/selection-context'
 import DefinitionCard from './DefinitionCard'
+import ContextOrderControl from './ContextOrderControl'
 import VisualIcon from './VisualIcon'
 
 // The worker and document options are shared with the share cards' Page style, which loads the PDF without the viewer.
@@ -158,6 +159,9 @@ export default function PdfViewer({
   // Counts lookups and clicks, so an answer that arrives after the reader
   // has moved on is dropped instead of opening a card for an old selection.
   const definitionRequest = useRef(0)
+  // Cancels the lookup in flight when it is replaced or dismissed, so the
+  // server stops waiting on the model for an answer nobody will see.
+  const definitionLookup = useRef<{ key: string; controller: AbortController } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const currentPageRef = useRef(requestedPage)
@@ -249,11 +253,19 @@ export default function PdfViewer({
       const style = bottom + DEFINITION_CARD_ROOM > viewer.height && top > DEFINITION_CARD_ROOM
         ? { left: x, bottom: viewer.height - top + 56 }
         : { left: x, top: bottom + 8 }
+      const context = selectionContext(range)
+      // Both clicks of a double-click end up here once the word is selected;
+      // the same lookup still in flight is kept rather than asked twice.
+      const key = JSON.stringify([text, context.before, context.after])
+      if (definitionLookup.current && definitionLookup.current.key === key) return
       const id = ++definitionRequest.current
-      dictionaryApi.define(text, selectionContext(range)).then(result => {
+      definitionLookup.current?.controller.abort()
+      const lookup = definitionLookup.current = { key, controller: new AbortController() }
+      dictionaryApi.define(text, context, lookup.controller.signal).then(result => {
         // No card when the dictionary has no entry: names, numbers, "the".
         if (id === definitionRequest.current && result.entries.length) setDefinition({ id, result, style })
       }).catch(() => { /* Definitions are an extra; the selection still works without one. */ })
+        .finally(() => { if (definitionLookup.current === lookup) definitionLookup.current = null })
     }
     const handleMouseUp = (e: MouseEvent) => {
       // A click in the bubble or the card is not a new selection.
@@ -277,13 +289,14 @@ export default function PdfViewer({
     const handleMouseDown = (e: MouseEvent) => {
       const target = e.target as HTMLElement
       if (!target.closest('[data-ask-bubble],[data-definition-card]')) setBubble(null)
-      if (!target.closest('[data-definition-card]')) { definitionRequest.current++; setDefinition(null) }
+      if (!target.closest('[data-definition-card]')) { definitionRequest.current++; definitionLookup.current?.controller.abort(); definitionLookup.current = null; setDefinition(null) }
     }
     document.addEventListener('mouseup', handleMouseUp)
     document.addEventListener('mousedown', handleMouseDown)
     return () => {
       document.removeEventListener('mouseup', handleMouseUp)
       document.removeEventListener('mousedown', handleMouseDown)
+      definitionLookup.current?.controller.abort()
     }
   }, [])
 
@@ -546,6 +559,7 @@ export default function PdfViewer({
         >
           Definitions
         </button>
+        <ContextOrderControl buttonStyle={btnStyle} />
         <button
           type="button"
           aria-pressed={darkPages}

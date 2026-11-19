@@ -62,13 +62,27 @@
     "pdfjs-dist": "^5.4.54",
     "zod": "^4.6.7"
   },
+  "peerDependencies": {
+    "@huggingface/tokenizers": "0.2.0",
+    "onnxruntime-node": "1.30.0"
+  },
+  "peerDependenciesMeta": {
+    "@huggingface/tokenizers": {
+      "optional": true
+    },
+    "onnxruntime-node": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",
+    "@huggingface/tokenizers": "0.2.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.2.1",
     "c8": "^11.0.0",
     "fflate": "0.8.2",
     "firebase": "^12.7.0",
+    "onnxruntime-node": "1.30.0",
     "tsx": "^4.20.3",
     "typescript": "~5.9.2",
     "wordnet-db": "3.1.14"

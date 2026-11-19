@@ -247,9 +247,31 @@ export interface DictionaryResult {
 
 export const dictionaryApi = {
   // The text around the selection goes only to the local server, which uses
-  // it to recognise a compound such as "neural network" around one word.
-  define: (text: string, context: { before: string; after: string }) =>
-    apiFetch<DictionaryResult>(`/dictionary/define?${new URLSearchParams({ text, ...context })}`),
+  // it to recognise a compound such as "neural network" around one word and,
+  // when contextual definitions are on, to order meanings with a local model.
+  // The answer arrives once, already in its final order.
+  define: (text: string, context: { before: string; after: string }, signal?: AbortSignal) =>
+    apiFetch<DictionaryResult>(`/dictionary/define?${new URLSearchParams({ text, ...context })}`, { signal }),
+}
+
+/** The reader's "Order meanings by context" setting (English, local model). */
+export interface ContextualStatus {
+  enabled: boolean
+  locked: boolean
+  language: 'en'
+  state: 'off' | 'unavailable' | 'needs_download' | 'downloading' | 'installing' | 'loading' | 'ready' | 'failed'
+  error: string | null
+  model_source: string | null
+  runtime_source: string | null
+  download: { required_bytes: number | null; received_bytes: number; total_bytes: number }
+}
+
+export const contextualApi = {
+  status: () => apiFetch<ContextualStatus>('/dictionary/contextual'),
+  setEnabled: (enabled: boolean) => apiFetch<ContextualStatus>('/dictionary/contextual', { method: 'POST', body: JSON.stringify({ enabled }) }),
+  // The only request that makes pdfpal use the network for this setting, sent with the size the reader confirmed.
+  download: (acceptBytes: number) => apiFetch<ContextualStatus>('/dictionary/contextual/download', { method: 'POST', body: JSON.stringify({ accept_bytes: acceptBytes }) }),
+  cancel: () => apiFetch<ContextualStatus>('/dictionary/contextual/download/cancel', { method: 'POST', body: '{}' }),
 }
 
 export const chatApi = {

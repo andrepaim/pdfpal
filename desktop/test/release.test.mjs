@@ -262,6 +262,17 @@ test('beta.7 combined release notes describe share posts, and beta.6 keeps its o
   } finally { await f.cleanup(); await earlier.cleanup() }
 })
 
+test('beta.8 release notes explain the optional dictionary download', { skip: !hasDpkg }, async () => {
+  const f = await combinedFixture('2.8.0-beta.8')
+  try {
+    await prepareCombinedRelease(f.directory, f.options)
+    const notes = await fs.readFile(path.join(f.directory, 'release-notes.md'), 'utf8')
+    assert.match(notes, /Order by context/)
+    assert.match(notes, /Download and turn on/)
+    assert.match(notes, /once per user/)
+  } finally { await f.cleanup() }
+})
+
 test('combined preparation verifies Debian identity from actual package bytes', { skip: !hasDpkg }, async () => {
   const f = await combinedFixture()
   try {

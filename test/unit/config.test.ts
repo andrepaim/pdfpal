@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { cleanup, testConfig } from '../helpers/test-utils.js'
-import { loadConfig, saveAgentBinary } from '../../src/core/config.js'
+import path from 'node:path'
+import { loadConfig, saveAgentBinary, saveContextualDefinitionsPreference } from '../../src/core/config.js'
 
 test('loads and imports legacy config.env', () => {
   const initial = testConfig()
@@ -52,4 +53,54 @@ test('choosing an assistant executable preserves unrelated configuration and env
     assert.throws(() => saveAgentBinary(initial, 'codex', '/different/codex'))
     assert.equal(loadConfig({ dataDir: initial.dataDir }).codexBin, '/fixed/codex')
   } finally { if (previous === undefined) delete process.env.CODEX_BIN; else process.env.CODEX_BIN = previous; cleanup(initial, { close() {} } as never) }
+})
+
+test('contextual definitions are off by default and enabled by config.json or the environment', () => {
+  const initial = testConfig(), previous = { flag: process.env.PDFPAL_CONTEXTUAL_DEFINITIONS, dir: process.env.PDFPAL_SENSE_MODEL_DIR, runtime: process.env.PDFPAL_SENSE_RUNTIME_DIR, budget: process.env.PDFPAL_CONTEXTUAL_DEFINITIONS_BUDGET_MS }
+  try {
+    delete process.env.PDFPAL_CONTEXTUAL_DEFINITIONS; delete process.env.PDFPAL_SENSE_MODEL_DIR; delete process.env.PDFPAL_SENSE_RUNTIME_DIR; delete process.env.PDFPAL_CONTEXTUAL_DEFINITIONS_BUDGET_MS
+    const defaults = loadConfig({ dataDir: initial.dataDir })
+    assert.equal(defaults.contextualDefinitions, false)
+    assert.equal(defaults.senseModelDir, path.join(initial.dataDir, 'models', 'ettin-150m-wsd-int8'))
+    assert.equal(defaults.senseRuntimeDir, path.join(initial.dataDir, 'models', 'sense-runtime'))
+    assert.equal(defaults.contextualDefinitionsBudgetMs, 120)
+
+    fs.writeFileSync(`${initial.dataDir}/config.json`, JSON.stringify({ contextual_definitions: true, sense_model_dir: '/models/ettin', sense_runtime_dir: '/models/runtime' }))
+    assert.equal(loadConfig({ dataDir: initial.dataDir }).senseRuntimeDir, '/models/runtime')
+    assert.equal(loadConfig({ dataDir: initial.dataDir }).contextualDefinitions, true)
+    assert.equal(loadConfig({ dataDir: initial.dataDir }).senseModelDir, '/models/ettin')
+
+    process.env.PDFPAL_CONTEXTUAL_DEFINITIONS = '0'
+    assert.equal(loadConfig({ dataDir: initial.dataDir }).contextualDefinitions, false, 'the environment overrides the file')
+    process.env.PDFPAL_CONTEXTUAL_DEFINITIONS = '1'
+    process.env.PDFPAL_SENSE_MODEL_DIR = '/elsewhere'
+    fs.writeFileSync(`${initial.dataDir}/config.json`, '{}')
+    assert.equal(loadConfig({ dataDir: initial.dataDir }).contextualDefinitions, true)
+    assert.equal(loadConfig({ dataDir: initial.dataDir }).senseModelDir, '/elsewhere')
+    fs.writeFileSync(`${initial.dataDir}/config.json`, JSON.stringify({ contextual_definitions_budget_ms: 200 }))
+    assert.equal(loadConfig({ dataDir: initial.dataDir }).contextualDefinitionsBudgetMs, 200)
+    process.env.PDFPAL_CONTEXTUAL_DEFINITIONS_BUDGET_MS = '5000'
+    assert.equal(loadConfig({ dataDir: initial.dataDir }).contextualDefinitionsBudgetMs, 1000, 'kept within bounds')
+    process.env.PDFPAL_CONTEXTUAL_DEFINITIONS_BUDGET_MS = 'soon'
+    assert.equal(loadConfig({ dataDir: initial.dataDir }).contextualDefinitionsBudgetMs, 200)
+    delete process.env.PDFPAL_CONTEXTUAL_DEFINITIONS_BUDGET_MS
+    process.env.PDFPAL_CONTEXTUAL_DEFINITIONS = 'perhaps'
+    assert.equal(loadConfig({ dataDir: initial.dataDir }).contextualDefinitions, false, 'an unrecognised value stays off')
+  } finally {
+    for (const [key, value] of [['PDFPAL_CONTEXTUAL_DEFINITIONS', previous.flag], ['PDFPAL_SENSE_MODEL_DIR', previous.dir], ['PDFPAL_SENSE_RUNTIME_DIR', previous.runtime], ['PDFPAL_CONTEXTUAL_DEFINITIONS_BUDGET_MS', previous.budget]] as const) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value
+    }
+    cleanup(initial, { close() {} } as never)
+  }
+})
+
+test('saving the contextual definitions preference keeps the rest of config.json', () => {
+  const initial = testConfig()
+  try {
+    fs.writeFileSync(`${initial.dataDir}/config.json`, JSON.stringify({ agent: 'codex', extra: 'keep' }))
+    saveContextualDefinitionsPreference(initial, true)
+    assert.deepEqual(JSON.parse(fs.readFileSync(`${initial.dataDir}/config.json`, 'utf8')), { agent: 'codex', extra: 'keep', contextual_definitions: true })
+    saveContextualDefinitionsPreference(initial, false)
+    assert.equal(JSON.parse(fs.readFileSync(`${initial.dataDir}/config.json`, 'utf8')).contextual_definitions, false)
+  } finally { cleanup(initial, { close() {} } as never) }
 })
