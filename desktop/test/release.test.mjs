@@ -267,7 +267,8 @@ test('beta.8 release notes explain the optional dictionary download', { skip: !h
   try {
     await prepareCombinedRelease(f.directory, f.options)
     const notes = await fs.readFile(path.join(f.directory, 'release-notes.md'), 'utf8')
-    assert.match(notes, /Order meanings by context/)
+    assert.match(notes, /Order by context/)
+    assert.match(notes, /Download and turn on/)
     assert.match(notes, /once per user/)
   } finally { await f.cleanup() }
 })
