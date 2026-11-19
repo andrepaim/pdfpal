@@ -40,7 +40,7 @@ async function sha256(file: string): Promise<string> {
 }
 
 /** Every file present with the pinned size and content. Sizes are checked before anything is hashed. */
-async function verifyFiles<Code extends string>(directory: string, files: PinnedFile[], missing: Code, mismatch: Code): Promise<Verification<Code>> {
+export async function verifyFiles<Code extends string>(directory: string, files: PinnedFile[], missing: Code, mismatch: Code): Promise<Verification<Code>> {
   const sizes = files.map(file => { try { return fs.statSync(path.join(directory, file.path)).size } catch { return undefined } })
   if (sizes.some(size => size === undefined)) return { ok: false, code: missing }
   if (files.some((file, i) => sizes[i] !== file.size)) return { ok: false, code: mismatch }

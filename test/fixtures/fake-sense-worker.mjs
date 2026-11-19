@@ -6,6 +6,9 @@
 //   rejectCode          reject every score with this code
 //   prefer              definitions containing this text get the highest logit
 //   none                the "none of the above" logit (default -5)
+//   requireFile         fail with MODEL_MISSING unless this file exists in the model directory
+import fs from 'node:fs'
+import path from 'node:path'
 import { parentPort, workerData } from 'node:worker_threads'
 
 const fake = workerData.fake ?? {}
@@ -30,5 +33,6 @@ parentPort.on('message', message => {
 })
 
 await sleep(fake.loadMs ?? 0)
-if (fake.fail) parentPort.postMessage({ type: 'failed', code: fake.fail })
+if (fake.requireFile && !fs.existsSync(path.join(workerData.directory, fake.requireFile))) parentPort.postMessage({ type: 'failed', code: 'MODEL_MISSING' })
+else if (fake.fail) parentPort.postMessage({ type: 'failed', code: fake.fail })
 else parentPort.postMessage({ type: 'ready', format, revision: 'fake' })

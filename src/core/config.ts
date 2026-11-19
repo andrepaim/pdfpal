@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { z } from 'zod'
 import { acquireLease } from './locking.js'
+import { defaultSenseCacheDir } from './sense-download.js'
 
 const ConfigSchema = z.object({
   dataDir: z.string(),
@@ -23,6 +24,8 @@ const ConfigSchema = z.object({
   contextualDefinitionsBudgetMs: z.number().int().min(20).max(1000),
   senseModelDir: z.string(),
   senseRuntimeDir: z.string(),
+  /** The per-user cache of downloaded models and runtimes, shared by every library. */
+  senseCacheDir: z.string(),
 })
 
 export type PdfpalConfig = z.infer<typeof ConfigSchema>
@@ -40,6 +43,7 @@ type ConfigFile = Partial<{
   contextual_definitions_budget_ms: number
   sense_model_dir: string
   sense_runtime_dir: string
+  sense_cache_dir: string
 }>
 
 /** A lookup budget in milliseconds, kept within 20-1000; anything else is undefined. */
@@ -49,7 +53,7 @@ function budget(value: unknown): number | undefined {
 }
 
 /** "1"/"true"/"on" and "0"/"false"/"off"; anything else, including an unset variable, is undefined. */
-function envFlag(value: string | undefined): boolean | undefined {
+export function envFlag(value: string | undefined): boolean | undefined {
   const normalized = value?.trim().toLowerCase()
   if (!normalized) return undefined
   return ['1', 'true', 'on', 'yes'].includes(normalized)
@@ -108,6 +112,7 @@ export function loadConfig(overrides: Partial<PdfpalConfig> = {}): PdfpalConfig 
     contextualDefinitionsBudgetMs: overrides.contextualDefinitionsBudgetMs ?? budget(process.env.PDFPAL_CONTEXTUAL_DEFINITIONS_BUDGET_MS) ?? budget(file.contextual_definitions_budget_ms) ?? 120,
     senseModelDir: overrides.senseModelDir ?? (process.env.PDFPAL_SENSE_MODEL_DIR || undefined) ?? file.sense_model_dir ?? path.join(dataDir, 'models', 'ettin-150m-wsd-int8'),
     senseRuntimeDir: overrides.senseRuntimeDir ?? (process.env.PDFPAL_SENSE_RUNTIME_DIR || undefined) ?? file.sense_runtime_dir ?? path.join(dataDir, 'models', 'sense-runtime'),
+    senseCacheDir: overrides.senseCacheDir ?? (process.env.PDFPAL_SENSE_CACHE_DIR || undefined) ?? file.sense_cache_dir ?? defaultSenseCacheDir(),
   })
 }
 

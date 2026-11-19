@@ -254,6 +254,26 @@ export const dictionaryApi = {
     apiFetch<DictionaryResult>(`/dictionary/define?${new URLSearchParams({ text, ...context })}`, { signal }),
 }
 
+/** The reader's "Order meanings by context" setting (English, local model). */
+export interface ContextualStatus {
+  enabled: boolean
+  locked: boolean
+  language: 'en'
+  state: 'off' | 'unavailable' | 'needs_download' | 'downloading' | 'installing' | 'loading' | 'ready' | 'failed'
+  error: string | null
+  model_source: string | null
+  runtime_source: string | null
+  download: { required_bytes: number | null; received_bytes: number; total_bytes: number }
+}
+
+export const contextualApi = {
+  status: () => apiFetch<ContextualStatus>('/dictionary/contextual'),
+  setEnabled: (enabled: boolean) => apiFetch<ContextualStatus>('/dictionary/contextual', { method: 'POST', body: JSON.stringify({ enabled }) }),
+  // The only request that makes pdfpal use the network for this setting, sent with the size the reader confirmed.
+  download: (acceptBytes: number) => apiFetch<ContextualStatus>('/dictionary/contextual/download', { method: 'POST', body: JSON.stringify({ accept_bytes: acceptBytes }) }),
+  cancel: () => apiFetch<ContextualStatus>('/dictionary/contextual/download/cancel', { method: 'POST', body: '{}' }),
+}
+
 export const chatApi = {
   getProjectChat: (projectId: string) =>
     apiFetch<{ messages: ChatMessage[] }>(`/projects/${projectId}/chat`),

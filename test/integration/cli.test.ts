@@ -88,10 +88,10 @@ test('serve --data-dir opens the selected recovery library even when startup env
 
 test('compiled CLI reports, enables and provisions contextual definitions without a network', () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdfpal-cli-dictionary-'))
-  const env = { PDFPAL_CONTEXTUAL_DEFINITIONS: '', PDFPAL_SENSE_MODEL_DIR: '', PDFPAL_SENSE_RUNTIME_DIR: '', PDFPAL_CONTEXTUAL_DEFINITIONS_BUDGET_MS: '' }
+  const env = { PDFPAL_CONTEXTUAL_DEFINITIONS: '', PDFPAL_SENSE_MODEL_DIR: '', PDFPAL_SENSE_RUNTIME_DIR: '', PDFPAL_CONTEXTUAL_DEFINITIONS_BUDGET_MS: '', PDFPAL_SENSE_CACHE_DIR: path.join(dataDir, 'cache') }
   try {
     const status = JSON.parse(runCli(dataDir, ['dictionary', 'status', '--json'], env))
-    assert.deepEqual(status, { contextual_definitions: false, language: 'en', budget_ms: 120, model: { directory: path.join(dataDir, 'models', 'ettin-150m-wsd-int8'), name: 'Ettin-150m-WSD dynamic INT8 ONNX', revision: '8751b577199d1bb95b74fa2457da7065d57100ae', status: 'MODEL_MISSING' }, runtime: { directory: path.join(dataDir, 'models', 'sense-runtime'), name: 'onnxruntime-node 1.30.0 with @huggingface/tokenizers 0.2.0', platform: `${process.platform}-${process.arch}`, status: 'bundled' } })
+    assert.deepEqual(status, { contextual_definitions: false, language: 'en', budget_ms: 120, model: { directory: path.join(dataDir, 'models', 'ettin-150m-wsd-int8'), name: 'Ettin-150m-WSD dynamic INT8 ONNX', revision: '8751b577199d1bb95b74fa2457da7065d57100ae', status: 'MODEL_MISSING' }, runtime: { directory: path.join(dataDir, 'models', 'sense-runtime'), name: 'onnxruntime-node 1.30.0 with @huggingface/tokenizers 0.2.0', platform: `${process.platform}-${process.arch}`, status: 'bundled' }, cache: { directory: path.join(dataDir, 'cache'), model: 'missing', runtime: 'missing' } })
 
     assert.deepEqual(JSON.parse(runCli(dataDir, ['dictionary', 'enable', '--json'], env)), { contextual_definitions: true })
     assert.equal(JSON.parse(fs.readFileSync(path.join(dataDir, 'config.json'), 'utf8')).contextual_definitions, true)

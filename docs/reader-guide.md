@@ -16,7 +16,9 @@ Double-click an English word, or select a short phrase. When the bundled WordNet
 
 **Show all meanings** expands the card; **Show fewer** collapses it. Press **Escape** or click elsewhere to dismiss it. **Ask** and **Highlight** remain available for the selected text. Unknown terms show no card; long selections keep the normal selection actions without a dictionary lookup.
 
-**Definitions** in the reader toolbar toggles these cards. The choice is remembered in the current browser. Definitions work locally without an AI account, provider call or network lookup. They are English dictionary entries, not context-specific AI explanations; use Ask for specialized terminology or a meaning that does not fit the passage. An opt-in [contextual definition order](contextual-definitions.md) uses a local English word-sense model to list each entry's best-fitting meaning first; it is off by default and changes nothing else on the card. The Kindle companion does not include this PDF dictionary card.
+**Definitions** in the reader toolbar toggles these cards. The choice is remembered in the current browser. Definitions work locally without an AI account, provider call or network lookup. They are English dictionary entries, not AI explanations; use Ask for specialized terminology or a meaning that does not fit the passage.
+
+**Order by context**, next to **Definitions**, turns on [contextual definition order](contextual-definitions.md) for the library. A local English word-sense model then lists each entry's best-fitting meaning first, and nothing else on the card changes. It is off by default. Turning it on the first time offers a one-time download (about 161 MB on Windows x64, 168 MB on Linux x64), which starts only after you confirm. Every library on the computer reuses the download, offline too. Whenever the model is not ready or cannot decide, the card keeps WordNet order. The Kindle companion does not include this PDF dictionary card.
 
 ## Page appearance and navigation
 

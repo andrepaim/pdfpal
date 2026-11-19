@@ -22,6 +22,8 @@ export default defineConfig({
       CLAUDE_BIN: `/tmp/pdfpal_e2e_data_${process.pid}/uninstalled-claude`,
       CODEX_BIN: `/tmp/pdfpal_e2e_data_${process.pid}/uninstalled-codex`,
       OPENCODE_BIN: `/tmp/pdfpal_e2e_data_${process.pid}/uninstalled-opencode`,
+      // Contextual definitions: never read or fill the developer's model cache.
+      PDFPAL_SENSE_CACHE_DIR: `/tmp/pdfpal_e2e_data_${process.pid}/sense-cache`,
     },
     port,
     reuseExistingServer: false,

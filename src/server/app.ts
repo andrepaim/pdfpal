@@ -24,7 +24,7 @@ import { AgentService } from '../core/agents.js'
 import { resolvePdf, excerptFromText } from '../core/pdf.js'
 import { relatedPapers } from '../core/research.js'
 import { registerDictionaryRoutes } from './dictionary.js'
-import { ContextualDefinitions } from '../core/contextual-definitions.js'
+import { ContextualService, type ContextualServiceOptions } from '../core/contextual-service.js'
 import { PdfpalError } from '../core/types.js'
 import { registerExtensionRoutes } from './extension.js'
 import { registerExtensionManagement } from './extension-management.js'
@@ -40,7 +40,7 @@ import { registerShareCardRoutes } from './share-cards.js'
 type Params = { projectId: string; sourceId: string; id: string }
 const now = () => new Date().toISOString()
 
-export async function buildServer(config: PdfpalConfig, cli?: CliRuntime) {
+export async function buildServer(config: PdfpalConfig, cli?: CliRuntime, options: { contextual?: ContextualServiceOptions } = {}) {
   const app = Fastify({ logger: { serializers: { req: request => ({ method: request.method, url: request.url?.split('?')[0] }) } }, bodyLimit: 30 * 1024 * 1024 })
   const db = openDatabase(config)
   db.prepare("UPDATE ai_jobs SET status='interrupted',error='The app stopped before this answer completed.' WHERE status='running'").run()
@@ -192,9 +192,9 @@ export async function buildServer(config: PdfpalConfig, cli?: CliRuntime) {
   registerResearchRoutes(app, db, config)
   // Opt-in, English only: the model loads in the background and every lookup
   // keeps WordNet order until it is ready.
-  const contextual = config.contextualDefinitions ? new ContextualDefinitions({ directory: config.senseModelDir, runtimeDirectory: config.senseRuntimeDir, budgetMs: config.contextualDefinitionsBudgetMs }) : undefined
+  const contextual = new ContextualService(config, options.contextual)
+  await contextual.init()
   registerDictionaryRoutes(app, contextual)
-  contextual?.warm()
   registerVisualRoutes(app, visuals)
   registerShareCardRoutes(app, shareCards)
   const kindle = await registerExtensionRoutes(app, db, config, visuals)

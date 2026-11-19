@@ -6,6 +6,7 @@ import 'react-pdf/dist/Page/TextLayer.css'
 import { dictionaryApi, type Annotation, type DictionaryResult } from '../lib/api'
 import { isDefinable, selectionContext } from '../lib/selection-context'
 import DefinitionCard from './DefinitionCard'
+import ContextOrderControl from './ContextOrderControl'
 import VisualIcon from './VisualIcon'
 
 // The worker and document options are shared with the share cards' Page style, which loads the PDF without the viewer.
@@ -558,6 +559,7 @@ export default function PdfViewer({
         >
           Definitions
         </button>
+        <ContextOrderControl buttonStyle={btnStyle} />
         <button
           type="button"
           aria-pressed={darkPages}
