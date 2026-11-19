@@ -1,0 +1,4 @@
+# Keep upstream license text and bundle inputs byte-identical on every platform.
+scripts/sense-notices/* -text
+scripts/sense-notices/*-LICENSE.txt -whitespace
+scripts/sense-notices/ONNX-Runtime-ThirdPartyNotices.txt -whitespace

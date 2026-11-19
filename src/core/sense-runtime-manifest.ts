@@ -92,24 +92,6 @@ export const SENSE_RUNTIME: RuntimeIdentity = {
       "platform": "linux-x64"
     },
     {
-      "path": "onnxruntime-node/bin/napi-v6/win32/arm64/DirectML.dll",
-      "size": 18444600,
-      "sha256": "aaf72a9d55aa123e0708d957d30dd4fbeb7a2e335ec6257ed5ff4261a402b9ee",
-      "platform": "win32-arm64"
-    },
-    {
-      "path": "onnxruntime-node/bin/napi-v6/win32/arm64/dxcompiler.dll",
-      "size": 22285624,
-      "sha256": "442a995492579e1048cf1f05a86ab00f476c46b7f9d0996e588884040a543bbe",
-      "platform": "win32-arm64"
-    },
-    {
-      "path": "onnxruntime-node/bin/napi-v6/win32/arm64/dxil.dll",
-      "size": 1769784,
-      "sha256": "859b6d638c5ca3df39e9cab2a602cb0f63d0e63d750f84bb2a9ec9031319b73e",
-      "platform": "win32-arm64"
-    },
-    {
       "path": "onnxruntime-node/bin/napi-v6/win32/arm64/onnxruntime.dll",
       "size": 29815136,
       "sha256": "6c3a2abf5c6aca11c48a0d338a91af309f2266f25ce2e4084e6a87bbcb0fbfd0",
@@ -120,24 +102,6 @@ export const SENSE_RUNTIME: RuntimeIdentity = {
       "size": 422200,
       "sha256": "d8179924f15c2d3c1c8a75c50adf1671ec28c7f1cb0da9fc28b17daa02c5ecf5",
       "platform": "win32-arm64"
-    },
-    {
-      "path": "onnxruntime-node/bin/napi-v6/win32/x64/DirectML.dll",
-      "size": 18527584,
-      "sha256": "234e8898778cdec88d3cb0539508273494082812c968699f3de665a018971625",
-      "platform": "win32-x64"
-    },
-    {
-      "path": "onnxruntime-node/bin/napi-v6/win32/x64/dxcompiler.dll",
-      "size": 17986360,
-      "sha256": "593d42df78c7f9cbd97c1374af107cfe20985759f98b77afc1448fe41ee3cc76",
-      "platform": "win32-x64"
-    },
-    {
-      "path": "onnxruntime-node/bin/napi-v6/win32/x64/dxil.dll",
-      "size": 1508664,
-      "sha256": "cf9a3981263f8ec30c9905d136eeaf4b4573209c602198671b958ec86905dea8",
-      "platform": "win32-x64"
     },
     {
       "path": "onnxruntime-node/bin/napi-v6/win32/x64/onnxruntime.dll",

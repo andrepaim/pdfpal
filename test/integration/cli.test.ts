@@ -128,7 +128,7 @@ test('compiled CLI reports, enables and provisions contextual definitions withou
     }
     // A runtime for another platform can be provisioned, here from this checkout's node_modules.
     const runtime = JSON.parse(runCli(dataDir, ['dictionary', 'install-runtime', path.resolve('.'), '--platform', 'win32-x64', '--json'], env))
-    assert.deepEqual(runtime, { directory: path.join(dataDir, 'models', 'sense-runtime'), platform: 'win32-x64', files: 36 })
+    assert.deepEqual(runtime, { directory: path.join(dataDir, 'models', 'sense-runtime'), platform: 'win32-x64', files: 33 })
     assert.ok(fs.existsSync(path.join(dataDir, 'models', 'sense-runtime', 'node_modules', 'onnxruntime-node', 'bin', 'napi-v6', 'win32', 'x64', 'onnxruntime.dll')))
   } finally { fs.rmSync(dataDir, { recursive: true, force: true }) }
 })

@@ -35,7 +35,11 @@ for (const file of ['index.js', 'backend.js', 'binding.js', 'version.js']) add(p
 const binaries = path.join(modules, 'onnxruntime-node', 'bin', 'napi-v6')
 for (const platform of fs.readdirSync(binaries).sort()) {
   for (const arch of fs.readdirSync(path.join(binaries, platform)).sort()) {
-    for (const file of fs.readdirSync(path.join(binaries, platform, arch)).sort()) add(path.join('onnxruntime-node', 'bin', 'napi-v6', platform, arch, file), `${platform}-${arch}`)
+    for (const file of fs.readdirSync(path.join(binaries, platform, arch)).sort()) {
+      // The Windows CPU binding only needs the runtime and its N-API addon.
+      if (platform === 'win32' && !['onnxruntime.dll', 'onnxruntime_binding.node'].includes(file)) continue
+      add(path.join('onnxruntime-node', 'bin', 'napi-v6', platform, arch, file), `${platform}-${arch}`)
+    }
   }
 }
 const common = path.join(modules, 'onnxruntime-common', 'dist', 'cjs')
