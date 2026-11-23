@@ -7,7 +7,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { registerPendingSave } from './lib/persistence'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import PdfViewer from './components/PdfViewer'
-import ChatPanel from './components/ChatPanel'
+import ChatPanel, { type SelectionExplanationRequest } from './components/ChatPanel'
 import { sourcesApi, notesApi, annotationsApi, type Source, type Note, type Annotation } from './lib/api'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -164,7 +164,7 @@ export default function App({ user }: { user: User }) {
   const [selectedText, setSelectedText] = useState('')
   // PDF page the selection came from; lets chat include that page as context.
   const [selectedPage, setSelectedPage] = useState<number | null>(null)
-  const [visualSelectionRequest, setVisualSelectionRequest] = useState<{ id: string; text: string; page?: number; scope: string } | null>(null)
+  const [selectionExplanation, setSelectionExplanation] = useState<SelectionExplanationRequest | null>(null)
   const [annotations, setAnnotations] = useState<Annotation[]>([])
   const [splitPct, setSplitPct] = useState(55)
   const [loading, setLoading] = useState(true)
@@ -265,7 +265,7 @@ export default function App({ user }: { user: User }) {
       loadPosts()
     } catch (error) { setPostNotice((error as Error).message) }
   }
-  useEffect(() => { setSelectedText(''); setSelectedPage(null); setVisualSelectionRequest(null) }, [projectId, sourceId])
+  useEffect(() => { setSelectedText(''); setSelectedPage(null); setSelectionExplanation(null) }, [projectId, sourceId])
 
   const flushReadingProgress = useCallback(() => {
     if (!projectId || !sourceId) return
@@ -359,10 +359,15 @@ export default function App({ user }: { user: User }) {
     setAnnotations(prev => [...prev, ann])
   }
 
-  const askAboutHighlight = (ann: Annotation) => {
-    setSelectedText(ann.text)
-    setSelectedPage(ann.page_number)
+  const attachSelection = (text: string, page?: number) => {
+    setSelectedText(text)
+    setSelectedPage(page ?? null)
     setRightPanel('chat')
+  }
+
+  const explainSelection = (kind: SelectionExplanationRequest['kind'], text: string, page?: number) => {
+    attachSelection(text, page)
+    setSelectionExplanation({ id: crypto.randomUUID(), kind, text, page, scope: `${projectId}:${sourceId}` })
   }
 
   const handleHighlightClick = (annotation: Annotation, point: { x: number; y: number }) => setHighlightMenu({ annotation, x: point.x, y: point.y })
@@ -503,10 +508,9 @@ export default function App({ user }: { user: User }) {
             postAnnotationIds={postsByAnnotation}
             isResizing={isResizing}
             onPageChange={handlePageChange}
-            onTextSelected={(text, page) => { setSelectedText(text); setSelectedPage(page ?? null); setRightPanel('chat') }}
-            onExplainVisually={(text, page) => {
-              setSelectedText(text); setSelectedPage(page ?? null); setRightPanel('chat'); setVisualSelectionRequest({ id: crypto.randomUUID(), text, page, scope: `${projectId}:${sourceId}` })
-            }}
+            onTextSelected={attachSelection}
+            onExplain={(text, page) => explainSelection('text', text, page)}
+            onExplainVisually={(text, page) => explainSelection('visual', text, page)}
             annotations={annotations}
             onHighlightCreate={handleHighlightCreate}
             onHighlightClick={handleHighlightClick}
@@ -539,8 +543,8 @@ export default function App({ user }: { user: User }) {
               disabled={!hasPdfText}
               selectedText={selectedText}
               selectedPage={selectedPage}
-              visualSelectionRequest={visualSelectionRequest}
-              onVisualSelectionHandled={() => setVisualSelectionRequest(null)}
+              selectionExplanation={selectionExplanation}
+              onSelectionExplanationHandled={() => setSelectionExplanation(null)}
               onSelectedTextUsed={() => { setSelectedText(''); setSelectedPage(null) }}
               projectId={projectId || null}
               sourceId={sourceId || null}
@@ -563,7 +567,7 @@ export default function App({ user }: { user: User }) {
       {highlightMenu && (
         <HighlightMenu menu={highlightMenu} hasPost={postsByAnnotation.has(highlightMenu.annotation.id)}
           onClose={() => setHighlightMenu(null)}
-          onAsk={() => askAboutHighlight(highlightMenu.annotation)}
+          onAsk={() => attachSelection(highlightMenu.annotation.text, highlightMenu.annotation.page_number)}
           onPost={() => {
             const existing = postsByAnnotation.get(highlightMenu.annotation.id)
             if (existing) openPost(existing.id)

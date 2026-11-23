@@ -15,6 +15,14 @@ interface Message {
   visual_id?: string | null
 }
 
+export type SelectionExplanationRequest = {
+  id: string
+  kind: 'text' | 'visual'
+  text: string
+  page?: number
+  scope: string
+}
+
 interface Props {
   pdfText: string
   pdfUrl: string
@@ -23,8 +31,8 @@ interface Props {
   /** PDF page the selection came from, sent so the server can include that page. */
   selectedPage?: number | null
   onSelectedTextUsed?: () => void
-  visualSelectionRequest?: { id: string; text: string; page?: number; scope: string } | null
-  onVisualSelectionHandled?: () => void
+  selectionExplanation?: SelectionExplanationRequest | null
+  onSelectionExplanationHandled?: () => void
   // v2
   projectId?: string | null
   sourceId?: string | null
@@ -33,7 +41,7 @@ interface Props {
   initialMessages?: { role: string; content: string }[]
 }
 
-export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, selectedPage, onSelectedTextUsed, visualSelectionRequest, onVisualSelectionHandled, projectId, sourceId, sessionId, initialMessages }: Props) {
+export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, selectedPage, onSelectedTextUsed, selectionExplanation, onSelectionExplanationHandled, projectId, sourceId, sessionId, initialMessages }: Props) {
   // Retained in the component contract for older callers; context is now
   // loaded by the server-side ChatService from source IDs.
   void pdfText
@@ -45,7 +53,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
   const [recovered, setRecovered] = useState<{id:string;question:string;answer:string;status:string}[]>([])
   const [error, setError] = useState('')
   const [historyLoading, setHistoryLoading] = useState(true)
-  const handledVisualRequest = useRef('')
+  const handledExplanation = useRef('')
   const scopeRef = useRef('')
   scopeRef.current = `${projectId}:${sourceId}`
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -174,11 +182,13 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
   }
 
   useEffect(() => {
-    if (!visualSelectionRequest || visualSelectionRequest.scope !== scopeRef.current || !agent || loading || historyLoading || disabled || handledVisualRequest.current === visualSelectionRequest.id) return
-    handledVisualRequest.current = visualSelectionRequest.id
-    onVisualSelectionHandled?.()
-    void send({ kind: 'visual', question: 'Explain the selected passage visually.' }, visualSelectionRequest.text, visualSelectionRequest.page ?? null)
-  }, [visualSelectionRequest, agent, loading, historyLoading, disabled])
+    if (!selectionExplanation || selectionExplanation.scope !== scopeRef.current || !agent || loading || historyLoading || disabled || handledExplanation.current === selectionExplanation.id) return
+    const { id, kind, text, page } = selectionExplanation
+    handledExplanation.current = id
+    onSelectionExplanationHandled?.()
+    const question = kind === 'visual' ? 'Explain the selected passage visually.' : 'Explain this term in the context of the passage.'
+    void send({ kind, question }, text, page ?? null)
+  }, [selectionExplanation, agent, loading, historyLoading, disabled])
 
   const chooseVisual = () => { setInput('/visual '); textareaRef.current?.focus() }
 

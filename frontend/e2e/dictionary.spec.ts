@@ -44,12 +44,14 @@ async function drag(page: Page, text: string) {
 }
 
 const card = (page: Page) => page.getByRole('dialog', { name: /^Definition of/ });
+const actions = (page: Page) => page.locator('[data-ask-bubble]');
+const explain = (page: Page) => page.getByRole('button', { name: 'Explain', exact: true });
 const defined = (page: Page) => page.waitForResponse(response => response.url().includes('/api/dictionary/define'));
 
 test.describe('reader dictionary', () => {
   test.beforeEach(async ({ page }) => { await mockAuth(page); });
 
-  test('double-clicking a word shows its meanings, base form first, next to the selection bubble', async ({ page }) => {
+  test('double-clicking a word shows only its meanings, base form first', async ({ page }) => {
     await openReader(page);
     const box = await boxOf(page, 'mice');
     await page.mouse.dblclick(box.x, box.y);
@@ -58,7 +60,7 @@ test.describe('reader dictionary', () => {
     await expect(card(page).locator('section').first()).toContainText('mouse noun');
     await expect(card(page)).toContainText('rodent');
     await expect(card(page)).toContainText('WordNet 3.1');
-    await expect(page.getByRole('button', { name: '💬 Ask', exact: true })).toBeVisible();
+    await expect(actions(page)).toHaveCount(0);
 
     await page.keyboard.press('Escape');
     await expect(card(page)).toHaveCount(0);
@@ -80,31 +82,72 @@ test.describe('reader dictionary', () => {
     await expect(card(page).locator('section').first()).toContainText('well-known adjective');
   });
 
-  test('a selected phrase is defined when the dictionary lists it, and a long selection is not looked up', async ({ page }) => {
+  test('two selected words use the dictionary and three or more show all normal actions', async ({ page }) => {
     await openReader(page);
     await drag(page, 'neural network');
     await expect(card(page).locator('section').first()).toContainText('neural network noun');
+    await expect(actions(page)).toHaveCount(0);
 
     let lookups = 0;
     page.on('request', request => { if (request.url().includes('/api/dictionary/define')) lookups++; });
-    await drag(page, 'We trained a neural network on images.');
-    await expect(page.getByRole('button', { name: '💬 Ask', exact: true })).toBeVisible();
-    await expect(card(page)).toHaveCount(0);
+    for (const passage of ['a neural network', 'trained a neural network', 'We trained a neural network on images.']) {
+      await drag(page, passage);
+      await expect(actions(page).getByRole('button')).toHaveText(['🖊 Highlight', '💬 Ask', 'Explain visually']);
+      await expect(card(page)).toHaveCount(0);
+    }
     expect(lookups).toBe(0);
   });
 
-  test('a word the dictionary does not list shows no card, and the bubble still appears', async ({ page }) => {
-    await openReader(page);
+  test('a dictionary miss offers only Explain and sends the selected text and page on click', async ({ page }) => {
+    const chats: Array<Record<string, unknown>> = [];
+    await page.route('**/api/agents', route => route.fulfill({
+      json: { default: 'codex', agents: [{ id: 'codex', label: 'Codex', available: true }] },
+    }));
+    await page.route('**/api/chat', async route => {
+      chats.push(route.request().postDataJSON());
+      await route.fulfill({ contentType: 'text/event-stream', body: 'data: {"text":"Explanation."}\n\ndata: [DONE]\n\n' });
+    });
+    const { source } = await openReader(page);
     const answered = defined(page);
     const box = await boxOf(page, 'zxqv');
     await page.mouse.dblclick(box.x, box.y);
     expect((await (await answered).json()).entries).toEqual([]);
-    await expect(page.getByRole('button', { name: '💬 Ask', exact: true })).toBeVisible();
+    await expect(actions(page).getByRole('button')).toHaveText(['Explain']);
     await expect(card(page)).toHaveCount(0);
+    expect(chats).toHaveLength(0);
+
+    await explain(page).click();
+    await expect(page.getByText('Explanation.', { exact: true })).toBeVisible();
+    expect(chats).toHaveLength(1);
+    expect(chats[0]).toMatchObject({ source_id: source.id, selection_page: 1 });
+    expect(chats[0]!.message).toMatch(/^Explain .+\n\n> zxqv$/);
+    await expect(actions(page)).toHaveCount(0);
   });
 
-  test('the card expands in place, keeps the selection for Highlight, and closes on a click elsewhere', async ({ page }) => {
-    const { project, source } = await openReader(page);
+  test('a failed lookup offers Explain after the request settles and Escape dismisses it', async ({ page }) => {
+    await openReader(page);
+    let finishLookup!: () => void;
+    const pending = new Promise<void>(resolve => { finishLookup = resolve; });
+    await page.route('**/api/dictionary/define?*', async route => {
+      await pending;
+      await route.fulfill({ status: 503, json: { detail: 'Dictionary unavailable' } });
+    });
+    const requested = page.waitForRequest(request => request.url().includes('/api/dictionary/define'));
+    try {
+      await drag(page, 'neural network');
+      await requested;
+      await expect(actions(page)).toHaveCount(0);
+      await expect(card(page)).toHaveCount(0);
+    } finally {
+      finishLookup();
+    }
+    await expect(actions(page).getByRole('button')).toHaveText(['Explain']);
+    await page.keyboard.press('Escape');
+    await expect(actions(page)).toHaveCount(0);
+  });
+
+  test('the card expands in place, keeps the selected text, and closes on a click elsewhere', async ({ page }) => {
+    await openReader(page);
     const box = await boxOf(page, 'bank');
     await page.mouse.dblclick(box.x, box.y);
     await expect(card(page).locator('section').first()).toContainText('bank noun');
@@ -115,17 +158,7 @@ test.describe('reader dictionary', () => {
     await expect(card(page).locator('li')).toHaveCount(18);
     await expect(card(page).getByRole('button', { name: 'Show fewer' })).toBeVisible();
 
-    // The word is still selected, so the bubble's Highlight applies to it.
-    const saved = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith(`/sources/${source.id}/annotations`));
-    await page.getByRole('button', { name: /Highlight/ }).click();
-    expect((await saved).ok()).toBeTruthy();
-    await expect(card(page)).toHaveCount(0);
-    const annotations = await (await page.request.get(`/api/projects/${project.id}/sources/${source.id}/annotations`)).json();
-    expect(annotations.map((annotation: { text: string }) => annotation.text.trim())).toEqual(['bank']);
-
-    const mice = await boxOf(page, 'mice');
-    await page.mouse.dblclick(mice.x, mice.y);
-    await expect(card(page)).toBeVisible();
+    expect(await page.evaluate(() => window.getSelection()?.toString().trim())).toBe('bank');
     await page.getByTestId('page-progress').click();
     await expect(card(page)).toHaveCount(0);
   });
@@ -147,11 +180,35 @@ test.describe('reader dictionary', () => {
     await expect(page.getByRole('button', { name: 'Definitions', exact: true })).toHaveAttribute('aria-pressed', 'false');
     let lookups = 0;
     page.on('request', request => { if (request.url().includes('/api/dictionary/define')) lookups++; });
-    const again = await boxOf(page, 'mice');
-    await page.mouse.dblclick(again.x, again.y);
-    await expect(page.getByRole('button', { name: '💬 Ask', exact: true })).toBeVisible();
+    for (const selection of ['a', 'mice', 'neural network', 'a neural network']) {
+      await drag(page, selection);
+      await expect(actions(page).getByRole('button')).toHaveText(['🖊 Highlight', '💬 Ask', 'Explain visually']);
+    }
     await expect(card(page)).toHaveCount(0);
     expect(lookups).toBe(0);
+  });
+
+  test('a one-word highlight can be saved with Definitions off and used with Definitions on', async ({ page }) => {
+    const { project, source } = await openReader(page);
+    const toggle = page.getByRole('button', { name: 'Definitions', exact: true });
+    await toggle.click();
+    await drag(page, 'bank');
+    const saved = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith(`/sources/${source.id}/annotations`));
+    await actions(page).getByRole('button', { name: /Highlight/ }).click();
+    expect((await saved).ok()).toBeTruthy();
+    const response = await page.request.get(`/api/projects/${project.id}/sources/${source.id}/annotations`);
+    expect(await response.json()).toMatchObject([{ text: 'bank', page_number: 1 }]);
+
+    await toggle.click();
+    const highlight = page.getByRole('button', { name: 'Highlight: bank', exact: true });
+    await highlight.focus();
+    await page.keyboard.press('Enter');
+    const menu = page.getByRole('menu', { name: 'Highlight' });
+    await expect(menu.getByRole('menuitem')).toHaveText(['💬 Ask', '✦ Create post', '🗑 Delete']);
+    await expect(menu.getByRole('menuitemradio', { name: 'Yellow highlight' })).toHaveAttribute('aria-checked', 'true');
+    await menu.getByRole('menuitem', { name: /Ask/ }).click();
+    await expect(page.getByText('Selection attached — ask a question or type /visual')).toBeVisible();
+    await expect(card(page)).toHaveCount(0);
   });
   test('a contextually ordered answer renders once, in the order the server sent, with nothing added', async ({ page }) => {
     await openReader(page);
@@ -210,6 +267,7 @@ test.describe('reader dictionary', () => {
     await page.waitForTimeout(1000);
     await expect(card(page)).toHaveCount(1);
     await expect(card(page).locator('section').first()).toContainText('mouse noun');
+    await expect(actions(page)).toHaveCount(0);
     expect(aborted).toEqual(['net::ERR_ABORTED']);
     // One lookup per double-click, although both clicks end with the word selected.
     expect(lookups).toEqual(['bank', 'mice']);
