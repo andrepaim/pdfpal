@@ -119,7 +119,7 @@ export const sourcesApi = {
       const err = await res.json().catch(() => ({ detail: res.statusText }))
       throw new Error(err.detail || `Failed to add source`)
     }
-    return res.json()
+    return res.json() as Promise<Source>
   },
 }
 
