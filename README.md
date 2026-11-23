@@ -164,7 +164,7 @@ See the [sharing guide](docs/share-posts.md) for destinations, styles and looks,
 ### Organization
 
 - **Projects**: workspaces for a research topic: sources, notes, chat history.
-- **Collections**: nested folders for organizing sources within a project; drag-and-drop, Expand/Collapse All.
+- **Collections**: organize sources in nested folders with drag-and-drop and Expand/Collapse All. Use **Sort by** to order papers by import date or title in either direction. Each collection and Unfiled remembers its own choice on this device.
 - **Notes**: markdown notes at the project or source level, rendered by default, edit in place.
 - **Highlights**: every annotation across a project, grouped by source, one click back to context, with **Create post** or **Open post** on each one.
 

@@ -5,6 +5,7 @@ import { projectsApi, sourcesApi, collectionsApi, notesApi, chatApi, searchApi, 
 import SearchPaperModal from '../components/SearchPaperModal'
 import CollectionDialog from '../components/CollectionDialog'
 import { timeAgo } from '../lib/time'
+import { sortSources, sourceDisplayTitle, sourceSortLabels, sourceSortOrDefault, type SourceSort } from '../lib/source-sort'
 import { kindleLaunchUrl } from '../../../src/shared/kindle-book'
 import SharePostPanel, { kindLabel } from '../components/SharePostPanel'
 import { shareCardApi } from '../lib/share-card-api'
@@ -17,10 +18,11 @@ type Tab = 'sources' | 'search' | 'notes' | 'chats' | 'highlights'
 type DragItem = { kind: 'source' | 'collection'; id: string }
 
 // ── Sources tab: a drag-and-drop collection tree ──────────────────────────────
-function SourceRow({ source, projectId, drag }: {
+function SourceRow({ source, projectId, drag, onRename }: {
   source: Source
   projectId: string
   drag: { onDragStart: (item: DragItem) => void; onDragEnd: () => void }
+  onRename: (id: string, title: string) => Promise<void>
 }) {
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
@@ -29,8 +31,13 @@ function SourceRow({ source, projectId, drag }: {
 
   const commit = async () => {
     const next = title.trim()
-    if (next && next !== source.title) { await sourcesApi.updateTitle(projectId, source.id, next); source.title = next }
     setEditing(false)
+    if (!next || next === source.title) return
+    try {
+      await onRename(source.id, next)
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Could not rename source')
+    }
   }
   const remove = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -54,12 +61,12 @@ function SourceRow({ source, projectId, drag }: {
       <div style={{ flex: 1, minWidth: 0 }}>
         {editing ? (
           <input autoFocus value={title} onChange={e => setTitle(e.target.value)} onBlur={commit}
-            onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false) }}
+            onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditing(false) }}
             onClick={e => e.stopPropagation()}
             style={{ width: '100%', background: '#0f0f0f', border: '1px solid var(--accent)', borderRadius: 6, padding: '3px 8px', color: '#fff', fontSize: 13, fontWeight: 600, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />
         ) : (
           <>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{source.title || source.url || 'Untitled'}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sourceDisplayTitle(source)}</div>
             {source.author && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{source.author}</div>}
             {source.excerpt && (
               <div style={{ fontSize: 11, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>{source.excerpt}</div>
@@ -82,6 +89,32 @@ function SourceRow({ source, projectId, drag }: {
   )
 }
 
+const unfiledSortKey = 'unfiled'
+
+function readSortPreferences(key: string): Record<string, unknown> {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(key) ?? '{}')
+    if (saved && typeof saved === 'object' && !Array.isArray(saved)) return saved as Record<string, unknown>
+  } catch { /* Storage may be unavailable or contain an invalid preference. */ }
+  return {}
+}
+
+function SourceSortControl({ name, value, onChange }: {
+  name: string
+  value: SourceSort
+  onChange: (sort: SourceSort) => void
+}) {
+  return (
+    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, color: '#9ca3af', fontSize: 11, whiteSpace: 'nowrap' }}>
+      Sort by
+      <select aria-label={`Sort papers in ${name}`} value={value} onChange={e => onChange(sourceSortOrDefault(e.target.value))}
+        style={{ background: 'var(--panel)', color: '#e5e7eb', border: '1px solid #3a3a3a', borderRadius: 6, padding: '2px 4px', font: 'inherit', cursor: 'pointer' }}>
+        {Object.entries(sourceSortLabels).map(([sort, label]) => <option key={sort} value={sort}>{label}</option>)}
+      </select>
+    </label>
+  )
+}
+
 function SourcesTab({ projectId }: { projectId: string }) {
   const navigate = useNavigate()
   const [sources, setSources] = useState<Source[]>([])
@@ -95,6 +128,17 @@ function SourcesTab({ projectId }: { projectId: string }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [collectionParent, setCollectionParent] = useState<Collection | null | undefined>(undefined)
+  const sortStorageKey = `pdfpal.source-sort.${projectId}`
+  const [sortPreferences, setSortPreferences] = useState(() => readSortPreferences(sortStorageKey))
+
+  const changeSort = (id: string | null, sort: SourceSort) => {
+    const groupKey = id ?? unfiledSortKey
+    setSortPreferences(prev => ({ ...prev, [groupKey]: sort }))
+    try {
+      const saved = readSortPreferences(sortStorageKey)
+      localStorage.setItem(sortStorageKey, JSON.stringify({ ...saved, [groupKey]: sort }))
+    } catch { /* Keep the current view usable without storage. */ }
+  }
 
   const reload = () => Promise.all([sourcesApi.list(projectId), collectionsApi.list(projectId)])
     .then(([s, c]) => {
@@ -128,8 +172,11 @@ function SourcesTab({ projectId }: { projectId: string }) {
       const key = s.collection_id && known.has(s.collection_id) ? s.collection_id : null
       ;(sourcesIn.get(key) ?? sourcesIn.set(key, []).get(key)!).push(s)
     }
+    for (const [key, rows] of sourcesIn) {
+      sourcesIn.set(key, sortSources(rows, sourceSortOrDefault(sortPreferences[key ?? unfiledSortKey])))
+    }
     return { childrenOf, sourcesIn }
-  }, [collections, sources])
+  }, [collections, sources, sortPreferences])
 
   const toggle = (id: string) => setExpanded(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
   const allExpanded = collections.length > 0 && collections.every(c => expanded.has(c.id))
@@ -140,10 +187,19 @@ function SourcesTab({ projectId }: { projectId: string }) {
     setDragItem(null); setDropTarget(null)
     if (!item) return
     try {
-      if (item.kind === 'source') await sourcesApi.setCollection(projectId, item.id, targetCollectionId)
-      else if (item.id !== targetCollectionId) await collectionsApi.move(projectId, item.id, targetCollectionId)
-      await reload()
+      if (item.kind === 'source') {
+        await sourcesApi.setCollection(projectId, item.id, targetCollectionId)
+        setSources(prev => prev.map(s => s.id === item.id ? { ...s, collection_id: targetCollectionId } : s))
+      } else if (item.id !== targetCollectionId) {
+        await collectionsApi.move(projectId, item.id, targetCollectionId)
+        await reload()
+      }
     } catch (e: any) { alert(e.message || 'Could not move item') }
+  }
+
+  const renameSource = async (id: string, title: string) => {
+    await sourcesApi.updateTitle(projectId, id, title)
+    setSources(prev => prev.map(s => s.id === id ? { ...s, title } : s))
   }
 
   const collectionCreated = (created: Collection) => {
@@ -168,13 +224,15 @@ function SourcesTab({ projectId }: { projectId: string }) {
     dropTarget === id ? { outline: '2px dashed var(--accent)', outlineOffset: 2, borderRadius: 8 } : {}
 
   const dragHandlers = { onDragStart: setDragItem, onDragEnd: () => { setDragItem(null); setDropTarget(null) } }
+  const renderSource = (source: Source) => (
+    <SourceRow key={source.id} source={source} projectId={projectId} drag={dragHandlers} onRename={renameSource} />
+  )
 
   // Recursively render a collection and everything filed beneath it.
   const renderCollection = (c: Collection, depth: number): React.ReactNode => {
     const isOpen = expanded.has(c.id)
     const kids = childrenOf.get(c.id) ?? []
     const rows = sourcesIn.get(c.id) ?? []
-    const total = (c.source_count ?? rows.length)
     return (
       <div key={c.id} style={{ marginLeft: depth ? 16 : 0 }}>
         <div
@@ -184,7 +242,7 @@ function SourcesTab({ projectId }: { projectId: string }) {
           onDragOver={e => { if (dragItem) { e.preventDefault(); e.stopPropagation(); setDropTarget(c.id) } }}
           onDragLeave={e => { e.stopPropagation(); setDropTarget(t => t === c.id ? null : t) }}
           onDrop={e => { e.preventDefault(); e.stopPropagation(); drop(c.id) }}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: '#141414', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 6, cursor: 'grab', ...dropZoneStyle(c.id) }}
+          style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '7px 10px', background: '#141414', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 6, cursor: 'grab', ...dropZoneStyle(c.id) }}
         >
           <span onClick={() => toggle(c.id)} style={{ cursor: 'pointer', color: '#6b7280', fontSize: 11, width: 12, flexShrink: 0 }}>{isOpen ? '▾' : '▸'}</span>
           <span style={{ fontSize: 15, flexShrink: 0 }}>{isOpen ? '📂' : '📁'}</span>
@@ -192,21 +250,24 @@ function SourcesTab({ projectId }: { projectId: string }) {
             <input autoFocus value={editingName} onChange={e => setEditingName(e.target.value)} onBlur={() => commitRename(c.id)}
               onKeyDown={e => { if (e.key === 'Enter') commitRename(c.id); if (e.key === 'Escape') setEditingId(null) }}
               onClick={e => e.stopPropagation()}
-              style={{ flex: 1, background: '#0f0f0f', border: '1px solid var(--accent)', borderRadius: 6, padding: '2px 8px', color: '#fff', fontSize: 13, fontWeight: 700, outline: 'none', fontFamily: 'inherit' }} />
+              style={{ flex: 1, minWidth: 48, background: '#0f0f0f', border: '1px solid var(--accent)', borderRadius: 6, padding: '2px 8px', color: '#fff', fontSize: 13, fontWeight: 700, outline: 'none', fontFamily: 'inherit' }} />
           ) : (
-            <span onClick={() => toggle(c.id)} style={{ flex: 1, fontSize: 13, fontWeight: 700, color: '#e5e7eb', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+            <span onClick={() => toggle(c.id)} style={{ flex: 1, minWidth: 48, fontSize: 13, fontWeight: 700, color: '#e5e7eb', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
           )}
-          <span style={{ background: 'var(--border)', borderRadius: 10, padding: '1px 7px', fontSize: 10, color: '#9ca3af', flexShrink: 0 }}>{total}</span>
-          <button title="Ask this collection" onClick={e => { e.stopPropagation(); navigate(`/projects/${projectId}/chat?collection=${c.id}`) }}
-            style={collBtn}>💬</button>
-          <button title="New sub-collection" onClick={e => { e.stopPropagation(); setCollectionParent(c) }} style={collBtn}>＋</button>
-          <button title="Rename" onClick={e => { e.stopPropagation(); setEditingId(c.id); setEditingName(c.name) }} style={collBtn}>✏️</button>
-          <button title="Delete collection" onClick={e => { e.stopPropagation(); deleteCollection(c) }} style={collBtn}>🗑</button>
+          <span style={{ background: 'var(--border)', borderRadius: 10, padding: '1px 7px', fontSize: 10, color: '#9ca3af', flexShrink: 0 }}>{rows.length}</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button title="Ask this collection" onClick={e => { e.stopPropagation(); navigate(`/projects/${projectId}/chat?collection=${c.id}`) }}
+              style={collBtn}>💬</button>
+            <button title="New sub-collection" onClick={e => { e.stopPropagation(); setCollectionParent(c) }} style={collBtn}>＋</button>
+            <button title="Rename" onClick={e => { e.stopPropagation(); setEditingId(c.id); setEditingName(c.name) }} style={collBtn}>✏️</button>
+            <button title="Delete collection" onClick={e => { e.stopPropagation(); deleteCollection(c) }} style={collBtn}>🗑</button>
+          </div>
+          <SourceSortControl name={c.name} value={sourceSortOrDefault(sortPreferences[c.id])} onChange={sort => changeSort(c.id, sort)} />
         </div>
         {isOpen && (
           <div style={{ marginLeft: 16, display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 6 }}>
             {kids.map(child => renderCollection(child, depth + 1))}
-            {rows.map(s => <SourceRow key={s.id} source={s} projectId={projectId} drag={dragHandlers} />)}
+            {rows.map(renderSource)}
             {kids.length === 0 && rows.length === 0 && <div style={{ fontSize: 11, color: '#4b5563', padding: '4px 8px' }}>Empty — drag sources here</div>}
           </div>
         )}
@@ -250,13 +311,14 @@ function SourcesTab({ projectId }: { projectId: string }) {
             onDrop={e => { e.preventDefault(); drop(null) }}
             style={{ marginTop: collections.length ? 8 : 0, padding: 8, ...dropZoneStyle('root') }}
           >
-            {collections.length > 0 && (
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 1, padding: '2px 4px 8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '2px 4px 8px' }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1 }}>
                 Unfiled{unfiled.length ? ` · ${unfiled.length}` : ''}
-              </div>
-            )}
+              </span>
+              <SourceSortControl name="Unfiled" value={sourceSortOrDefault(sortPreferences[unfiledSortKey])} onChange={sort => changeSort(null, sort)} />
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {unfiled.map(s => <SourceRow key={s.id} source={s} projectId={projectId} drag={dragHandlers} />)}
+              {unfiled.map(renderSource)}
             </div>
           </div>
         )}
