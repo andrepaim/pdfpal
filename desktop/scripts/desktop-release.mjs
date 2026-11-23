@@ -124,7 +124,9 @@ export async function prepareCombinedRelease(directory, expected) {
   if (linuxAssets[0].size !== linux.size || linuxAssets[0].sha256 !== linux.sha256) throw new Error('Linux installer size or SHA-256 mismatch')
   if (await fs.readFile(path.join(directory, 'SHA256SUMS-linux.txt'), 'utf8') !== `${linux.sha256}  ${linuxName}\n${linuxAssets[1].sha256}  ${linuxManifestName}\n`) throw new Error('Linux checksums do not match the tested native build')
   // What changed is said per version, so the notes of an earlier coordinated release stay as they were published.
-  const changes = compareVersions(version, '2.8.0-beta.9') >= 0
+  const changes = compareVersions(version, '2.8.0-beta.10') >= 0
+    ? '**Changes since 2.8.0-beta.9.** In a project’s Sources tab, use **Sort by** to order papers by import date or title in either direction. Each collection, including Unfiled, remembers its own choice on this device. The default is **Newest added**.'
+    : compareVersions(version, '2.8.0-beta.9') >= 0
     ? '**Changes since 2.8.0-beta.8.** With Definitions on, selecting one or two words in a PDF opens the offline dictionary. If the lookup finds no entry or fails, choose **Explain** to ask about the selection. Select three or more words for the full action menu, or turn Definitions off to use that menu for any selection.'
     : compareVersions(version, '2.8.0-beta.8') >= 0
     ? '**Changes since 2.8.0-beta.7.** The offline English dictionary can now place definitions that fit your passage first inside each entry. Open **Order by context** in the reader toolbar, then choose **Download and turn on** to get the model and CPU runtime once per user. Libraries share the verified files. Future lookups run locally. The feature is off by default and falls back to WordNet order while loading or when scoring takes too long. The README also includes a reader demo video.'
