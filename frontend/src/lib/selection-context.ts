@@ -2,16 +2,6 @@
 // look a selected word up together with its neighbours.
 
 const CONTEXT_CHARS = 120
-/** A longer selection is a passage to ask about, not a word to define. */
-const MAX_DEFINABLE_CHARS = 80
-const MAX_DEFINABLE_WORDS = 4
-
-/** Whether a selection is short enough to be a word or a short phrase. */
-export function isDefinable(text: string): boolean {
-  const trimmed = text.trim()
-  return trimmed.length >= 2 && trimmed.length <= MAX_DEFINABLE_CHARS
-    && trimmed.split(/\s+/).length <= MAX_DEFINABLE_WORDS && /\p{L}/u.test(trimmed)
-}
 
 export function selectionContext(range: Range): { before: string; after: string } {
   const none = { before: '', after: '' }

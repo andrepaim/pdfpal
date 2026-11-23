@@ -17,7 +17,7 @@ async function selectOnFirstPage(page: Page) {
   const spans = page.locator('[data-pdf-page="1"] .textLayer span');
   await expect(spans.first()).toBeVisible();
   await spans.evaluateAll(elements => {
-    const element = elements.find(el => (el.textContent?.trim().length ?? 0) > 5)!;
+    const element = elements.find(el => (el.textContent?.trim().split(/\s+/).length ?? 0) >= 3)!;
     const range = document.createRange();
     range.selectNodeContents(element);
     const selection = window.getSelection()!;
@@ -26,8 +26,6 @@ async function selectOnFirstPage(page: Page) {
     const rect = element.getBoundingClientRect();
     element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: rect.left + 5, clientY: rect.top + 5 }));
   });
-  await page.getByRole('button', { name: '💬 Ask', exact: true }).click();
-  await expect(page.getByText('Selection attached — ask a question or type /visual')).toBeVisible();
 }
 
 test.describe('reader selection context', () => {
@@ -41,6 +39,8 @@ test.describe('reader selection context', () => {
     });
     await openReader(page);
     await selectOnFirstPage(page);
+    await page.getByRole('button', { name: '💬 Ask', exact: true }).click();
+    await expect(page.getByText('Selection attached — ask a question or type /visual')).toBeVisible();
     await page.getByRole('textbox').fill('Why is this needed?');
     await page.keyboard.press('Enter');
     await expect.poll(() => bodies.length).toBe(1);
@@ -54,22 +54,30 @@ test.describe('reader selection context', () => {
     expect(bodies[1]).not.toHaveProperty('selection_page');
   });
 
-  test('a visual explanation of a selection sends its page', async ({ page }) => {
-    let body: Record<string, unknown> | undefined;
-    await page.route('**/api/projects/*/visuals', async route => {
-      if (route.request().method() !== 'POST') return route.fallback();
-      body = route.request().postDataJSON();
-      await route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ detail: 'Stopped by the test.' }) });
+  for (const entry of ['selection button', 'chat command']) {
+    test(`a visual explanation from the ${entry} sends the selection and its page`, async ({ page }) => {
+      let body: Record<string, unknown> | undefined;
+      await page.route('**/api/agents', route => route.fulfill({
+        json: { default: 'codex', agents: [{ id: 'codex', label: 'Codex', available: true }] },
+      }));
+      await page.route('**/api/projects/*/visuals', async route => {
+        if (route.request().method() !== 'POST') return route.fallback();
+        body = route.request().postDataJSON();
+        await route.fulfill({ status: 400, json: { detail: 'Stopped by the test.' } });
+      });
+      const { source } = await openReader(page);
+      await selectOnFirstPage(page);
+      if (entry === 'selection button') {
+        await page.getByRole('button', { name: 'Explain visually', exact: true }).click();
+      } else {
+        await page.getByRole('button', { name: '💬 Ask', exact: true }).click();
+        await page.getByRole('textbox').fill('/visual Explain this');
+        await page.keyboard.press('Enter');
+      }
+      await expect.poll(() => body).toMatchObject({ selection_page: 1, source_id: source.id, selection: expect.any(String) });
+      expect(body!.selection).toBeTruthy();
     });
-    const { source } = await openReader(page);
-    await selectOnFirstPage(page);
-    await page.getByRole('textbox').fill('/visual Explain this');
-    await page.keyboard.press('Enter');
-    await expect.poll(() => body).toBeTruthy();
-    expect(body!.selection_page).toBe(1);
-    expect(body!.source_id).toBe(source.id);
-    expect(body!.selection).toBeTruthy();
-  });
+  }
 });
 
 test.describe('highlights across a page break', () => {
