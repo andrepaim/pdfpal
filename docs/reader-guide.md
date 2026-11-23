@@ -4,7 +4,7 @@ Start with the [PDF quickstart](../README.md#read-a-pdf) to create a project and
 
 ## Selections, questions and highlights
 
-Select PDF text to open the popup. **Ask** attaches it to your next question, **Highlight** saves it, and **Explain visually** starts a [visual explanation](visual-explanations.md). A selection spanning a page break is highlighted as separate rectangles on each page. The project **Highlights** view groups saved annotations by source and opens their reading context.
+Select a passage of three or more words to open the action menu. **Ask** attaches it to your next question, **Highlight** saves it, and **Explain visually** starts a [visual explanation](visual-explanations.md). A selection spanning a page break is highlighted as separate rectangles on each page. The project **Highlights** view groups saved annotations by source and opens their reading context.
 
 Questions about a selected passage use the selection's page and neighboring pages when available, plus relevant indexed passages. This improves context around formulas and definitions; it does not send the entire project or guarantee a correct answer. Reading calls disable the assistant's shell and web tools. Use **Related** or paper search for discovery, or have an external research agent collect sources first.
 
@@ -12,11 +12,11 @@ Questions about a selected passage use the selection's page and neighboring page
 
 ## Offline dictionary
 
-Double-click an English word, or select a short phrase. When the bundled WordNet 3.1 dictionary has an entry, a definition card appears next to the selection popup. It recognizes base forms such as “mouse” for “mice”, hyphenated words and listed compounds such as “neural network”. A word inside a listed compound can show that compound before the individual word.
+Double-click an English word, or select one or two words. When the bundled WordNet 3.1 dictionary has an entry, the reader shows just its definition card. It recognizes base forms such as “mouse” for “mice”, hyphenated words and listed compounds such as “neural network”. A word inside a listed compound can show that compound before the individual word.
 
-**Show all meanings** expands the card; **Show fewer** collapses it. Press **Escape** or click elsewhere to dismiss it. **Ask** and **Highlight** remain available for the selected text. Unknown terms show no card; long selections keep the normal selection actions without a dictionary lookup.
+**Show all meanings** expands the card; **Show fewer** collapses it. Press **Escape** or click elsewhere to dismiss it. If a lookup fails or finds no entry, choose **Explain** to ask about the selected text. Select three or more words to open the full action menu, including **Ask** and **Highlight**. Turn off **Definitions** to use that menu for selections of any length.
 
-**Definitions** in the reader toolbar toggles these cards. The choice is remembered in the current browser. Definitions work locally without an AI account, provider call or network lookup. They are English dictionary entries, not AI explanations; use Ask for specialized terminology or a meaning that does not fit the passage.
+**Definitions** in the reader toolbar toggles these cards. The choice is remembered in the current browser. Definitions work locally without an AI account, provider call or network lookup. The dictionary provides English definitions from WordNet.
 
 **Order by context**, next to **Definitions**, turns on [contextual definition order](contextual-definitions.md) for the library. A local English word-sense model then lists each entry's best-fitting meaning first, and nothing else on the card changes. It is off by default. Turning it on the first time offers a one-time download (about 161 MB on Windows x64, 168 MB on Linux x64), which starts only after you confirm. Every library on the computer reuses the download, offline too. Whenever the model is not ready or cannot decide, the card keeps WordNet order. The Kindle companion does not include this PDF dictionary card.
 
