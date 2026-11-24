@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { cardFixture } from '@andrepaim/contextual-dictionary-core/card-fixture';
 import type { DictionaryDefineResponse } from '../../src/shared/dictionary';
-import { mockAuth, createProjectViaApi } from './helpers';
+import { mockAuth, createProjectViaApi, openReadingPreferences, readingPreferences } from './helpers';
 
 // test/fixtures/dictionary.pdf reads:
 //   We trained a neural network on images.
@@ -245,21 +245,25 @@ test.describe('reader dictionary', () => {
     expect(await page.evaluate(() => window.getSelection()?.toString().trim())).toBe('bank');
   });
 
-  test('the Definitions button turns the card off and the choice survives a reload', async ({ page }) => {
+  test('turning off definitions closes the card and the choice survives a reload', async ({ page }) => {
     await openReader(page);
-    const toggle = page.getByRole('button', { name: 'Definitions', exact: true });
-    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
     const box = await boxOf(page, 'mice');
     await page.mouse.dblclick(box.x, box.y);
     await expect(card(page)).toBeVisible();
 
+    await openReadingPreferences(page);
+    const toggle = readingPreferences(page).getByLabel('Show definitions on selection', { exact: true });
+    await expect(toggle).toBeChecked();
+    await expect(card(page)).toBeVisible();
     await toggle.click();
-    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await expect(toggle).not.toBeChecked();
     await expect(card(page)).toHaveCount(0);
 
     await page.reload();
     await expect(page.locator('[data-pdf-page="1"] .textLayer span').first()).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Definitions', exact: true })).toHaveAttribute('aria-pressed', 'false');
+    await openReadingPreferences(page);
+    await expect(toggle).not.toBeChecked();
+    await page.keyboard.press('Escape');
     let lookups = 0;
     page.on('request', request => { if (request.url().includes('/api/dictionary/define')) lookups++; });
     for (const selection of ['a', 'mice', 'neural network', 'a neural network']) {
@@ -270,10 +274,12 @@ test.describe('reader dictionary', () => {
     expect(lookups).toBe(0);
   });
 
-  test('a one-word highlight can be saved with Definitions off and used with Definitions on', async ({ page }) => {
+  test('a one-word highlight can be saved with definitions off and used with definitions on', async ({ page }) => {
     const { project, source } = await openReader(page);
-    const toggle = page.getByRole('button', { name: 'Definitions', exact: true });
+    await openReadingPreferences(page);
+    const toggle = readingPreferences(page).getByLabel('Show definitions on selection', { exact: true });
     await toggle.click();
+    await page.keyboard.press('Escape');
     await drag(page, 'bank');
     const saved = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith(`/sources/${source.id}/annotations`));
     await actions(page).getByRole('button', { name: /Highlight/ }).click();
@@ -281,7 +287,9 @@ test.describe('reader dictionary', () => {
     const response = await page.request.get(`/api/projects/${project.id}/sources/${source.id}/annotations`);
     expect(await response.json()).toMatchObject([{ text: 'bank', page_number: 1 }]);
 
+    await openReadingPreferences(page);
     await toggle.click();
+    await page.keyboard.press('Escape');
     const highlight = page.getByRole('button', { name: 'Highlight: bank', exact: true });
     await highlight.focus();
     await page.keyboard.press('Enter');

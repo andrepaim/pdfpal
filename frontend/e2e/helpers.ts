@@ -1,4 +1,19 @@
-import { type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+
+export function readingPreferencesTrigger(page: Page) {
+  return page.getByRole('button', { name: 'Reading preferences', exact: true });
+}
+
+export function readingPreferences(page: Page) {
+  return page.getByRole('dialog', { name: 'Reading preferences', exact: true });
+}
+
+export async function openReadingPreferences(page: Page) {
+  await readingPreferencesTrigger(page).click();
+  const preferences = readingPreferences(page);
+  await expect(preferences).toBeVisible();
+  return preferences;
+}
 
 /**
  * Mock the auth endpoint so the SPA treats the user as logged in.

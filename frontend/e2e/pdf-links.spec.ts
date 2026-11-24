@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { mockAuth, createProjectViaApi } from './helpers';
+import { mockAuth, createProjectViaApi, openReadingPreferences } from './helpers';
 
 // A small original fixture matching the reported paper's link structure:
 // page 3 links to a named XYZ destination partway down lazy page 14.
@@ -80,11 +80,15 @@ for (const mode of ['fit', '1.5']) {
 
 test('a direct page destination works in dark mode without changing zoom', async ({ page }) => {
   await openReferences(page);
-  await page.getByRole('button', { name: 'Dark pages', exact: true }).click();
+  const preferences = await openReadingPreferences(page);
+  const darkPages = preferences.getByLabel('Dark pages', { exact: true });
+  await darkPages.click();
+  await page.keyboard.press('Escape');
   await page.locator('[data-pdf-page="3"] .linkAnnotation a').nth(1).click();
   await expect(page.getByTestId('page-progress')).toHaveText('Page 14 of 15');
   await expect(page.locator('[data-pdf-page="14"] canvas')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Dark pages', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await openReadingPreferences(page);
+  await expect(darkPages).toBeChecked();
   const zoom = page.getByRole('combobox').filter({ has: page.getByRole('option', { name: 'Fit width', exact: true }) });
   await expect(zoom).toHaveValue('fit');
 });

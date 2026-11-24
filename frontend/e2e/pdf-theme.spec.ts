@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
-import { mockAuth, createProjectViaApi } from './helpers';
+import { mockAuth, createProjectViaApi, openReadingPreferences, readingPreferences, readingPreferencesTrigger } from './helpers';
 
 async function createReader(page: Page) {
   const project = await createProjectViaApi(page, 'PDF appearance');
@@ -12,6 +12,16 @@ async function createReader(page: Page) {
   await page.goto(url);
   await expect(page.locator('[data-pdf-page="1"] canvas')).toBeVisible();
   return { project, source, url };
+}
+
+function darkPages(page: Page) {
+  return readingPreferences(page).getByLabel('Dark pages', { exact: true });
+}
+
+async function toggleDarkPages(page: Page) {
+  await openReadingPreferences(page);
+  await darkPages(page).click();
+  await page.keyboard.press('Escape');
 }
 
 // Read a screenshot pixel to check the colors the reader actually sees.
@@ -30,40 +40,88 @@ async function backgroundPixel(page: Page, canvas: Locator) {
 test.describe('PDF page appearance', () => {
   test.beforeEach(async ({ page }) => { await mockAuth(page); });
 
+  test('the reading preferences open with the keyboard and dismiss with Escape or an outside click', async ({ page }) => {
+    await createReader(page);
+    const trigger = readingPreferencesTrigger(page);
+    const preferences = readingPreferences(page);
+    const definitions = preferences.getByLabel('Show definitions on selection', { exact: true });
+
+    await expect(trigger).toHaveAttribute('title', 'Reading preferences');
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    await expect(preferences).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^(Definitions|Order meanings by context|Dark pages)$/ })).toHaveCount(0);
+
+    await trigger.focus();
+    await page.keyboard.press('Enter');
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    await expect(preferences.getByText('Reading preferences', { exact: true })).toBeVisible();
+    await expect(preferences.getByText('Appearance', { exact: true })).toBeVisible();
+    await expect(definitions).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(preferences).toHaveCount(0);
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    await expect(trigger).toBeFocused();
+
+    await openReadingPreferences(page);
+    await page.getByTestId('page-progress').click();
+    await expect(preferences).toHaveCount(0);
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+
   test('defaults to light pages and toggles the rendered page colors with the keyboard', async ({ page }, testInfo) => {
     await createReader(page);
-    const toggle = page.getByRole('button', { name: 'Dark pages', exact: true });
     const canvas = page.locator('[data-pdf-page="1"] canvas');
-    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
     expect(Math.min(...await backgroundPixel(page, canvas))).toBeGreaterThan(240);
 
+    await openReadingPreferences(page);
+    const toggle = darkPages(page);
+    await expect(toggle).not.toBeChecked();
     await toggle.focus();
     await page.keyboard.press('Space');
-    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-    expect(Math.max(...await backgroundPixel(page, canvas))).toBeLessThan(65);
+    await expect(toggle).toBeChecked();
     await expect(toggle).toHaveCSS('filter', 'none');
+    await page.keyboard.press('Escape');
+    expect(Math.max(...await backgroundPixel(page, canvas))).toBeLessThan(65);
     await page.screenshot({ path: testInfo.outputPath('dark-pages.png') });
 
+    await openReadingPreferences(page);
     await toggle.click();
-    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await expect(toggle).not.toBeChecked();
+    await page.keyboard.press('Escape');
     expect(Math.min(...await backgroundPixel(page, canvas))).toBeGreaterThan(240);
   });
 
   test('remembers the preference after reload and when opening another document', async ({ page }) => {
     const { project } = await createReader(page);
-    const toggle = page.getByRole('button', { name: 'Dark pages', exact: true });
+    const toggle = darkPages(page);
+    await openReadingPreferences(page);
     await toggle.click();
     await page.reload();
-    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await openReadingPreferences(page);
+    await expect(toggle).toBeChecked();
     const response = await page.request.post(`/api/projects/${project.id}/sources`, {
       data: { url: 'test/fixtures/sample.pdf', title: 'Another paper' },
     });
     const another = await response.json();
     await page.goto(`/projects/${project.id}/sources/${another.id}`);
-    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await openReadingPreferences(page);
+    await expect(toggle).toBeChecked();
     await toggle.click();
     await page.reload();
-    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await openReadingPreferences(page);
+    await expect(toggle).not.toBeChecked();
+  });
+
+  test('reads existing browser preferences saved by the old toolbar controls', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('pdfpal.pdf.darkPages', 'true');
+      localStorage.setItem('pdfpal.pdf.definitions', 'false');
+    });
+    await createReader(page);
+    await expect(page.locator('.pdf-viewer')).toHaveAttribute('data-page-theme', 'dark');
+    const preferences = await openReadingPreferences(page);
+    await expect(darkPages(page)).toBeChecked();
+    await expect(preferences.getByRole('switch', { name: 'Show definitions on selection', exact: true })).not.toBeChecked();
   });
 
   test('keeps the zoom and reading position when changing page appearance', async ({ page }) => {
@@ -74,7 +132,7 @@ test.describe('PDF page appearance', () => {
     await secondPage.evaluate(element => element.scrollIntoView({ block: 'center' }));
     await expect(page.getByTestId('page-progress')).toHaveText('Page 2 of 2');
     const scrollTop = await page.getByTestId('pdf-scroll-area').evaluate(element => element.scrollTop);
-    await page.getByRole('button', { name: 'Dark pages', exact: true }).click();
+    await toggleDarkPages(page);
     await expect(zoom).toHaveValue('0.75');
     await expect(page.getByTestId('page-progress')).toHaveText('Page 2 of 2');
     await expect.poll(() => page.getByTestId('pdf-scroll-area').evaluate(element => element.scrollTop)).toBe(scrollTop);
@@ -96,13 +154,13 @@ test.describe('PDF page appearance', () => {
     await expect(secondPage.locator('canvas')).toHaveCount(0);
     const placeholder = secondPage.getByLabel('Page 2', { exact: true });
     await expect(placeholder).toHaveCSS('background-color', 'rgb(255, 255, 255)');
-    await page.getByRole('button', { name: 'Dark pages', exact: true }).click();
+    await toggleDarkPages(page);
     await expect(placeholder).toHaveCSS('background-color', 'rgb(26, 26, 26)');
   });
 
   test('allows text selection and readable, clickable highlights in dark mode', async ({ page }) => {
     const { project, source } = await createReader(page);
-    await page.getByRole('button', { name: 'Dark pages', exact: true }).click();
+    await toggleDarkPages(page);
     const spans = page.locator('[data-pdf-page="1"] .textLayer span');
     await expect(spans.first()).toBeVisible();
     const selected = await spans.evaluateAll(elements => {
@@ -131,7 +189,7 @@ test.describe('PDF page appearance', () => {
     await expect(page.getByTitle(selected, { exact: true }).filter({ hasText: selected })).toBeVisible();
     await page.getByRole('button', { name: 'Remove selection', exact: true }).click();
     await expect(page.getByRole('textbox')).toHaveValue('My question about this passage');
-    await page.getByRole('button', { name: 'Dark pages', exact: true }).click();
+    await toggleDarkPages(page);
     await expect(highlight).toHaveCSS('mix-blend-mode', 'multiply');
     const annotations = await (await page.request.get(`/api/projects/${project.id}/sources/${source.id}/annotations`)).json();
     expect(annotations).toHaveLength(1);
@@ -144,10 +202,12 @@ test.describe('PDF page appearance', () => {
       Storage.prototype.setItem = () => { throw new DOMException('Storage blocked', 'SecurityError'); };
     });
     await createReader(page);
-    const toggle = page.getByRole('button', { name: 'Dark pages', exact: true });
-    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await openReadingPreferences(page);
+    const toggle = darkPages(page);
+    await expect(toggle).not.toBeChecked();
     await toggle.click();
-    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await expect(toggle).toBeChecked();
+    await page.keyboard.press('Escape');
     expect(Math.max(...await backgroundPixel(page, page.locator('[data-pdf-page="1"] canvas')))).toBeLessThan(65);
   });
 });
