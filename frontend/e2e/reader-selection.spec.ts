@@ -262,7 +262,6 @@ test.describe('paper conversation models', () => {
     await page.evaluate(() => localStorage.setItem('test-delay-library', 'true'));
     await page.reload();
     await draft.fill('Send after the library loads');
-    await expect(page.getByRole('button', { name: '↑' })).toBeDisabled();
     await draft.press('Enter');
     expect(asks).toHaveLength(0);
     await expect(draft).toHaveValue('Send after the library loads');
@@ -271,8 +270,8 @@ test.describe('paper conversation models', () => {
       window.dispatchEvent(new Event('test-library-ready'));
     });
     await expect(model).toHaveValue('fast');
-    await draft.press('Enter');
     await expect(page.getByText('Answered.', { exact: true })).toBeVisible();
+    expect(asks).toHaveLength(1);
     expect(asks[0]).toMatchObject({ agent: 'chatgpt', model: 'fast' });
 
     await page.getByRole('button', { name: '📝 Notes' }).click();
@@ -302,9 +301,24 @@ test.describe('paper conversation models', () => {
     await page.reload();
     await expect(model.locator('option:checked')).toHaveText('Use default (first default)');
     await expect(model).toBeEnabled();
-    await page.evaluate(() => localStorage.removeItem('test-library'));
+    await page.evaluate(() => {
+      localStorage.removeItem('test-library');
+      localStorage.setItem('test-delay-library', 'true');
+    });
     await page.reload();
+    await draft.fill('Old draft');
+    await draft.press('Enter');
+    await draft.fill('Edited draft');
+    await page.evaluate(() => {
+      localStorage.removeItem('test-delay-library');
+      window.dispatchEvent(new Event('test-library-ready'));
+    });
     await expect(model).toHaveValue('fast');
+    await expect(draft).toHaveValue('Edited draft');
+    await draft.press('Enter');
+    await expect(page.getByText('Answered.', { exact: true })).toBeVisible();
+    expect(asks).toHaveLength(4);
+    expect(asks[3]).toMatchObject({ agent: 'chatgpt', model: 'fast', message: 'Edited draft' });
   });
 });
 

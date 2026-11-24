@@ -39,5 +39,5 @@ export function useChatModelPreference(projectId: string | null | undefined, sou
     } catch { /* Keep the current reader usable when browser storage is unavailable. */ }
   }
 
-  return { key, value: value ?? '', setValue, loading: library === undefined }
+  return { key, value: value ?? '', setValue, loading: library === undefined, unavailable: library === null }
 }

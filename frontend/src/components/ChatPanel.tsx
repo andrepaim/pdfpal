@@ -50,6 +50,17 @@ interface Props {
   initialMessages?: { role: string; content: string }[]
 }
 
+interface PendingAsk {
+  scope: string
+  sessionId: Props['sessionId']
+  agent: string
+  accountId: string | undefined
+  input: string
+  selectedText: Props['selectedText']
+  selectedPage: Props['selectedPage']
+  explanationId: string | undefined
+}
+
 export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, selectedPage, onSelectedTextUsed, selectionExplanation, onSelectionExplanationHandled, projectId, sourceId, sessionId, initialMessages }: Props) {
   // Retained in the component contract for older callers; context is now
   // loaded by the server-side ChatService from source IDs.
@@ -64,8 +75,10 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
   const [historyLoading, setHistoryLoading] = useState(true)
   const [modelEditor, setModelEditor] = useState<{ key: string; draft: string }>()
   const handledExplanation = useRef('')
+  const pendingAsk = useRef<PendingAsk | null>(null)
+  const scope = `${projectId}:${sourceId}`
   const scopeRef = useRef('')
-  scopeRef.current = `${projectId}:${sourceId}`
+  scopeRef.current = scope
   const mounted = useRef(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -83,6 +96,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
   const editor = modelEditor?.key === preferenceKey ? modelEditor : undefined
   const customModel = editor?.draft.trim() ?? ''
   const scopeLoading = agentLoading || modelPreference.loading || (directChatGPT && modelsLoading)
+  const scopeUnavailable = !agent || modelPreference.unavailable || (directChatGPT && !accountId)
 
   useEffect(() => {
     mounted.current = true
@@ -90,6 +104,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
   }, [])
 
   function chooseModel(model: string) {
+    pendingAsk.current = null
     modelPreference.setValue(model)
     setModelEditor(undefined)
   }
@@ -141,14 +156,21 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
   }, [selectedText, disabled])
 
   const send = async (forcedInput?: Extract<ChatInput, { kind: 'text' | 'visual' }>, selection = selectedText, selectionPage = selectedPage) => {
-    if (loading || historyLoading || scopeLoading || disabled) return
+    if (loading || historyLoading || disabled) return
     const command = forcedInput || parseChatInput(input, !!selection)
     if (command.kind === 'help' || command.kind === 'empty') { textareaRef.current?.focus(); return }
+    if (scopeLoading) {
+      // Let the reader keep editing while an explicit send waits for its model scope.
+      if (!forcedInput) pendingAsk.current = { scope, sessionId, agent, accountId, input, selectedText, selectedPage, explanationId: selectionExplanation?.id }
+      return
+    }
     const asVisual = command.kind === 'visual'
     const userMsg = !asVisual && selection ? `${command.question}\n\n${selection.split('\n').map(line => `> ${line}`).join('\n')}` : command.question
-    const scope = scopeRef.current
     const currentScope = () => mounted.current && scope === scopeRef.current
-    if (!forcedInput) setInput('')
+    if (!forcedInput) {
+      pendingAsk.current = null
+      setInput('')
+    }
     setError('')
 
     const newHistory: Message[] = [...messages, { role: 'user', content: userMsg }]
@@ -229,13 +251,26 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
   }
 
   useEffect(() => {
-    if (!selectionExplanation || selectionExplanation.scope !== scopeRef.current || !agent || loading || historyLoading || scopeLoading || disabled || handledExplanation.current === selectionExplanation.id) return
-    const { id, kind, text, page } = selectionExplanation
-    handledExplanation.current = id
-    onSelectionExplanationHandled?.()
-    const question = selectionQuestions[kind]
-    void send({ kind: kind === 'visual' ? 'visual' : 'text', question }, text, page ?? null)
-  }, [selectionExplanation, agent, loading, historyLoading, scopeLoading, disabled])
+    const queued = pendingAsk.current
+    if (queued && (queued.scope !== scope || queued.sessionId !== sessionId || queued.input !== input ||
+      queued.selectedText !== selectedText || queued.selectedPage !== selectedPage || queued.explanationId !== selectionExplanation?.id ||
+      (queued.agent && queued.agent !== agent) || (queued.accountId && accountId && queued.accountId !== accountId) || disabled)) {
+      pendingAsk.current = null
+    }
+    if (loading || historyLoading || scopeLoading || disabled) return
+    if (selectionExplanation && selectionExplanation.scope === scope && agent && handledExplanation.current !== selectionExplanation.id) {
+      const { id, kind, text, page } = selectionExplanation
+      handledExplanation.current = id
+      onSelectionExplanationHandled?.()
+      void send({ kind: kind === 'visual' ? 'visual' : 'text', question: selectionQuestions[kind] }, text, page ?? null)
+      return
+    }
+    if (pendingAsk.current) {
+      pendingAsk.current = null
+      if (scopeUnavailable) setError('Could not check the conversation model. Check your assistant and send again.')
+      else void send()
+    }
+  }, [scope, sessionId, input, selectedText, selectedPage, selectionExplanation, agent, accountId, loading, historyLoading, scopeLoading, scopeUnavailable, disabled])
 
   const chooseVisual = () => { setInput('/visual '); textareaRef.current?.focus() }
 
@@ -248,7 +283,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
     }
   }
 
-  const canSend = !disabled && !loading && !historyLoading && !scopeLoading && !!input.trim()
+  const canSend = !disabled && !loading && !historyLoading && !!input.trim()
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', background: 'var(--panel)' }}>
@@ -283,7 +318,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
               Clear
             </button>
           )}
-          <AgentSelect agent={agent} setAgent={value => { setModelEditor(undefined); setAgent(value) }} agents={agentOptions} />
+          <AgentSelect agent={agent} setAgent={value => { pendingAsk.current = null; setModelEditor(undefined); setAgent(value) }} agents={agentOptions} />
           {(customModels || directChatGPT) && projectId && sourceId && <ModelSelect
             label="Conversation model" value={override} models={models}
             defaultOption={defaultModelName ? `Use default (${defaultModelName})` : 'Use default'}
@@ -396,7 +431,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
         <textarea
           ref={textareaRef}
           value={input}
-          onChange={e => setInput(e.target.value)}
+          onChange={e => { pendingAsk.current = null; setInput(e.target.value) }}
           onKeyDown={handleKeyDown}
           disabled={disabled || loading || historyLoading}
           placeholder={disabled ? 'Load a PDF first…' : selectedText ? 'Ask about the selection, or type /visual…' : 'Ask a question, or type /visual…'}
