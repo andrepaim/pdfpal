@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { cleanup, testConfig } from '../helpers/test-utils.js'
 import path from 'node:path'
-import { loadConfig, saveAgentBinary, saveContextualDefinitionsPreference } from '../../src/core/config.js'
+import { defaultAgentModel, loadConfig, saveAIModePreference, saveAgentBinary, saveContextualDefinitionsPreference } from '../../src/core/config.js'
 
 test('loads and imports legacy config.env', () => {
   const initial = testConfig()
@@ -53,6 +53,56 @@ test('choosing an assistant executable preserves unrelated configuration and env
     assert.throws(() => saveAgentBinary(initial, 'codex', '/different/codex'))
     assert.equal(loadConfig({ dataDir: initial.dataDir }).codexBin, '/fixed/codex')
   } finally { if (previous === undefined) delete process.env.CODEX_BIN; else process.env.CODEX_BIN = previous; cleanup(initial, { close() {} } as never) }
+})
+
+test('saving an assistant and model together preserves other preferences and supports Automatic', () => {
+  const initial = testConfig(), previous = process.env.PDFPAL_AGENT
+  const filename = path.join(initial.dataDir, 'config.json')
+  const stored = { agent: 'claude', model: 'legacy-model', agent_models: { claude: 'sonnet' }, extra: 'keep' }
+  try {
+    delete process.env.PDFPAL_AGENT
+    fs.writeFileSync(filename, JSON.stringify(stored))
+    const config = loadConfig({ dataDir: initial.dataDir, model: stored.model })
+    assert.equal(defaultAgentModel(config, 'codex'), 'legacy-model')
+
+    assert.equal(saveAIModePreference(config, 'codex', ' fixture/custom:1 '), 'codex')
+    assert.equal(config.agent, 'codex')
+    assert.equal(defaultAgentModel(config, 'codex'), 'fixture/custom:1')
+    assert.deepEqual(JSON.parse(fs.readFileSync(filename, 'utf8')), { ...stored, ai_mode: 'agent', agent: 'codex', agent_models: { claude: 'sonnet', codex: 'fixture/custom:1' } })
+
+    saveAIModePreference(config, 'codex', '')
+    saveAIModePreference(config, 'claude')
+    const restarted = loadConfig({ dataDir: initial.dataDir, model: stored.model })
+    assert.equal(restarted.agent, 'claude')
+    assert.equal(defaultAgentModel(restarted, 'claude'), 'sonnet')
+    assert.equal(defaultAgentModel(restarted, 'codex'), '')
+  } finally {
+    if (previous === undefined) delete process.env.PDFPAL_AGENT
+    else process.env.PDFPAL_AGENT = previous
+    cleanup(initial, { close() {} } as never)
+  }
+})
+
+test('invalid or environment-blocked assistant and model changes leave stored and running settings intact', () => {
+  const config = testConfig(), previous = process.env.PDFPAL_AGENT
+  const filename = path.join(config.dataDir, 'config.json')
+  const stored = JSON.stringify({ agent: 'claude', agent_models: { claude: 'sonnet' } })
+  const before = structuredClone(config)
+  try {
+    delete process.env.PDFPAL_AGENT
+    fs.writeFileSync(filename, stored)
+    assert.throws(() => saveAIModePreference(config, 'codex', '--config'), /valid model ID/)
+    assert.throws(() => saveAIModePreference(config, 'chatgpt', 'model'), /Model selection is unavailable/)
+    assert.throws(() => saveAIModePreference(config, 'opencode', ''), /Model selection is unavailable/)
+    process.env.PDFPAL_AGENT = 'claude'
+    assert.throws(() => saveAIModePreference(config, 'codex', 'fixture-model'), /PDFPAL_AGENT/)
+    assert.equal(fs.readFileSync(filename, 'utf8'), stored)
+    assert.deepEqual(config, before)
+  } finally {
+    if (previous === undefined) delete process.env.PDFPAL_AGENT
+    else process.env.PDFPAL_AGENT = previous
+    cleanup(config, { close() {} } as never)
+  }
 })
 
 test('contextual definitions are off by default and enabled by config.json or the environment', () => {

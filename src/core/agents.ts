@@ -3,9 +3,10 @@ import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { PdfpalConfig } from './config.js'
+import { defaultAgentModel, type AgentModelProvider, type PdfpalConfig } from './config.js'
 import { PdfpalError } from './types.js'
 import { agentCandidates, discoverAgent, runProbe, refreshWindowsPath } from './agent-discovery.js'
+import { discoverAgentModels } from './agent-models.js'
 
 export type AgentName = 'claude' | 'codex' | 'opencode'
 
@@ -21,6 +22,7 @@ export class AgentService {
   static stopAccepting(): void { this.stopping = true }
   private static readonly requests = new Map<AbortController, Promise<unknown>>()
   private static readonly inspections = new Map<AbortController, Promise<unknown>>()
+  private claudeModelCache?: { binary: string; expires: number; request: ReturnType<typeof discoverAgentModels> }
   static get activeCount(): number { return this.requests.size }
   static async cancelAll(): Promise<void> {
     const pending = [...this.requests.values(), ...this.inspections.values()]
@@ -29,9 +31,25 @@ export class AgentService {
   }
 
   inspect() {
+    return this.trackInspection(signal => this.inspectWithSignal(signal))
+  }
+
+  models(agent: AgentModelProvider) {
+    const binary = this.binary(agent)
+    const discover = () => this.trackInspection(signal => discoverAgentModels(agent, binary, signal))
+    if (agent === 'codex' || AgentService.stopping) return discover()
+    const cached = this.claudeModelCache
+    const now = Date.now()
+    if (cached?.binary === binary && now < cached.expires) return cached.request
+    const request = discover()
+    this.claudeModelCache = { binary, expires: now + 30_000, request }
+    return request
+  }
+
+  private trackInspection<T>(inspect: (signal: AbortSignal) => Promise<T[]>): Promise<T[]> {
     if (AgentService.stopping) return Promise.resolve([])
     const controller = new AbortController()
-    const request = this.inspectWithSignal(controller.signal)
+    const request = inspect(controller.signal)
     AgentService.inspections.set(controller, request)
     return request.finally(() => AgentService.inspections.delete(controller))
   }
@@ -67,7 +85,7 @@ export class AgentService {
     return agent === 'claude' ? this.config.claudeBin : agent === 'codex' ? this.config.codexBin : this.config.opencodeBin
   }
 
-  invoke(prompt: string, agent = this.config.agent, model = this.config.model, options: { signal?: AbortSignal; timeoutMs?: number } = {}): Promise<string> {
+  invoke(prompt: string, agent = this.config.agent, model = defaultAgentModel(this.config, agent), options: { signal?: AbortSignal; timeoutMs?: number } = {}): Promise<string> {
     if (AgentService.stopping) return Promise.reject(new PdfpalError('AGENT_CANCELLED', 'pdfpal is shutting down.'))
     const controller = new AbortController()
     const abort = () => controller.abort()

@@ -8,6 +8,10 @@ Select a passage of three or more words to open the action menu. **Explain** ope
 
 Questions about a selected passage use the selection's page and neighboring pages when available, plus relevant indexed passages. This improves context around formulas and definitions; it does not send the entire project or guarantee a correct answer. Reading calls disable the assistant's shell and web tools. Use **Related** or paper search for discovery, or have an external research agent collect sources first.
 
+In the desktop app, open **AI settings** to choose a default model for Claude Code or Codex. Choose **Automatic** to let the assistant pick, or enter a custom model ID your account can use. ChatGPT lists the models available to your connected account.
+
+To switch models for one paper, open its **AI Chat** tab and use the model menu beside the assistant. PDFPal remembers the choice for that paper and assistant on this device. Your next question, **Explain**, or **Explain visually** uses that model. Choose **Use default** to follow the assistant’s settings again.
+
 **Project Chat** asks across indexed project sources. Toggle sources or select a collection to narrow its scope. Kindle source entries hold book references, not full book text, so adding one does not make the whole book searchable in project chat. See the [retrieval baseline](retrieval-baseline.md) for measured coverage and limitations.
 
 ## Offline dictionary

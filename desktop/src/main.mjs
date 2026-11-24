@@ -146,10 +146,10 @@ function showWindow() {
   if (restoreWindowState) { restoreWindowState = false; if (prefs.value.maximized) window.maximize() }
   window.show(); window.focus()
 }
-async function setAgent(agent) {
+async function setAgent(agent, model) {
   if (!['claude', 'codex', 'opencode', 'chatgpt'].includes(agent)) throw new Error('Unknown assistant')
   if (agent === 'chatgpt' && !chatgpt?.summary().connected) throw new Error('Connect ChatGPT first.')
-  const effective = await rpc('set-agent', { agent })
+  const effective = await rpc('set-agent', { agent, model })
   ready.agent = effective
   window?.webContents.send('pdfpal:agent-changed', effective)
   updateTray()
@@ -603,10 +603,13 @@ async function smokeTest() {
     check(history.messages.some(message => message.content === 'M1 background answer'), 'Background answer was not saved')
     showWindow(); check(window.isVisible(), 'Tray reopen failed')
     pendingReceipt.checks.push('tray-close-background-chat-reopen', 'quit-keeps-active-request')
-    const effective = await window.webContents.executeJavaScript('window.pdfpalDesktop.setAgent("claude")')
+    const effective = await window.webContents.executeJavaScript('window.pdfpalDesktop.setAgent("claude", "sonnet")')
     check(effective === 'claude', 'Selected assistant was not saved')
     const saved = JSON.parse(fs.readFileSync(path.join(process.env.PDFPAL_DATA_DIR, 'config.json'), 'utf8'))
-    check(saved.agent === 'claude', 'Shared agent preference missing')
+    check(saved.agent === 'claude' && saved.agent_models?.claude === 'sonnet', 'Shared assistant and model preferences missing')
+    await window.webContents.executeJavaScript('window.pdfpalDesktop.setAgent("claude", "")')
+    const automatic = JSON.parse(fs.readFileSync(path.join(process.env.PDFPAL_DATA_DIR, 'config.json'), 'utf8'))
+    check(automatic.agent_models?.claude === '', 'Could not restore Automatic for Claude')
     check(await window.webContents.executeJavaScript('window.pdfpalDesktop.setAgent("invalid").then(() => false, () => true)'), 'Invalid IPC agent was accepted')
     pendingReceipt.checks.push('shared-agent-preference')
     const route = `/projects/${ready.fixture.project}/sources/${ready.fixture.source}`
@@ -714,7 +717,7 @@ else {
     if (choice.canceled || !choice.filePaths[0]) return false
     return rpc('choose-binary', { agent, executable: choice.filePaths[0] })
   })
-  handle('test-connection', async agent => {
+  handle('test-connection', async (agent, model) => {
     provider(agent)
     if (testing) throw new Error('A connection test is already running.')
     testing = true
@@ -723,7 +726,7 @@ else {
       // Capture identity before invoking: changing/installing the provider invalidates verification.
       const before = (await rpc('inspect')).agents.find(item => item.id === agent)
       if (epoch !== testEpoch) throw Object.assign(new Error('Connection test cancelled.'), { code: 'AGENT_CANCELLED' })
-      const result = await rpc('test-connection', { agent })
+      const result = await rpc('test-connection', { agent, model })
       if (epoch !== testEpoch) throw Object.assign(new Error('Connection test cancelled.'), { code: 'AGENT_CANCELLED' })
       prefs.update({ connectionTests: { ...prefs.value.connectionTests, [agent]: { fingerprint: before.fingerprint, at: result.at } } })
       journal.record('TEST_PASSED'); return result

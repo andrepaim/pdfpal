@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { loadConfig, saveAIModePreference, saveAgentBinary } from './dist/core/config.js'
+import { agentModelId, loadConfig, saveAIModePreference, saveAgentBinary } from './dist/core/config.js'
 import { discoverAgent, refreshWindowsPath } from './dist/core/agent-discovery.js'
 import { bindDirectProvider } from './dist/core/ai.js'
 import { randomUUID } from 'node:crypto'
@@ -38,7 +38,7 @@ process.parentPort.on('message', async ({ data }) => {
     else if (data.command === 'set-backup-folder') result = await runtime.server.libraryBackups.setDirectory(data.directory)
     else if (data.command === 'set-agent') {
       if (!['claude', 'codex', 'opencode', 'chatgpt'].includes(data.agent)) throw new Error('Unknown assistant')
-      result = saveAIModePreference(config, data.agent)
+      result = saveAIModePreference(config, data.agent, data.model)
     } else if (data.command === 'inspect') result = await inspect()
     else if (data.command === 'login-command' || data.command === 'choose-binary') {
       if (!['claude', 'codex'].includes(data.agent)) throw new Error('Unknown assistant')
@@ -50,10 +50,11 @@ process.parentPort.on('message', async ({ data }) => {
       else result = status.executable
     } else if (data.command === 'test-connection') {
       if (!['claude', 'codex'].includes(data.agent) || connectionTest) throw new Error('A connection test is already running or this assistant is unsupported.')
+      const model = data.model === undefined ? undefined : agentModelId.parse(data.model)
       const controller = new AbortController()
       connectionTest = controller
       try {
-        const answer = await new AgentService(config).invoke('Reply exactly PDFPAL_CONNECTION_OK. Do not use tools, files, or network tools.', data.agent, config.model, { signal: controller.signal, timeoutMs: 60000 })
+        const answer = await new AgentService(config).invoke('Reply exactly PDFPAL_CONNECTION_OK. Do not use tools, files, or network tools.', data.agent, model, { signal: controller.signal, timeoutMs: 60000 })
         if (answer.trim() !== 'PDFPAL_CONNECTION_OK') throw new Error('The assistant did not return the expected test response. Check its setup and retry.')
         result = { at: new Date().toISOString() }
       } finally { if (connectionTest === controller) connectionTest = undefined }

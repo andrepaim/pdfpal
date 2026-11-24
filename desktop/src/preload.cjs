@@ -40,7 +40,7 @@ contextBridge.exposeInMainWorld('pdfpalDesktop', {
   completeSetup: () => ipcRenderer.invoke('pdfpal:complete-setup'),
   setupAction: (agent, action) => ipcRenderer.invoke('pdfpal:setup-action', agent, action),
   chooseBinary: agent => ipcRenderer.invoke('pdfpal:choose-binary', agent),
-  testConnection: agent => ipcRenderer.invoke('pdfpal:test-connection', agent),
+  testConnection: (agent, model) => ipcRenderer.invoke('pdfpal:test-connection', agent, model),
   cancelTest: () => ipcRenderer.invoke('pdfpal:cancel-test'),
   serviceState: () => ipcRenderer.invoke('pdfpal:service-state'),
   recovery: () => ipcRenderer.invoke('pdfpal:recovery'),
@@ -59,7 +59,7 @@ contextBridge.exposeInMainWorld('pdfpalDesktop', {
     ipcRenderer.on('pdfpal:open-diagnostics', listener)
     return () => ipcRenderer.removeListener('pdfpal:open-diagnostics', listener)
   },
-  setAgent: agent => ipcRenderer.invoke('pdfpal:set-agent', agent),
+  setAgent: (agent, model) => ipcRenderer.invoke('pdfpal:set-agent', agent, model),
   onOpenAISettings: callback => {
     openSettings = callback
     if (settingsPending) queueMicrotask(() => {

@@ -1,0 +1,66 @@
+.agent-model-select {
+  min-width: 0;
+  max-width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text);
+  color-scheme: dark;
+  font: inherit;
+  text-overflow: ellipsis;
+}
+
+.agent-model-select:focus-visible,
+.ai-settings-model-editor input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.ai-settings-model {
+  min-width: 0;
+  padding: 0 15px 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ai-settings-model label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ai-settings-model select,
+.ai-settings-model-editor input {
+  width: 100%;
+  padding: 8px 10px;
+}
+
+.ai-settings-model-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ai-settings-model-editor label {
+  flex: 1 1 180px;
+}
+
+.ai-settings-model-editor input,
+.ai-settings-model-editor button {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.ai-settings-model-editor button {
+  padding: 8px 10px;
+}
+
+.ai-settings-model-status {
+  margin: 6px 0 0;
+}

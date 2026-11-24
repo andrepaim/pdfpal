@@ -17,11 +17,15 @@ const STORAGE_KEY = 'pdfpal.agent'
 export function useAgent() {
   const [agents, setAgents] = useState<AgentInfo[]>([])
   const [agent, setAgent] = useState<string>('')
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    const finishLoading = () => setLoading(false)
+    const timeout = setTimeout(finishLoading, 2500)
     const unsubscribe = window.pdfpalDesktop?.onAgentChanged(id => {
       localStorage.setItem(STORAGE_KEY, id)
       setAgent(id)
+      finishLoading()
       void fetch('/api/agents').then(r=>r.json()).then(data=>setAgents(data.agents||[])).catch(()=>{})
     })
     fetch('/api/agents')
@@ -38,7 +42,8 @@ export function useAgent() {
         setAgent(effective)
       })
       .catch(() => {})
-    return unsubscribe
+      .finally(() => { clearTimeout(timeout); finishLoading() })
+    return () => { clearTimeout(timeout); unsubscribe?.() }
   }, [])
 
   const selectAgent = (id: string) => {
@@ -52,5 +57,5 @@ export function useAgent() {
 
   const available = agents.filter(a => a.available)
 
-  return { agent, setAgent: selectAgent, agents: available }
+  return { agent, setAgent: selectAgent, agents: available, loading }
 }
