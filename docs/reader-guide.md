@@ -4,7 +4,7 @@ Start with the [PDF quickstart](../README.md#read-a-pdf) to create a project and
 
 ## Selections, questions and highlights
 
-Select a passage of three or more words to open the action menu. **Ask** attaches it to your next question, **Highlight** saves it, and **Explain visually** starts a [visual explanation](visual-explanations.md). A selection spanning a page break is highlighted as separate rectangles on each page. The project **Highlights** view groups saved annotations by source and opens their reading context.
+Select a passage of three or more words to open the action menu. **Explain** opens reader chat and immediately asks your selected assistant to explain the passage in plain language using its page context. **Ask…** attaches the passage so you can write your own question, **Highlight** saves it, and **Explain visually** starts a [visual explanation](visual-explanations.md). A selection spanning a page break is highlighted as separate rectangles on each page. The project **Highlights** view groups saved annotations by source and opens their reading context.
 
 Questions about a selected passage use the selection's page and neighboring pages when available, plus relevant indexed passages. This improves context around formulas and definitions; it does not send the entire project or guarantee a correct answer. Reading calls disable the assistant's shell and web tools. Use **Related** or paper search for discovery, or have an external research agent collect sources first.
 

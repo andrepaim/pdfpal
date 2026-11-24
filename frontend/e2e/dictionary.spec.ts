@@ -96,7 +96,7 @@ test.describe('reader dictionary', () => {
     page.on('request', request => { if (request.url().includes('/api/dictionary/define')) lookups++; });
     for (const passage of ['a neural network', 'trained a neural network', 'We trained a neural network on images.']) {
       await drag(page, passage);
-      await expect(actions(page).getByRole('button')).toHaveText(['🖊 Highlight', '💬 Ask', 'Explain visually']);
+      await expect(actions(page).getByRole('button')).toHaveText(['Explain', 'Ask…', '🖊 Highlight', 'Explain visually']);
       await expect(card(page)).toHaveCount(0);
     }
     expect(lookups).toBe(0);
@@ -124,7 +124,7 @@ test.describe('reader dictionary', () => {
     await expect(page.getByText('Explanation.', { exact: true })).toBeVisible();
     expect(chats).toHaveLength(1);
     expect(chats[0]).toMatchObject({ source_id: source.id, selection_page: 1 });
-    expect(chats[0]!.message).toMatch(/^Explain .+\n\n> zxqv$/);
+    expect(chats[0]!.message).toBe('Explain this term in the context of the passage.\n\n> zxqv');
     await expect(actions(page)).toHaveCount(0);
   });
 
@@ -268,7 +268,7 @@ test.describe('reader dictionary', () => {
     page.on('request', request => { if (request.url().includes('/api/dictionary/define')) lookups++; });
     for (const selection of ['a', 'mice', 'neural network', 'a neural network']) {
       await drag(page, selection);
-      await expect(actions(page).getByRole('button')).toHaveText(['🖊 Highlight', '💬 Ask', 'Explain visually']);
+      await expect(actions(page).getByRole('button')).toHaveText(['Explain', 'Ask…', '🖊 Highlight', 'Explain visually']);
     }
     await expect(card(page)).toHaveCount(0);
     expect(lookups).toBe(0);

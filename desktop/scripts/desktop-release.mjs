@@ -124,7 +124,9 @@ export async function prepareCombinedRelease(directory, expected) {
   if (linuxAssets[0].size !== linux.size || linuxAssets[0].sha256 !== linux.sha256) throw new Error('Linux installer size or SHA-256 mismatch')
   if (await fs.readFile(path.join(directory, 'SHA256SUMS-linux.txt'), 'utf8') !== `${linux.sha256}  ${linuxName}\n${linuxAssets[1].sha256}  ${linuxManifestName}\n`) throw new Error('Linux checksums do not match the tested native build')
   // What changed is said per version, so the notes of an earlier coordinated release stay as they were published.
-  const changes = compareVersions(version, '2.8.0-beta.13') >= 0
+  const changes = compareVersions(version, '2.8.0-beta.14') >= 0
+    ? '**Changes since 2.8.0-beta.13.** Select a passage in the PDF reader and click **Explain**. PDFPal opens reader chat and asks your selected assistant to explain the passage in plain language using the surrounding page. Choose **Ask…** to write your own question. Highlighting and visual explanations are also available in the selection toolbar.'
+    : compareVersions(version, '2.8.0-beta.13') >= 0
     ? '**Changes since 2.8.0-beta.12.** Open **Reading preferences** with the sliders icon in the PDF reader toolbar to find **Show definitions on selection**, **Show the best-fitting meaning first** and **Dark pages**. The reader remembers your existing choices. If ordering by context needs a download, the panel shows its size before you confirm and displays progress in the same panel.'
     : compareVersions(version, '2.8.0-beta.12') >= 0
     ? '**Changes since 2.8.0-beta.11.** The PDF reader uses the same definition card layout as Contextual Dictionary. The preview shows up to three entries, three meanings per entry and one example per meaning. Choose **Show all meanings** to see every entry and meaning, with all examples. The controls and Wiktionary attribution stay visible as you scroll.'

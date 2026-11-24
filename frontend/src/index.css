@@ -93,6 +93,21 @@ body {
   --pdf-highlight-blend: multiply;
 }
 
+[data-ask-bubble] button {
+  border: 0;
+  border-radius: 20px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+[data-ask-bubble] .selection-explain { background: var(--accent); color: white; }
+[data-ask-bubble] .selection-ask { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
+[data-ask-bubble] .selection-highlight { background: #854d0e; color: #fef08a; }
+[data-ask-bubble] .selection-visual { background: #26233c; color: #c7d2fe; border: 1px solid #6366f1; font-size: 12px; }
+
 .dc-card.pdf-definition-card {
   --dc-bg: var(--panel);
   --dc-text: var(--text);

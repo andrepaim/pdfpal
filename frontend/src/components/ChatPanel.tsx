@@ -17,10 +17,16 @@ interface Message {
 
 export type SelectionExplanationRequest = {
   id: string
-  kind: 'text' | 'visual'
+  kind: 'term' | 'passage' | 'visual'
   text: string
   page?: number
   scope: string
+}
+
+const selectionQuestions: Record<SelectionExplanationRequest['kind'], string> = {
+  term: 'Explain this term in the context of the passage.',
+  passage: 'Explain this passage in plain language. Use the surrounding page for context and clarify any technical terms needed to understand it.',
+  visual: 'Explain the selected passage visually.',
 }
 
 interface Props {
@@ -113,7 +119,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
     const asVisual = command.kind === 'visual'
     const userMsg = !asVisual && selection ? `${command.question}\n\n${selection.split('\n').map(line => `> ${line}`).join('\n')}` : command.question
     const scope = scopeRef.current
-    setInput('')
+    if (!override) setInput('')
     setError('')
 
     const newHistory: Message[] = [...messages, { role: 'user', content: userMsg }]
@@ -175,7 +181,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
       if (!streamCompleted || streamError) throw new Error(streamError || 'The answer was interrupted. Partial text is saved on this device.')
       if (scope === scopeRef.current) { setMessages([...newHistory, { role: 'assistant', content: assistantText }]); onSelectedTextUsed?.() }
     } catch (e: any) {
-      if (scope === scopeRef.current) { setError(e.message || 'Something went wrong'); setMessages(newHistory); setInput(asVisual ? `/visual ${command.question}` : command.question) }
+      if (scope === scopeRef.current) { setError(e.message || 'Something went wrong'); setMessages(newHistory); setInput(draft => draft || (asVisual ? `/visual ${command.question}` : command.question)) }
     } finally {
       if (scope === scopeRef.current) { setLoading(false); textareaRef.current?.focus() }
     }
@@ -186,8 +192,8 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
     const { id, kind, text, page } = selectionExplanation
     handledExplanation.current = id
     onSelectionExplanationHandled?.()
-    const question = kind === 'visual' ? 'Explain the selected passage visually.' : 'Explain this term in the context of the passage.'
-    void send({ kind, question }, text, page ?? null)
+    const question = selectionQuestions[kind]
+    void send({ kind: kind === 'visual' ? 'visual' : 'text', question }, text, page ?? null)
   }, [selectionExplanation, agent, loading, historyLoading, disabled])
 
   const chooseVisual = () => { setInput('/visual '); textareaRef.current?.focus() }
