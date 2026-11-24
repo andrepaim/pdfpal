@@ -10,7 +10,7 @@ import multipart from '@fastify/multipart'
 import staticPlugin from '@fastify/static'
 import open from 'open'
 import { randomUUID } from 'node:crypto'
-import type { PdfpalConfig } from '../core/config.js'
+import { agentModelProvider, defaultAgentModel, type PdfpalConfig } from '../core/config.js'
 import { openDatabase } from '../core/database.js'
 import { ProjectService } from '../core/projects.js'
 import { SourceService } from '../core/sources.js'
@@ -92,6 +92,13 @@ export async function buildServer(config: PdfpalConfig, cli?: CliRuntime, option
   app.get('/api/library/revision', async () => ({ instance: revisionInstance, revision }))
   if (cli) registerCliRoutes(app, db, config, cli, backups, () => { revision++ })
   app.get('/api/agents', async () => ({ default: config.aiMode === 'chatgpt' ? 'chatgpt' : config.agent, agents: [...(config.aiMode === 'chatgpt' ? [{ id: 'chatgpt', label: 'ChatGPT', available: true }] : []), ...await new AgentService(config).inspect()] }))
+  const agentModels = new AgentService(config)
+  app.get<{ Params: { agent: string } }>('/api/agent-models/:agent', async (request, reply) => {
+    const agent = agentModelProvider.safeParse(request.params.agent)
+    if (!agent.success) return reply.status(404).send({ detail: 'Model selection is unavailable for this assistant.' })
+    reply.header('Cache-Control', 'no-store')
+    return { models: await agentModels.models(agent.data), model: defaultAgentModel(config, agent.data) }
+  })
 
   app.get('/api/projects', async () => projects.list())
   app.post<{ Body: { title: string; description?: string } }>('/api/projects', async request => projects.create(request.body.title, request.body.description))

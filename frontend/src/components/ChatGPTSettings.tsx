@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { notifyAgentModelsChanged } from '../hooks/useAgentModels'
+import ModelSelect from './ModelSelect'
 
 export type ChatGPTState = {
   connected: boolean
@@ -29,10 +31,16 @@ export default function ChatGPTSettings({ active, refreshKey, selected, disabled
   const mounted = useRef(false)
   const sequence = useRef(0)
   const workingRef = useRef(false)
+  const lastModelState = useRef('')
   const callbacks = useRef({ onSelect, onStateChange })
   callbacks.current = { onSelect, onStateChange }
   const apply = useCallback((next: ChatGPTState) => {
     setState(next)
+    const current = JSON.stringify([next.connected, next.busy, next.active, next.model, next.models])
+    if (lastModelState.current !== current) {
+      lastModelState.current = current
+      notifyAgentModelsChanged('chatgpt')
+    }
   }, [])
   useEffect(() => {
     callbacks.current.onStateChange(state, working)
@@ -113,10 +121,10 @@ export default function ChatGPTSettings({ active, refreshKey, selected, disabled
           <option value="" disabled>Choose an account</option>
           {state.accounts.map(account => <option key={account.id} value={account.id}>{account.label}{account.connected ? '' : ' · sign-in needed'}</option>)}
         </select></label>
-        {state.connected && <label>Model<select aria-label="ChatGPT model" value={hasModel ? state.model : ''} disabled={busy || !state.models.length} onChange={event => void act('select', state.active, event.target.value)}>
-          <option value="" disabled>{state.models.length ? 'Choose a model' : 'Refresh to load available models'}</option>
-          {state.models.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}
-        </select></label>}
+        {state.connected && <label>Model<ModelSelect label="ChatGPT model" value={state.model} models={state.models}
+          allowUnlisted={false} disabled={busy || !state.models.length}
+          placeholder={state.models.length ? 'Choose a model' : 'Refresh to load available models'}
+          onChange={model => void act('select', state.active, model)} /></label>}
       </div>}
       {!!state?.accounts.length && <div className="ai-settings-actions">
         <button type="button" disabled={busy} onClick={() => void act('connect')}>Add account</button>

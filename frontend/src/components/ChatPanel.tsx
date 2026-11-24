@@ -2,7 +2,10 @@ import AIRecovery from './AIRecovery'
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
 import { chatApi } from '../lib/api'
 import { useAgent } from '../hooks/useAgent'
+import { hasAgentModelPreference, isCustomAgentModel, loadChatGPTModels, MAX_AGENT_MODEL_LENGTH, useAgentModels } from '../hooks/useAgentModels'
+import { useChatModelPreference } from '../lib/chat-model-preferences'
 import AgentSelect from './AgentSelect'
+import ModelSelect from './ModelSelect'
 import Markdown from './Markdown'
 import VisualExplanation from './VisualExplanation'
 import { startWebVisual, webVisualTransport } from '../lib/visual-api'
@@ -59,12 +62,37 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
   const [recovered, setRecovered] = useState<{id:string;question:string;answer:string;status:string}[]>([])
   const [error, setError] = useState('')
   const [historyLoading, setHistoryLoading] = useState(true)
+  const [modelEditor, setModelEditor] = useState<{ key: string; draft: string }>()
   const handledExplanation = useRef('')
   const scopeRef = useRef('')
   scopeRef.current = `${projectId}:${sourceId}`
+  const mounted = useRef(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const { agent, setAgent, agents: agentOptions } = useAgent()
+  const { agent, setAgent, agents: agentOptions, loading: agentLoading } = useAgent()
+  const agentRef = useRef(agent)
+  agentRef.current = agent
+  const customModels = hasAgentModelPreference(agent)
+  const directChatGPT = agent === 'chatgpt' && !!window.pdfpalDesktop?.chatgpt
+  const { models, model: defaultModel, accountId, loading: modelsLoading, refresh } = useAgentModels(agent, !!projectId && !!sourceId)
+  const modelPreference = useChatModelPreference(projectId, sourceId, agent, accountId)
+  const preferenceKey = modelPreference.key
+  const overrideAvailable = customModels || (directChatGPT && models.some(model => model.id === modelPreference.value))
+  const override = overrideAvailable ? modelPreference.value : ''
+  const defaultModelName = models.find(model => model.id === defaultModel)?.name ?? defaultModel
+  const editor = modelEditor?.key === preferenceKey ? modelEditor : undefined
+  const customModel = editor?.draft.trim() ?? ''
+  const scopeLoading = agentLoading || modelPreference.loading || (directChatGPT && modelsLoading)
+
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
+
+  function chooseModel(model: string) {
+    modelPreference.setValue(model)
+    setModelEditor(undefined)
+  }
 
   useEffect(() => {
     if (agent !== 'chatgpt' || !projectId) { setRecovered([]); return }
@@ -112,25 +140,37 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
     }, 10)
   }, [selectedText, disabled])
 
-  const send = async (override?: Extract<ChatInput, { kind: 'text' | 'visual' }>, selection = selectedText, selectionPage = selectedPage) => {
-    if (loading || historyLoading || disabled) return
-    const command = override || parseChatInput(input, !!selection)
+  const send = async (forcedInput?: Extract<ChatInput, { kind: 'text' | 'visual' }>, selection = selectedText, selectionPage = selectedPage) => {
+    if (loading || historyLoading || scopeLoading || disabled) return
+    const command = forcedInput || parseChatInput(input, !!selection)
     if (command.kind === 'help' || command.kind === 'empty') { textareaRef.current?.focus(); return }
     const asVisual = command.kind === 'visual'
     const userMsg = !asVisual && selection ? `${command.question}\n\n${selection.split('\n').map(line => `> ${line}`).join('\n')}` : command.question
     const scope = scopeRef.current
-    if (!override) setInput('')
+    const currentScope = () => mounted.current && scope === scopeRef.current
+    if (!forcedInput) setInput('')
     setError('')
 
     const newHistory: Message[] = [...messages, { role: 'user', content: userMsg }]
-    setMessages(newHistory)
     setPartial(''); setLoading(true)
 
     try {
+      if (directChatGPT && override) {
+        const active = await loadChatGPTModels().catch(() => undefined)
+        if (!currentScope()) return
+        if (agentRef.current !== agent) throw new Error('The assistant changed. Check the conversation model and send again.')
+        if (!active || active.accountId !== accountId || !active.models.some(option => option.id === override)) {
+          refresh()
+          throw new Error('Could not confirm the selected model for your active ChatGPT account. Check the conversation model and send again.')
+        }
+      }
+      setMessages(newHistory)
+      const model = override ? { model: override } : {}
       if (asVisual && projectId) {
         const visual = await startWebVisual(projectId, { question: userMsg, ...(sourceId ? { source_id: sourceId } : {}),
-          ...(selection ? { selection } : {}), ...(selection && sourceId && selectionPage ? { selection_page: selectionPage } : {}), ...(agent ? { agent } : {}) })
-        if (scope === scopeRef.current) { setMessages([...newHistory, { role: 'assistant', content: '', visual_id: visual.id }]); onSelectedTextUsed?.() }
+          ...(selection ? { selection } : {}), ...(selection && sourceId && selectionPage ? { selection_page: selectionPage } : {}),
+          ...(agent ? { agent } : {}), ...model })
+        if (currentScope()) { setMessages([...newHistory, { role: 'assistant', content: '', visual_id: visual.id }]); onSelectedTextUsed?.() }
         return
       }
       const res = await fetch('/api/chat', {
@@ -138,7 +178,8 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: userMsg,
-          agent,
+          ...(agent ? { agent } : {}),
+          ...model,
           project_id: projectId ?? null,
           source_id: sourceId ?? null,
           ...(selection && selectionPage ? { selection_page: selectionPage } : {}),
@@ -169,8 +210,8 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
             if (payload === '[DONE]') { streamCompleted = true; break }
             try {
               const parsed = JSON.parse(payload)
-              if (parsed.error) { streamError = parsed.error; if(scope === scopeRef.current) setError(parsed.error); continue }
-              if (parsed.text) { assistantText = parsed.text; if(scope === scopeRef.current) setPartial(parsed.text) }
+              if (parsed.error) { streamError = parsed.error; if (currentScope()) setError(parsed.error); continue }
+              if (parsed.text) { assistantText = parsed.text; if (currentScope()) setPartial(parsed.text) }
             } catch (e: any) {
               // ignore JSON parse errors for [DONE] and other non-JSON payloads
             }
@@ -179,22 +220,22 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
       }
 
       if (!streamCompleted || streamError) throw new Error(streamError || 'The answer was interrupted. Partial text is saved on this device.')
-      if (scope === scopeRef.current) { setMessages([...newHistory, { role: 'assistant', content: assistantText }]); onSelectedTextUsed?.() }
+      if (currentScope()) { setMessages([...newHistory, { role: 'assistant', content: assistantText }]); onSelectedTextUsed?.() }
     } catch (e: any) {
-      if (scope === scopeRef.current) { setError(e.message || 'Something went wrong'); setMessages(newHistory); setInput(draft => draft || (asVisual ? `/visual ${command.question}` : command.question)) }
+      if (currentScope()) { setError(e.message || 'Something went wrong'); setInput(draft => draft || (asVisual ? `/visual ${command.question}` : command.question)) }
     } finally {
-      if (scope === scopeRef.current) { setLoading(false); textareaRef.current?.focus() }
+      if (currentScope()) { setLoading(false); textareaRef.current?.focus() }
     }
   }
 
   useEffect(() => {
-    if (!selectionExplanation || selectionExplanation.scope !== scopeRef.current || !agent || loading || historyLoading || disabled || handledExplanation.current === selectionExplanation.id) return
+    if (!selectionExplanation || selectionExplanation.scope !== scopeRef.current || !agent || loading || historyLoading || scopeLoading || disabled || handledExplanation.current === selectionExplanation.id) return
     const { id, kind, text, page } = selectionExplanation
     handledExplanation.current = id
     onSelectionExplanationHandled?.()
     const question = selectionQuestions[kind]
     void send({ kind: kind === 'visual' ? 'visual' : 'text', question }, text, page ?? null)
-  }, [selectionExplanation, agent, loading, historyLoading, disabled])
+  }, [selectionExplanation, agent, loading, historyLoading, scopeLoading, disabled])
 
   const chooseVisual = () => { setInput('/visual '); textareaRef.current?.focus() }
 
@@ -207,6 +248,8 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
     }
   }
 
+  const canSend = !disabled && !loading && !historyLoading && !scopeLoading && !!input.trim()
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', background: 'var(--panel)' }}>
       {/* Chat header */}
@@ -214,12 +257,14 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
         padding: '10px 16px',
         borderBottom: '1px solid var(--border)',
         display: 'flex',
+        flexWrap: 'wrap',
         alignItems: 'center',
         justifyContent: 'space-between',
+        gap: 8,
         flexShrink: 0,
       }}>
         <span style={{ fontSize: 14, fontWeight: 600, color: '#d1d5db' }}>AI Chat</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', minWidth: 0, gap: 8, fontSize: 12 }}>
           {messages.length > 0 && (
             <button
               onClick={async () => {
@@ -238,8 +283,26 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
               Clear
             </button>
           )}
-          <AgentSelect agent={agent} setAgent={setAgent} agents={agentOptions} />
+          <AgentSelect agent={agent} setAgent={value => { setModelEditor(undefined); setAgent(value) }} agents={agentOptions} />
+          {(customModels || directChatGPT) && projectId && sourceId && <ModelSelect
+            label="Conversation model" value={override} models={models}
+            defaultOption={defaultModelName ? `Use default (${defaultModelName})` : 'Use default'}
+            onChange={chooseModel} allowUnlisted={customModels}
+            disabled={!preferenceKey || (directChatGPT && !models.length)}
+            onCustom={customModels && preferenceKey ? () => setModelEditor({ key: preferenceKey, draft: override }) : undefined}
+          />}
         </div>
+        {editor && <form onSubmit={event => {
+          event.preventDefault()
+          if (isCustomAgentModel(customModel)) chooseModel(customModel)
+        }} style={{ flexBasis: '100%', display: 'flex', flexWrap: 'wrap', gap: 6, fontSize: 12 }}>
+          <input aria-label="Conversation model ID" placeholder="Model ID" className="agent-model-select"
+            autoFocus maxLength={MAX_AGENT_MODEL_LENGTH} value={editor.draft}
+            onChange={event => setModelEditor({ key: editor.key, draft: event.target.value })}
+            style={{ flex: '1 1 130px' }} />
+          <button type="submit" className="agent-model-select" disabled={!isCustomAgentModel(customModel)}>Apply model</button>
+          <button type="button" className="agent-model-select" onClick={() => setModelEditor(undefined)}>Cancel</button>
+        </form>}
       </div>
 
       {/* Selection hint banner */}
@@ -356,15 +419,15 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
         />
         <button
           onClick={() => send()}
-          disabled={disabled || loading || historyLoading || !input.trim()}
+          disabled={!canSend}
           style={{
-            background: disabled || !input.trim() ? '#2a2a2a' : 'var(--accent)',
-            color: disabled || !input.trim() ? '#6b7280' : '#fff',
+            background: canSend ? 'var(--accent)' : '#2a2a2a',
+            color: canSend ? '#fff' : '#6b7280',
             border: 'none',
             borderRadius: 10,
             padding: '0 16px',
             fontSize: 18,
-            cursor: disabled || loading || !input.trim() ? 'not-allowed' : 'pointer',
+            cursor: canSend ? 'pointer' : 'not-allowed',
             transition: 'background 0.15s',
             alignSelf: 'stretch',
           }}

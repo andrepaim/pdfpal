@@ -2,8 +2,14 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { z } from 'zod'
+import { isCustomAgentModel, MAX_AGENT_MODEL_LENGTH } from '../shared/agent-model-id.js'
 import { acquireLease } from './locking.js'
 import { defaultSenseCacheDir } from './sense-download.js'
+
+export const agentModelProvider = z.enum(['claude', 'codex'])
+export type AgentModelProvider = z.infer<typeof agentModelProvider>
+export const agentModelId = z.string().trim().max(MAX_AGENT_MODEL_LENGTH).refine(id => id === '' || isCustomAgentModel(id), 'Enter a valid model ID.')
+const agentModelsSchema = z.object({ claude: agentModelId.optional(), codex: agentModelId.optional() })
 
 const ConfigSchema = z.object({
   dataDir: z.string(),
@@ -15,6 +21,7 @@ const ConfigSchema = z.object({
   aiMode: z.enum(['agent', 'chatgpt']).default('agent'),
   agent: z.enum(['claude', 'codex', 'opencode']),
   model: z.string(),
+  agentModels: agentModelsSchema,
   claudeBin: z.string(),
   codexBin: z.string(),
   opencodeBin: z.string(),
@@ -35,6 +42,7 @@ type ConfigFile = Partial<{
   port: number
   agent: PdfpalConfig['agent']
   model: string
+  agent_models: PdfpalConfig['agentModels']
   claude_bin: string
   codex_bin: string
   opencode_bin: string
@@ -104,6 +112,7 @@ export function loadConfig(overrides: Partial<PdfpalConfig> = {}): PdfpalConfig 
     aiMode: overrides.aiMode ?? (process.env.PDFPAL_AGENT ? 'agent' : file.ai_mode) ?? 'agent',
     agent: overrides.agent ?? process.env.PDFPAL_AGENT ?? file.agent ?? 'claude',
     model: overrides.model ?? process.env.PDFPAL_MODEL ?? file.model ?? '',
+    agentModels: overrides.agentModels ?? file.agent_models ?? {},
     claudeBin: overrides.claudeBin ?? process.env.CLAUDE_BIN ?? file.claude_bin ?? 'claude',
     codexBin: overrides.codexBin ?? process.env.CODEX_BIN ?? file.codex_bin ?? 'codex',
     opencodeBin: overrides.opencodeBin ?? process.env.OPENCODE_BIN ?? file.opencode_bin ?? 'opencode',
@@ -118,6 +127,11 @@ export function loadConfig(overrides: Partial<PdfpalConfig> = {}): PdfpalConfig 
 
 export function ensureDataDirectories(config: PdfpalConfig): void {
   for (const dir of [config.dataDir, config.filesDir, config.backupsDir]) fs.mkdirSync(dir, { recursive: true })
+}
+
+export function defaultAgentModel(config: PdfpalConfig, agent: PdfpalConfig['agent']): string {
+  // Missing preferences inherit the legacy global model. An empty preference delegates model selection to the CLI.
+  return (agent === 'opencode' ? undefined : config.agentModels?.[agent]) ?? config.model
 }
 
 export function saveAgentPreference(config: PdfpalConfig, agent: PdfpalConfig['agent']): void {
@@ -150,18 +164,32 @@ export function saveAgentBinary(config: PdfpalConfig, agent: 'claude' | 'codex',
   } finally { release() }
 }
 
-/** One atomic preference write, shared with CLI settings through the same lock. */
-export function saveAIModePreference(config: PdfpalConfig, selected: 'chatgpt' | PdfpalConfig['agent']): string {
-  if (!['chatgpt','claude','codex','opencode'].includes(selected)) throw new Error('Unknown AI provider')
+/** Save the assistant and its optional model together under the config write lock. */
+export function saveAIModePreference(config: PdfpalConfig, selected: 'chatgpt' | PdfpalConfig['agent'], model?: string): string {
+  if (!['chatgpt', 'claude', 'codex', 'opencode'].includes(selected)) throw new Error('Unknown AI provider')
   if (process.env.PDFPAL_AGENT && selected !== process.env.PDFPAL_AGENT) throw new Error('Your startup configuration fixes the AI provider. Update PDFPAL_AGENT to change it.')
-  const filename = path.join(config.dataDir, 'config.json'), release = acquireLease(`${filename}.write-lock`, 5000)
+  const modelAgent = model === undefined ? undefined : agentModelProvider.safeParse(selected)
+  if (modelAgent && !modelAgent.success) throw new Error('Model selection is unavailable for this assistant.')
+  const modelChange = modelAgent ? { [modelAgent.data]: agentModelId.parse(model) } : undefined
+  const filename = path.join(config.dataDir, 'config.json')
+  const release = acquireLease(`${filename}.write-lock`, 5000)
   try {
-    const existing = fs.existsSync(filename) ? JSON.parse(fs.readFileSync(filename, 'utf8')) : {}
+    const existing: ConfigFile = fs.existsSync(filename) ? JSON.parse(fs.readFileSync(filename, 'utf8')) : {}
     const aiMode = selected === 'chatgpt' ? 'chatgpt' : 'agent'
     const temporary = `${filename}.${process.pid}.tmp`
-    fs.writeFileSync(temporary, JSON.stringify({ ...existing, ai_mode: aiMode, ...(selected !== 'chatgpt' ? {agent:selected} : {}) }), {mode:0o600})
-    fs.renameSync(temporary, filename);config.aiMode=aiMode
-    if (selected !== 'chatgpt') config.agent=selected
+    const updated = {
+      ...existing,
+      ai_mode: aiMode,
+      ...(selected !== 'chatgpt' ? { agent: selected } : {}),
+      ...(modelChange ? { agent_models: { ...existing.agent_models, ...modelChange } } : {}),
+    }
+    try {
+      fs.writeFileSync(temporary, JSON.stringify(updated), { mode: 0o600 })
+      fs.renameSync(temporary, filename)
+    } finally { fs.rmSync(temporary, { force: true }) }
+    config.aiMode = aiMode
+    if (selected !== 'chatgpt') config.agent = selected
+    if (modelChange) config.agentModels = { ...config.agentModels, ...modelChange }
     return selected
   } finally { release() }
 }

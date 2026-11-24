@@ -14,7 +14,7 @@ export function webVisualTransport(projectId: string): VisualTransport {
     retry: (id, requestId) => request(`${base}/${id}/retry`, { request_id: requestId }),
     noteUrl: id => `/projects/${projectId}/notes/${id}` }
 }
-export type WebVisualRequest = { question: string; source_id?: string; active_source_ids?: string[]; selection?: string; selection_page?: number; answer?: string; agent?: string }
+export type WebVisualRequest = { question: string; source_id?: string; active_source_ids?: string[]; selection?: string; selection_page?: number; answer?: string; agent?: string; model?: string }
 export async function startWebVisual(projectId: string, input: WebVisualRequest): Promise<VisualRecord> {
   const key = `pdfpal:visual-request:${projectId}:${input.source_id || 'project'}`
   const serialized = JSON.stringify(input)

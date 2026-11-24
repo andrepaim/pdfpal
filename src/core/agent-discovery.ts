@@ -132,7 +132,7 @@ export function parseAuth(agent: DesktopAgent, result: ProbeResult): 'account' |
   return 'unknown'
 }
 
-export async function discoverAgent(agent: DesktopAgent, binary?: string, signal?: AbortSignal, options: Omit<DiscoveryOptions, 'binary'> = {}) {
+export async function discoverAgent(agent: DesktopAgent, binary?: string, signal?: AbortSignal, options: Omit<DiscoveryOptions, 'binary'> & { checkAuth?: boolean; includeHelp?: boolean } = {}) {
   let found = false
   let unsupportedVersion: string | undefined
   const deadline = Date.now() + 15_000
@@ -155,9 +155,9 @@ export async function discoverAgent(agent: DesktopAgent, binary?: string, signal
       : agent === 'codex' ? ['--ignore-user-config', '--ignore-rules', '--ephemeral', '--disable'] : ['--agent', '--format']
     if (help.failure) continue
     if (help.code !== 0 || !required.every(flag => capabilities.includes(flag))) { unsupportedVersion = match[1]!; continue }
-    const auth = agent === 'opencode' ? 'unknown' as const : parseAuth(agent,
+    const auth = agent === 'opencode' || options.checkAuth === false ? 'unknown' as const : parseAuth(agent,
       await probe(agent === 'claude' ? ['auth', 'status'] : ['login', 'status']))
-    return { agent, state: 'installed' as const, executable, version: match[1]!, auth }
+    return { agent, state: 'installed' as const, executable, version: match[1]!, auth, help: options.includeHelp ? capabilities : undefined }
   }
   if (unsupportedVersion) return { agent, state: 'unsupported' as const, version: unsupportedVersion, auth: 'unknown' as const }
   return { agent, state: found ? 'unusable' as const : 'missing' as const, auth: 'unknown' as const }

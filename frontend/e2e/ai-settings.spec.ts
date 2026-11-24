@@ -1,12 +1,22 @@
 import { test, expect } from '@playwright/test';
 import { mockAuth } from './helpers';
 
+declare global {
+  interface Window {
+    saveSettingsTestSelection?: (agent: string, model?: string) => Promise<void>;
+  }
+}
+
 test.beforeEach(async ({ page }) => {
   await mockAuth(page);
   await page.addInitScript(() => {
     let open: (() => void) | undefined;
     window.pdfpalDesktop = {
-      setAgent: async id => { localStorage.setItem('settings-test-agent', id); return id; },
+      setAgent: async (...args: [id: string, model?: string]) => {
+        await window.saveSettingsTestSelection?.(...args);
+        localStorage.setItem('settings-test-agent', args[0]);
+        return args[0];
+      },
       onAgentChanged: () => () => {},
       onOpenAISettings: callback => { open = callback; return () => { open = undefined; }; },
     };
@@ -59,4 +69,104 @@ test('AI settings can refresh after assistants are installed', async ({ page }) 
   await modal.getByRole('button', { name: 'Check again' }).click();
   await expect(modal.getByRole('radio', { name: /Codex/ })).toBeChecked();
   await expect(modal.getByRole('button', { name: 'Use assistant' })).toBeEnabled();
+});
+
+test('AI settings stage and save a default model for the selected assistant', async ({ page }) => {
+  const models = {
+    claude: { model: 'retained-claude-model', models: [{ id: 'new-claude-model', name: 'New Claude model' }] },
+    codex: { model: '', models: [{ id: 'new-codex-model', name: 'New Codex model' }] },
+  };
+  const writes: { agent: string; model: string }[] = [];
+  await page.exposeFunction('saveSettingsTestSelection', (agent: keyof typeof models, model: string) => {
+    writes.push({ agent, model });
+    models[agent].model = model;
+  });
+  await page.route('**/api/agent-models/*', route => {
+    const agent = new URL(route.request().url()).pathname.split('/').at(-1) as keyof typeof models;
+    return route.fulfill({ json: models[agent] });
+  });
+  await page.goto('/');
+  const openSettings = async () => page.evaluate(() => window.dispatchEvent(new Event('open-test-settings')));
+  await openSettings();
+  const modal = page.getByRole('dialog', { name: 'AI assistant' });
+  const claudeModel = modal.getByRole('combobox', { name: 'Claude Code default model' });
+  const codexModel = modal.getByRole('combobox', { name: 'Codex default model' });
+  await expect(claudeModel).toHaveValue('retained-claude-model');
+  await claudeModel.selectOption('new-claude-model');
+  await modal.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(modal).not.toBeVisible();
+  expect(writes).toEqual([]);
+
+  await openSettings();
+  await expect(claudeModel).toHaveValue('retained-claude-model');
+  await modal.getByRole('radio', { name: /Codex/ }).check();
+  await expect(codexModel).toHaveValue('');
+  await expect(codexModel.getByRole('option', { name: 'Automatic' })).toHaveCount(1);
+  await codexModel.selectOption('new-codex-model');
+  await modal.getByRole('checkbox').check();
+  await modal.getByRole('button', { name: 'Use assistant' }).click();
+  await expect(modal).not.toBeVisible();
+  expect(writes).toEqual([{ agent: 'codex', model: 'new-codex-model' }]);
+});
+
+test('AI settings leave saved models alone when the model catalogue is unavailable', async ({ page }) => {
+  const writes: string[][] = [];
+  await page.exposeFunction('saveSettingsTestSelection', (...args: string[]) => { writes.push(args); });
+  await page.route('**/api/agent-models/*', route => {
+    return route.fulfill({ status: 503 });
+  });
+  await page.goto('/');
+  await page.evaluate(() => window.dispatchEvent(new Event('open-test-settings')));
+  const modal = page.getByRole('dialog', { name: 'AI assistant' });
+  await expect(modal.getByText('Could not load available models.')).toBeVisible();
+  await modal.getByRole('button', { name: 'Use assistant' }).click();
+  await expect(modal).not.toBeVisible();
+  expect(writes).toEqual([['claude']]);
+});
+
+test('AI settings test a custom model without saving and allow retrying a failed save', async ({ page }) => {
+  let saved = 'original-model';
+  let rejectWrite = true;
+  await page.exposeFunction('saveSettingsTestSelection', (_agent: string, model: string) => {
+    if (rejectWrite) throw new Error('Simulated save failure');
+    saved = model;
+  });
+  await page.route('**/api/agent-models/claude', route => route.fulfill({ json: { model: saved, models: [] } }));
+  await page.goto('/');
+  await page.evaluate(() => {
+    window.pdfpalDesktop!.testConnection = async (...args: unknown[]) => {
+      localStorage.setItem('settings-test-connection', JSON.stringify(args));
+      return { at: new Date().toISOString() };
+    };
+    window.dispatchEvent(new Event('open-test-settings'));
+  });
+  const modal = page.getByRole('dialog', { name: 'AI assistant' });
+  const model = modal.getByRole('combobox', { name: 'Claude Code default model' });
+  await expect(model).toHaveValue('original-model');
+  await model.selectOption({ label: 'Enter a model ID…' });
+  const customModel = modal.getByRole('textbox', { name: 'Model ID' });
+  await customModel.fill('  provider/custom-model[1m]  ');
+  await modal.getByRole('button', { name: 'Apply model' }).click();
+  await expect(model).toHaveValue('provider/custom-model[1m]');
+  await modal.getByRole('button', { name: 'Test connection' }).click();
+  await expect(modal.getByText(/Connection verified/)).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('settings-test-connection')!)))
+    .toEqual(['claude', 'provider/custom-model[1m]']);
+  expect(saved).toBe('original-model');
+
+  await modal.getByRole('button', { name: 'Use assistant' }).click();
+  await expect(modal.getByRole('alert')).toContainText('default model could not be saved');
+  expect(await page.evaluate(() => localStorage.getItem('settings-test-agent'))).toBeNull();
+  await expect(model).toHaveValue('provider/custom-model[1m]');
+  rejectWrite = false;
+  await modal.getByRole('button', { name: 'Use assistant' }).click();
+  await expect(modal).not.toBeVisible();
+  expect(saved).toBe('provider/custom-model[1m]');
+
+  await page.evaluate(() => window.dispatchEvent(new Event('open-test-settings')));
+  await expect(model).toHaveValue('provider/custom-model[1m]');
+  await model.selectOption('');
+  await modal.getByRole('button', { name: 'Use assistant' }).click();
+  await expect(modal).not.toBeVisible();
+  expect(saved).toBe('');
 });
