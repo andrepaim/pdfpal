@@ -162,7 +162,11 @@ export default function ReaderPreferences({ definitions, onDefinitionsChange, da
   const focusContext = () => (contextDisabled ? definitionsRef.current : contextRef.current)?.focus()
 
   useLayoutEffect(() => {
-    if (open && confirmation) actionRef.current?.focus()
+    if (!open || !confirmation) return
+    const action = actionRef.current
+    action?.focus()
+    // Keep the quoted size alongside the focused confirmation on short screens.
+    action?.closest('.reading-preferences-detail')?.scrollIntoView({ block: 'nearest' })
   }, [confirmation, open])
   // A progress, confirmation, or retry action can be replaced as the server state changes.
   useLayoutEffect(() => {
@@ -259,7 +263,7 @@ export default function ReaderPreferences({ definitions, onDefinitionsChange, da
                     ? `Downloading ${megabytes(status.download.received_bytes)} of ${megabytes(status.download.total_bytes)}…`
                     : 'Checking and installing the files…'}</p>}
                   {error && <p className="reading-preferences-error" role="alert">{error}</p>}
-                  {showDownload && <p>One-time download of about <strong>{megabytes(required)}</strong> from pdfpal&apos;s GitHub release. The English model runs locally and is shared by all your pdfpal libraries.</p>}
+                  {showDownload && <p>One-time download of about <strong>{megabytes(required)}</strong> from GitHub. The local English model is shared by all pdfpal libraries.</p>}
                 </div>
                 {downloading && (
                   <div className="reading-preferences-progress" role="progressbar" aria-label="Download progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
