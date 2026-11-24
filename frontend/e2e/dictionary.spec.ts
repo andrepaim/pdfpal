@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import type { DictionaryDefineResponse } from '../../src/shared/dictionary';
 import { mockAuth, createProjectViaApi } from './helpers';
 
 // test/fixtures/dictionary.pdf reads:
@@ -59,7 +60,9 @@ test.describe('reader dictionary', () => {
     await expect(card(page)).toBeVisible();
     await expect(card(page).locator('section').first()).toContainText('mouse noun');
     await expect(card(page)).toContainText('rodent');
-    await expect(card(page)).toContainText('WordNet 3.1');
+    await expect(card(page)).toContainText('plural of mouse');
+    const attribution = card(page).getByRole('link', { name: 'Wiktionary · CC BY-SA 4.0' });
+    await expect(attribution).toHaveAttribute('href', 'https://en.wiktionary.org/wiki/mouse');
     await expect(actions(page)).toHaveCount(0);
 
     await page.keyboard.press('Escape');
@@ -79,7 +82,7 @@ test.describe('reader dictionary', () => {
     await openReader(page);
     const box = await boxOf(page, 'known');
     await page.mouse.dblclick(box.x, box.y);
-    await expect(card(page).locator('section').first()).toContainText('well-known adjective');
+    await expect(card(page).locator('section').first()).toContainText('well-known adj');
   });
 
   test('two selected words use the dictionary and three or more show all normal actions', async ({ page }) => {
@@ -149,13 +152,17 @@ test.describe('reader dictionary', () => {
   test('the card expands in place, keeps the selected text, and closes on a click elsewhere', async ({ page }) => {
     await openReader(page);
     const box = await boxOf(page, 'bank');
+    const answered = defined(page);
     await page.mouse.dblclick(box.x, box.y);
-    await expect(card(page).locator('section').first()).toContainText('bank noun');
-    // Three meanings each for the noun and the verb until the card is expanded.
-    await expect(card(page).locator('li')).toHaveCount(6);
+    const { entries } = (await (await answered).json()) as DictionaryDefineResponse;
+    await expect(card(page).locator('section').first()).toContainText('river bank noun');
+    const shown = entries.slice(0, 3).reduce((sum, entry) => sum + Math.min(3, entry.senses.length), 0);
+    const total = entries.reduce((sum, entry) => sum + entry.senses.length, 0);
+    expect(total).toBeGreaterThan(shown);
+    await expect(card(page).locator('li')).toHaveCount(shown);
 
     await card(page).getByRole('button', { name: 'Show all meanings' }).click();
-    await expect(card(page).locator('li')).toHaveCount(18);
+    await expect(card(page).locator('li')).toHaveCount(total);
     await expect(card(page).getByRole('button', { name: 'Show fewer' })).toBeVisible();
 
     expect(await page.evaluate(() => window.getSelection()?.toString().trim())).toBe('bank');
@@ -212,12 +219,13 @@ test.describe('reader dictionary', () => {
   });
   test('a contextually ordered answer renders once, in the order the server sent, with nothing added', async ({ page }) => {
     await openReader(page);
-    // Stand in for the server with contextual definitions on: the same WordNet
-    // entries, the noun's meanings reordered, after a model-sized delay.
-    let served: { entries: Array<{ senses: Array<{ definition: string; examples: string[] }> }> } | undefined;
+    // Reorder meanings within one entry, then answer after a model-sized delay.
+    let served: DictionaryDefineResponse | undefined;
+    let orderedEntry = -1;
     await page.route('**/api/dictionary/define?*', async route => {
-      const result = await (await route.fetch()).json();
-      result.entries[0].senses.reverse();
+      const result = (await (await route.fetch()).json()) as DictionaryDefineResponse;
+      orderedEntry = result.entries.findIndex(entry => entry.senses.length > 1);
+      result.entries[orderedEntry]!.senses.reverse();
       served = result;
       await new Promise(resolve => setTimeout(resolve, 120));
       await route.fulfill({ json: result });
@@ -238,13 +246,13 @@ test.describe('reader dictionary', () => {
     const box = await boxOf(page, 'bank');
     await page.mouse.dblclick(box.x, box.y);
     await expect(card(page)).toBeVisible();
-    const items = card(page).locator('section').first().locator('li');
-    const expected = served!.entries[0]!.senses.slice(0, 3).map(sense => sense.definition + (sense.examples[0] ? `“${sense.examples[0]}”` : ''));
+    const items = card(page).locator('section').nth(orderedEntry).locator('li');
+    const expected = served!.entries[orderedEntry]!.senses.slice(0, 3).map(sense => sense.definition + (sense.examples[0] ? `“${sense.examples[0]}”` : ''));
     await expect(items).toHaveText(expected);
     await page.waitForTimeout(300);
     expect(await page.evaluate(() => (window as unknown as { cardLog: string[] }).cardLog)).toEqual(['card']);
     // Only the meanings and their examples: no marks, badges or scores.
-    await expect(card(page).locator('li')).toHaveText(served!.entries.flatMap(entry => entry.senses.slice(0, 3)).map(sense => sense.definition + (sense.examples[0] ? `“${sense.examples[0]}”` : '')));
+    await expect(card(page).locator('li')).toHaveText(served!.entries.slice(0, 3).flatMap(entry => entry.senses.slice(0, 3)).map(sense => sense.definition + (sense.examples[0] ? `“${sense.examples[0]}”` : '')));
     await expect(card(page)).not.toContainText(/%|score|best|likely/i);
   });
 

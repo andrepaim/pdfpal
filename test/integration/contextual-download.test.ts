@@ -50,7 +50,7 @@ function release() {
   return { state, fetch }
 }
 
-const fakeWorker = { url: new URL('../fixtures/fake-sense-worker.mjs', import.meta.url), data: { fake: { prefer: 'financial institution', requireFile: 'onnx/model.int8.onnx' } } }
+const fakeWorker = { url: new URL('../fixtures/fake-sense-worker.mjs', import.meta.url), data: { fake: { prefer: 'branch office', requireFile: 'onnx/model.int8.onnx' } } }
 type Library = { dataDir: string; cache: string }
 function library(cache?: string): Library {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdfpal-contextual-'))
@@ -85,7 +85,7 @@ test('turning on shows the download size first, downloads only when confirmed an
     const off = await s.status()
     assert.equal(off.enabled, false); assert.equal(off.state, 'off'); assert.equal(off.locked, false)
     assert.equal(off.download.required_bytes, modelZip.length + runtimeZip.length)
-    assert.match(firstSense(await s.define()), /sloping land/)
+    assert.match(firstSense(await s.define()), /place and borrow money/)
 
     const refused = await s.post('/api/dictionary/contextual', { enabled: true })
     assert.equal(refused.statusCode, 409)
@@ -102,7 +102,7 @@ test('turning on shows the download size first, downloads only when confirmed an
     assert.equal(ready.download.required_bytes, 0)
     assert.deepEqual(state.calls, ['https://github.com/andrepaim/pdfpal/releases/download/sense-test-v1/model.zip', 'https://github.com/andrepaim/pdfpal/releases/download/sense-test-v1/runtime-linux-x64.zip'])
     assert.equal(preference(lib), true, 'saved for this library')
-    assert.match(firstSense(await s.define()), /financial institution/, 'no restart needed')
+    assert.match(firstSense(await s.define()), /branch office/, 'no restart needed')
     assert.ok(fs.readdirSync(path.join(lib.cache, 'v1', 'model')).length === 1)
   } finally { await s.app.close(); restore(); fs.rmSync(lib.dataDir, { recursive: true, force: true }) }
 })
@@ -115,14 +115,14 @@ test('turning off applies at once and keeps the cache, which this and other libr
     await s.until(['ready'])
     const off = await s.post('/api/dictionary/contextual', { enabled: false })
     assert.equal(off.statusCode, 200); assert.equal(off.json().state, 'off')
-    assert.match(firstSense(await s.define()), /sloping land/)
+    assert.match(firstSense(await s.define()), /place and borrow money/)
     assert.equal(preference(lib), false)
 
     state.mode = 'offline'; state.calls.length = 0
     const on = await s.post('/api/dictionary/contextual', { enabled: true })
     assert.equal(on.statusCode, 200)
     await s.until(['ready'])
-    assert.match(firstSense(await s.define()), /financial institution/)
+    assert.match(firstSense(await s.define()), /branch office/)
 
     const second = await server(other, fetch)
     try {
@@ -131,7 +131,7 @@ test('turning off applies at once and keeps the cache, which this and other libr
       assert.equal(status.download.required_bytes, 0)
       assert.equal((await second.post('/api/dictionary/contextual', { enabled: true })).statusCode, 200)
       await second.until(['ready'])
-      assert.match(firstSense(await second.define()), /financial institution/)
+      assert.match(firstSense(await second.define()), /branch office/)
     } finally { await second.app.close() }
     assert.deepEqual(state.calls, [], 'reuse needs no network')
   } finally { await s.app.close(); restore(); for (const dir of [lib.dataDir, other.dataDir]) fs.rmSync(dir, { recursive: true, force: true }) }
@@ -145,7 +145,7 @@ test('a failed download reports its code and can be retried; a cancelled one sto
     await s.post('/api/dictionary/contextual/download', { accept_bytes: bytes })
     const failed = await s.until(['failed'])
     assert.equal(failed.error, 'DOWNLOAD_FAILED'); assert.equal(failed.enabled, false)
-    assert.match(firstSense(await s.define()), /sloping land/)
+    assert.match(firstSense(await s.define()), /place and borrow money/)
 
     state.mode = 'slow'
     await s.post('/api/dictionary/contextual/download', { accept_bytes: bytes })
@@ -265,13 +265,13 @@ test('a cached copy missing a file is downloaded again, and a failed activation 
     const broken = await s.until(['failed'])
     assert.equal(broken.error, 'MODEL_MISSING')
     assert.equal(broken.download.required_bytes, modelZip.length, 'only the model is downloaded again')
-    assert.match(firstSense(await s.define()), /sloping land/)
+    assert.match(firstSense(await s.define()), /place and borrow money/)
     state.calls.length = 0
     await s.post('/api/dictionary/contextual/download', { accept_bytes: modelZip.length })
     assert.equal((await s.until(['ready', 'failed'])).state, 'ready')
     assert.deepEqual(state.calls.map(url => url.split('/').at(-1)), ['model.zip'])
     assert.ok(fs.existsSync(path.join(cached, 'onnx', 'model.int8.onnx')))
-    assert.match(firstSense(await s.define()), /financial institution/)
+    assert.match(firstSense(await s.define()), /branch office/)
   } finally { await s.app.close(); restore(); fs.rmSync(lib.dataDir, { recursive: true, force: true }) }
 
   // The transfer succeeds but the library's config.json cannot be written.

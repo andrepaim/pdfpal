@@ -100,7 +100,7 @@ dictionary.command('status').description('show the setting and verify the instal
   })
 dictionary.command('enable').description('order definitions by context (restart pdfpal to apply)')
   .action((_options, command) => { saveContextualDefinitionsPreference(config, true); printLines({ contextual_definitions: true }, command) })
-dictionary.command('disable').description('show definitions in WordNet order (restart pdfpal to apply)')
+dictionary.command('disable').description('show definitions in dictionary order (restart pdfpal to apply)')
   .action((_options, command) => { saveContextualDefinitionsPreference(config, false); printLines({ contextual_definitions: false }, command) })
 dictionary.command('install-model').argument('<directory>', 'a local sense-model export of Ettin-150m-WSD (model_metadata.json, tokenizer files, onnx/model.int8.onnx)')
   .description('copy and verify the pinned English model into this library')
