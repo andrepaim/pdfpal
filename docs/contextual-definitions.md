@@ -1,6 +1,6 @@
 # Contextual definition order (English, opt-in)
 
-The PDF reader shares its Wiktionary lookup, sense-ordering code and definition card layout with [Contextual Dictionary](https://github.com/andrepaim/contextual-dictionary). Its English dictionary ships with pdfpal and works from the first offline launch. **Order by context** optionally runs the Ettin-150m-WSD model on the local CPU. For example, the sentence around *mouse* helps the model choose between the animal and the pointing device.
+The PDF reader shares its Wiktionary lookup, sense-ordering code and definition card layout with [Contextual Dictionary](https://github.com/andrepaim/contextual-dictionary). Its English dictionary ships with pdfpal and works from the first offline launch. **Show the best-fitting meaning first** optionally runs the Ettin-150m-WSD model on the local CPU. For example, the sentence around *mouse* helps the model choose between the animal and the pointing device.
 
 The card previews up to three entries, three meanings per entry and one example per meaning. Choose **Show all meanings** to see every entry, meaning and example. The controls and Wiktionary attribution remain visible while you scroll the meanings.
 
@@ -15,9 +15,11 @@ The card previews up to three entries, three meanings per entry and one example 
 
 ### In the reader
 
-1. Open a PDF and click **Order by context** in the reader toolbar, next to **Definitions**. The button's accessible name is "Order meanings by context".
-2. If the files are not on this computer yet, the panel shows the one-time download size: 150 MB for the model plus the runtime (18 MB on Linux x64, 11 MB on Windows x64), if pdfpal has no runtime of its own. Nothing is downloaded until you click **Download and turn on**.
-3. The panel shows progress, and **Cancel** stops the download. A failed download shows why, and **Retry download** starts again. When the files are in place the setting turns on for this library immediately, without a restart. **Turn off** restores dictionary order at once.
+1. Open a PDF and choose **Reading preferences** using the sliders icon in the toolbar. With **Show definitions on selection** on, turn on **Show the best-fitting meaning first**.
+2. If files are needed, the panel shows the one-time download size. The model is about 150 MB. The runtime adds about 18 MB on Linux x64 or 11 MB on Windows x64 when needed. Choose **Download and turn on** to start the download.
+3. The panel shows progress and offers **Cancel**. After a failed download, choose **Retry download**. Once the files are in place, the model turns on for this library without a restart. Turn **Show the best-fitting meaning first** off to restore dictionary order.
+
+Turning off **Show definitions on selection** disables access to the ordering switch and preserves its saved value.
 
 The files come from the project's GitHub release (`dictionary-assets-v1`). Each bundle's size and SHA-256 are checked before it is opened, and every extracted file is checked against its own pin. They are stored once per user and reused by every library on the computer, even offline:
 
@@ -117,7 +119,7 @@ The earlier 95 ms p95 measurement used inventories of 2 to 10 meanings from one 
 - Large inventories often exceed the default budget on a first lookup (see the table above).
 - The download uses Node's `fetch`, which ignores system proxy settings. Behind a proxy that blocks direct HTTPS, provision from the command line instead.
 - A runtime update or repair on Windows may report `INSTALL_TARGET_BUSY` while another pdfpal app has that runtime loaded.
-- CLI `enable`/`disable` take effect when a running app next starts; the reader button applies at once.
+- CLI `enable`/`disable` take effect when a running app next starts. Changes in **Reading preferences** apply without a restart.
 - Literal `*` within 120 characters of the selection disables ordering for that lookup, because the model's prompt format reserves it.
 - The Kindle companion does not show definition cards.
 

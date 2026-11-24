@@ -287,6 +287,17 @@ test('beta.12 combined release notes describe the definition card, and beta.11 k
   } finally { await f.cleanup(); await earlier.cleanup() }
 })
 
+test('beta.13 release notes describe the reader preferences and inline download confirmation', { skip: !hasDpkg }, async () => {
+  const f = await combinedFixture('2.8.0-beta.13')
+  try {
+    await prepareCombinedRelease(f.directory, f.options)
+    const notes = await fs.readFile(path.join(f.directory, 'release-notes.md'), 'utf8')
+    assert.match(notes, /Changes since 2\.8\.0-beta\.12/)
+    assert.match(notes, /Reading preferences[^\n]+Show definitions on selection[^\n]+Show the best-fitting meaning first[^\n]+Dark pages/)
+    assert.match(notes, /shows its size before you confirm/)
+  } finally { await f.cleanup() }
+})
+
 test('combined preparation verifies Debian identity from actual package bytes', { skip: !hasDpkg }, async () => {
   const f = await combinedFixture()
   try {

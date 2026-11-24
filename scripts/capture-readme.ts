@@ -77,8 +77,11 @@ try {
   async function openReader(pageNumber: number, dividerX: number, sourceId = paper.id) {
     await page.goto(`${base}/projects/${project.id}/sources/${sourceId}`)
     await page.locator('[data-pdf-page="1"] canvas').waitFor()
-    const dark = page.getByRole('button', { name: 'Dark pages', exact: true })
-    if (await dark.getAttribute('aria-pressed') !== 'true') await dark.click()
+    await page.getByRole('button', { name: 'Reading preferences', exact: true }).click()
+    const preferences = page.getByRole('dialog', { name: 'Reading preferences', exact: true })
+    const dark = preferences.getByLabel('Dark pages', { exact: true })
+    if (!await dark.isChecked()) await dark.click()
+    await page.keyboard.press('Escape')
     const divider = page.locator('[style*="cursor: col-resize"]')
     const box = await divider.boundingBox()
     if (!box) throw Error('Reader divider missing')

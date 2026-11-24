@@ -106,9 +106,9 @@ Keep the checkout in place when using this link. AI features use your assistant�
 4. Switch to the **Notes** tab and write what you understood in your own words as a markdown note; it renders as you read it back.
 5. Ask a question across every source in the project from **Project Chat**.
 
-Use **Dark pages** beside the reader's zoom controls for a dark page background and light text. The setting is remembered in your browser across documents and reloads. It also changes figure and photo colors; switch it off to view their original colors.
+Open **Reading preferences** with the sliders icon in the reader toolbar. Under **Appearance**, turn on **Dark pages** for a dark page background and light text. Your browser remembers the choice across documents and reloads. Switch it off to see original colors in figures and photos.
 
-Double-click an English word for a local definition, or select a two-word term. **Definitions** toggles the bundled offline dictionary; it needs no AI account. See the [reader guide](docs/reader-guide.md) for definitions, selection context and navigation.
+Double-click an English word or select a two-word term for an offline definition. **Show definitions on selection** in **Reading preferences** controls the definition card. The dictionary needs no AI account. See the [reader guide](docs/reader-guide.md) for definitions, selection context and navigation.
 
 After following a reference link within a PDF, click **Back to citation** in the reader toolbar to return to your previous position and zoom. Follow several references and click it repeatedly to retrace your jumps.
 
@@ -140,7 +140,7 @@ Book questions use title/author, previous discussion, and captured or saved exce
 - **Reading progress**: remembers the last page read for every source and restores it automatically the next time you open the PDF.
 - **Per-source chat**: persistent conversation history per paper, restored across sessions; renders math (KaTeX). Answers use retrieved local text and the assistant’s background knowledge. Reading calls run with shell and web tools disabled; paper discovery is available separately.
 - **Text selection → ask or highlight**: stuck on a passage? Select it and ask about it right there, grounded in the paper, or save it as a highlight.
-- **Offline dictionary**: double-click a word, or select a two-word term, and its meanings appear under it. Inflected forms (“ran”, “mice”), hyphenated words and compounds (“neural network”) are recognised. Definitions come from the bundled English Wiktionary pack and work offline from first launch. Turn it off with **Definitions** in the reader toolbar.
+- **Offline dictionary**: double-click a word, or select a two-word term, and its meanings appear under it. Inflected forms (“ran”, “mice”), hyphenated words and compounds (“neural network”) are recognised. Definitions come from the bundled English Wiktionary pack and work offline from first launch. Turn off **Show definitions on selection** in **Reading preferences** to hide the definition card.
 - **Project chat**: ask across multiple sources at once, toggle which sources are in context, or scope to a single collection.
 
 ### Visual explanations
