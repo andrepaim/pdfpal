@@ -159,17 +159,17 @@ export default function ReaderPreferences({ definitions, onDefinitionsChange, da
   const contextDescription = open && (downloading || (definitions && (!status || status.locked || required === null
     || status.state === 'loading' || showDownload || showRetry || error))) ? `${id}-context` : undefined
 
-  const focusContext = () => (contextDisabled ? definitionsRef.current : contextRef.current)?.focus({ preventScroll: true })
+  const focusContext = () => (contextDisabled ? definitionsRef.current : contextRef.current)?.focus()
 
   useLayoutEffect(() => {
-    if (open && confirmation) actionRef.current?.focus({ preventScroll: true })
+    if (open && confirmation) actionRef.current?.focus()
   }, [confirmation, open])
   // A progress, confirmation, or retry action can be replaced as the server state changes.
   useLayoutEffect(() => {
     const previous = lastFocusedAction.current
     if (!open || !(previous instanceof HTMLElement) || previous.isConnected || document.activeElement !== document.body) return
-    if (actionRef.current) actionRef.current.focus({ preventScroll: true })
-    else (contextDisabled ? definitionsRef.current : contextRef.current)?.focus({ preventScroll: true })
+    if (actionRef.current) actionRef.current.focus()
+    else (contextDisabled ? definitionsRef.current : contextRef.current)?.focus()
   })
 
   const act = async (work: () => Promise<ContextualStatus>) => {
