@@ -78,6 +78,12 @@ An environment variable overrides `config.json`. When `PDFPAL_CONTEXTUAL_DEFINIT
 
 When two meanings share an entry, context can move either to the top. For *mouse*, the native model ranks the input device first in “Drag the mouse to move the cursor on screen” and the rodent first in “The cat chased a mouse across the kitchen floor.” Wiktionary also separates some words by etymology. For *bank*, the financial institution and the riverbank belong to separate noun entries. Context can change the order of meanings inside either entry, but the financial entry still appears first.
 
+### Migration checks on Linux x64
+
+- **Offline upgrade.** Desktop beta.10’s backend provisioned the released Linux model and runtime in an isolated cache. The new backend reopened that library with contextual order enabled, verified both cached components, reached the ready state, and served four selections with zero download requests.
+- **Node and Chromium parity.** With the same published pack and fixed scores, the core returned identical definitions, prompts and ordered results for *mouse*, *bank*, *neural network*, *mice* and an unknown term. A separate run used the real native checkpoint to exercise the two *mouse* contexts above.
+- **First-lookup timing.** On one WSL2 machine, the 24 warm, uncached lookups in the native timing test reached the 120 ms deadline 24 times with Wiktionary (p95 wait 123.5 ms), compared with 13 times on beta.10 (p95 121.2 ms). This measures the wait for ordering, excluding dictionary lookup and rendering. The default returns dictionary order promptly, but a first lookup can miss a relevant contextual result. In a separate sweep, reducing the prompt cap from 1,600 to 600 characters brought 12 of 14 scores within the deadline and excluded the computer sense of *mouse*. The integration retains the shared candidate policy. Users can raise the model wait using the configuration above.
+
 ## Historical WordNet platform validation
 
 The following platform and timing measurements used the WordNet dictionary shipped through desktop beta.10. Wiktionary has different entries and sense inventories.
