@@ -54,7 +54,7 @@
     "build:auth": "npm exec --workspace frontend -- vite build --config vite.auth.config.ts"
   },
   "dependencies": {
-    "@andrepaim/contextual-dictionary-core": "https://raw.githubusercontent.com/andrepaim/contextual-dictionary/bfdf69ba9d51b878dad8c5abab80674e787c5eb2/artifacts/contextual-dictionary-core-0.1.0.tgz",
+    "@andrepaim/contextual-dictionary-core": "https://raw.githubusercontent.com/andrepaim/contextual-dictionary/daa5601cc7b0719646c45e21124381bfca3c8f39/artifacts/contextual-dictionary-core-0.2.0.tgz",
     "@fastify/cors": "^11.1.0",
     "@fastify/multipart": "^9.2.1",
     "@fastify/static": "^9.3.0",

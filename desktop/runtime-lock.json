@@ -9,7 +9,7 @@
       "version": "2.3.0-cloud.1",
       "license": "MIT",
       "dependencies": {
-        "@andrepaim/contextual-dictionary-core": "https://raw.githubusercontent.com/andrepaim/contextual-dictionary/bfdf69ba9d51b878dad8c5abab80674e787c5eb2/artifacts/contextual-dictionary-core-0.1.0.tgz",
+        "@andrepaim/contextual-dictionary-core": "https://raw.githubusercontent.com/andrepaim/contextual-dictionary/daa5601cc7b0719646c45e21124381bfca3c8f39/artifacts/contextual-dictionary-core-0.2.0.tgz",
         "@fastify/cors": "^11.1.0",
         "@fastify/multipart": "^9.2.1",
         "@fastify/static": "^9.3.0",
@@ -25,9 +25,9 @@
       }
     },
     "node_modules/@andrepaim/contextual-dictionary-core": {
-      "version": "0.1.0",
-      "resolved": "https://raw.githubusercontent.com/andrepaim/contextual-dictionary/bfdf69ba9d51b878dad8c5abab80674e787c5eb2/artifacts/contextual-dictionary-core-0.1.0.tgz",
-      "integrity": "sha512-VMZd3TWBD0iQCKRvi9etbE9KUsgSyopUEFXJFhIhSyRo/Se7d1vIJDoTRdjmtkJWz5C/FXudumUJdNQGEfWIDw==",
+      "version": "0.2.0",
+      "resolved": "https://raw.githubusercontent.com/andrepaim/contextual-dictionary/daa5601cc7b0719646c45e21124381bfca3c8f39/artifacts/contextual-dictionary-core-0.2.0.tgz",
+      "integrity": "sha512-/KFsX46cjWFXMP2WQWuMlY/rIqISnArxhQuu2ZUtNDZWcUhF1wAJaNwa2ItY0+U8J/QyTr0b3/5rx7iVOv+1ew==",
       "license": "MIT",
       "engines": {
         "node": ">=22"

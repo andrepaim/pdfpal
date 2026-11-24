@@ -118,6 +118,7 @@ const ZOOM_LEVELS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
 const DARK_PAGES_STORAGE_KEY = 'pdfpal.pdf.darkPages'
 const DEFINITIONS_STORAGE_KEY = 'pdfpal.pdf.definitions'
 const DEFINITION_CARD_WIDTH = 340
+const DEFINITION_CARD_MAX_HEIGHT = 320
 // Room the card needs under the selection before it opens above it instead.
 const DEFINITION_CARD_ROOM = 220
 
@@ -243,9 +244,12 @@ export default function PdfViewer({
       const top = rect.top - viewer.top
       const bottom = rect.bottom - viewer.top
       const x = Math.max(8, Math.min(left, viewer.width - DEFINITION_CARD_WIDTH - 8))
-      const style = bottom + DEFINITION_CARD_ROOM > viewer.height && top > DEFINITION_CARD_ROOM
-        ? { left: x, bottom: viewer.height - top + 8 }
-        : { left: x, top: bottom + 8 }
+      const roomBelow = viewer.height - bottom
+      const opensAbove = roomBelow < DEFINITION_CARD_ROOM && top > roomBelow
+      const maxHeight = Math.min(DEFINITION_CARD_MAX_HEIGHT, Math.max(0, (opensAbove ? top : roomBelow) - 16))
+      const style = opensAbove
+        ? { left: x, bottom: viewer.height - top + 8, maxHeight }
+        : { left: x, top: bottom + 8, maxHeight }
       const controller = lookup = new AbortController()
       const result = await dictionaryApi.define(text, selectionContext(range), controller.signal).catch(() => null)
       if (controller.signal.aborted) return
