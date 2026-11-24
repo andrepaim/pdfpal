@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { cardFixture } from '@andrepaim/contextual-dictionary-core/card-fixture';
 import type { DictionaryDefineResponse } from '../../src/shared/dictionary';
 import { mockAuth, createProjectViaApi } from './helpers';
 
@@ -168,6 +169,80 @@ test.describe('reader dictionary', () => {
     expect(await page.evaluate(() => window.getSelection()?.toString().trim())).toBe('bank');
     await page.getByTestId('page-progress').click();
     await expect(card(page)).toHaveCount(0);
+  });
+
+  test('additional examples alone can expand the card', async ({ page }) => {
+    await openReader(page);
+    await page.route('**/api/dictionary/define?*', async route => {
+      const result = (await (await route.fetch()).json()) as DictionaryDefineResponse;
+      const entry = result.entries[0]!;
+      const sense = { ...entry.senses[0]!, examples: ['The river overflowed its bank.', 'Flowers covered the river bank.'] };
+      await route.fulfill({ json: { ...result, entries: [{ ...entry, senses: [sense] }] } });
+    });
+
+    const box = await boxOf(page, 'bank');
+    await page.mouse.dblclick(box.x, box.y);
+    await expect(card(page)).toContainText('The river overflowed its bank.');
+    await expect(card(page)).not.toContainText('Flowers covered the river bank.');
+    const toggle = card(page).getByRole('button', { name: 'Show all meanings' });
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await toggle.click();
+    await expect(card(page)).toContainText('Flowers covered the river bank.');
+    const collapse = card(page).getByRole('button', { name: 'Show fewer' });
+    await expect(collapse).toHaveAttribute('aria-expanded', 'true');
+    await collapse.click();
+    await expect(card(page)).not.toContainText('Flowers covered the river bank.');
+  });
+
+  test('the shared card fixture keeps its order and attribution while the meanings scroll', async ({ page }) => {
+    await page.setViewportSize({ width: 560, height: 520 });
+    await openReader(page);
+    const source = `${cardFixture.source.name} · ${cardFixture.source.license}`;
+    const response: DictionaryDefineResponse = {
+      ...cardFixture,
+      entries: cardFixture.entries.map(entry => ({ ...entry, part_of_speech: entry.partOfSpeech })),
+      source,
+      sourceDetails: cardFixture.source,
+    };
+    await page.route('**/api/dictionary/define?*', route => route.fulfill({ json: response }));
+
+    const box = await boxOf(page, 'bank');
+    await page.mouse.dblclick(box.x, box.y);
+    const dialog = page.getByRole('dialog', { name: `Definition of ${cardFixture.query}` });
+    const meanings = dialog.getByRole('region', { name: 'Meanings' });
+    const entries = meanings.locator('section');
+    const attribution = dialog.getByRole('link', { name: source });
+    await expect(dialog).toHaveCSS('background-color', 'rgb(26, 26, 26)');
+    const margins = await dialog.evaluate(element => {
+      const card = element.getBoundingClientRect();
+      const viewer = element.closest('.pdf-viewer')!.getBoundingClientRect();
+      return { left: card.left - viewer.left, right: viewer.right - card.right };
+    });
+    expect(margins.left).toBeCloseTo(8, 1);
+    expect(margins.right).toBeCloseTo(8, 1);
+    await expect(attribution).toHaveAttribute('href', cardFixture.source.url);
+    await expect(attribution).toBeInViewport();
+    await expect(entries).toHaveCount(3);
+    await expect(entries.first().locator('li')).toHaveCount(3);
+    await expect(entries.first()).toContainText('also spelled glint-mark');
+    await expect(meanings).not.toContainText('The jeweller buffed away the glintmark.');
+    await expect(meanings).not.toContainText('A tally made with reflective ink.');
+    await expect(meanings).not.toContainText('With a brief flash.');
+
+    await dialog.getByRole('button', { name: 'Show all meanings' }).click();
+    await expect(entries.locator('.dc-pos')).toHaveText(cardFixture.entries.map(entry => entry.partOfSpeech));
+    const senses = cardFixture.entries.flatMap(entry => entry.senses);
+    await expect(meanings.locator('.dc-definition')).toHaveText(senses.map(sense => sense.definition));
+    await expect(meanings.locator('.dc-example')).toHaveText(senses.flatMap(sense => sense.examples.map(example => `“${example}”`)));
+    const footerPosition = await attribution.boundingBox();
+    await meanings.evaluate(element => element.scrollTo(0, element.scrollHeight));
+    await expect.poll(() => meanings.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+    await expect(attribution).toBeInViewport();
+    expect(await attribution.boundingBox()).toEqual(footerPosition);
+
+    await dialog.getByRole('button', { name: 'Show fewer' }).click();
+    await expect(entries).toHaveCount(3);
+    expect(await page.evaluate(() => window.getSelection()?.toString().trim())).toBe('bank');
   });
 
   test('the Definitions button turns the card off and the choice survives a reload', async ({ page }) => {

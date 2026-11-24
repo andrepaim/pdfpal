@@ -273,6 +273,20 @@ test('beta.8 release notes explain the optional dictionary download', { skip: !h
   } finally { await f.cleanup() }
 })
 
+test('beta.12 combined release notes describe the definition card, and beta.11 keeps its own changes', { skip: !hasDpkg }, async () => {
+  const f = await combinedFixture('2.8.0-beta.12'), earlier = await combinedFixture('2.8.0-beta.11')
+  try {
+    await prepareCombinedRelease(f.directory, f.options)
+    await prepareCombinedRelease(earlier.directory, earlier.options)
+    const notes = await fs.readFile(path.join(f.directory, 'release-notes.md'), 'utf8')
+    assert.match(notes, /Changes since 2\.8\.0-beta\.11/)
+    assert.match(notes, /Show all meanings[^\n]+all examples/)
+    const before = await fs.readFile(path.join(earlier.directory, 'release-notes.md'), 'utf8')
+    assert.match(before, /Changes since 2\.8\.0-beta\.10/)
+    assert.match(before, /English Wiktionary dictionary and sense-ordering code/)
+  } finally { await f.cleanup(); await earlier.cleanup() }
+})
+
 test('combined preparation verifies Debian identity from actual package bytes', { skip: !hasDpkg }, async () => {
   const f = await combinedFixture()
   try {

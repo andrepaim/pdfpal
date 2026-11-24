@@ -1,6 +1,8 @@
 # Contextual definition order (English, opt-in)
 
-The PDF reader uses the same Wiktionary lookup and sense-ordering code as [Contextual Dictionary](https://github.com/andrepaim/contextual-dictionary). Its English dictionary ships with pdfpal and works from the first offline launch. **Order by context** optionally runs the Ettin-150m-WSD model on the local CPU. For example, the sentence around *mouse* helps the model choose between the animal and the pointing device.
+The PDF reader shares its Wiktionary lookup, sense-ordering code and definition card layout with [Contextual Dictionary](https://github.com/andrepaim/contextual-dictionary). Its English dictionary ships with pdfpal and works from the first offline launch. **Order by context** optionally runs the Ettin-150m-WSD model on the local CPU. For example, the sentence around *mouse* helps the model choose between the animal and the pointing device.
+
+The card previews up to three entries, three meanings per entry and one example per meaning. Choose **Show all meanings** to see every entry, meaning and example. The controls and Wiktionary attribution remain visible while you scroll the meanings.
 
 ## How it works
 

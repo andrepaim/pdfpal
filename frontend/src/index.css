@@ -93,6 +93,18 @@ body {
   --pdf-highlight-blend: multiply;
 }
 
+.dc-card.pdf-definition-card {
+  --dc-bg: var(--panel);
+  --dc-text: var(--text);
+  --dc-muted: var(--muted);
+  --dc-border: var(--border);
+  --dc-accent: var(--accent);
+  --dc-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  position: absolute;
+  max-width: calc(100% - 16px);
+  z-index: 9998;
+}
+
 .pdf-viewer[data-page-theme="dark"] {
   --pdf-page-background: #1a1a1a;
   --pdf-highlight-blend: screen;

@@ -1,9 +1,7 @@
 import { useState, type CSSProperties } from 'react'
+import { cardPreview } from '@andrepaim/contextual-dictionary-core/card'
+import '@andrepaim/contextual-dictionary-core/card.css'
 import type { DictionaryDefineResponse } from '../../../src/shared/dictionary'
-
-// How much shows before "Show all": a word like "run" has 57 meanings.
-const ENTRIES_SHOWN = 3
-const SENSES_SHOWN = 3
 
 interface Props {
   result: DictionaryDefineResponse
@@ -13,60 +11,55 @@ interface Props {
 /** The dictionary meanings of the word selected in the reader. */
 export default function DefinitionCard({ result, style }: Props) {
   const [showAll, setShowAll] = useState(false)
-
-  const entries = showAll ? result.entries : result.entries.slice(0, ENTRIES_SHOWN)
-  const hidden = result.entries.length > ENTRIES_SHOWN || result.entries.some(entry => entry.senses.length > SENSES_SHOWN)
+  const { entries, canExpand } = cardPreview(result.entries, showAll)
 
   return (
     <div
+      className="dc-card pdf-definition-card"
       role="dialog"
       aria-label={`Definition of ${result.query}`}
       data-definition-card="1"
       // Keep the word selected while the reader expands or collapses its meanings.
       onMouseDown={event => event.preventDefault()}
-      style={{
-        position: 'absolute', width: 340, maxWidth: 'calc(100% - 16px)', maxHeight: 320, overflowY: 'auto',
-        background: 'var(--panel)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 10,
-        boxShadow: '0 8px 24px rgba(0,0,0,0.5)', padding: '10px 12px 8px', fontSize: 13, lineHeight: 1.45, zIndex: 9998,
-        ...style,
-      }}
+      style={style}
     >
-      {entries.map((entry, entryIndex) => {
-        const senses = showAll ? entry.senses : entry.senses.slice(0, SENSES_SHOWN)
-        return (
-          <section key={`${entry.lemma} ${entry.partOfSpeech} ${entryIndex}`} style={{ marginBottom: 8 }}>
-            <div>
-              <span style={{ fontWeight: 600 }}>{entry.lemma}</span>{' '}
-              <span style={{ color: 'var(--muted)', fontStyle: 'italic', fontSize: 12 }}>{entry.partOfSpeech}</span>
+      <div className="dc-body" role="region" aria-label="Meanings" tabIndex={0}>
+        {entries.map(({ entry, senses }, entryIndex) => (
+          <section className="dc-entry" key={`${entry.lemma} ${entry.partOfSpeech} ${entryIndex}`}>
+            <div className="dc-head">
+              <span className="dc-lemma">{entry.lemma}</span>{' '}
+              <span className="dc-pos">{entry.partOfSpeech}</span>
             </div>
-            {entry.note && <p style={{ margin: '2px 0 0', color: 'var(--muted)', fontSize: 12 }}>{entry.note}</p>}
-            <ol style={{ margin: '2px 0 0', paddingLeft: 22, listStyle: 'decimal' }}>
-              {senses.map((sense, index) => (
-                <li key={index} style={{ marginBottom: 2 }}>
-                  {sense.definition}
-                  {sense.examples[0] && <div style={{ color: 'var(--muted)', fontSize: 12 }}>“{sense.examples[0]}”</div>}
+            {entry.note && <p className="dc-note">{entry.note}</p>}
+            <ol className="dc-senses">
+              {senses.map(({ sense, examples }, index) => (
+                <li key={index}>
+                  <span className="dc-definition">{sense.definition}</span>
+                  {examples.map((example, exampleIndex) => (
+                    <div className="dc-example" key={exampleIndex}>“{example}”</div>
+                  ))}
                 </li>
               ))}
             </ol>
           </section>
-        )
-      })}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--muted)', fontSize: 11 }}>
-        {hidden && (
+        ))}
+      </div>
+      <div className="dc-footer">
+        {canExpand && (
           <button
+            className="dc-toggle"
             type="button"
             onClick={() => setShowAll(value => !value)}
             aria-expanded={showAll}
-            style={{ background: 'none', border: 'none', padding: 0, color: 'var(--accent)', fontSize: 12, cursor: 'pointer' }}
           >
             {showAll ? 'Show fewer' : 'Show all meanings'}
           </button>
         )}
         <a
+          className="dc-attribution"
           href={result.sourceDetails.url}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ marginLeft: 'auto', color: 'inherit' }}
         >
           {result.source}
         </a>
