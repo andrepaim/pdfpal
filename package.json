@@ -13,6 +13,10 @@
   },
   "files": [
     "dist/",
+    "!dist/dictionary/",
+    "!dist/core/dictionary-build.*",
+    "data/dictionary/wiktionary-en-v1.pack",
+    "data/dictionary/NOTICES-dictionary.txt",
     "frontend/dist/",
     "skills/",
     "scripts/install-skill.sh",
@@ -25,7 +29,7 @@
   },
   "scripts": {
     "build": "npm run build:server && npm run build --workspace frontend && npm run build:extension",
-    "build:server": "tsc -p tsconfig.json && node scripts/build-dictionary.mjs",
+    "build:server": "node scripts/prepare-dictionary.mjs && tsc -p tsconfig.json",
     "dev": "tsx src/cli/index.ts serve --no-open",
     "start": "node dist/cli/index.js",
     "pretest": "npm run build:server",
@@ -50,6 +54,7 @@
     "build:auth": "npm exec --workspace frontend -- vite build --config vite.auth.config.ts"
   },
   "dependencies": {
+    "@andrepaim/contextual-dictionary-core": "https://raw.githubusercontent.com/andrepaim/contextual-dictionary/bfdf69ba9d51b878dad8c5abab80674e787c5eb2/artifacts/contextual-dictionary-core-0.1.0.tgz",
     "@fastify/cors": "^11.1.0",
     "@fastify/multipart": "^9.2.1",
     "@fastify/static": "^9.3.0",
@@ -84,7 +89,6 @@
     "firebase": "^12.7.0",
     "onnxruntime-node": "1.30.0",
     "tsx": "^4.20.3",
-    "typescript": "~5.9.2",
-    "wordnet-db": "3.1.14"
+    "typescript": "~5.9.2"
   }
 }

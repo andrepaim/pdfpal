@@ -9,6 +9,7 @@
       "version": "2.3.0-cloud.1",
       "license": "MIT",
       "dependencies": {
+        "@andrepaim/contextual-dictionary-core": "https://raw.githubusercontent.com/andrepaim/contextual-dictionary/bfdf69ba9d51b878dad8c5abab80674e787c5eb2/artifacts/contextual-dictionary-core-0.1.0.tgz",
         "@fastify/cors": "^11.1.0",
         "@fastify/multipart": "^9.2.1",
         "@fastify/static": "^9.3.0",
@@ -21,6 +22,15 @@
         "open": "^10.2.0",
         "pdfjs-dist": "^5.4.54",
         "zod": "^4.6.7"
+      }
+    },
+    "node_modules/@andrepaim/contextual-dictionary-core": {
+      "version": "0.1.0",
+      "resolved": "https://raw.githubusercontent.com/andrepaim/contextual-dictionary/bfdf69ba9d51b878dad8c5abab80674e787c5eb2/artifacts/contextual-dictionary-core-0.1.0.tgz",
+      "integrity": "sha512-VMZd3TWBD0iQCKRvi9etbE9KUsgSyopUEFXJFhIhSyRo/Se7d1vIJDoTRdjmtkJWz5C/FXudumUJdNQGEfWIDw==",
+      "license": "MIT",
+      "engines": {
+        "node": ">=22"
       }
     },
     "node_modules/@fastify/accept-negotiator": {

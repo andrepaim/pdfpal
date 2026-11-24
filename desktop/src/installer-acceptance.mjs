@@ -1,11 +1,32 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
+export async function checkBundledDictionary(origin) {
+  const directory = path.join(process.resourcesPath, 'data/dictionary')
+  if (!(await fs.stat(path.join(directory, 'wiktionary-en-v1.pack'))).isFile()) throw new Error('Bundled dictionary pack is missing')
+  const notice = await fs.readFile(path.join(directory, 'NOTICES-dictionary.txt'), 'utf8')
+  const notices = await fs.readFile(path.join(process.resourcesPath, 'THIRD_PARTY_NOTICES.txt'), 'utf8')
+  if (!notice.includes('Wiktionary contributors') || !notice.includes('BEGIN CC BY-SA 4.0 legal code') || !notices.includes(notice)) {
+    throw new Error('Bundled dictionary attribution is missing')
+  }
+  const response = await fetch(`${origin}/api/dictionary/define?text=mice`, {
+    headers: { connection: 'close' },
+    signal: AbortSignal.timeout(10000),
+  })
+  if (!response.ok) throw new Error(`Bundled dictionary request failed (${response.status})`)
+  const { sourceDetails, entries } = await response.json()
+  if (sourceDetails?.name !== 'Wiktionary' || sourceDetails.license !== 'CC BY-SA 4.0' ||
+      !entries?.some(entry => entry.lemma === 'mouse' && entry.senses?.length)) {
+    throw new Error('Bundled dictionary did not return the expected Wiktionary entry')
+  }
+}
+
 /** Explicit installed-build harness; works only with isolated acceptance metadata. */
 export async function installedAcceptance({ app, window, ready, requestQuit }) {
   const metadata = JSON.parse(await fs.readFile(path.join(app.getAppPath(), 'package.json'), 'utf8'))
   if (metadata.pdfpalDesktop?.appId !== 'io.pdfpal.desktop.installer-acceptance' || !process.env.PDFPAL_INSTALLER_ACCEPTANCE_RECEIPT || !process.env.PDFPAL_INSTALLER_ACCEPTANCE_CONTROL) throw new Error('Use the isolated installer acceptance build and fixture environment')
   for (const filename of ['THIRD_PARTY_NOTICES.txt', 'LICENSE.pdfpal.txt']) { if (!(await fs.stat(path.join(process.resourcesPath, filename))).isFile()) throw new Error('Installed license notices missing') }
+  await checkBundledDictionary(ready.origin)
   const check = (condition, message) => { if (!condition) throw new Error(message) }
   const request = async (url, method = 'GET', data, headers = {}) => {
     const response = await fetch(ready.origin + url, { method, headers: { connection: 'close', ...(data ? { 'content-type': 'application/json' } : {}), ...headers }, ...(data ? { body: JSON.stringify(data) } : {}) })
@@ -42,7 +63,7 @@ export async function installedAcceptance({ app, window, ready, requestQuit }) {
   check((await request(`/api/projects/${fixture.project}/sources/${fixture.source}/annotations`)).some(item => item.id === fixture.annotation), 'Installed highlight missing')
   check((await request(`/api/projects/${fixture.project}/sources/${fixture.source}/chat`)).messages.some(item => item.content === 'M1 background answer'), 'Installed answer history missing')
   await window.webContents.executeJavaScript('window.pdfpalDesktop.completeSetup()')
-  const report = { status: 'passed', version: app.getVersion(), checks: ['installed-reader-mounted', 'installed-preload', 'installed-license-notices', 'manual-update-check-no-passive-network', 'pdf-note-highlight-collection-history-preserved', 'extension-identity-retained', 'installed-setup-completed'] }
+  const report = { status: 'passed', version: app.getVersion(), checks: ['installed-reader-mounted', 'installed-preload', 'installed-license-notices', 'bundled-wiktionary-first-lookup', 'manual-update-check-no-passive-network', 'pdf-note-highlight-collection-history-preserved', 'extension-identity-retained', 'installed-setup-completed'] }
   await fs.writeFile(process.env.PDFPAL_INSTALLER_ACCEPTANCE_RECEIPT, JSON.stringify(report, null, 2))
   if (process.argv.includes('--installer-acceptance-hold')) {
     const timer = setInterval(async () => {

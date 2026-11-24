@@ -1,5 +1,7 @@
 node_modules/
 dist/
+/data/dictionary/wiktionary-en-v1.pack
+/data/dictionary/.pack-download-*/
 coverage/
 # Retrieval evaluation corpus text, downloaded by `npm run eval:retrieval:fetch`; never redistributed.
 /.cache/retrieval/

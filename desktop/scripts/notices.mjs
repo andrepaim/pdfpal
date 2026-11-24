@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
+import { dictionaryDirectory, dictionaryNotice } from '../../scripts/prepare-dictionary.mjs'
 
 /** Enumerate installed runtime and bundled UI dependencies, never build/test tooling roots. */
 export function writeNotices(stage, sourceRoot) {
@@ -38,11 +39,8 @@ export function writeNotices(stage, sourceRoot) {
     }
   }
   for (const file of [path.join(stage, 'package.json'), ...['frontend', 'extension'].map(name => path.join(sourceRoot, name, 'package.json'))]) visit(file, true)
-  // The offline dictionary is data built into dist/, not an installed
-  // package, so the walk above does not find it. WordNet's licence requires
-  // its notice on every copy.
-  const wordnet = path.join(sourceRoot, 'data/wordnet/LICENSE')
-  if (fs.existsSync(wordnet)) notices.push(`\n${'='.repeat(72)}\nWordNet 3.1 dictionary data (Princeton University)\nUsed for word definitions in the reader.\n\n--- LICENSE ---\n${fs.readFileSync(wordnet, 'utf8')}\n`)
+  const dictionary = path.join(stage, dictionaryDirectory, dictionaryNotice)
+  notices.push(`\n${'='.repeat(72)}\nEnglish Wiktionary dictionary data (CC BY-SA 4.0)\n\n--- ${dictionaryNotice} ---\n${fs.readFileSync(dictionary, 'utf8')}\n`)
   // The share-card fonts are files in frontend/public/fonts, not packages, so the walk above does not find
   // them either. The SIL Open Font License asks for its text with every copy.
   for (const [family, file] of [['Inter', 'Inter-OFL.txt'], ['Newsreader', 'Newsreader-OFL.txt']]) {

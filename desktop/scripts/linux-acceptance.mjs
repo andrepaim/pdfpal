@@ -46,6 +46,7 @@ try {
   assert.equal(result.code, 0, `Packaged smoke failed: ${output}`)
   const smokeResult = JSON.parse(await fs.readFile(smokeReceipt, 'utf8'))
   assert.equal(smokeResult.status, 'passed')
+  assert.ok(smokeResult.checks.includes('bundled-wiktionary-first-lookup'))
   checks.push(...smokeResult.checks, 'packaged-renderer-mounted-normal-sandbox')
   delete env.PDFPAL_M0_RECEIPT
   // Normal startup and the CLI must agree on the default XDG profile.

@@ -2,3 +2,5 @@
 scripts/sense-notices/* -text
 scripts/sense-notices/*-LICENSE.txt -whitespace
 scripts/sense-notices/ONNX-Runtime-ThirdPartyNotices.txt -whitespace
+data/dictionary/*.pack binary
+data/dictionary/NOTICES-dictionary.txt -text
