@@ -38,7 +38,22 @@ process.parentPort.on('message', async ({ data }) => {
     else if (data.command === 'set-backup-folder') result = await runtime.server.libraryBackups.setDirectory(data.directory)
     else if (data.command === 'set-agent') {
       if (!['claude', 'codex', 'opencode', 'chatgpt'].includes(data.agent)) throw new Error('Unknown assistant')
-      result = saveAIModePreference(config, data.agent, data.model)
+      if (data.efforts !== undefined) {
+        if (!['claude', 'codex'].includes(data.agent) || !data.efforts || typeof data.efforts !== 'object' || Array.isArray(data.efforts)) {
+          throw new Error('Invalid effort preferences.')
+        }
+        const entries = Object.entries(data.efforts)
+        if (entries.length > 100) throw new Error('Too many effort preferences.')
+        if (entries.some(([, effort]) => effort !== '')) {
+          const models = await new AgentService(config).models(data.agent)
+          for (const [id, effort] of entries) {
+            if (effort !== '' && !models.find(model => model.id === id)?.efforts?.includes(effort)) {
+              throw Object.assign(new Error('The selected effort is unavailable for this model.'), { code: 'UNSUPPORTED_EFFORT' })
+            }
+          }
+        }
+      }
+      result = saveAIModePreference(config, data.agent, data.model, data.efforts)
     } else if (data.command === 'inspect') result = await inspect()
     else if (data.command === 'login-command' || data.command === 'choose-binary') {
       if (!['claude', 'codex'].includes(data.agent)) throw new Error('Unknown assistant')
@@ -54,7 +69,7 @@ process.parentPort.on('message', async ({ data }) => {
       const controller = new AbortController()
       connectionTest = controller
       try {
-        const answer = await new AgentService(config).invoke('Reply exactly PDFPAL_CONNECTION_OK. Do not use tools, files, or network tools.', data.agent, model, { signal: controller.signal, timeoutMs: 60000 })
+        const answer = await new AgentService(config).invoke('Reply exactly PDFPAL_CONNECTION_OK. Do not use tools, files, or network tools.', data.agent, model, { effort: data.effort, signal: controller.signal, timeoutMs: 60000 })
         if (answer.trim() !== 'PDFPAL_CONNECTION_OK') throw new Error('The assistant did not return the expected test response. Check its setup and retry.')
         result = { at: new Date().toISOString() }
       } finally { if (connectionTest === controller) connectionTest = undefined }
@@ -62,7 +77,7 @@ process.parentPort.on('message', async ({ data }) => {
     else throw new Error('Unknown command')
     process.parentPort.postMessage({ type: 'rpc-result', id: data.id, result })
   } catch (error) {
-    const safe = ['AGENT_SIGN_IN', 'AGENT_LIMIT', 'AGENT_OFFLINE', 'AGENT_SETUP', 'AGENT_TIMEOUT', 'AGENT_CANCELLED', 'AGENT_NOT_FOUND'].includes(error.code)
+    const safe = ['AGENT_SIGN_IN', 'AGENT_LIMIT', 'AGENT_OFFLINE', 'AGENT_SETUP', 'AGENT_TIMEOUT', 'AGENT_CANCELLED', 'AGENT_NOT_FOUND','UNSUPPORTED_EFFORT'].includes(error.code)
     process.parentPort.postMessage({ type: 'rpc-result', id: data.id, error: safe ? error.message : ['recovered-library','backup-folder','set-backup-folder'].includes(data.command)?'Could not access the library or backup folder. Check that it is available and writable.':'Could not complete this action. Check the official assistant setup instructions and retry.', code: error.code })
   }
 })
@@ -74,7 +89,7 @@ try {
   config = loadConfig()
   const vaultRequest=(action,value)=>new Promise((resolve,reject)=>{const id=randomUUID();const timer=setTimeout(()=>{vaultPending.delete(id);reject(new Error('Cloud credential storage timed out'))},15000);vaultPending.set(id,{resolve,reject,timer});process.parentPort.postMessage({type:'cloud-vault',id,action,value})})
   bindCloudVault(config,{read:()=>vaultRequest('read'),write:value=>vaultRequest('write',value)})
-  bindDirectProvider(config,{invoke:(prompt,model,options)=>new Promise((resolve,reject)=>{const id=randomUUID();const timer=setTimeout(()=>{directPending.delete(id);process.parentPort.postMessage({type:'chatgpt-cancel'});reject(new Error('ChatGPT timed out. Your question can be retried explicitly.'))},310000);directPending.set(id,{resolve,reject,timer,onDelta:options?.onDelta});process.parentPort.postMessage({type:'chatgpt-generate',id,prompt,model})})})
+  bindDirectProvider(config,{invoke:(prompt,model,options)=>new Promise((resolve,reject)=>{const id=randomUUID();const timer=setTimeout(()=>{directPending.delete(id);process.parentPort.postMessage({type:'chatgpt-cancel'});reject(new Error('ChatGPT timed out. Your question can be retried explicitly.'))},310000);directPending.set(id,{resolve,reject,timer,onDelta:options?.onDelta});process.parentPort.postMessage({type:'chatgpt-generate',id,prompt,model,effort:options?.effort})})})
   const smoke = process.env.PDFPAL_M0_SMOKE === '1'
   if (smoke && process.env.PDFPAL_M2_FAILURE_FIXTURE === '1') throw Object.assign(new Error('Fixture occupied port'), { code: 'EADDRINUSE' })
   runtime = await startRuntime(config, smoke ? 0 : config.port)

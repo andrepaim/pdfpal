@@ -6,7 +6,8 @@ import path from 'node:path'
 import { defaultAgentModel, type AgentModelProvider, type PdfpalConfig } from './config.js'
 import { PdfpalError } from './types.js'
 import { agentCandidates, discoverAgent, runProbe, refreshWindowsPath } from './agent-discovery.js'
-import { discoverAgentModels } from './agent-models.js'
+import { discoverAgentModels, modelsForInstalledAgent } from './agent-models.js'
+import { reasoningEffortSchema } from '../shared/reasoning-effort.js'
 
 export type AgentName = 'claude' | 'codex' | 'opencode'
 
@@ -85,26 +86,38 @@ export class AgentService {
     return agent === 'claude' ? this.config.claudeBin : agent === 'codex' ? this.config.codexBin : this.config.opencodeBin
   }
 
-  invoke(prompt: string, agent = this.config.agent, model = defaultAgentModel(this.config, agent), options: { signal?: AbortSignal; timeoutMs?: number } = {}): Promise<string> {
+  invoke(prompt: string, agent = this.config.agent, model = defaultAgentModel(this.config, agent), options: { signal?: AbortSignal; timeoutMs?: number; effort?: string } = {}): Promise<string> {
     if (AgentService.stopping) return Promise.reject(new PdfpalError('AGENT_CANCELLED', 'pdfpal is shutting down.'))
     const controller = new AbortController()
     const abort = () => controller.abort()
     if (options.signal?.aborted) abort()
     options.signal?.addEventListener('abort', abort, { once: true })
-    const request = this.run(prompt, agent, model, controller.signal, options.timeoutMs)
+    const request = this.run(prompt, agent, model, controller.signal, options)
     AgentService.requests.set(controller, request)
     return request.finally(() => { AgentService.requests.delete(controller); options.signal?.removeEventListener('abort', abort) })
   }
 
-  private async run(prompt: string, agent: AgentName, model: string, signal: AbortSignal, timeoutMs = 300_000): Promise<string> {
+  private async run(prompt: string, agent: AgentName, model: string, signal: AbortSignal, { timeoutMs = 300_000, effort: override }: { timeoutMs?: number; effort?: string }): Promise<string> {
+    const unsupportedEffort = () => new PdfpalError('UNSUPPORTED_EFFORT', 'This reasoning effort is unavailable for the selected model. Choose one of its supported levels or use Automatic.', 2)
+    if (override && (agent === 'opencode' || !model || !reasoningEffortSchema.safeParse(override).success)) throw unsupportedEffort()
+    const defaults = agent === 'opencode' ? undefined : this.config.agentEfforts[agent]
+    let effort = override ?? (defaults && Object.hasOwn(defaults, model) ? defaults[model] : undefined)
     let binary = this.binary(agent)
     if (process.platform !== 'win32' || agent !== 'opencode') {
-      const status = await discoverAgent(agent, binary, signal)
+      const status = await discoverAgent(agent, binary, signal, { includeHelp: agent === 'claude' && !!effort })
       if (signal.aborted) throw new PdfpalError('AGENT_CANCELLED', 'The AI request was cancelled.')
       if (status.state !== 'installed') throw new PdfpalError('AGENT_NOT_FOUND', status.state === 'missing'
         ? `The "${agent}" agent CLI is not installed. Open AI settings for setup instructions.`
         : `The ${agent} executable needs installation or repair.`)
       binary = status.executable
+      if (effort && agent !== 'opencode') {
+        const options = await modelsForInstalledAgent(agent, status, signal)
+        if (signal.aborted) throw new PdfpalError('AGENT_CANCELLED', 'The AI request was cancelled.')
+        if (!options.find(option => option.id === model)?.efforts?.includes(effort)) {
+          if (override) throw unsupportedEffort()
+          effort = undefined
+        }
+      }
     }
     if (!commandAvailable(binary)) throw new PdfpalError('AGENT_NOT_FOUND', `The "${agent}" agent CLI is not installed or not on PATH`)
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), `pdfpal-${agent}-`))
@@ -113,10 +126,14 @@ export class AgentService {
     if (agent === 'claude') {
       args = ['--print', '--tools', '', '--disallowedTools', 'mcp__*', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}']
       if (model) args.push('--model', model)
+      if (effort) args.push('--effort', effort)
       stdin = prompt
     } else if (agent === 'codex') {
       args = ['--ask-for-approval', 'never', 'exec', '--skip-git-repo-check', '--sandbox', 'read-only', '--ephemeral', '--ignore-user-config', '--ignore-rules', '--disable', 'shell_tool', '--config', 'web_search="disabled"']
       if (model) args.push('-m', model)
+      if (effort) args.push('--config', `model_reasoning_effort="${effort}"`)
+      // Ultra uses the ordinary model effort with delegation disabled.
+      if (effort === 'ultra') args.push('--disable', 'multi_agent_v2', '--config', 'agents.enabled=false')
       args.push('-')
       stdin = prompt
     } else {

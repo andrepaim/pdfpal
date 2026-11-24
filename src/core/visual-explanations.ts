@@ -10,6 +10,7 @@ import { ChatService } from './chat.js'
 import { NoteService } from './notes.js'
 import { digest } from './extension-auth.js'
 import { PdfpalError } from './types.js'
+import { reasoningEffortSchema } from '../shared/reasoning-effort.js'
 import { parseVisualDefinitionV2, visualTranscript, type VisualDefinitionV2, type VisualRecord, type VisualReference } from '../shared/visual.js'
 
 export class VisualError extends Error { constructor(public readonly status: number, message: string) { super(message) } }
@@ -205,10 +206,10 @@ export const webVisualInput = z.object({
   request_id: z.string().uuid(), question: z.string().trim().min(1).max(8000),
   source_id: z.string().min(1).max(200).optional(), active_source_ids: z.array(z.string().min(1).max(200)).max(200).optional(),
   selection: z.string().max(60_000).optional(), selection_page: z.number().int().positive().max(1_000_000).optional(), answer: z.string().max(24_000).optional(),
-  agent: z.enum(['claude', 'codex', 'opencode', 'chatgpt']).optional(), model: z.string().max(200).optional(),
+  agent: z.enum(['claude', 'codex', 'opencode', 'chatgpt']).optional(), model: z.string().max(200).optional(), effort: reasoningEffortSchema.optional(),
 }).strict().refine(input => !input.selection || !!input.source_id, 'A selected passage needs its source.')
 type Row = { id: string; project_id: string; client_id: string | null; request_hash: string; question: string; status: VisualRecord['status']; definition_json: string | null; references_json: string; error: string | null; note_id: string | null; created_at: string }
-type Generation = { projectId: string; clientId?: string; sourceId?: string; requestId: string; input: unknown; question: string; context: string; references: VisualReference[]; agent?: AgentName; model?: string }
+type Generation = { projectId: string; clientId?: string; sourceId?: string; requestId: string; input: unknown; question: string; context: string; references: VisualReference[]; agent?: AgentName; model?: string; effort?: string }
 const stamp = () => new Date().toISOString()
 
 export class VisualExplanationService {
@@ -268,7 +269,7 @@ export class VisualExplanationService {
   /** Asks for an explanation; an answer that is not valid JSON or does not meet the format gets one correction attempt. */
   private async generate(input: Generation): Promise<VisualDefinitionV2> {
     const prompt = visualPrompt(input)
-    const ask = (text: string, repairing: boolean) => this.agents.invoke(text, input.agent, input.model).catch(error => { throw agentFailure(error, repairing) })
+    const ask = (text: string, repairing: boolean) => this.agents.invoke(text, input.agent, input.model, { effort: input.effort }).catch(error => { throw agentFailure(error, repairing) })
     const answer = await ask(prompt, false)
     try { return readVisualAnswer(answer, input.references).definition }
     catch (error) {
@@ -313,7 +314,7 @@ export class VisualExplanationService {
       recentConversation: chat.history(projectId, input.source_id ? selected[0]!.id : undefined).slice(-6).map(m => ({ role: m.role, content: m.content.slice(0, 3000) })),
       scope: selected.length ? 'Explain using the supplied PDF context, identifying any background knowledge.' : 'No sources supplied. Explain the general concept using background knowledge; do not make document-specific claims.' })
     const sourceId = input.source_id ? selected[0]!.id : undefined
-    return this.start({ projectId, sourceId, requestId: input.request_id, input, question: input.question, context, references, agent: input.agent, model: input.model }, id => {
+    return this.start({ projectId, sourceId, requestId: input.request_id, input, question: input.question, context, references, agent: input.agent, model: input.model, effort: input.effort }, id => {
       chat.persist(projectId, sourceId || null, input.question + (input.selection ? `\n\n> ${input.selection}` : ''), 'Creating a visual explanation…', selected.map(source => source.id), id)
     })
   }

@@ -12,6 +12,8 @@ In the desktop app, open **AI settings** to choose a default model for Claude Co
 
 To switch models for one paper, open its **AI Chat** tab and use the model menu beside the assistant. PDFPal remembers the choice for that paper and assistant on this device. Your next question, **Explain**, or **Explain visually** uses that model. Choose **Use default** to follow the assistant’s settings again.
 
+For models that support a choice of reasoning level, **AI settings** also offers **Effort**. Leave it on **Automatic** or save a default for that model. In a paper’s **AI Chat**, choose an effort beside the model to override the default for that paper and model. Switching models restores each one’s choice. **Use default** follows your settings again. For ChatGPT, use **Refresh models** in AI settings to update the account’s available choices.
+
 **Project Chat** asks across indexed project sources. Toggle sources or select a collection to narrow its scope. Kindle source entries hold book references, not full book text, so adding one does not make the whole book searchable in project chat. See the [retrieval baseline](retrieval-baseline.md) for measured coverage and limitations.
 
 ## Offline dictionary

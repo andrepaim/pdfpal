@@ -3,8 +3,9 @@ import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
 import { chatApi } from '../lib/api'
 import { useAgent } from '../hooks/useAgent'
 import { hasAgentModelPreference, isCustomAgentModel, loadChatGPTModels, MAX_AGENT_MODEL_LENGTH, useAgentModels } from '../hooks/useAgentModels'
-import { useChatModelPreference } from '../lib/chat-model-preferences'
+import { useChatEffortPreference, useChatModelPreference } from '../lib/chat-model-preferences'
 import AgentSelect from './AgentSelect'
+import EffortSelect from './EffortSelect'
 import ModelSelect from './ModelSelect'
 import Markdown from './Markdown'
 import VisualExplanation from './VisualExplanation'
@@ -61,6 +62,10 @@ interface PendingAsk {
   explanationId: string | undefined
 }
 
+function supportsPaperEffort(efforts: readonly string[] | undefined, effort: string) {
+  return !!efforts && new Set(efforts).size > 1 && (effort === '' || efforts.includes(effort))
+}
+
 export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, selectedPage, onSelectedTextUsed, selectionExplanation, onSelectionExplanationHandled, projectId, sourceId, sessionId, initialMessages }: Props) {
   // Retained in the component contract for older callers; context is now
   // loaded by the server-side ChatService from source IDs.
@@ -87,15 +92,22 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
   agentRef.current = agent
   const customModels = hasAgentModelPreference(agent)
   const directChatGPT = agent === 'chatgpt' && !!window.pdfpalDesktop?.chatgpt
-  const { models, model: defaultModel, accountId, loading: modelsLoading, refresh } = useAgentModels(agent, !!projectId && !!sourceId)
+  const { models, model: defaultModel, accountId, effortDefaults, loading: modelsLoading, error: modelsError, refresh } = useAgentModels(agent, !!projectId && !!sourceId)
   const modelPreference = useChatModelPreference(projectId, sourceId, agent, accountId)
   const preferenceKey = modelPreference.key
   const overrideAvailable = customModels || (directChatGPT && models.some(model => model.id === modelPreference.value))
   const override = overrideAvailable ? modelPreference.value : ''
   const defaultModelName = models.find(model => model.id === defaultModel)?.name ?? defaultModel
+  const effectiveModel = !modelsLoading && !modelsError && agentOptions.some(option => option.id === agent)
+    ? models.find(model => model.id === (override || defaultModel)) : undefined
+  const effortPreference = useChatEffortPreference(preferenceKey, effectiveModel?.id)
+  const effort = effortPreference.value !== undefined && supportsPaperEffort(effectiveModel?.efforts, effortPreference.value)
+    ? effortPreference.value : undefined
+  const checkingEffort = customModels && modelsLoading && effortPreference.hasSaved
+  const effortUnavailable = customModels && !!modelsError && effortPreference.hasSaved
   const editor = modelEditor?.key === preferenceKey ? modelEditor : undefined
   const customModel = editor?.draft.trim() ?? ''
-  const scopeLoading = agentLoading || modelPreference.loading || (directChatGPT && modelsLoading)
+  const scopeLoading = agentLoading || modelPreference.loading || (directChatGPT && modelsLoading) || checkingEffort
   const scopeUnavailable = !agent || modelPreference.unavailable || (directChatGPT && !accountId)
 
   useEffect(() => {
@@ -107,6 +119,11 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
     pendingAsk.current = null
     modelPreference.setValue(model)
     setModelEditor(undefined)
+  }
+
+  function chooseEffort(effort: string | undefined) {
+    pendingAsk.current = null
+    effortPreference.setValue(effort)
   }
 
   useEffect(() => {
@@ -165,6 +182,12 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
       return
     }
     const asVisual = command.kind === 'visual'
+    const requestModel = effort === undefined ? override : effectiveModel?.id
+    const generation = {
+      ...(agent ? { agent } : {}),
+      ...(requestModel ? { model: requestModel } : {}),
+      ...(effort === undefined ? {} : { effort }),
+    }
     const userMsg = !asVisual && selection ? `${command.question}\n\n${selection.split('\n').map(line => `> ${line}`).join('\n')}` : command.question
     const currentScope = () => mounted.current && scope === scopeRef.current
     if (!forcedInput) {
@@ -177,21 +200,24 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
     setPartial(''); setLoading(true)
 
     try {
-      if (directChatGPT && override) {
+      if (directChatGPT && requestModel) {
         const active = await loadChatGPTModels().catch(() => undefined)
         if (!currentScope()) return
         if (agentRef.current !== agent) throw new Error('The assistant changed. Check the conversation model and send again.')
-        if (!active || active.accountId !== accountId || !active.models.some(option => option.id === override)) {
+        const activeModel = active?.models.find(option => option.id === requestModel)
+        if (!active || active.accountId !== accountId || !activeModel) {
           refresh()
           throw new Error('Could not confirm the selected model for your active ChatGPT account. Check the conversation model and send again.')
         }
+        if (effort !== undefined && !supportsPaperEffort(activeModel.efforts, effort)) {
+          refresh()
+          throw new Error('The selected reasoning effort is no longer available. Choose a conversation effort and send again.')
+        }
       }
       setMessages(newHistory)
-      const model = override ? { model: override } : {}
       if (asVisual && projectId) {
         const visual = await startWebVisual(projectId, { question: userMsg, ...(sourceId ? { source_id: sourceId } : {}),
-          ...(selection ? { selection } : {}), ...(selection && sourceId && selectionPage ? { selection_page: selectionPage } : {}),
-          ...(agent ? { agent } : {}), ...model })
+          ...(selection ? { selection } : {}), ...(selection && sourceId && selectionPage ? { selection_page: selectionPage } : {}), ...generation })
         if (currentScope()) { setMessages([...newHistory, { role: 'assistant', content: '', visual_id: visual.id }]); onSelectedTextUsed?.() }
         return
       }
@@ -200,8 +226,7 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: userMsg,
-          ...(agent ? { agent } : {}),
-          ...model,
+          ...generation,
           project_id: projectId ?? null,
           source_id: sourceId ?? null,
           ...(selection && selectionPage ? { selection_page: selectionPage } : {}),
@@ -210,6 +235,10 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
 
       if (!res.ok) {
         const data = await res.json()
+        if (effort !== undefined && data.code === 'UNSUPPORTED_EFFORT' && currentScope()) {
+          setMessages(current => current === newHistory ? messages : current)
+          if (agentRef.current === agent) refresh()
+        }
         throw new Error(data.detail || 'Chat request failed')
       }
 
@@ -326,6 +355,15 @@ export default function ChatPanel({ pdfText, pdfUrl, disabled, selectedText, sel
             disabled={!preferenceKey || (directChatGPT && !models.length)}
             onCustom={customModels && preferenceKey ? () => setModelEditor({ key: preferenceKey, draft: override }) : undefined}
           />}
+          {preferenceKey && effectiveModel && supportsPaperEffort(effectiveModel.efforts, '') &&
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+              <span>Effort</span>
+              <EffortSelect label="Conversation reasoning effort" includeDefault value={effort}
+                efforts={effectiveModel.efforts} defaultEffort={effectiveModel.defaultEffort} inheritedEffort={effortDefaults[effectiveModel.id]}
+                onChange={chooseEffort} />
+            </label>}
+          {checkingEffort && <span role="status">Checking saved reasoning effort…</span>}
+          {effortUnavailable && <span role="status">Using default reasoning effort. Saved effort could not be verified.</span>}
         </div>
         {editor && <form onSubmit={event => {
           event.preventDefault()

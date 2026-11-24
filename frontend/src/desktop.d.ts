@@ -37,7 +37,7 @@ declare global {
       completeSetup?(): Promise<boolean>
       setupAction?(agent: string, action: 'install' | 'login' | 'docs'): Promise<void>
       chooseBinary?(agent: string): Promise<boolean>
-      testConnection?(agent: string, model?: string): Promise<{ at: string }>
+      testConnection?(agent: string, model?: string, effort?: string): Promise<{ at: string }>
       cancelTest?(): Promise<boolean>
       serviceState?(): Promise<DesktopServiceState>
       onServiceState?(callback: (state: DesktopServiceState) => void): () => void
@@ -45,7 +45,7 @@ declare global {
       diagnostics?(): Promise<unknown>
       exportDiagnostics?(): Promise<boolean>
       onOpenDiagnostics?(callback: () => void): () => void
-      setAgent(agent: string, model?: string): Promise<string>
+      setAgent(agent: string, model?: string, efforts?: Record<string, string>): Promise<string>
       onOpenAISettings?(callback: () => void): () => void
       onAgentChanged(callback: (agent: string) => void): () => void
     }

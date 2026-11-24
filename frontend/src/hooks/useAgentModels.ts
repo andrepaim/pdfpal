@@ -5,12 +5,15 @@ export { isCustomAgentModel, MAX_AGENT_MODEL_LENGTH } from '../../../src/shared/
 export interface AgentModel {
   id: string
   name: string
+  efforts?: string[]
+  defaultEffort?: string
 }
 
 interface AgentModels {
   models: AgentModel[]
   model: string
   accountId?: string
+  effortDefaults?: Record<string, string>
 }
 
 interface ModelSnapshot {
@@ -45,7 +48,7 @@ export async function loadChatGPTModels(signal?: AbortSignal): Promise<AgentMode
   try {
     const state = await Promise.race([bridge.chatgpt('state'), interrupted])
     if (!state.connected || !state.active || state.busy) return empty
-    return { models: state.models, model: state.model, accountId: state.active }
+    return { models: state.models, model: state.model, accountId: state.active, effortDefaults: state.effortDefaults }
   } finally {
     window.clearTimeout(timeout)
     if (abort) signal?.removeEventListener('abort', abort)
@@ -54,7 +57,8 @@ export async function loadChatGPTModels(signal?: AbortSignal): Promise<AgentMode
 
 async function loadAgentModels(agent: string, signal: AbortSignal): Promise<AgentModels> {
   if (agent === 'chatgpt') return loadChatGPTModels(signal)
-  const response = await fetch(`/api/agent-models/${agent}`, { signal })
+  // Cold discovery may refresh Windows PATH, inspect the installed CLI, and read its bundled model catalogue.
+  const response = await fetch(`/api/agent-models/${agent}`, { signal: AbortSignal.any([signal, AbortSignal.timeout(26_000)]) })
   if (!response.ok) throw new Error('Could not load available models.')
   return await response.json()
 }
@@ -92,5 +96,5 @@ export function useAgentModels(agent: string, enabled = true) {
   const current = supported && snapshot?.agent === agent ? snapshot : undefined
   const loading = supported && current?.requestKey !== requestKey
   const data = agent === 'chatgpt' && loading ? undefined : current?.data
-  return { ...(data ?? empty), loaded: !!data, loading, error: loading ? undefined : current?.error, refresh }
+  return { ...(data ?? empty), effortDefaults: data?.effortDefaults ?? {}, loaded: !!data, loading, error: loading ? undefined : current?.error, refresh }
 }

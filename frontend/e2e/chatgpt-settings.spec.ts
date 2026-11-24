@@ -4,12 +4,14 @@ import {mockAuth} from './helpers'
 test.beforeEach(async({page})=>{
  await mockAuth(page)
  await page.addInitScript(()=>{
-  let connected=false,busy=false,model='eligible-model',hasModels=true
+  let connected=false,busy=false,hasModels=true
   let active='a'
-  const snapshot=()=>({connected,busy,active,accounts:connected?[{id:'a',label:'Reader account with a long display name',connected:true},{id:'b',label:'Second reader',connected:true}]:[],models:connected&&hasModels?[{id:'eligible-model',name:'Eligible model with a long descriptive name'},{id:'other-model',name:'Other model'}]:[],model,message:connected?'ChatGPT connected. Eligible requests use your plan.':''})
+  const models: Record<string, string> = { a: 'eligible-model', b: 'eligible-model' }
+  const effortDefaults: Record<string, Record<string, string>> = { a: { 'eligible-model': 'low' }, b: { 'eligible-model': 'high' } }
+  const snapshot=()=>({connected,busy,active,accounts:connected?[{id:'a',label:'Reader account with a long display name',connected:true},{id:'b',label:'Second reader',connected:true}]:[],models:connected&&hasModels?[{id:'eligible-model',name:'Eligible model with a long descriptive name',efforts:['low','high']},{id:'other-model',name:'Other model',efforts:['medium','high'],defaultEffort:'medium'}]:[],model:models[active],effortDefaults:effortDefaults[active],message:connected?'ChatGPT connected. Eligible requests use your plan.':''})
   window.pdfpalDesktop={
    completeSetup:async()=>{localStorage.setItem('chatgpt-onboarding','complete');return true},
-   setupState:async()=>({default:'codex',complete:true,explicit:true,agents:[{id:'chatgpt',label:'ChatGPT',available:connected,auth:connected?'account':'signed_out'},{id:'claude',label:'Claude',available:true,auth:'account'},{id:'codex',label:'Codex',available:true,auth:'account'}]}),
+   setupState:async()=>({default:localStorage.getItem('direct-mode')||'codex',complete:true,explicit:true,agents:[{id:'chatgpt',label:'ChatGPT',available:connected,auth:connected?'account':'signed_out'},{id:'claude',label:'Claude',available:true,auth:'account'},{id:'codex',label:'Codex',available:true,auth:'account'}]}),
    setAgent:async id=>{if(localStorage.getItem('save-error'))throw Error('fixture');localStorage.setItem('direct-mode',id);return id},
    onAgentChanged:()=>()=>{},
    chatgpt:async(action,...args)=>{
@@ -21,7 +23,16 @@ test.beforeEach(async({page})=>{
     if(action==='cancel'){busy=false;localStorage.setItem('chatgpt-cancelled','true')}
     if(action==='models')hasModels=true
     if(action==='disconnect')connected=false
-    if(action==='select'){active=String(args[0]);if(args[1])model=String(args[1])}
+    if(action==='select'){active=String(args[0]);if(args[1])models[active]=String(args[1])}
+    if(action==='efforts'){
+     if(!connected||args[0]!==active)throw Error('Account changed.')
+     if(localStorage.getItem('chatgpt-efforts-error'))throw Error('Preferences could not be saved.')
+     localStorage.setItem('chatgpt-effort-write',JSON.stringify(args))
+     for(const [id,effort] of Object.entries(args[1] as Record<string,string>)){
+      if(effort)effortDefaults[active][id]=effort
+      else delete effortDefaults[active][id]
+     }
+    }
     if(action==='usage'&&localStorage.getItem('usage-error'))throw Error('Usage settings could not open.')
     return snapshot()
    }
@@ -59,6 +70,52 @@ test('ChatGPT appears once in the same provider cards and saves through the shar
  expect(await page.evaluate(()=>localStorage.getItem('direct-mode'))).toBe('chatgpt')
  expect(await page.evaluate(()=>localStorage.getItem('pdfpal.agent'))).toBe('chatgpt')
  expect(await page.evaluate(()=>localStorage.getItem('chatgpt-onboarding'))).toBeNull()
+})
+
+test('ChatGPT settings save model efforts to the active account and keep drafts after a failed save',async({page})=>{
+ const modal=await openSettings(page)
+ const reopen=async()=>page.evaluate(()=>window.dispatchEvent(new Event('pdfpal-open-ai-settings')))
+ const model=modal.getByLabel('ChatGPT model')
+ const account=modal.getByLabel('ChatGPT account')
+ const effort=modal.getByLabel('Default reasoning effort')
+ await modal.getByRole('button',{name:'Continue with ChatGPT',exact:true}).click()
+ await expect(effort).toHaveValue('low')
+ await effort.selectOption('high')
+ await modal.getByRole('button',{name:'Cancel',exact:true}).click()
+ expect(await page.evaluate(()=>localStorage.getItem('chatgpt-effort-write'))).toBeNull()
+
+ await reopen()
+ await modal.getByRole('radio',{name:/ChatGPT/}).check()
+ await expect(effort).toHaveValue('low')
+ await effort.selectOption('')
+ await model.selectOption('other-model')
+ await effort.selectOption('high')
+ await model.selectOption('eligible-model')
+ await expect(effort).toHaveValue('')
+ await account.selectOption('b')
+ await expect(effort).toHaveValue('high')
+ await account.selectOption('a')
+ await expect(effort).toHaveValue('')
+ await page.evaluate(()=>localStorage.setItem('chatgpt-efforts-error','true'))
+ await modal.getByRole('button',{name:'Use assistant',exact:true}).click()
+ await expect(modal.getByRole('alert')).toContainText('could not be saved')
+ await expect(effort).toHaveValue('')
+ await page.evaluate(()=>localStorage.removeItem('chatgpt-efforts-error'))
+ await modal.getByRole('button',{name:'Use assistant',exact:true}).click()
+ await expect(modal).not.toBeVisible()
+ expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('chatgpt-effort-write')!)))
+  .toEqual(['a',{'eligible-model':'','other-model':'high'}])
+
+ await reopen()
+ await modal.getByRole('radio',{name:/ChatGPT/}).check()
+ await expect(model).toHaveValue('eligible-model')
+ await expect(effort).toHaveValue('')
+ await model.selectOption('other-model')
+ await expect(effort).toHaveValue('high')
+ await account.selectOption('b')
+ await expect(effort).toHaveValue('high')
+ await model.selectOption('other-model')
+ await expect(effort).toHaveValue('')
 })
 
 test('a connected account without eligible models cannot be saved until models load',async({page})=>{

@@ -23,7 +23,7 @@ contextBridge.exposeInMainWorld('pdfpalDesktop', {
   openRecoveredLibrary: id => ipcRenderer.invoke('pdfpal:open-recovered-library', id),
   chooseBackupFolder: () => ipcRenderer.invoke('pdfpal:choose-backup-folder'),
   openBackupFolder: () => ipcRenderer.invoke('pdfpal:open-backup-folder'),
-  chatgpt: (action, ...args) => { if (!['state','connect','cancel','stop','models','select','disconnect','usage'].includes(action)) return Promise.reject(new Error('Unsupported account action')); return ipcRenderer.invoke('pdfpal:chatgpt-' + action, ...args) },
+  chatgpt: (action, ...args) => { if (!['state','connect','cancel','stop','models','select','efforts','disconnect','usage'].includes(action)) return Promise.reject(new Error('Unsupported account action')); return ipcRenderer.invoke('pdfpal:chatgpt-' + action, ...args) },
   updatesState: () => ipcRenderer.invoke('pdfpal:updates-state'),
   checkUpdates: () => ipcRenderer.invoke('pdfpal:check-updates'),
   downloadUpdate: () => ipcRenderer.invoke('pdfpal:download-update'),
@@ -40,7 +40,7 @@ contextBridge.exposeInMainWorld('pdfpalDesktop', {
   completeSetup: () => ipcRenderer.invoke('pdfpal:complete-setup'),
   setupAction: (agent, action) => ipcRenderer.invoke('pdfpal:setup-action', agent, action),
   chooseBinary: agent => ipcRenderer.invoke('pdfpal:choose-binary', agent),
-  testConnection: (agent, model) => ipcRenderer.invoke('pdfpal:test-connection', agent, model),
+  testConnection: (agent, model, effort) => ipcRenderer.invoke('pdfpal:test-connection', agent, model, effort),
   cancelTest: () => ipcRenderer.invoke('pdfpal:cancel-test'),
   serviceState: () => ipcRenderer.invoke('pdfpal:service-state'),
   recovery: () => ipcRenderer.invoke('pdfpal:recovery'),
@@ -59,7 +59,7 @@ contextBridge.exposeInMainWorld('pdfpalDesktop', {
     ipcRenderer.on('pdfpal:open-diagnostics', listener)
     return () => ipcRenderer.removeListener('pdfpal:open-diagnostics', listener)
   },
-  setAgent: (agent, model) => ipcRenderer.invoke('pdfpal:set-agent', agent, model),
+  setAgent: (agent, model, efforts) => ipcRenderer.invoke('pdfpal:set-agent', agent, model, efforts),
   onOpenAISettings: callback => {
     openSettings = callback
     if (settingsPending) queueMicrotask(() => {

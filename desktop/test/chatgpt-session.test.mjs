@@ -41,3 +41,56 @@ test('a failed protected credential write never connects the newly authorized ac
   await assert.rejects(s.invoke('synthetic prompt'),/Connect ChatGPT/)
  } finally {s.cancelConnect()}
 })
+
+test('direct ChatGPT validates effort against the active model and sends the selected level', async () => {
+  const account = id => ({
+    id, scope: 'chatgpt.tokens.use.direct', access_token: 'fixture', expires_at: Date.now() + 60_000,
+    model: 'reader', models: [{ id: 'reader', name: 'Reader' }],
+  })
+  let state = { ...saved, active: 'first', accounts: [account('first'), account('second')] }
+  let levels = ['low', 'high']
+  let writable = true
+  const bodies = []
+  const session = new Session({
+    read: async () => structuredClone(state),
+    write: async next => {
+      if (!writable) throw Error('Vault unavailable')
+      state = structuredClone(next)
+    },
+    open: async () => {},
+    fetch: async (url, init) => {
+      if (url.endsWith('/models')) return Response.json({ models: [
+        { slug: 'reader', display_name: 'Reader', visibility: 'list', default_reasoning_level: 'low', supported_reasoning_levels: levels.map(effort => ({ effort })) },
+        { slug: 'other', display_name: 'Other', visibility: 'list' },
+      ] })
+      assert.ok(url.endsWith('/responses'))
+      bodies.push(JSON.parse(init.body))
+      return new Response('data: {"type":"response.output_text.delta","delta":"done"}\n\ndata: {"type":"response.completed"}\n\n')
+    },
+  })
+  await session.init()
+  assert.deepEqual(session.summary().effortDefaults, {})
+  const { models } = await session.models()
+  assert.deepEqual(models[0].efforts, levels)
+  assert.equal(models[0].defaultEffort, 'low')
+  assert.equal(models[1].efforts, undefined)
+  await assert.rejects(session.setEfforts('second', { reader: 'high' }))
+  await assert.rejects(session.setEfforts('first', { reader: 'high', other: 'high' }))
+  assert.deepEqual(session.summary().effortDefaults, {})
+  await session.setEfforts('first', { reader: 'high' })
+  assert.deepEqual(state.accounts[0].effortDefaults, { reader: 'high' })
+  writable = false
+  await assert.rejects(session.setEfforts('first', { reader: '' }), /Vault unavailable/)
+  writable = true
+  await session.invoke('one')
+  await session.invoke('two', 'reader', { effort: 'low' })
+  await session.invoke('three', 'reader', { effort: '' })
+  await session.invoke('four', 'other')
+  await assert.rejects(session.invoke('five', 'other', { effort: 'high' }), /effort/i)
+  levels = ['low']
+  await session.models()
+  await session.invoke('six', 'reader')
+  assert.deepEqual(bodies.map(body => body.reasoning), [{ effort: 'high' }, { effort: 'low' }, undefined, undefined, undefined])
+  await session.select('second')
+  assert.deepEqual(session.summary().effortDefaults, {})
+})
