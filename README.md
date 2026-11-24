@@ -140,7 +140,7 @@ Book questions use title/author, previous discussion, and captured or saved exce
 - **Reading progress**: remembers the last page read for every source and restores it automatically the next time you open the PDF.
 - **Per-source chat**: persistent conversation history per paper, restored across sessions; renders math (KaTeX). Answers use retrieved local text and the assistant’s background knowledge. Reading calls run with shell and web tools disabled; paper discovery is available separately.
 - **Text selection → ask or highlight**: stuck on a passage? Select it and ask about it right there, grounded in the paper, or save it as a highlight.
-- **Offline dictionary**: double-click a word, or select a two-word term, and its meanings appear under it. Inflected forms (“ran”, “mice”), hyphenated words and compounds (“neural network”) are recognised. It is English only, uses the bundled WordNet 3.1 data, and sends nothing anywhere. Turn it off with **Definitions** in the reader toolbar.
+- **Offline dictionary**: double-click a word, or select a two-word term, and its meanings appear under it. Inflected forms (“ran”, “mice”), hyphenated words and compounds (“neural network”) are recognised. Definitions come from the bundled English Wiktionary pack and work offline from first launch. Turn it off with **Definitions** in the reader toolbar.
 - **Project chat**: ask across multiple sources at once, toggle which sources are in context, or scope to a single collection.
 
 ### Visual explanations
@@ -298,7 +298,7 @@ npm run test:archive
 npm run test:package
 ```
 
-`npm run build:server` (run by `npm run build` and before `npm test`) also builds the offline dictionary, `dist/dictionary/wordnet.sqlite`, from the `wordnet-db` dev dependency and the irregular-form lists in `data/wordnet/`; it is skipped when up to date.
+The build stages a verified English Wiktionary pack and its attribution notice for offline lookup. The reader uses the same lookup and sense-ordering code as [Contextual Dictionary](https://github.com/andrepaim/contextual-dictionary). The optional native model has a separate download and cache.
 
 `npm run build` builds the server, web reader, and extension, and creates a reproducible ZIP in `extension/package/`. The server serves that matching ZIP from its Extension page. `test:package` installs a real tarball into a temporary prefix and exercises guided pairing, chat, and note saving outside the checkout. Extension browser tests use their workspace’s bundled Chromium; all automated AI calls use fixtures.
 

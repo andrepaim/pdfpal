@@ -1,14 +1,13 @@
 # Contextual definition order (English, opt-in)
 
-With this setting on, the reader's [definition card](reader-guide.md#offline-dictionary) lists each WordNet entry's meanings in the order that best fits the passage. A local word-sense model, Ettin-150m-WSD, runs on the CPU to choose the order. In "Drag the mouse to move the cursor", the pointing-device meaning of *mouse* comes before the rodent. The card looks the same as before: it shows no marks, badges or scores, and the entries, definitions and examples do not change. The setting is off by default. It needs no account. pdfpal downloads files only when you confirm a download in the reader, and works offline afterwards.
+The PDF reader uses the same Wiktionary lookup and sense-ordering code as [Contextual Dictionary](https://github.com/andrepaim/contextual-dictionary). Its English dictionary ships with pdfpal and works from the first offline launch. **Order by context** optionally runs the Ettin-150m-WSD model on the local CPU. For example, the sentence around *mouse* helps the model choose between the animal and the pointing device.
 
 ## How it works
 
-- **What is ordered.** Entries, meaning the compound, lemma and part-of-speech groups, keep their WordNet order. Only the meanings inside each entry are reordered, highest score first. The sort is stable, so equal scores keep WordNet order.
-- **One model call per lookup.** Every meaning of every entry the card lists is offered in a single prompt. The prompt marks exactly the span you selected and includes up to 120 characters of page text on each side, the same text the dictionary already uses to find compounds. The browser's UTF-16 offsets are converted to the Unicode code points the model counts.
-- **WordNet order is kept** when every entry has a single meaning (no model call), or when the model ranks "none of the above" at least as high as every meaning. It is also kept when the passage does not look English, when it contains `*` or model control tokens, when there are more than 127 meanings or more than 2,048 tokens, when the model, runtime or their files are missing or do not match, when the worker fails, and when the time budget runs out.
-- **Timing.** The model loads in a background worker thread when the setting is turned on, or when pdfpal starts with it on. Lookups made before it has loaded get WordNet order immediately. Once it has loaded, a lookup waits at most 120 ms by default (`contextual_definitions_budget_ms`). The server answers once, so the card appears once, in its final order. If an answer arrives after the budget, it is cached, and selecting the same passage again uses it. Superseded and cancelled lookups are dropped. A double-click sends one lookup.
-- **Privacy.** The selection and its context stay in the local pdfpal process and its worker. They are not logged, synced or sent anywhere. The answer cache holds only prompt hashes and numbers. The one-time download request carries no text from your library.
+- The reader sends the selection and up to 120 characters on each side to the local server. The shared core resolves inflections and compounds, groups definitions by entry, and constructs the model prompt. Matching compounds can extend beyond the selected words.
+- The native worker scores the candidate meanings in one call. Each entry lists its scored meanings first, in descending order of fit. Meanings omitted from the prompt follow in dictionary order. Entry groups retain their original order. When the model chooses “none of the above” or skips a lookup, the card uses dictionary order.
+- A lookup during model startup returns dictionary order immediately. Once the model is ready, pdfpal waits up to 120 ms by default. The card opens once. A late result can be reused the next time the same passage is selected.
+- Selections stay on the device. Only a confirmed model or runtime download contacts the release server. An upgrade from beta.10 reuses the existing verified Ettin model and native runtime.
 
 ## Set it up
 
@@ -16,7 +15,7 @@ With this setting on, the reader's [definition card](reader-guide.md#offline-dic
 
 1. Open a PDF and click **Order by context** in the reader toolbar, next to **Definitions**. The button's accessible name is "Order meanings by context".
 2. If the files are not on this computer yet, the panel shows the one-time download size: 150 MB for the model plus the runtime (18 MB on Linux x64, 11 MB on Windows x64), if pdfpal has no runtime of its own. Nothing is downloaded until you click **Download and turn on**.
-3. The panel shows progress, and **Cancel** stops the download. A failed download shows why, and **Retry download** starts again. When the files are in place the setting turns on for this library immediately, without a restart. **Turn off** restores WordNet order at once.
+3. The panel shows progress, and **Cancel** stops the download. A failed download shows why, and **Retry download** starts again. When the files are in place the setting turns on for this library immediately, without a restart. **Turn off** restores dictionary order at once.
 
 The files come from the project's GitHub release (`dictionary-assets-v1`). Each bundle's size and SHA-256 are checked before it is opened, and every extracted file is checked against its own pin. They are stored once per user and reused by every library on the computer, even offline:
 
@@ -46,7 +45,7 @@ pdfpal dictionary enable
 pdfpal dictionary status        # verifies every file, and reports the per-user cache; --json for scripts
 ```
 
-A running pdfpal reads `enable`/`disable` from the CLI when it next starts; the reader's button applies at once. `pdfpal dictionary disable` restores WordNet order.
+A running pdfpal reads `enable`/`disable` from the CLI when it next starts; the reader's button applies at once. `pdfpal dictionary disable` restores dictionary order.
 
 - **Desktop app (Windows x64, Linux x64).** The installed app does not include the runtime: download it from the reader, or run `install-runtime`. The bundled desktop CLI runs `dictionary` commands against the default library itself, without the app. Use `--data-dir <library>` for a different library, and quit the app before reinstalling a runtime. Windows locks loaded DLLs, and the install then stops with `INSTALL_TARGET_BUSY`. To provision a Windows library from WSL, add `--platform win32-x64 --data-dir /mnt/c/Users/<you>/.pdfpal`. This only copies files; it does not share the SQLite library.
 - **Source checkout or npm install.** If `onnxruntime-node` and `@huggingface/tokenizers` can be resolved next to pdfpal, a runtime download or `install-runtime` is optional (`status` reports the runtime as `bundled`). A provisioned runtime, when present, always takes precedence and must verify.
@@ -69,13 +68,19 @@ An environment variable overrides `config.json`. When `PDFPAL_CONTEXTUAL_DEFINIT
 
 - **Model.** Checkpoint revision `8751b577199d1bb95b74fa2457da7065d57100ae`, dynamic INT8 ONNX export. The SHA-256 and size of each of the five files are pinned in `src/core/sense-model.ts`; `onnx/model.int8.onnx` is `8649a113…822d68`.
 - **Runtime.** Every file the worker loads is pinned per platform in `src/core/sense-runtime-manifest.ts`: package metadata, JavaScript, licenses and that platform's native binaries. `node scripts/sense-runtime-manifest.mjs` regenerates the manifest from `node_modules` after a version change.
-- **When files are checked.** Each install verifies the copied files, and the worker verifies them again before every load. A mismatch fails closed, and the card keeps WordNet order.
+- **When files are checked.** Each install verifies the copied files, and the worker verifies them again before every load. A mismatch fails closed, and the card keeps dictionary order.
 - **Installation.** Files are copied into a temporary sibling directory, verified and marked with `.pdfpal-install.json`, then swapped in by rename.
   - pdfpal only replaces a destination that is missing, empty or already marked for the same kind (model or runtime). Anything else, such as a shared folder or the export directory itself, is refused with `INSTALL_TARGET_NOT_OWNED` or `INSTALL_SAME_DIRECTORY`.
   - If the new copy cannot take the place of the old one after the old one was moved aside, the old one is moved back (`INSTALL_FAILED`). If that also fails, the old copy is kept, its location is reported (`INSTALL_ROLLBACK_FAILED`), and the next install restores it before doing anything else.
   - Locked leftovers are removed by a later install.
 
-## Platform status and evidence
+## What the reader can distinguish
+
+When two meanings share an entry, context can move either to the top. For *mouse*, the native model ranks the input device first in “Drag the mouse to move the cursor on screen” and the rodent first in “The cat chased a mouse across the kitchen floor.” Wiktionary also separates some words by etymology. For *bank*, the financial institution and the riverbank belong to separate noun entries. Context can change the order of meanings inside either entry, but the financial entry still appears first.
+
+## Historical WordNet platform validation
+
+The following platform and timing measurements used the WordNet dictionary shipped through desktop beta.10. Wiktionary has different entries and sense inventories.
 
 | Platform | Check | Result |
 | --- | --- | --- |
@@ -100,7 +105,7 @@ The earlier 95 ms p95 measurement used inventories of 2 to 10 meanings from one 
 ## Limitations
 
 - English only, with a heuristic language check on the passage (Latin script, few accented letters, English function words). It is not language identification.
-- Ordering is only as good as the model. In the offline pilot, the 64 ambiguous, answerable selections on which two model reviewers agreed were simulated picks in real paper passages, with no human labels. Moving whole entry groups put a correct meaning first in 54 of 64 cases against WordNet's 45 (+14.1 percentage points). Replayed under this card's policy, which reorders only inside entries, the result was 53 of 64 against 45 for the first meaning (+12.5 points) and 61 of 64 against 55 among the meanings visible before "Show all". The replay assumed no timeouts; the installed feature's first-lookup numbers depend on the deadline (see the latency table). When no WordNet meaning fits, the model still puts one first unless "none of the above" wins.
+- Ordering is only as good as the model. In the offline pilot, the 64 ambiguous, answerable selections on which two model reviewers agreed were simulated picks in real paper passages, with no human labels. Moving whole entry groups put a correct meaning first in 54 of 64 cases against WordNet's 45 (+14.1 percentage points). Replayed under the WordNet card's policy, which reorders only inside entries, the result was 53 of 64 against 45 for the first meaning (+12.5 points) and 61 of 64 against 55 among the meanings visible before "Show all". The replay assumed no timeouts; the WordNet implementation's first-lookup numbers depend on the deadline (see the latency table). When no WordNet meaning fits, the model still puts one first unless "none of the above" wins.
 - Large inventories often exceed the default budget on a first lookup (see the table above).
 - The download uses Node's `fetch`, which ignores system proxy settings. Behind a proxy that blocks direct HTTPS, provision from the command line instead.
 - A runtime update or repair on Windows may report `INSTALL_TARGET_BUSY` while another pdfpal app has that runtime loaded.
@@ -108,7 +113,7 @@ The earlier 95 ms p95 measurement used inventories of 2 to 10 meanings from one 
 - Literal `*` within 120 characters of the selection disables ordering for that lookup, because the model's prompt format reserves it.
 - The Kindle companion does not show definition cards.
 
-## Plan
+## Original WordNet implementation plan
 
 **Intended behavior.** With the flag on and a verified local model and runtime, the card orders meanings inside entries by contextual fit. Otherwise the card is the WordNet card.
 
@@ -118,7 +123,7 @@ The earlier 95 ms p95 measurement used inventories of 2 to 10 meanings from one 
 
 **Validation.** Unit tests for ordering, offsets, safeguards, the language check, identity, provisioning failures and the worker lifecycle (fake worker). Route and server integration tests. CLI tests. Playwright tests for the card. An opt-in real-checkpoint test. Typecheck, `npm test`, build, frontend Playwright, `test:package`, documentation and secret checks.
 
-## Plan: in-app opt-in and one-time download (stage 2)
+## Original in-app opt-in and one-time download plan (stage 2)
 
 **Intended behavior.** The reader toolbar gets an explicit **Order meanings by context** control. Turning it on when the model or runtime is missing shows the one-time download size and asks for confirmation. Only then does pdfpal download the pinned bundles from the project's GitHub release, with progress, cancel, retry and clear errors. The files go into a per-user, versioned, immutable cache that every library on the machine reuses, offline too. The setting takes effect immediately, without a restart, and is saved per library. Existing library installs, `--data-dir` libraries and `sense_*`/`PDFPAL_*` overrides keep working and take precedence over the cache.
 
