@@ -139,7 +139,7 @@ Book questions use title/author, previous discussion, and captured or saved exce
 - **Split-pane reader**: PDF viewer on the left, chat/notes/related on the right; resizable.
 - **Reading progress**: remembers the last page read for every source and restores it automatically the next time you open the PDF.
 - **Per-source chat**: persistent conversation history per paper, restored across sessions; renders math (KaTeX). Answers use retrieved local text and the assistant’s background knowledge. Reading calls run with shell and web tools disabled; paper discovery is available separately.
-- **Text selection → ask or highlight**: stuck on a passage? Select it and ask about it right there, grounded in the paper, or save it as a highlight.
+- **Explain a passage in one click.** Select a passage and choose **Explain** for a plain-language explanation in reader chat. **Ask…** attaches the passage to a question you write.
 - **Offline dictionary**: double-click a word, or select a two-word term, and its meanings appear under it. Inflected forms (“ran”, “mice”), hyphenated words and compounds (“neural network”) are recognised. Definitions come from the bundled English Wiktionary pack and work offline from first launch. Turn off **Show definitions on selection** in **Reading preferences** to hide the definition card.
 - **Project chat**: ask across multiple sources at once, toggle which sources are in context, or scope to a single collection.
 

@@ -31,6 +31,38 @@ async function selectOnFirstPage(page: Page) {
 test.describe('reader selection context', () => {
   test.beforeEach(async ({ page }) => { await mockAuth(page); });
 
+  test('Explain sends one passage explanation to reader chat without typing', async ({ page }) => {
+    const requests: Record<string, unknown>[] = [];
+    await page.route('**/api/agents', route => route.fulfill({
+      json: { default: 'codex', agents: [{ id: 'codex', label: 'Codex', available: true }] },
+    }));
+    await page.route('**/api/chat', async route => {
+      requests.push(route.request().postDataJSON());
+      await route.fulfill({ contentType: 'text/event-stream', body: 'data: {"text":"Passage explained."}\n\ndata: [DONE]\n\n' });
+    });
+    const { project, source } = await openReader(page);
+    await page.getByRole('button', { name: '📝 Notes' }).click();
+    await selectOnFirstPage(page);
+    const actions = page.locator('[data-ask-bubble]');
+    await expect(actions.getByRole('button').first()).toHaveText('Explain');
+    const passage = await page.evaluate(() => window.getSelection()!.toString().trim());
+    expect(requests).toHaveLength(0);
+    await actions.getByRole('button', { name: 'Explain', exact: true }).click();
+    await expect(page.getByText('Passage explained.', { exact: true })).toBeVisible();
+    expect(requests).toEqual([expect.objectContaining({
+      project_id: project.id, source_id: source.id, selection_page: 1, agent: 'codex',
+      message: 'Explain this passage in plain language. Use the surrounding page for context and clarify any technical terms needed to understand it.\n\n> ' + passage,
+    })]);
+    await expect(actions).toHaveCount(0);
+
+    const draft = 'How does this relate to the earlier result?';
+    await page.getByRole('textbox').fill(draft);
+    await selectOnFirstPage(page);
+    await actions.getByRole('button', { name: 'Explain', exact: true }).click();
+    await expect.poll(() => requests.length).toBe(2);
+    await expect(page.getByRole('textbox')).toHaveValue(draft);
+  });
+
   test('chat sends the page an attached selection came from, and plain questions do not', async ({ page }) => {
     const bodies: Array<Record<string, unknown>> = [];
     await page.route('**/api/chat', async route => {
@@ -39,7 +71,7 @@ test.describe('reader selection context', () => {
     });
     await openReader(page);
     await selectOnFirstPage(page);
-    await page.getByRole('button', { name: '💬 Ask', exact: true }).click();
+    await page.getByRole('button', { name: 'Ask…', exact: true }).click();
     await expect(page.getByText('Selection attached — ask a question or type /visual')).toBeVisible();
     await page.getByRole('textbox').fill('Why is this needed?');
     await page.keyboard.press('Enter');
@@ -70,7 +102,7 @@ test.describe('reader selection context', () => {
       if (entry === 'selection button') {
         await page.getByRole('button', { name: 'Explain visually', exact: true }).click();
       } else {
-        await page.getByRole('button', { name: '💬 Ask', exact: true }).click();
+        await page.getByRole('button', { name: 'Ask…', exact: true }).click();
         await page.getByRole('textbox').fill('/visual Explain this');
         await page.keyboard.press('Enter');
       }

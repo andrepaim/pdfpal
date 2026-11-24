@@ -26,7 +26,7 @@ interface Props {
   onPageChange?: (page: number) => void
   /** `page` is the PDF page the selection starts on, when it can be determined. */
   onTextSelected?: (text: string, page?: number) => void
-  onExplain: (text: string, page?: number) => void
+  onExplain: (text: string, page: number | undefined, kind: 'term' | 'passage') => void
   onExplainVisually?: (text: string, page?: number) => void
   annotations?: Annotation[]
   onHighlightCreate?: (data: { page_number: number; x1: number; y1: number; x2: number; y2: number; rects: PageRect[]; text: string; color: string }) => void
@@ -601,32 +601,19 @@ export default function PdfViewer({
             display: 'flex', flexWrap: 'wrap', maxWidth: 'calc(100% - 16px)', gap: 6, zIndex: 9999, userSelect: 'none',
           }}
         >
-          {bubble.kind === 'actions' && (
-            <button
-              onClick={handleHighlight}
-              style={{
-                background: '#854d0e', color: '#fef08a',
-                border: 'none', padding: '6px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600,
-                cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.4)', whiteSpace: 'nowrap',
-              }}
-            >
-              🖊 Highlight
-            </button>
-          )}
-          <button
-            onClick={() => applySelection(bubble.kind === 'explain' ? onExplain : onTextSelected)}
-            style={{
-              background: 'var(--accent)', color: '#fff',
-              border: 'none', padding: '6px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600,
-              cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.4)', whiteSpace: 'nowrap',
-            }}
-          >
-            {bubble.kind === 'explain' ? 'Explain' : '💬 Ask'}
+          <button className="selection-explain" type="button"
+            onClick={() => applySelection((text, page) => onExplain(text, page, bubble.kind === 'explain' ? 'term' : 'passage'))}>
+            Explain
           </button>
-          {bubble.kind === 'actions' && onExplainVisually && <button onClick={() => applySelection(onExplainVisually)} style={{
-            background: '#26233c', color: '#c7d2fe', border: '1px solid #6366f1', padding: '6px 12px', borderRadius: 20,
-            fontSize: 12, fontWeight: 600, cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.4)', whiteSpace: 'nowrap',
-          }}><VisualIcon />Explain visually</button>}
+          {bubble.kind === 'actions' && <>
+            <button className="selection-ask" type="button" onClick={() => applySelection(onTextSelected)}>Ask…</button>
+            <button className="selection-highlight" type="button" onClick={handleHighlight}>🖊 Highlight</button>
+            {onExplainVisually && (
+              <button className="selection-visual" type="button" onClick={() => applySelection(onExplainVisually)}>
+                <VisualIcon />Explain visually
+              </button>
+            )}
+          </>}
         </div>
       )}
     </div>

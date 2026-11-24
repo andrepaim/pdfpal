@@ -509,7 +509,7 @@ export default function App({ user }: { user: User }) {
             isResizing={isResizing}
             onPageChange={handlePageChange}
             onTextSelected={attachSelection}
-            onExplain={(text, page) => explainSelection('text', text, page)}
+            onExplain={(text, page, kind) => explainSelection(kind, text, page)}
             onExplainVisually={(text, page) => explainSelection('visual', text, page)}
             annotations={annotations}
             onHighlightCreate={handleHighlightCreate}
