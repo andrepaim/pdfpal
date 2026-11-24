@@ -14,15 +14,15 @@ Questions about a selected passage use the selection's page and neighboring page
 
 Double-click an English word, or select one or two words. When the bundled English Wiktionary dictionary has an entry, the reader shows just its definition card. It recognizes base forms such as “mouse” for “mice”, hyphenated words and listed compounds such as “neural network”. A word inside a listed compound can show that compound before the individual word.
 
-**Show all meanings** expands the card; **Show fewer** collapses it. Press **Escape** or click elsewhere to dismiss it. If a lookup fails or finds no entry, choose **Explain** to ask about the selected text. Select three or more words to open the full action menu, including **Ask** and **Highlight**. Turn off **Definitions** to use that menu for selections of any length.
+**Show all meanings** expands the card and **Show fewer** collapses it. Press **Escape** or click elsewhere to dismiss it. If a lookup fails or finds no entry, choose **Explain** to ask about the selected text. Select three or more words to open the full action menu, including **Ask** and **Highlight**.
 
-**Definitions** in the reader toolbar toggles these cards. The choice is remembered in the current browser. Definitions work locally without an AI account, provider call or network lookup. The card credits Wiktionary and can show an inflection note such as “plural of mouse.”
+Open **Reading preferences** with the sliders icon in the reader toolbar. Turn off **Show definitions on selection** to use the full action menu for selections of any length. The browser remembers this choice. Definitions work locally without an AI account, provider call or network lookup. The card credits Wiktionary and can show an inflection note such as “plural of mouse.”
 
-**Order by context**, next to **Definitions**, turns on [contextual definition order](contextual-definitions.md) for the library. A local English word-sense model then lists each entry's best-fitting meaning first, and nothing else on the card changes. It is off by default. Turning it on the first time offers a one-time download (about 161 MB on Windows x64, 168 MB on Linux x64), which starts only after you confirm. Every library on the computer reuses the download, offline too. Whenever the model is not ready or cannot decide, the card keeps dictionary order. The Kindle companion does not include this PDF dictionary card.
+**Show the best-fitting meaning first** uses a local English model to order the meanings within each entry. It's off by default and the library remembers its setting while definitions are off. If a download is needed, the panel shows its size and waits for you to choose **Download and turn on**. Every library on the computer can reuse the verified files offline. The card uses dictionary order while the model starts or when it cannot choose a meaning. The Kindle companion does not include the PDF definition card. See [contextual definition order](contextual-definitions.md) for setup details.
 
 ## Page appearance and navigation
 
-**Dark pages**, beside the zoom controls, changes the page background and text colors. It also changes figure and photo colors; switch it off to inspect original colors. The browser remembers the choice across documents and reloads.
+In **Reading preferences**, **Dark pages** under **Appearance** changes the page background and text colors. Switch it off to see original colors in figures and photos. The browser remembers the choice across documents and reloads.
 
 Reading progress restores the last page for each source. After following an internal PDF reference link, **Back to citation** returns to the previous position and zoom. Repeated reference jumps can be retraced in order. This control is separate from the desktop's back/forward reading history.
 

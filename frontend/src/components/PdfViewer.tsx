@@ -7,7 +7,7 @@ import type { DictionaryDefineResponse } from '../../../src/shared/dictionary'
 import { dictionaryApi, type Annotation } from '../lib/api'
 import { selectionContext } from '../lib/selection-context'
 import DefinitionCard from './DefinitionCard'
-import ContextOrderControl from './ContextOrderControl'
+import ReaderPreferences from './ReaderPreferences'
 import VisualIcon from './VisualIcon'
 
 // The worker and document options are shared with the share cards' Page style, which loads the PDF without the viewer.
@@ -227,6 +227,7 @@ export default function PdfViewer({
   // Text selection bubble and definition card
   useEffect(() => {
     const scroll = scrollRef.current
+    const selectionControls = '[data-ask-bubble],[data-definition-card],[data-reading-preferences]'
     let selectionTimer: number | undefined
     let lookup: AbortController | undefined
     const cancelLookup = () => {
@@ -257,7 +258,7 @@ export default function PdfViewer({
       setSelectionPopup(result?.entries.length ? { kind: 'definition', result, style } : fallback)
     }
     const handleMouseUp = (e: MouseEvent) => {
-      if ((e.target as Element).closest?.('[data-ask-bubble],[data-definition-card]')) return
+      if ((e.target as Element).closest?.(selectionControls)) return
       // Wait for the browser to settle the selection and handle a double-click once.
       dismissSelection()
       selectionTimer = window.setTimeout(() => {
@@ -279,7 +280,7 @@ export default function PdfViewer({
       }, 80)
     }
     const handleMouseDown = (e: MouseEvent) => {
-      if (!(e.target as Element).closest?.('[data-ask-bubble],[data-definition-card]')) dismissSelection()
+      if (!(e.target as Element).closest?.(selectionControls)) dismissSelection()
     }
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') dismissSelection()
@@ -545,25 +546,12 @@ export default function PdfViewer({
             Page {Math.min(currentPage, numPages)} of {numPages}
           </span>
         )}
-        <button
-          type="button"
-          aria-pressed={definitions}
-          onClick={() => { setSelectionPopup(null); setDefinitions(value => !value) }}
-          title="Show the dictionary meaning of a word when you select it"
-          style={{ ...btnStyle, width: 'auto', padding: '4px 10px', marginLeft: 'auto', fontSize: 12, background: definitions ? 'var(--accent)' : btnStyle.background }}
-        >
-          Definitions
-        </button>
-        <ContextOrderControl buttonStyle={btnStyle} />
-        <button
-          type="button"
-          aria-pressed={darkPages}
-          onClick={() => setDarkPages(value => !value)}
-          title="Use dark page colors. Figure and photo colors will also change."
-          style={{ ...btnStyle, width: 'auto', padding: '4px 10px', fontSize: 12, background: darkPages ? 'var(--accent)' : btnStyle.background }}
-        >
-          Dark pages
-        </button>
+        <ReaderPreferences
+          definitions={definitions}
+          onDefinitionsChange={enabled => { setSelectionPopup(null); setDefinitions(enabled) }}
+          darkPages={darkPages}
+          onDarkPagesChange={setDarkPages}
+        />
       </div>
 
       {/* PDF scroll area */}
