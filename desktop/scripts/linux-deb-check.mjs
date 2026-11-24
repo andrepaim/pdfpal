@@ -8,6 +8,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import assert from 'node:assert/strict'
 import { verifyDebianIdentity } from './linux-release.mjs'
+import { verifyDictionary } from '../../scripts/prepare-dictionary.mjs'
 const exec = promisify(execFile)
 const version = JSON.parse(await fs.readFile(new URL('../version.json', import.meta.url), 'utf8')).version
 const artifact = path.resolve(process.argv[2] ?? `desktop/artifacts/pdfpal-${version}-amd64.deb`)
@@ -21,6 +22,7 @@ try {
   await exec('dpkg-deb', ['--control', artifact, path.join(work, 'control')])
   const application = path.join(work, 'opt/pdfpal')
   for (const name of ['pdfpal-desktop', 'bin/pdfpal-desktop-cli', 'chrome-sandbox', 'resources/app.asar', 'resources/apparmor-profile']) assert.ok((await fs.stat(path.join(application, name))).isFile(), name)
+  await verifyDictionary(path.join(application, 'resources'))
   for (const [name, required] of [['postinst', ['update-alternatives', 'chrome-sandbox', 'APPARMOR_PROFILE_SOURCE', 'pdfpal-desktop-cli']], ['postrm', ['APPARMOR_PROFILE_DEST', 'pdfpal-desktop-cli']]]) {
     const filename = path.join(work, 'control', name), body = await fs.readFile(filename, 'utf8')
     await exec('bash', ['-n', filename])
@@ -35,7 +37,7 @@ try {
   assert.match(stdout, /desktop library/)
   const evidence = { status: 'passed', package: path.basename(artifact), version: metadata[1], architecture: metadata[2],
     size: (await fs.stat(artifact)).size, sha256: await hash(artifact),
-    checks: ['debian-identity', 'installed-layout', 'desktop-entry-valid', 'upstream-sandbox-and-apparmor-hooks-preserved', 'bundled-cli-from-extracted-package-without-system-node'],
+    checks: ['debian-identity', 'installed-layout', 'bundled-wiktionary-pack-and-notice-integrity', 'desktop-entry-valid', 'upstream-sandbox-and-apparmor-hooks-preserved', 'bundled-cli-from-extracted-package-without-system-node'],
     installedOnHost: false }
   await fs.mkdir(path.dirname(receipt), { recursive: true }); await fs.writeFile(receipt, JSON.stringify(evidence, null, 2) + '\n')
   console.log(JSON.stringify(evidence, null, 2))

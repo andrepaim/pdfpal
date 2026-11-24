@@ -1,11 +1,13 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import type { DictionaryResult } from '@andrepaim/contextual-dictionary-core'
+import type { DictionaryDefineResponse } from '../shared/dictionary.js'
 import { DictionaryService } from '../core/dictionary.js'
 import type { ContextualDefinitions } from '../core/contextual-definitions.js'
 import { ContextualError, type ContextualService } from '../core/contextual-service.js'
 import { PdfpalError } from '../core/types.js'
 
-// Definitions for the reader's definition card, from the offline WordNet
-// file. `before` and `after` are the text around the selection; they stay on
+// Definitions for the reader's definition card, from the offline Wiktionary
+// pack. `before` and `after` are the text around the selection; they stay on
 // this machine. They recognise a compound around the word and, when
 // contextual definitions are on, are read by the local word-sense model to
 // order each entry's meanings. The answer is sent once, in its final order.
@@ -26,10 +28,24 @@ async function sameOriginJson(request: FastifyRequest, reply: FastifyReply) {
     return reply.code(415).send({ code: 'JSON_REQUIRED', detail: 'Send this request as JSON from pdfpal.' })
 }
 
+const legacyPartOfSpeech = new Map([['adj', 'adjective'], ['adv', 'adverb']])
+
+function defineResponse({ query, entries, source }: DictionaryResult): DictionaryDefineResponse {
+  return {
+    query,
+    entries: entries.map(entry => ({
+      ...entry,
+      part_of_speech: legacyPartOfSpeech.get(entry.partOfSpeech) ?? entry.partOfSpeech,
+    })),
+    source: `${source.name} · ${source.license}`,
+    sourceDetails: source,
+  }
+}
+
 export function registerDictionaryRoutes(app: FastifyInstance, contextual?: ContextualService | ContextualDefinitions, dictionary = new DictionaryService()) {
   const service = contextual && 'current' in contextual ? contextual : undefined
   const ranker = () => service ? service.current() : contextual as ContextualDefinitions | undefined
-  app.addHook('onClose', async () => { dictionary.close(); await contextual?.close() })
+  app.addHook('onClose', async () => { await Promise.all([dictionary.close(), contextual?.close()]) })
   app.get('/api/dictionary/define', async (request, reply) => {
     const query = request.query as Record<string, unknown>
     const text = String(query.text ?? '')
@@ -40,14 +56,15 @@ export function registerDictionaryRoutes(app: FastifyInstance, contextual?: Cont
       before: String(query.before ?? '').slice(-DICTIONARY_CONTEXT_LIMIT),
       after: String(query.after ?? '').slice(0, DICTIONARY_CONTEXT_LIMIT),
     }
-    const result = dictionary.define(text, selection)
+    let result = await dictionary.define(selection)
     const current = ranker()
-    if (!current || !result.entries.length) return result
-    // The reader cancels a lookup it no longer needs; stop waiting for the model then.
-    const cancelled = new AbortController()
-    reply.raw.once('close', () => { if (!reply.raw.writableFinished) cancelled.abort() })
-    // Lookups fail open: any problem leaves WordNet order.
-    return current.order(result, selection, cancelled.signal).catch(() => result)
+    if (current && result.entries.length && !reply.raw.destroyed) {
+      // The reader cancels a lookup it no longer needs. Stop waiting for the model then.
+      const cancelled = new AbortController()
+      reply.raw.once('close', () => { if (!reply.raw.writableFinished) cancelled.abort() })
+      result = await current.order(result, selection, cancelled.signal).catch(() => result)
+    }
+    return defineResponse(result)
   })
   if (!service) return
 

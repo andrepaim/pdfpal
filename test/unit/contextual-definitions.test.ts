@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { ContextualDefinitions, type ContextualOptions } from '../../src/core/contextual-definitions.js'
-import type { DictionaryResult } from '../../src/core/dictionary.js'
+import { SENSE_PROMPT_DEFAULTS, type DictionaryResult } from '@andrepaim/contextual-dictionary-core'
 
 const fakeWorker = new URL('../fixtures/fake-sense-worker.mjs', import.meta.url)
 type Fake = { loadMs?: number; scoreMs?: number; fail?: string; crashOnScore?: boolean; rejectCode?: string; prefer?: string; none?: number }
@@ -11,13 +11,13 @@ function ranker(fake: Fake = {}, options: Partial<ContextualOptions> = {}) {
 }
 
 const bank: DictionaryResult = {
-  query: 'bank', source: 'WordNet 3.1',
+  query: 'bank', source: { name: 'Wiktionary', license: 'CC BY-SA 4.0', url: 'https://en.wiktionary.org/wiki/bank' },
   entries: [
-    { lemma: 'bank', part_of_speech: 'noun', senses: [
+    { lemma: 'bank', partOfSpeech: 'noun', senses: [
       { definition: 'sloping land beside a body of water', examples: [] },
       { definition: 'a financial institution that accepts deposits', examples: ['he cashed a check at the bank'] },
     ] },
-    { lemma: 'bank', part_of_speech: 'verb', senses: [{ definition: 'tip laterally', examples: [] }] },
+    { lemma: 'bank', partOfSpeech: 'verb', senses: [{ definition: 'tip laterally', examples: [] }] },
   ],
 }
 const financialFirst = [bank.entries[0]!.senses[1], bank.entries[0]!.senses[0]]
@@ -25,7 +25,7 @@ const financialFirst = [bank.entries[0]!.senses[1], bank.entries[0]!.senses[0]]
 const passage = (n = 0) => ({ before: `On day ${n} he walked over and deposited all of the money at the `, text: 'bank', after: ' before it closed for the day.' })
 const elapsed = async <T>(work: Promise<T>) => { const start = performance.now(); const value = await work; return { value, ms: performance.now() - start } }
 
-test('a lookup before the model is ready gets WordNet order at once, and the loaded model then orders senses', async () => {
+test('a lookup before the model is ready gets dictionary order at once, and the loaded model then orders senses', async () => {
   const contextual = ranker({ loadMs: 300, prefer: 'financial' })
   try {
     contextual.warm()
@@ -64,7 +64,28 @@ test('nothing is sent to the model when every entry has one sense or the input i
   } finally { await contextual.close() }
 })
 
-test('a lookup over its time budget gets WordNet order, and the late answer serves the same lookup later', async () => {
+test('the native scorer applies the shared candidate cap and keeps the full dictionary inventory', async () => {
+  const contextual = ranker({ prefer: 'preferred' })
+  try {
+    contextual.warm(); await contextual.settled()
+    const cap = SENSE_PROMPT_DEFAULTS.maxCandidates
+    const senses = Array.from({ length: cap + 3 }, (_, i) => ({
+      definition: i >= cap - 1 ? `preferred ${i}` : `meaning ${i}`,
+      examples: [`example ${i}`],
+    }))
+    const entry = { ...bank.entries[0]!, senses, note: 'plural of bank' }
+    const result = { ...bank, entries: [entry] }
+    const ordered = await contextual.order(result, passage())
+    assert.deepEqual(ordered, {
+      ...result,
+      entries: [{ ...entry, senses: [senses[cap - 1], ...senses.slice(0, cap - 1), ...senses.slice(cap)] }],
+    })
+    assert.equal(contextual.stats.scored, 1)
+    assert.equal(contextual.stats.applied, 1)
+  } finally { await contextual.close() }
+})
+
+test('a lookup over its time budget gets dictionary order, and the late answer serves the same lookup later', async () => {
   const contextual = ranker({ scoreMs: 300, prefer: 'financial' }, { budgetMs: 80 })
   try {
     contextual.warm(); await contextual.settled()
@@ -118,7 +139,7 @@ test('a cancelled lookup returns at once, and a cancelled queued lookup is never
   } finally { await contextual.close() }
 })
 
-test('a model that "fits none" or rejects the prompt leaves WordNet order', async () => {
+test('a model that "fits none" or rejects the prompt leaves dictionary order', async () => {
   const none = ranker({ prefer: 'financial', none: 9 })
   const rejected = ranker({ prefer: 'financial', rejectCode: 'TOO_LONG' })
   try {
@@ -150,7 +171,7 @@ test('a load that takes too long is abandoned', async () => {
   } finally { await contextual.close() }
 })
 
-test('a crashed worker returns WordNet order and is restarted after a pause', async () => {
+test('a crashed worker returns dictionary order and is restarted after a pause', async () => {
   const contextual = ranker({ crashOnScore: true }, { retryMs: 100, budgetMs: 2000 })
   try {
     contextual.warm(); await contextual.settled()
@@ -174,7 +195,7 @@ test('a worker stuck on one prompt is stopped', async () => {
   } finally { await contextual.close() }
 })
 
-test('closing stops the worker and later lookups keep WordNet order', async () => {
+test('closing stops the worker and later lookups keep dictionary order', async () => {
   const contextual = ranker({ loadMs: 50, scoreMs: 500, prefer: 'financial' }, { budgetMs: 2000 })
   contextual.warm(); await contextual.settled()
   const pending = elapsed(contextual.order(bank, passage(1)))

@@ -2,15 +2,18 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
+import { dictionaryDirectory, verifyDictionary } from '../../scripts/prepare-dictionary.mjs'
 const desktop = fileURLToPath(new URL('../', import.meta.url))
 const root = path.resolve(desktop, '..')
 const stage = path.join(desktop, 'stage')
 const version = process.env.PDFPAL_DESKTOP_VERSION ?? JSON.parse(await fs.readFile(path.join(desktop, 'version.json'), 'utf8')).version
 const { versionParts } = await import('../src/updates.mjs')
 versionParts(version)
+await verifyDictionary(root)
 await fs.mkdir(stage, { recursive: true })
 await fs.rm(path.join(stage, 'frontend/dist'), { recursive: true, force: true })
 await fs.rm(path.join(stage, 'cli-bin'), { recursive: true, force: true })
+await fs.rm(path.join(stage, dictionaryDirectory), { recursive: true, force: true })
 const pkg = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'))
 await fs.writeFile(path.join(stage, 'package.json'), JSON.stringify({ name: 'pdfpal-desktop', version,
   private: true, type: 'module', main: 'main.mjs', desktopName: 'io.pdfpal.desktop.desktop', description: 'Read PDFs and Kindle with your AI assistant', author: 'pdfpal contributors', license: 'MIT', homepage: 'https://github.com/andrepaim/pdfpal',
@@ -19,7 +22,7 @@ await fs.writeFile(path.join(stage, 'package.json'), JSON.stringify({ name: 'pdf
   dependencies: { ...pkg.dependencies, 'better-sqlite3': '13.0.3', '@napi-rs/canvas': '0.1.100' } }, null, 2))
 await fs.copyFile(path.join(desktop, 'runtime-lock.json'), path.join(stage, 'package-lock.json'))
 for (const [source, destination] of [
-  ['dist', 'dist'], ['frontend/dist', 'frontend/dist'], ['extension/package', 'extension/package'],
+  ['dist', 'dist'], [dictionaryDirectory, dictionaryDirectory], ['frontend/dist', 'frontend/dist'], ['extension/package', 'extension/package'],
   ['skills/pdfpal-cli', 'skills/pdfpal-cli'], ['desktop/src/cli.mjs', 'cli.mjs'],
   ['test/fixtures/sample.pdf', 'sample.pdf'], ['desktop/src/main.mjs', 'main.mjs'], ['desktop/src/backend.mjs', 'backend.mjs'],
   ['desktop/src/chatgpt', 'chatgpt'],

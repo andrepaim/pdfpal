@@ -3,7 +3,8 @@ import { Document, Page, type DocumentProps } from 'react-pdf'
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import 'react-pdf/dist/Page/TextLayer.css'
-import { dictionaryApi, type Annotation, type DictionaryResult } from '../lib/api'
+import type { DictionaryDefineResponse } from '../../../src/shared/dictionary'
+import { dictionaryApi, type Annotation } from '../lib/api'
 import { selectionContext } from '../lib/selection-context'
 import DefinitionCard from './DefinitionCard'
 import ContextOrderControl from './ContextOrderControl'
@@ -61,7 +62,7 @@ const COLOR_MAP: Record<string, string> = {
 // A selection that crosses pages gives one entry per page, in document order.
 type PageSelection = { page: number; bbox: PageRect; rects: PageRect[]; text: string }
 type SelectionBubble = { kind: 'actions' | 'explain'; x: number; y: number; text: string; pages: PageSelection[] }
-type SelectionPopup = SelectionBubble | { kind: 'definition'; result: DictionaryResult; style: React.CSSProperties }
+type SelectionPopup = SelectionBubble | { kind: 'definition'; result: DictionaryDefineResponse; style: React.CSSProperties }
 
 function getSelectionPages(selection: Selection): PageSelection[] {
   if (selection.rangeCount === 0) return []

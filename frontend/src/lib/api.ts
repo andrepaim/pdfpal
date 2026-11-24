@@ -1,3 +1,4 @@
+import type { DictionaryDefineResponse } from '../../../src/shared/dictionary'
 import { beginOperation } from './telemetry'
 // Centralized API client for pdfpal v2
 
@@ -233,25 +234,13 @@ export const relatedApi = {
     apiFetch<RelatedResult>(`/projects/${projectId}/sources/${sourceId}/related${refresh ? '?refresh=true' : ''}`),
 }
 
-export interface DictionaryEntry {
-  lemma: string
-  part_of_speech: 'noun' | 'verb' | 'adjective' | 'adverb'
-  senses: { definition: string; examples: string[] }[]
-}
-
-export interface DictionaryResult {
-  query: string
-  entries: DictionaryEntry[]
-  source: string
-}
-
 export const dictionaryApi = {
   // The text around the selection goes only to the local server, which uses
   // it to recognise a compound such as "neural network" around one word and,
   // when contextual definitions are on, to order meanings with a local model.
   // The answer arrives once, already in its final order.
   define: (text: string, context: { before: string; after: string }, signal?: AbortSignal) =>
-    apiFetch<DictionaryResult>(`/dictionary/define?${new URLSearchParams({ text, ...context })}`, { signal }),
+    apiFetch<DictionaryDefineResponse>(`/dictionary/define?${new URLSearchParams({ text, ...context })}`, { signal }),
 }
 
 /** The reader's "Order meanings by context" setting (English, local model). */

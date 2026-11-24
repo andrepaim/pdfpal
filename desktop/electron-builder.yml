@@ -16,7 +16,12 @@ files:
   - '!test/**'
   - '!discovery.test.mjs'
   - '!cli-bin/**'
+  - '!data/dictionary/**'
+  - '!dist/dictionary/**'
+  - '!dist/core/dictionary-build.*'
 extraResources:
+  - from: stage/data/dictionary
+    to: data/dictionary
   - from: stage/THIRD_PARTY_NOTICES.txt
     to: THIRD_PARTY_NOTICES.txt
   - from: build/LICENSE.txt

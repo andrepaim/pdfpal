@@ -191,7 +191,7 @@ export async function buildServer(config: PdfpalConfig, cli?: CliRuntime, option
   registerAnnotationRoutes(app, db)
   registerResearchRoutes(app, db, config)
   // Opt-in, English only: the model loads in the background and every lookup
-  // keeps WordNet order until it is ready.
+  // keeps dictionary order until it is ready.
   const contextual = new ContextualService(config, options.contextual)
   await contextual.init()
   registerDictionaryRoutes(app, contextual)

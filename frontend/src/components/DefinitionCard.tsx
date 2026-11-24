@@ -1,12 +1,12 @@
 import { useState, type CSSProperties } from 'react'
-import type { DictionaryResult } from '../lib/api'
+import type { DictionaryDefineResponse } from '../../../src/shared/dictionary'
 
 // How much shows before "Show all": a word like "run" has 57 meanings.
 const ENTRIES_SHOWN = 3
 const SENSES_SHOWN = 3
 
 interface Props {
-  result: DictionaryResult
+  result: DictionaryDefineResponse
   style: CSSProperties
 }
 
@@ -31,14 +31,15 @@ export default function DefinitionCard({ result, style }: Props) {
         ...style,
       }}
     >
-      {entries.map(entry => {
+      {entries.map((entry, entryIndex) => {
         const senses = showAll ? entry.senses : entry.senses.slice(0, SENSES_SHOWN)
         return (
-          <section key={`${entry.lemma} ${entry.part_of_speech}`} style={{ marginBottom: 8 }}>
+          <section key={`${entry.lemma} ${entry.partOfSpeech} ${entryIndex}`} style={{ marginBottom: 8 }}>
             <div>
               <span style={{ fontWeight: 600 }}>{entry.lemma}</span>{' '}
-              <span style={{ color: 'var(--muted)', fontStyle: 'italic', fontSize: 12 }}>{entry.part_of_speech}</span>
+              <span style={{ color: 'var(--muted)', fontStyle: 'italic', fontSize: 12 }}>{entry.partOfSpeech}</span>
             </div>
+            {entry.note && <p style={{ margin: '2px 0 0', color: 'var(--muted)', fontSize: 12 }}>{entry.note}</p>}
             <ol style={{ margin: '2px 0 0', paddingLeft: 22, listStyle: 'decimal' }}>
               {senses.map((sense, index) => (
                 <li key={index} style={{ marginBottom: 2 }}>
@@ -55,12 +56,20 @@ export default function DefinitionCard({ result, style }: Props) {
           <button
             type="button"
             onClick={() => setShowAll(value => !value)}
+            aria-expanded={showAll}
             style={{ background: 'none', border: 'none', padding: 0, color: 'var(--accent)', fontSize: 12, cursor: 'pointer' }}
           >
             {showAll ? 'Show fewer' : 'Show all meanings'}
           </button>
         )}
-        <span style={{ marginLeft: 'auto' }}>{result.source}</span>
+        <a
+          href={result.sourceDetails.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ marginLeft: 'auto', color: 'inherit' }}
+        >
+          {result.source}
+        </a>
       </div>
     </div>
   )

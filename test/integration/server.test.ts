@@ -239,6 +239,19 @@ test('reader API refuses cross-site and rebinding requests while preserving same
   } finally { await app.close(); fs.rmSync(config.dataDir, { recursive: true, force: true }) }
 })
 
+test('an older reader can still render source text and part_of_speech from the default dictionary route', async () => {
+  const config = testConfig(), app = await buildServer(config)
+  try {
+    const response = await app.inject({ url: '/api/dictionary/define?text=well-known' })
+    assert.equal(response.statusCode, 200)
+    const result = response.json()
+    assert.equal(result.source, 'Wiktionary · CC BY-SA 4.0')
+    assert.equal(result.entries[0].lemma, 'well-known')
+    assert.equal(result.entries[0].part_of_speech, 'adjective')
+    assert.equal(result.entries[0].partOfSpeech, 'adj')
+  } finally { await app.close(); fs.rmSync(config.dataDir, { recursive: true, force: true }) }
+})
+
 test('the dictionary route defines a selected word and finds the compound around it', async () => {
   const config = testConfig(), app = await buildServer(config)
   try {
@@ -246,8 +259,14 @@ test('the dictionary route defines a selected word and finds the compound around
 
     const word = await define({ text: 'mice' })
     assert.equal(word.statusCode, 200)
-    assert.equal(word.json().source, 'WordNet 3.1')
-    assert.deepEqual(word.json().entries.map((entry: { lemma: string; part_of_speech: string }) => [entry.lemma, entry.part_of_speech]), [['mouse', 'noun']])
+    assert.deepEqual(word.json().sourceDetails, {
+      name: 'Wiktionary',
+      license: 'CC BY-SA 4.0',
+      url: 'https://en.wiktionary.org/wiki/mouse',
+    })
+    assert.equal(word.json().entries[0].lemma, 'mouse')
+    assert.equal(word.json().entries[0].partOfSpeech, 'noun')
+    assert.equal(word.json().entries[0].note, 'plural of mouse')
     assert.match(word.json().entries[0].senses[0].definition, /rodent/)
 
     const compound = (await define({ text: 'network', before: 'trained a neural ', after: ' on images' })).json()

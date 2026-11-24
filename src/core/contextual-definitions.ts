@@ -1,12 +1,13 @@
 import crypto from 'node:crypto'
 import os from 'node:os'
 import { Worker } from 'node:worker_threads'
-import type { DictionaryResult } from './dictionary.js'
-import { contextualOrder, senseRequest, type SenseFormat, type Selection } from './sense-order.js'
+import {
+  contextualOrder, senseRequest, SENSE_PROMPT_DEFAULTS, type DictionaryResult, type Selection, type SenseFormat,
+} from '@andrepaim/contextual-dictionary-core'
 
 // Contextual definition order for the reader's card (opt-in, English only).
 // One reusable worker thread holds the model. A lookup made before it is
-// ready, or that the model cannot answer within the budget, gets WordNet
+// ready, or that the model cannot answer within the budget, gets dictionary
 // order; nothing here ever fails a lookup. Text stays in this process and
 // the worker; the cache keeps only prompt hashes and numbers.
 
@@ -15,7 +16,7 @@ export type ContextualOptions = {
   directory: string
   /** A provisioned runtime directory (holding node_modules), used instead of the app's dependencies when present. */
   runtimeDirectory?: string
-  /** How long a lookup waits for a ready model before WordNet order is used. */
+  /** How long a lookup waits for a ready model before dictionary order is used. */
   budgetMs?: number
   /** The pause before a failed model is loaded again. */
   retryMs?: number
@@ -31,10 +32,8 @@ export type ContextualState = 'idle' | 'loading' | 'ready' | 'failed' | 'closed'
 export type ContextualStatus = { state: Exclude<ContextualState, 'failed'> } | { state: 'failed'; code: string }
 
 /**
- * The card should appear within 300 ms of a selection. Warm INT8 runs took
- * 45 ms median / 95 ms p95 for 2-10 senses; a full inventory of 20-40 senses
- * can take longer, so such lookups keep WordNet order until a repeat lookup
- * of the same passage finds the late answer in the cache.
+ * The card should appear within 300 ms of a selection. When the model misses
+ * its deadline, a repeat lookup can use the late answer from the cache.
  */
 export const DEFAULT_BUDGET_MS = 120
 
@@ -111,7 +110,7 @@ export class ContextualDefinitions {
     if (signal?.aborted || this.state === 'closed') return result
     const format = this.format
     if (this.state !== 'ready' || !format) { this.warm(); return result }
-    const request = senseRequest(result, selection, format)
+    const request = senseRequest(result, selection, format, SENSE_PROMPT_DEFAULTS.maxCandidates, SENSE_PROMPT_DEFAULTS.maxPromptChars)
     if ('skip' in request) { this.stats.skipped++; return result }
     const key = crypto.createHash('sha256').update(request.prompt).digest('hex')
     let logits = this.cache.get(key)
@@ -156,7 +155,7 @@ export class ContextualDefinitions {
         },
       }
       signal?.addEventListener('abort', abort, { once: true })
-      // Only the newest lookup waits for the model; an older one still queued gets WordNet order now.
+      // Only the newest lookup waits for the model; an older one still queued gets dictionary order now.
       if (this.queued) { this.stats.superseded++; this.queued.settle(null) }
       this.queued = job
       this.pump()

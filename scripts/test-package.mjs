@@ -9,6 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { unzipSync } from 'fflate';
+import { verifyDictionary } from './prepare-dictionary.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const require = createRequire(new URL('../extension/package.json', import.meta.url));
@@ -24,12 +25,15 @@ try {
   assert.ok(!packed.files.some(file => /^desktop\//.test(file.path)), 'The CLI tarball must exclude desktop tooling and builds');
   const lock = JSON.parse(await readFile(path.join(root, 'package-lock.json'), 'utf8'));
   assert.ok(!Object.keys(lock.packages).some(name => /(?:^|\/)node_modules\/(?:electron|electron-builder)$/.test(name)), 'Root npm installation must not install Electron');
-  for (const name of ['dist/cli/index.js', 'frontend/dist/index.html', 'extension/package/companion.zip', 'extension/dist/manifest.json', 'dist/dictionary/wordnet.sqlite', 'dist/dictionary/WORDNET-LICENSE.txt'])
+  assert.ok(!packed.files.some(file => /wordnet|^dist\/core\/dictionary-build\./i.test(file.path)), 'The CLI tarball must exclude old dictionary artifacts');
+  for (const name of ['dist/cli/index.js', 'frontend/dist/index.html', 'extension/package/companion.zip', 'extension/dist/manifest.json', 'data/dictionary/wiktionary-en-v1.pack', 'data/dictionary/NOTICES-dictionary.txt'])
     assert.ok(packed.files.some(file => file.path === name), name);
   const prefix = path.join(temporary, 'installed application');
   execFileSync('npm', ['install', '--prefix', prefix, '--omit=dev', '--no-audit', '--no-fund', path.join(temporary, packed.filename)], { stdio: 'pipe' });
   const cwd = path.join(temporary, 'unrelated directory'); await mkdir(cwd);
-  const cli = path.join(prefix, 'node_modules/pdfpal/dist/cli/index.js');
+  const installed = path.join(prefix, 'node_modules/pdfpal');
+  await verifyDictionary(installed);
+  const cli = path.join(installed, 'dist/cli/index.js');
   assert.match(execFileSync(process.execPath, [cli, '--help'], { cwd, encoding: 'utf8', env: { ...process.env, PDFPAL_DATA_DIR: path.join(temporary, 'data') } }), /Kindle/);
   const fixture = path.join(temporary, 'fixture-agent');
   await writeFile(fixture, `#!/usr/bin/env node
@@ -43,7 +47,7 @@ process.stdin.resume();process.stdin.on('end',()=>process.stdout.write('A useful
   const port = socket.address().port; await new Promise(resolve => socket.close(resolve));
   const base = `http://127.0.0.1:${port}`;
   server = spawn(process.execPath, [cli, 'serve', '--no-open', '--port', String(port)], { cwd,
-    env: { ...process.env, PDFPAL_DATA_DIR: path.join(temporary, 'data'), PDFPAL_AGENT: 'codex', CODEX_BIN: fixture,
+    env: { ...process.env, PDFPAL_DATA_DIR: path.join(temporary, 'data'), PDFPAL_SENSE_CACHE_DIR: path.join(temporary, 'empty-model-cache'), PDFPAL_AGENT: 'codex', CODEX_BIN: fixture,
       CLAUDE_BIN: path.join(temporary, 'uninstalled-claude'), OPENCODE_BIN: path.join(temporary, 'uninstalled-opencode') }, stdio: ['ignore', 'pipe', 'pipe'] });
   let log = ''; server.stdout.on('data', data => { log = (log + data).slice(-4000); }); server.stderr.on('data', data => { log = (log + data).slice(-4000); });
   let ready = false;
@@ -51,9 +55,12 @@ process.stdin.resume();process.stdin.on('end',()=>process.stdout.write('A useful
   assert.ok(ready, `Installed server did not start: ${log}`);
   const index = await (await fetch(base)).text(); const asset = index.match(/src="([^\"]+\.js)"/)[1];
   assert.match((await fetch(new URL(asset, base))).headers.get('content-type'), /javascript/);
-  // The offline dictionary ships inside the package and answers without the dev-only WordNet source.
-  const definition = await (await fetch(`${base}/api/dictionary/define?text=mice`)).json();
-  assert.equal(definition.entries[0]?.lemma, 'mouse', 'The installed package must include a working dictionary');
+  const response = await fetch(`${base}/api/dictionary/define?text=mice`, { signal: AbortSignal.timeout(10000) });
+  assert.equal(response.status, 200);
+  const definition = await response.json();
+  assert.equal(definition.sourceDetails?.name, 'Wiktionary');
+  assert.equal(definition.sourceDetails?.license, 'CC BY-SA 4.0');
+  assert.ok(definition.entries.some(entry => entry.lemma === 'mouse' && entry.senses.length > 0), 'The installed package must include a working Wiktionary pack');
   const metadata = await (await fetch(`${base}/api/extensions/package`)).json();
   const download = await fetch(`${base}/api/extensions/download`);
   assert.equal(download.headers.get('content-type'), 'application/zip');

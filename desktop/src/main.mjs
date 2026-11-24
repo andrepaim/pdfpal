@@ -40,6 +40,7 @@ const temporary = smoke && !installationCheck ? fs.mkdtempSync(path.join(os.tmpd
 if (temporary) {
   process.env.PDFPAL_DATA_DIR = temporary
   process.env.PDFPAL_DB = path.join(temporary, 'pdfpal.db')
+  process.env.PDFPAL_SENSE_CACHE_DIR = path.join(temporary, 'sense-cache')
   if (metadata.cloudPreview) process.env.PDFPAL_DESKTOP_PROFILE = `${temporary}-profile`
   else process.env.PDFPAL_DESKTOP_PROFILE ??= `${temporary}-profile`
 }
@@ -484,6 +485,9 @@ async function smokeTest() {
   pendingReceipt ??= { status: 'passed', platform: process.platform, arch: process.arch, electron: process.versions.electron,
     node: process.versions.node, checks: ready.checks, ui, providers: ready.providers }
   check(process.env.PDFPAL_M0_RECEIPT, 'Set PDFPAL_M0_RECEIPT for evidence')
+  const { checkBundledDictionary } = await import('./installer-acceptance.mjs')
+  await checkBundledDictionary(ready.origin)
+  if (!pendingReceipt.checks.includes('bundled-wiktionary-first-lookup')) pendingReceipt.checks.push('bundled-wiktionary-first-lookup')
   if (chromeCapabilities(process.platform).sharedMenu) {
     for (let attempt = 0; attempt < 100; attempt++) {
       if (await window.webContents.executeJavaScript('!!document.querySelector(".desktop-chrome")')) break

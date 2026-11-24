@@ -66,6 +66,7 @@ function Start-Reader([string]$Label, [switch]$Hold) {
     $receipt = Join-Path $caseRoot "$Label.json"
     Remove-Item $receipt,$control -Force -ErrorAction SilentlyContinue
     $env:PDFPAL_DATA_DIR = $data; $env:PDFPAL_DB = Join-Path $data 'pdfpal.db'; $env:PDFPAL_DESKTOP_PROFILE = $profile
+    $env:PDFPAL_SENSE_CACHE_DIR = Join-Path $caseRoot 'sense-cache'
     $env:PDFPAL_INSTALLER_ACCEPTANCE_RECEIPT = $receipt; $env:PDFPAL_INSTALLER_ACCEPTANCE_CONTROL = $control
     $env:PDFPAL_M2_FAILURE_FIXTURE = '0'; $env:PDFPAL_M0_LIVE = '0'; $env:PDFPAL_M1_LIVE_CODEX = '0'
     $env:CLAUDE_BIN = Join-Path $WorkRoot 'fixture-provider.exe'; $env:PDFPAL_AGENT = 'claude'
@@ -77,7 +78,7 @@ function Start-Reader([string]$Label, [switch]$Hold) {
     }
     if (-not (Test-Path $receipt)) { throw 'Installed reader did not produce acceptance evidence' }
     $r = Get-Content $receipt -Raw | ConvertFrom-Json
-    if ($r.status -ne 'passed') { throw 'Installed reader acceptance failed' }
+    if ($r.status -ne 'passed' -or $r.checks -notcontains 'bundled-wiktionary-first-lookup') { throw 'Installed reader or bundled dictionary acceptance failed' }
     if (-not $Hold) { if ((Finish $p 30000) -ne 0) { throw 'Installed reader did not quit gracefully' } }
     return $p
 }
@@ -108,7 +109,9 @@ try {
     $shell = New-Object -ComObject WScript.Shell
     Check ((Test-Path $shortcut) -and $shell.CreateShortcut($shortcut).TargetPath -eq $exe) 'start-menu-shortcut'
     $process = Start-Reader 'baseline'
-    Check ((Get-Content (Join-Path $caseRoot 'baseline.json') -Raw | ConvertFrom-Json).version -eq '2.1.0-preview.0') 'installed-app-launches-from-unrelated-directory'
+    $baselineReceipt = Get-Content (Join-Path $caseRoot 'baseline.json') -Raw | ConvertFrom-Json
+    Check ($baselineReceipt.version -eq '2.1.0-preview.0') 'installed-app-launches-from-unrelated-directory'
+    Check ($baselineReceipt.checks -contains 'bundled-wiktionary-first-lookup') 'installed-bundled-wiktionary-first-lookup'
     Snapshot 'save'
     $hash = (Get-FileHash $exe).Hash
     $dialog = Launch $Candidate '/currentuser'

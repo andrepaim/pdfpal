@@ -4,7 +4,7 @@ import { createRequire } from 'node:module'
 import { parentPort, workerData } from 'node:worker_threads'
 import { ETTIN_ENGLISH_INT8, runtimeRequire, verifyModel, verifyRuntime } from './sense-model.js'
 import { SENSE_RUNTIME } from './sense-runtime-manifest.js'
-import type { SenseFormat } from './sense-order.js'
+import { isSenseFormat, senseRequest, type DictionaryResult, type Selection, type SenseFormat } from '@andrepaim/contextual-dictionary-core'
 
 // The worker thread that runs the English word-sense model on the CPU. It
 // verifies the pinned files, loads the ONNX Runtime session once, and then
@@ -59,6 +59,11 @@ async function load() {
   const calibration = readJson('calibration.json') as { temperature?: number }
   if (metadata.template_version !== 'compact-v1' || metadata.model_revision !== ETTIN_ENGLISH_INT8.revision || metadata.letters.length <= metadata.nota_index) throw new LoadError('MODEL_MISMATCH')
   const config = readJson('tokenizer_config.json') as { mask_token: string }
+  const format: SenseFormat = {
+    letters: metadata.letters, nota_index: metadata.nota_index, none_text: metadata.none_text, separator: metadata.separator,
+    mask_token: config.mask_token, max_length: metadata.max_length, temperature: calibration.temperature ?? 1,
+  }
+  if (!isSenseFormat(format)) throw new LoadError('MODEL_MISMATCH')
   const tokenizer = new Tokenizer(readJson('tokenizer.json'), config)
   const mask = tokenizer.token_to_id(config.mask_token)
   if (mask === undefined) throw new LoadError('MODEL_MISMATCH')
@@ -68,10 +73,6 @@ async function load() {
       executionProviders: ['cpu'], intraOpNumThreads: data.threads, interOpNumThreads: 1, graphOptimizationLevel: 'all',
     })
   } catch { throw new LoadError('SESSION_FAILED') }
-  const format: SenseFormat = {
-    letters: metadata.letters, nota_index: metadata.nota_index, none_text: metadata.none_text, separator: metadata.separator,
-    mask_token: config.mask_token, max_length: metadata.max_length, temperature: calibration.temperature ?? 1,
-  }
   return { ort, tokenizer, mask, session, format }
 }
 
@@ -94,7 +95,21 @@ async function logits({ ort, tokenizer, mask, session, format }: Loaded, prompt:
 
 // A prompt of typical length, so that the first lookup does not pay for
 // ONNX Runtime's first-run allocations.
-const WARM_UP = 'We trained the model on a large *bank* of labelled examples before testing it on new data from the same field.'
+const warmupSelection: Selection = {
+  text: 'bank',
+  before: 'We trained the model on a large ',
+  after: ' of labelled examples before testing it on new data from the same field.',
+}
+const warmupResult: DictionaryResult = {
+  query: 'bank',
+  source: { name: 'Wiktionary', license: 'CC BY-SA 4.0', url: 'https://en.wiktionary.org/wiki/bank' },
+  entries: [{
+    lemma: 'bank',
+    partOfSpeech: 'noun',
+    senses: ['a collection', 'sloping land', 'a financial institution', 'a long ridge', 'a supply held in reserve']
+      .map(definition => ({ definition, examples: [] })),
+  }],
+}
 
 let loaded: Loaded | undefined
 let work = Promise.resolve()
@@ -116,9 +131,9 @@ port.on('message', (message: { type: string; id?: number; prompt?: string }) => 
 
 try {
   loaded = await load()
-  const letters = loaded.format.letters
-  const warmUp = `${WARM_UP}\n${['a collection', 'sloping land', 'a financial institution', 'a long ridge', 'a supply held in reserve'].map((text, i) => `${letters[i]}. ${text}`).join('\n')}\n${letters[loaded.format.nota_index]}. ${loaded.format.none_text}\n${loaded.format.separator} ${loaded.format.mask_token}`
-  for (let i = 0; i < 2; i++) await logits(loaded, warmUp)
+  const warmup = senseRequest(warmupResult, warmupSelection, loaded.format)
+  if ('skip' in warmup) throw new LoadError('MODEL_MISMATCH')
+  for (let i = 0; i < 2; i++) await logits(loaded, warmup.prompt)
   port.postMessage({ type: 'ready', format: loaded.format, revision: ETTIN_ENGLISH_INT8.revision })
 } catch (error) {
   port.postMessage({ type: 'failed', code: error instanceof LoadError ? error.code : 'LOAD_FAILED' })
