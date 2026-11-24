@@ -124,7 +124,9 @@ export async function prepareCombinedRelease(directory, expected) {
   if (linuxAssets[0].size !== linux.size || linuxAssets[0].sha256 !== linux.sha256) throw new Error('Linux installer size or SHA-256 mismatch')
   if (await fs.readFile(path.join(directory, 'SHA256SUMS-linux.txt'), 'utf8') !== `${linux.sha256}  ${linuxName}\n${linuxAssets[1].sha256}  ${linuxManifestName}\n`) throw new Error('Linux checksums do not match the tested native build')
   // What changed is said per version, so the notes of an earlier coordinated release stay as they were published.
-  const changes = compareVersions(version, '2.8.0-beta.10') >= 0
+  const changes = compareVersions(version, '2.8.0-beta.11') >= 0
+    ? '**Changes since 2.8.0-beta.10.** PDF definitions now use the same English Wiktionary dictionary and sense-ordering code as Contextual Dictionary. The pack ships with the app for offline lookup from first launch and adds about 58 MiB to the installer. Existing verified contextual model downloads are reused. With Order by context enabled, a lookup that reaches the time limit shows dictionary order. A repeat lookup can use the completed contextual result.'
+    : compareVersions(version, '2.8.0-beta.10') >= 0
     ? '**Changes since 2.8.0-beta.9.** In a project’s Sources tab, use **Sort by** to order papers by import date or title in either direction. Each collection, including Unfiled, remembers its own choice on this device. The default is **Newest added**.'
     : compareVersions(version, '2.8.0-beta.9') >= 0
     ? '**Changes since 2.8.0-beta.8.** With Definitions on, selecting one or two words in a PDF opens the offline dictionary. If the lookup finds no entry or fails, choose **Explain** to ask about the selection. Select three or more words for the full action menu, or turn Definitions off to use that menu for any selection.'
