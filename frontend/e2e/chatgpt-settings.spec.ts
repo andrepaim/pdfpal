@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test'
+import {test,expect,type Page} from '@playwright/test'
 import {mockAuth} from './helpers'
 
 test.beforeEach(async({page})=>{
@@ -11,7 +11,10 @@ test.beforeEach(async({page})=>{
   const snapshot=()=>({connected,busy,active,accounts:connected?[{id:'a',label:'Reader account with a long display name',connected:true},{id:'b',label:'Second reader',connected:true}]:[],models:connected&&hasModels?[{id:'eligible-model',name:'Eligible model with a long descriptive name',efforts:['low','high']},{id:'other-model',name:'Other model',efforts:['medium','high'],defaultEffort:'medium'}]:[],model:models[active],effortDefaults:effortDefaults[active],message:connected?'ChatGPT connected. Eligible requests use your plan.':''})
   window.pdfpalDesktop={
    completeSetup:async()=>{localStorage.setItem('chatgpt-onboarding','complete');return true},
-   setupState:async()=>({default:localStorage.getItem('direct-mode')||'codex',complete:true,explicit:true,agents:[{id:'chatgpt',label:'ChatGPT',available:connected,auth:connected?'account':'signed_out'},{id:'claude',label:'Claude',available:true,auth:'account'},{id:'codex',label:'Codex',available:true,auth:'account'}]}),
+   setupState:async()=>{
+    if(localStorage.getItem('hold-setup-state'))await new Promise<void>(resolve=>window.addEventListener('release-setup-state',()=>resolve(),{once:true}))
+    return {default:localStorage.getItem('direct-mode')||'codex',complete:true,explicit:true,agents:[{id:'chatgpt',label:'ChatGPT',available:connected,auth:connected?'account':'signed_out'},{id:'claude',label:'Claude',available:true,auth:'account'},{id:'codex',label:'Codex',available:true,auth:'account'}]}
+   },
    setAgent:async id=>{if(localStorage.getItem('save-error'))throw Error('fixture');localStorage.setItem('direct-mode',id);return id},
    onAgentChanged:()=>()=>{},
    chatgpt:async(action,...args)=>{
@@ -40,13 +43,20 @@ test.beforeEach(async({page})=>{
  })
 })
 
-async function openSettings(page:import('@playwright/test').Page){
+async function openSettings(page:Page){
  await page.goto('/')
  await page.evaluate(()=>window.dispatchEvent(new Event('pdfpal-open-ai-settings')))
  const modal=page.getByRole('dialog',{name:'AI assistant',exact:true})
  await expect(modal).toBeVisible()
  await expect(modal.getByRole('button',{name:'Continue with ChatGPT',exact:true})).toBeEnabled()
  return modal
+}
+
+async function releaseSetupState(page:Page){
+ await page.evaluate(()=>{
+  localStorage.removeItem('hold-setup-state')
+  window.dispatchEvent(new Event('release-setup-state'))
+ })
 }
 
 test('ChatGPT appears once in the same provider cards and saves through the shared footer',async({page})=>{
@@ -61,7 +71,10 @@ test('ChatGPT appears once in the same provider cards and saves through the shar
  await expect(modal.getByLabel('ChatGPT model')).toHaveValue('eligible-model')
  await modal.getByLabel('ChatGPT account').selectOption('b')
  await modal.getByLabel('ChatGPT model').selectOption('other-model')
+ await page.evaluate(()=>localStorage.setItem('hold-setup-state','true'))
  await modal.getByRole('button',{name:'Check again',exact:true}).click()
+ await expect(modal.getByText('Checking installed assistants…')).toBeVisible()
+ await releaseSetupState(page)
  await expect(modal.getByRole('radio',{name:/ChatGPT/})).toBeChecked()
  await expect(modal.getByLabel('ChatGPT account')).toHaveValue('b')
  await expect(modal.getByLabel('ChatGPT model')).toHaveValue('other-model')
@@ -84,7 +97,16 @@ test('ChatGPT settings save model efforts to the active account and keep drafts 
  await modal.getByRole('button',{name:'Cancel',exact:true}).click()
  expect(await page.evaluate(()=>localStorage.getItem('chatgpt-effort-write'))).toBeNull()
 
- await reopen()
+ const exposedPreviousSelection=await page.evaluate(()=>{
+  localStorage.setItem('hold-setup-state','true')
+  window.dispatchEvent(new Event('pdfpal-open-ai-settings'))
+  return !!document.querySelector('.ai-settings[open] input[value="chatgpt"]:checked')
+ })
+ expect(exposedPreviousSelection).toBe(false)
+ await expect(modal.getByText('Checking installed assistants…')).toBeVisible()
+ await expect(modal.getByRole('radio',{name:/ChatGPT/})).toHaveCount(0)
+ await releaseSetupState(page)
+ await expect(modal.getByRole('radio',{name:/Codex/})).toBeChecked()
  await modal.getByRole('radio',{name:/ChatGPT/}).check()
  await expect(effort).toHaveValue('low')
  await effort.selectOption('')

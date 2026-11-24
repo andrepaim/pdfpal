@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import AgentDefaultModel from './AgentDefaultModel'
 import ChatGPTSettings, { type ChatGPTState } from './ChatGPTSettings'
 import type { DesktopAssistant, DesktopSetupState } from '../desktop'
@@ -89,13 +89,16 @@ export default function AISettings() {
   const open = useCallback((welcome = false) => {
     if (dialog.current?.open) { dialog.current.focus(); return }
     setIsOpen(true); setOpenId(value => value + 1); setFirstRun(welcome); setNotice(''); setConsent(undefined)
+    setSelected('')
     setModelDrafts({})
     setEffortDrafts({})
     setChatGPTEffortDrafts({})
-    dialog.current?.showModal()
     void refresh()
   }, [refresh])
 
+  useLayoutEffect(() => {
+    if (isOpen && !dialog.current?.open) dialog.current?.showModal()
+  }, [isOpen, openId])
   useEffect(() => bridge?.onOpenAISettings?.(() => open()), [bridge, open])
   useEffect(() => {
     let active = true
