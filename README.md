@@ -298,7 +298,7 @@ npm run test:archive
 npm run test:package
 ```
 
-The build stages a verified English Wiktionary pack and its attribution notice for offline lookup. The reader uses the same lookup and sense-ordering code as [Contextual Dictionary](https://github.com/andrepaim/contextual-dictionary). The optional native model has a separate download and cache.
+On a clean checkout, the build fetches the 66.5 MB English Wiktionary pack from the upstream asset release and verifies its size and SHA-256. Later builds reuse the verified pack in `data/dictionary/`. Desktop and npm packages include the pack and its attribution notice for offline lookup. The reader uses the same lookup and sense-ordering code as [Contextual Dictionary](https://github.com/andrepaim/contextual-dictionary). The optional native model has a separate download and cache.
 
 `npm run build` builds the server, web reader, and extension, and creates a reproducible ZIP in `extension/package/`. The server serves that matching ZIP from its Extension page. `test:package` installs a real tarball into a temporary prefix and exercises guided pairing, chat, and note saving outside the checkout. Extension browser tests use their workspace’s bundled Chromium; all automated AI calls use fixtures.
 
