@@ -22,6 +22,7 @@ import { ChatService, messageOrder } from '../core/chat.js'
 import type { ProviderName as AgentName } from '../core/ai.js'
 import { AgentService } from '../core/agents.js'
 import { resolvePdf, excerptFromText } from '../core/pdf.js'
+import { reasoningEffortSchema } from '../shared/reasoning-effort.js'
 import { relatedPapers } from '../core/research.js'
 import { registerDictionaryRoutes } from './dictionary.js'
 import { ContextualService, type ContextualServiceOptions } from '../core/contextual-service.js'
@@ -97,7 +98,11 @@ export async function buildServer(config: PdfpalConfig, cli?: CliRuntime, option
     const agent = agentModelProvider.safeParse(request.params.agent)
     if (!agent.success) return reply.status(404).send({ detail: 'Model selection is unavailable for this assistant.' })
     reply.header('Cache-Control', 'no-store')
-    return { models: await agentModels.models(agent.data), model: defaultAgentModel(config, agent.data) }
+    return {
+      models: await agentModels.models(agent.data),
+      model: defaultAgentModel(config, agent.data),
+      effortDefaults: config.agentEfforts[agent.data] ?? {},
+    }
   })
 
   app.get('/api/projects', async () => projects.list())
@@ -154,7 +159,8 @@ export async function buildServer(config: PdfpalConfig, cli?: CliRuntime, option
     return reply.type('application/pdf').send(result.bytes)
   })
 
-  app.post<{ Body: { message: string; project_id: string; source_id?: string; active_source_ids?: string[]; collection_id?: string; agent?: AgentName; model?: string; selection_page?: number } }>('/api/chat', async (request, reply) => {
+  app.post<{ Body: { message: string; project_id: string; source_id?: string; active_source_ids?: string[]; collection_id?: string; agent?: AgentName; model?: string; effort?: string; selection_page?: number } }>('/api/chat', async (request, reply) => {
+    const effort = reasoningEffortSchema.optional().parse(request.body.effort)
     const selectors = request.body.source_id ? [request.body.source_id] : request.body.active_source_ids
     // Optional: the reader sends the page an attached selection came from.
     const page = request.body.selection_page
@@ -162,13 +168,13 @@ export async function buildServer(config: PdfpalConfig, cli?: CliRuntime, option
     if (request.body.agent === 'chatgpt') {
       reply.hijack(); reply.raw.writeHead(200, { 'content-type':'text/event-stream', 'cache-control':'no-cache' })
       try {
-        const result = await chat.ask(request.body.project_id, request.body.message, { sourceSelectors: selectors, collectionSelector: request.body.collection_id, agent: 'chatgpt', model: request.body.model, selectionPage,
+        const result = await chat.ask(request.body.project_id, request.body.message, { sourceSelectors: selectors, collectionSelector: request.body.collection_id, agent: 'chatgpt', model: request.body.model, effort, selectionPage,
           onDelta: text => { if (!reply.raw.destroyed) reply.raw.write(`data: ${JSON.stringify({text})}\n\n`) } })
         if (!reply.raw.destroyed) reply.raw.write(`data: ${JSON.stringify({text: result.answer, sources: result.sources})}\n\n`)
       } catch (e) { if (!reply.raw.destroyed) reply.raw.write(`data: ${JSON.stringify({error: (e as Error).message})}\n\n`) }
       reply.raw.end('data: [DONE]\n\n');return
     }
-    const result = await chat.ask(request.body.project_id, request.body.message, { sourceSelectors: selectors, collectionSelector: request.body.collection_id, agent: request.body.agent, model: request.body.model, selectionPage })
+    const result = await chat.ask(request.body.project_id, request.body.message, { sourceSelectors: selectors, collectionSelector: request.body.collection_id, agent: request.body.agent, model: request.body.model, effort, selectionPage })
     reply.raw.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' })
     reply.raw.write(`data: ${JSON.stringify({ text: result.answer, sources: result.sources })}\n\n`)
     reply.raw.end('data: [DONE]\n\n')

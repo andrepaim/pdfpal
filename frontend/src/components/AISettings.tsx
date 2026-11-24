@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import AgentDefaultModel from './AgentDefaultModel'
 import ChatGPTSettings, { type ChatGPTState } from './ChatGPTSettings'
 import type { DesktopAssistant, DesktopSetupState } from '../desktop'
@@ -31,6 +31,8 @@ export default function AISettings() {
   const [agents, setAgents] = useState<DesktopAssistant[]>([])
   const [selected, setSelected] = useState('')
   const [modelDrafts, setModelDrafts] = useState<Partial<Record<'claude' | 'codex', string>>>({})
+  const [effortDrafts, setEffortDrafts] = useState<Partial<Record<'claude' | 'codex', Record<string, string>>>>({})
+  const [chatgptEffortDrafts, setChatGPTEffortDrafts] = useState<Record<string, Record<string, string> | undefined>>({})
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
@@ -47,6 +49,12 @@ export default function AISettings() {
   const draftModel = modelPreference && modelDrafts[modelPreference]
   const savedModel = modelSettings.loaded ? modelSettings.model : undefined
   const pendingModel = draftModel !== savedModel ? draftModel : undefined
+  const effectiveModel = draftModel ?? savedModel
+  const savedEfforts = modelPreference ? modelSettings.effortDefaults : chatgpt?.effortDefaults
+  const draftEfforts = modelPreference ? effortDrafts[modelPreference]
+    : selected === 'chatgpt' && chatgpt?.active ? chatgptEffortDrafts[chatgpt.active] : undefined
+  const pendingEfforts = Object.fromEntries(Object.entries(draftEfforts ?? {}).filter(([model, effort]) => effort !== (savedEfforts?.[model] ?? '')))
+  const hasEffortChanges = Object.keys(pendingEfforts).length > 0
   const needsBilling = current?.auth === 'api' || current?.auth === 'external'
   const canUse = selected === 'chatgpt'
     ? chatgpt?.connected && !chatgpt.busy && !chatgptWorking && chatgpt.models.some(model => model.id === chatgpt.model)
@@ -81,11 +89,16 @@ export default function AISettings() {
   const open = useCallback((welcome = false) => {
     if (dialog.current?.open) { dialog.current.focus(); return }
     setIsOpen(true); setOpenId(value => value + 1); setFirstRun(welcome); setNotice(''); setConsent(undefined)
+    setSelected('')
     setModelDrafts({})
-    dialog.current?.showModal()
+    setEffortDrafts({})
+    setChatGPTEffortDrafts({})
     void refresh()
   }, [refresh])
 
+  useLayoutEffect(() => {
+    if (isOpen && !dialog.current?.open) dialog.current?.showModal()
+  }, [isOpen, openId])
   useEffect(() => bridge?.onOpenAISettings?.(() => open()), [bridge, open])
   useEffect(() => {
     let active = true
@@ -119,21 +132,26 @@ export default function AISettings() {
     if (!selected || saving || testing || !bridge || !canUse) return
     setSaving(true); setError('')
     try {
-      const effective = pendingModel === undefined
-        ? await bridge.setAgent(selected)
-        : await bridge.setAgent(selected, pendingModel)
+      const effective = modelPreference && hasEffortChanges
+        ? await bridge.setAgent(selected, pendingModel, pendingEfforts)
+        : pendingModel === undefined ? await bridge.setAgent(selected) : await bridge.setAgent(selected, pendingModel)
       if (effective !== selected) {
         setSelected(effective)
         setError('Your startup configuration keeps another assistant as the default. Update that configuration to change it here.')
       } else {
+        if (selected === 'chatgpt' && hasEffortChanges) {
+          if (!bridge.chatgpt || !chatgpt?.active) throw new Error('ChatGPT account unavailable')
+          setChatgpt(await bridge.chatgpt('efforts', chatgpt.active, pendingEfforts))
+        }
         localStorage.setItem('pdfpal.agent', effective)
-        if (pendingModel !== undefined) notifyAgentModelsChanged(effective)
+        if (pendingModel !== undefined || hasEffortChanges) notifyAgentModelsChanged(effective)
         if (firstRun) await bridge.completeSetup?.()
         closeAfterSave()
       }
     } catch {
-      setError(pendingModel === undefined ? 'Your choice could not be saved. Check that pdfpal is running, then try again.'
-        : 'Your assistant and default model could not be saved. Check that pdfpal is running, then try again.')
+      setError(hasEffortChanges ? 'Your default reasoning effort could not be saved. Check that pdfpal is running, then try again.'
+        : pendingModel === undefined ? 'Your choice could not be saved. Check that pdfpal is running, then try again.'
+          : 'Your assistant and default model could not be saved. Check that pdfpal is running, then try again.')
     }
     finally { setSaving(false) }
   }
@@ -142,9 +160,10 @@ export default function AISettings() {
     const version = ++generation.current
     setTesting(true); testingRef.current = true; setError(''); setNotice('')
     try {
-      const result = pendingModel === undefined
-        ? await bridge.testConnection(selected)
-        : await bridge.testConnection(selected, pendingModel)
+      const pendingEffort = effectiveModel ? pendingEfforts[effectiveModel] : undefined
+      const result = pendingEffort === undefined
+        ? pendingModel === undefined ? await bridge.testConnection(selected) : await bridge.testConnection(selected, pendingModel)
+        : await bridge.testConnection(selected, effectiveModel, pendingEffort)
       if (version === generation.current) {
         setAgents(items => items.map(item => item.id === selected ? { ...item, testedAt: result.at } : item))
         setNotice('Connection verified. You’re ready to ask a question about your PDF.')
@@ -193,7 +212,12 @@ export default function AISettings() {
         {loading ? <p role="status" className="ai-settings-loading">Checking installed assistants…</p> : <>
           <fieldset className="ai-settings-options" disabled={saving || chatgptWorking}>
             <legend className="sr-only">Default assistant</legend>
-            <ChatGPTSettings active={isOpen} refreshKey={chatgptRefresh} selected={selected === 'chatgpt'} disabled={saving || testing} onSelect={selectChatGPT} onStateChange={updateChatGPT} />
+            <ChatGPTSettings active={isOpen} refreshKey={chatgptRefresh} selected={selected === 'chatgpt'} disabled={saving || testing}
+              effortDrafts={chatgptEffortDrafts} onSelect={selectChatGPT} onStateChange={updateChatGPT}
+              onEffortChange={(account, model, effort) => {
+                setChatGPTEffortDrafts(previous => ({ ...previous, [account]: { ...previous[account], [model]: effort } }))
+                setNotice(''); setError('')
+              }} />
             {agents.filter(item => item.id !== 'chatgpt' && (!firstRun || hasAgentModelPreference(item.id) || item.available || item.id === selected)).map(assistant => <div key={assistant.id} className={`ai-settings-card${selected === assistant.id ? ' is-selected' : ''}`}>
               <label className={`ai-settings-option${selected === assistant.id ? ' is-selected' : ''}${!assistant.available ? ' is-unavailable' : ''}`}>
                 <input type="radio" name="assistant" value={assistant.id} checked={selected === assistant.id}
@@ -209,9 +233,15 @@ export default function AISettings() {
                 <details><summary>Advanced</summary><button type="button" disabled={testing} onClick={() => { void choose(assistant.id) }}>Choose application…</button></details>
               </div>}
               {modelPreference === assistant.id && assistant.available && <AgentDefaultModel key={openId}
-                assistant={label(assistant)} models={modelSettings.models} value={draftModel ?? savedModel}
+                assistant={label(assistant)} models={modelSettings.models} value={effectiveModel}
+                effort={effectiveModel ? draftEfforts?.[effectiveModel] ?? savedEfforts?.[effectiveModel] : undefined}
                 loading={modelSettings.loading} error={modelSettings.error} disabled={testing || saving}
-                onChange={model => { setModelDrafts(previous => ({ ...previous, [modelPreference]: model })); setNotice(''); setError('') }} />}
+                onChange={model => { setModelDrafts(previous => ({ ...previous, [modelPreference]: model })); setNotice(''); setError('') }}
+                onEffortChange={effort => {
+                  if (!effectiveModel) return
+                  setEffortDrafts(previous => ({ ...previous, [modelPreference]: { ...previous[modelPreference], [effectiveModel]: effort } }))
+                  setNotice(''); setError('')
+                }} />}
               {selected === assistant.id && needsBilling && <label className="ai-settings-billing"><input type="checkbox" checked={billingAccepted} disabled={testing} onChange={event => setBillingAccepted(event.target.checked)} />I understand this configuration may charge separately from my subscription.</label>}
               {selected === assistant.id && assistant.available && hasAgentModelPreference(assistant.id) && bridge.testConnection && <div className="ai-settings-connection" role="group" aria-label={`${label(assistant)} connection`}>
                 <div className="ai-settings-connection-actions">

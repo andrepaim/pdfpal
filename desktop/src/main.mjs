@@ -146,10 +146,10 @@ function showWindow() {
   if (restoreWindowState) { restoreWindowState = false; if (prefs.value.maximized) window.maximize() }
   window.show(); window.focus()
 }
-async function setAgent(agent, model) {
+async function setAgent(agent, model, efforts) {
   if (!['claude', 'codex', 'opencode', 'chatgpt'].includes(agent)) throw new Error('Unknown assistant')
   if (agent === 'chatgpt' && !chatgpt?.summary().connected) throw new Error('Connect ChatGPT first.')
-  const effective = await rpc('set-agent', { agent, model })
+  const effective = await rpc('set-agent', { agent, model, efforts })
   ready.agent = effective
   window?.webContents.send('pdfpal:agent-changed', effective)
   updateTray()
@@ -404,7 +404,7 @@ async function boot() {
         if (message.type === 'chatgpt-generate') {
           const id = message.id
           if (typeof id !== 'string' || typeof message.prompt !== 'string' || message.prompt.length > 150000) return
-          void chatgpt.invoke(message.prompt, message.model, {onDelta: text => child.postMessage({type:'chatgpt-delta',id,text})}).then(answer => child.postMessage({ type: 'chatgpt-result', id, answer }), error => child.postMessage({ type: 'chatgpt-result', id, error: error.message }))
+          void chatgpt.invoke(message.prompt, message.model, {effort: message.effort, onDelta: text => child.postMessage({type:'chatgpt-delta',id,text})}).then(answer => child.postMessage({ type: 'chatgpt-result', id, answer }), error => child.postMessage({ type: 'chatgpt-result', id, error: error.message }))
         }
         if (message.type === 'chatgpt-cancel') chatgpt?.cancelAll()
         if (message.type === 'shutdown-progress') shutdownPhases.push(message.phase)
@@ -603,6 +603,9 @@ async function smokeTest() {
     check(history.messages.some(message => message.content === 'M1 background answer'), 'Background answer was not saved')
     showWindow(); check(window.isVisible(), 'Tray reopen failed')
     pendingReceipt.checks.push('tray-close-background-chat-reopen', 'quit-keeps-active-request')
+    const invalidEffortRejected = await window.webContents.executeJavaScript(
+      'window.pdfpalDesktop.setAgent("claude", "sonnet", { sonnet: "invalid-effort" }).then(() => false, () => true)')
+    check(invalidEffortRejected, 'The desktop bridge accepted an invalid effort preference')
     const effective = await window.webContents.executeJavaScript('window.pdfpalDesktop.setAgent("claude", "sonnet")')
     check(effective === 'claude', 'Selected assistant was not saved')
     const saved = JSON.parse(fs.readFileSync(path.join(process.env.PDFPAL_DATA_DIR, 'config.json'), 'utf8'))
@@ -703,6 +706,7 @@ else {
   handle('chatgpt-connect', id => chatgpt.connect(id))
   handle('chatgpt-cancel', () => { chatgpt.cancelConnect(); return chatgpt.summary() })
   handle('chatgpt-models', () => chatgpt.models())
+  handle('chatgpt-efforts', (id, patch) => chatgpt.setEfforts(id, patch))
   handle('chatgpt-select', (id, model) => chatgpt.select(id, model))
   handle('chatgpt-disconnect', () => chatgpt.disconnect())
   handle('chatgpt-usage', () => { openBrowser('https://chatgpt.com/settings/usage'); return true })
@@ -717,7 +721,7 @@ else {
     if (choice.canceled || !choice.filePaths[0]) return false
     return rpc('choose-binary', { agent, executable: choice.filePaths[0] })
   })
-  handle('test-connection', async (agent, model) => {
+  handle('test-connection', async (agent, model, effort) => {
     provider(agent)
     if (testing) throw new Error('A connection test is already running.')
     testing = true
@@ -726,7 +730,7 @@ else {
       // Capture identity before invoking: changing/installing the provider invalidates verification.
       const before = (await rpc('inspect')).agents.find(item => item.id === agent)
       if (epoch !== testEpoch) throw Object.assign(new Error('Connection test cancelled.'), { code: 'AGENT_CANCELLED' })
-      const result = await rpc('test-connection', { agent, model })
+      const result = await rpc('test-connection', { agent, model, effort })
       if (epoch !== testEpoch) throw Object.assign(new Error('Connection test cancelled.'), { code: 'AGENT_CANCELLED' })
       prefs.update({ connectionTests: { ...prefs.value.connectionTests, [agent]: { fingerprint: before.fingerprint, at: result.at } } })
       journal.record('TEST_PASSED'); return result

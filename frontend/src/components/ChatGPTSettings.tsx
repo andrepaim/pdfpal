@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { notifyAgentModelsChanged } from '../hooks/useAgentModels'
+import { notifyAgentModelsChanged, type AgentModel } from '../hooks/useAgentModels'
+import EffortSelect from './EffortSelect'
 import ModelSelect from './ModelSelect'
 
 export type ChatGPTState = {
@@ -7,8 +8,9 @@ export type ChatGPTState = {
   busy: boolean
   active: string | null
   accounts: { id: string; label: string; connected: boolean }[]
-  models: { id: string; name: string }[]
+  models: AgentModel[]
   model: string
+  effortDefaults?: Record<string, string>
   message: string
 }
 interface Props {
@@ -16,14 +18,16 @@ interface Props {
   refreshKey: number
   selected: boolean
   disabled: boolean
+  effortDrafts: Record<string, Record<string, string> | undefined>
   onSelect: () => void
+  onEffortChange: (account: string, model: string, effort: string) => void
   onStateChange: (state: ChatGPTState | undefined, working: boolean) => void
 }
 const errorMessage = (cause: unknown) => cause instanceof Error
   ? cause.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '')
   : 'Could not update the ChatGPT connection. Try again.'
 
-export default function ChatGPTSettings({ active, refreshKey, selected, disabled, onSelect, onStateChange }: Props) {
+export default function ChatGPTSettings({ active, refreshKey, selected, disabled, effortDrafts, onSelect, onEffortChange, onStateChange }: Props) {
   const bridge = window.pdfpalDesktop
   const [state, setState] = useState<ChatGPTState>()
   const [error, setError] = useState('')
@@ -32,19 +36,17 @@ export default function ChatGPTSettings({ active, refreshKey, selected, disabled
   const sequence = useRef(0)
   const workingRef = useRef(false)
   const lastModelState = useRef('')
-  const callbacks = useRef({ onSelect, onStateChange })
-  callbacks.current = { onSelect, onStateChange }
   const apply = useCallback((next: ChatGPTState) => {
     setState(next)
-    const current = JSON.stringify([next.connected, next.busy, next.active, next.model, next.models])
+    const current = JSON.stringify([next.connected, next.busy, next.active, next.model, next.models, next.effortDefaults])
     if (lastModelState.current !== current) {
       lastModelState.current = current
       notifyAgentModelsChanged('chatgpt')
     }
   }, [])
   useEffect(() => {
-    callbacks.current.onStateChange(state, working)
-  }, [state, working])
+    onStateChange(state, working)
+  }, [state, working, onStateChange])
   useEffect(() => {
     if (!active || !bridge?.chatgpt) return
     mounted.current = true
@@ -66,7 +68,6 @@ export default function ChatGPTSettings({ active, refreshKey, selected, disabled
       mounted.current = false
       workingRef.current = false
       setWorking(false)
-      sequence.current++
       clearInterval(timer)
     }
   }, [active, bridge, refreshKey, apply])
@@ -77,14 +78,14 @@ export default function ChatGPTSettings({ active, refreshKey, selected, disabled
     workingRef.current = true
     setWorking(true)
     setError('')
-    if (action === 'connect') callbacks.current.onSelect()
+    if (action === 'connect') onSelect()
     try {
       const next = await bridge.chatgpt(action, ...args)
       if (mounted.current && version === sequence.current) apply(next)
     } catch (cause) {
       if (mounted.current && version === sequence.current) setError(errorMessage(cause))
     } finally {
-      if (version === sequence.current) {
+      if (mounted.current && version === sequence.current) {
         workingRef.current = false
         setWorking(false)
       }
@@ -97,9 +98,10 @@ export default function ChatGPTSettings({ active, refreshKey, selected, disabled
   }
   if (!bridge?.chatgpt) return null
   const busy = disabled || working || state?.busy
-  const hasModel = state?.models.some(model => model.id === state.model)
+  const model = state?.models.find(item => item.id === state.model)
+  const account = state?.active
   const description = !state ? 'Checking connection…' : state.busy ? 'Waiting for browser sign-in' : state.connected
-    ? hasModel ? 'Account connected · uses your ChatGPT plan' : 'Account connected · choose an available model'
+    ? model ? 'Account connected · uses your ChatGPT plan' : 'Account connected · choose an available model'
     : 'Sign-in needed · no agent installation required'
   return <div className={`ai-settings-card${selected ? ' is-selected' : ''}`} data-provider="chatgpt">
     <label className={`ai-settings-option${selected ? ' is-selected' : ''}${!state?.connected ? ' is-unavailable' : ''}`}>
@@ -117,14 +119,18 @@ export default function ChatGPTSettings({ active, refreshKey, selected, disabled
       {error && <p role="alert" className="ai-settings-error">{error}</p>}
       {state?.message && <p role="status" className="ai-settings-provider-message">{state.message}</p>}
       {!!state?.accounts.length && <div className="ai-settings-provider-fields">
-        <label>Account<select aria-label="ChatGPT account" value={state.active || ''} disabled={busy} onChange={event => void act('select', event.target.value)}>
+        <label className="ai-settings-provider-account">Account<select aria-label="ChatGPT account" value={account || ''} disabled={busy} onChange={event => void act('select', event.target.value)}>
           <option value="" disabled>Choose an account</option>
           {state.accounts.map(account => <option key={account.id} value={account.id}>{account.label}{account.connected ? '' : ' · sign-in needed'}</option>)}
         </select></label>
         {state.connected && <label>Model<ModelSelect label="ChatGPT model" value={state.model} models={state.models}
           allowUnlisted={false} disabled={busy || !state.models.length}
           placeholder={state.models.length ? 'Choose a model' : 'Refresh to load available models'}
-          onChange={model => void act('select', state.active, model)} /></label>}
+          onChange={next => void act('select', account, next)} /></label>}
+        {selected && state.connected && account && model && <EffortSelect label="Default reasoning effort" showLabel
+          efforts={model.efforts} defaultEffort={model.defaultEffort} disabled={busy}
+          value={effortDrafts[account]?.[model.id] ?? state.effortDefaults?.[model.id]}
+          onChange={next => onEffortChange(account, model.id, next ?? '')} />}
       </div>}
       {!!state?.accounts.length && <div className="ai-settings-actions">
         <button type="button" disabled={busy} onClick={() => void act('connect')}>Add account</button>

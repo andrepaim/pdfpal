@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+export { parseEffortCapabilities } from '../../shared/reasoning-effort.js'
 export type Attempt = { state:string; nonce:string; verifier:string; redirect:string; clientId?:string }
 export function authorization(a:Attempt,host:string) {
  const url=new URL('https://auth.openai.com/api/accounts/authorize')
@@ -15,7 +16,10 @@ export function callback(a:Attempt,value:string) {
  if(!clientId||clientId==='dynamic_agent_client'||!code||(a.clientId&&clientId!==a.clientId))throw new Error('Invalid client registration')
  return {clientId,code}
 }
-export function requestBody(model:string,instructions:string,input:string) {return {model,instructions,input:[{role:'user',content:input}],store:false,stream:true} as const}
+export function requestBody(model: string, instructions: string, input: string, effort?: string) {
+  return { model, instructions, input: [{ role: 'user', content: input }], store: false, stream: true,
+    ...(effort ? { reasoning: { effort } } : {}) } as const
+}
 export async function readResponse(stream:ReadableStream<Uint8Array>,delta:(text:string)=>void):Promise<string> {
  const reader=stream.getReader(),decoder=new TextDecoder();let buffer='',answer='',complete=false
  function dispatch(frame:string){

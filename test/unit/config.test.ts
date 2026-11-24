@@ -154,3 +154,24 @@ test('saving the contextual definitions preference keeps the rest of config.json
     assert.equal(JSON.parse(fs.readFileSync(`${initial.dataDir}/config.json`, 'utf8')).contextual_definitions, false)
   } finally { cleanup(initial, { close() {} } as never) }
 })
+
+
+test('model effort patches save atomically per provider, clear individual preferences, and survive restart', t => {
+  const config = testConfig()
+  t.after(() => cleanup(config, { close() {} } as never))
+  const filename = path.join(config.dataDir, 'config.json')
+  fs.writeFileSync(filename, JSON.stringify({ port: 8900, agent_efforts: { claude: { sonnet: 'low' } } }))
+
+  saveAIModePreference(config, 'codex', 'fixture-a', { 'fixture-a': 'high', 'fixture-b': 'medium' })
+  saveAIModePreference(config, 'codex', 'fixture-b', { 'fixture-a': '' })
+  const restarted = loadConfig({ dataDir: config.dataDir })
+  assert.deepEqual(restarted.agentEfforts, { claude: { sonnet: 'low' }, codex: { 'fixture-b': 'medium' } })
+  assert.equal(defaultAgentModel(restarted, 'codex'), 'fixture-b')
+  assert.equal(restarted.port, 8900)
+
+  const before = fs.readFileSync(filename, 'utf8')
+  assert.throws(() => saveAIModePreference(config, 'codex', 'fixture-a', { 'fixture-a': 'high', 'fixture-b': '--config' }))
+  assert.throws(() => saveAIModePreference(config, 'codex', undefined, { '': 'high' }))
+  assert.equal(fs.readFileSync(filename, 'utf8'), before)
+  assert.deepEqual(config.agentEfforts, restarted.agentEfforts)
+})

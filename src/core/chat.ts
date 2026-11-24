@@ -19,6 +19,7 @@ export interface AskOptions {
   collectionSelector?: string
   agent?: AgentName
   model?: string
+  effort?: string
   /**
    * Page of the open paper that an attached selection came from (sent by the
    * reader). That page and its neighbours are always included in the context.
@@ -75,7 +76,7 @@ export class ChatService {
       return out.length + block.length <= 80_000 ? out + block : out
     }, '')
     const prompt = `You are a research assistant. Answer from the supplied passages. Cite source titles and page numbers when possible. If the context is insufficient, say so. ${RESPONSE_FORMAT_INSTRUCTIONS}\n\nPassages:${context}${history.length ? `\n\nRecent conversation:\n${history.map(message => `${message.role}: ${message.content}`).join('\n')}` : ''}\n\nUser: ${question}\nAssistant:`
-    const answer = await this.agents.invoke(prompt, options.agent, options.model, { onDelta: options.onDelta, projectId: project.id, sourceId: selected.length === 1 ? selected[0]!.id : undefined, question })
+    const answer = await this.agents.invoke(prompt, options.agent, options.model, { onDelta: options.onDelta, effort: options.effort, projectId: project.id, sourceId: selected.length === 1 ? selected[0]!.id : undefined, question })
     const sourceIds = [...new Set(passages.map(passage => passage.source_id))]
     const sessionId = this.persist(project.id, selected.length === 1 ? selected[0]!.id : null, question, answer, sourceIds)
     return {

@@ -229,6 +229,8 @@ body {
 .ai-settings-provider-body .ai-settings-error { margin-bottom: 12px; }
 .ai-settings-provider-body .ai-settings-actions { padding: 12px 0 0; }
 .ai-settings-provider-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.ai-settings-provider-fields > :only-child { grid-column: 1 / -1; }
+.ai-settings-provider-fields:has(.agent-effort-select) > .ai-settings-provider-account { grid-column: 1 / -1; }
 .ai-settings-provider-fields label { display: grid; gap: 6px; min-width: 0; color: var(--muted); font-size: 12px; }
 .ai-settings-provider-fields select { width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); color: var(--text); font: inherit; }
 .ai-settings-provider-message { margin: 0 0 12px; color: #a7f3d0; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }

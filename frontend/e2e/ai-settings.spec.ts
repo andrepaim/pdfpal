@@ -3,7 +3,7 @@ import { mockAuth } from './helpers';
 
 declare global {
   interface Window {
-    saveSettingsTestSelection?: (agent: string, model?: string) => Promise<void>;
+    saveSettingsTestSelection?: (agent: string, model?: string, efforts?: Record<string, string>) => Promise<void>;
   }
 }
 
@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     let open: (() => void) | undefined;
     window.pdfpalDesktop = {
-      setAgent: async (...args: [id: string, model?: string]) => {
+      setAgent: async (...args: [id: string, model?: string, efforts?: Record<string, string>]) => {
         await window.saveSettingsTestSelection?.(...args);
         localStorage.setItem('settings-test-agent', args[0]);
         return args[0];
@@ -169,4 +169,75 @@ test('AI settings test a custom model without saving and allow retrying a failed
   await modal.getByRole('button', { name: 'Use assistant' }).click();
   await expect(modal).not.toBeVisible();
   expect(saved).toBe('');
+});
+
+test('AI settings stage reasoning effort independently for each available model', async ({ page }) => {
+  const catalogue = {
+    model: 'quick',
+    models: [
+      { id: 'quick', name: 'Quick', efforts: ['low', 'medium', 'high'], defaultEffort: 'medium' },
+      { id: 'deep', name: 'Deep', efforts: ['high', 'max'], defaultEffort: 'high' },
+      { id: 'fixed', name: 'Fixed', efforts: ['medium'], defaultEffort: 'medium' },
+      { id: 'unverified', name: 'Unverified' },
+    ],
+    effortDefaults: { quick: 'low', deep: 'high' } as Record<string, string>,
+  };
+  const writes: { agent: string; model?: string; efforts?: Record<string, string> }[] = [];
+  await page.exposeFunction('saveSettingsTestSelection', (agent: string, model?: string, efforts?: Record<string, string>) => {
+    writes.push({ agent, model, efforts });
+    if (model !== undefined) catalogue.model = model;
+    for (const [id, effort] of Object.entries(efforts ?? {})) {
+      if (effort) catalogue.effortDefaults[id] = effort;
+      else delete catalogue.effortDefaults[id];
+    }
+  });
+  await page.route('**/api/agent-models/claude', route => route.fulfill({ json: catalogue }));
+  await page.goto('/');
+  await page.evaluate(() => {
+    window.pdfpalDesktop!.testConnection = async (...args: unknown[]) => {
+      localStorage.setItem('settings-test-connection', JSON.stringify(args));
+      return { at: new Date().toISOString() };
+    };
+  });
+  const openSettings = async () => page.evaluate(() => window.dispatchEvent(new Event('open-test-settings')));
+  const modal = page.getByRole('dialog', { name: 'AI assistant' });
+  const model = modal.getByRole('combobox', { name: 'Claude Code default model' });
+  const effort = modal.getByRole('combobox', { name: 'Default reasoning effort' });
+  await openSettings();
+  await expect(effort).toHaveValue('low');
+  await effort.selectOption('high');
+  await model.selectOption('deep');
+  await expect(effort).toHaveValue('high');
+  await effort.selectOption('max');
+  await model.selectOption('quick');
+  await expect(effort).toHaveValue('high');
+  await modal.getByRole('button', { name: 'Cancel', exact: true }).click();
+  expect(writes).toEqual([]);
+
+  await openSettings();
+  await expect(effort).toHaveValue('low');
+  await effort.selectOption('');
+  await modal.getByRole('button', { name: 'Test connection' }).click();
+  await expect(modal.getByText(/Connection verified/)).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('settings-test-connection')!)))
+    .toEqual(['claude', 'quick', '']);
+  expect(writes).toEqual([]);
+  await model.selectOption('fixed');
+  await expect(effort).toHaveCount(0);
+  await model.selectOption('unverified');
+  await expect(effort).toHaveCount(0);
+  await model.selectOption('');
+  await expect(effort).toHaveCount(0);
+  await model.selectOption('deep');
+  await expect(effort.getByRole('option')).toHaveText(['Automatic (High)', 'High', 'Max']);
+  await effort.selectOption('max');
+  await modal.getByRole('button', { name: 'Use assistant' }).click();
+  await expect(modal).not.toBeVisible();
+  expect(writes).toEqual([{ agent: 'claude', model: 'deep', efforts: { quick: '', deep: 'max' } }]);
+
+  await openSettings();
+  await expect(model).toHaveValue('deep');
+  await expect(effort).toHaveValue('max');
+  await model.selectOption('quick');
+  await expect(effort).toHaveValue('');
 });

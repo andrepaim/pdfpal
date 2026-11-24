@@ -225,6 +225,159 @@ test.describe('paper conversation models', () => {
     expect(asks[1]).toMatchObject({ agent: 'claude', model: 'local-model' });
   });
 
+  test('remembers paper effort by assistant and exact model for Ask, Explain, and visuals', async ({ page }) => {
+    const asks: Record<string, unknown>[] = [];
+    const visuals: Record<string, unknown>[] = [];
+    let codexModel = 'codex-default';
+    let codexEfforts = ['low', 'high'];
+    let rejectEffort = false;
+    await page.route('**/api/agent-models/codex', route => route.fulfill({ json: {
+      model: codexModel, effortDefaults: { 'codex-default': 'low' },
+      models: [
+        { id: 'codex-default', name: 'Codex default', efforts: codexEfforts },
+        { id: 'other-model', name: 'Alternative', efforts: ['low', 'high'] },
+        { id: 'unsupported', name: 'Unsupported' },
+      ],
+    } }));
+    await page.route('**/api/agent-models/claude', route => route.fulfill({ json: {
+      model: 'codex-default', models: [{ id: 'codex-default', name: 'Claude default', efforts: ['low', 'high'] }],
+    } }));
+    await page.route('**/api/chat', route => {
+      asks.push(route.request().postDataJSON());
+      if (rejectEffort) return route.fulfill({ status: 400, json: { code: 'UNSUPPORTED_EFFORT', detail: 'Choose an available reasoning effort.' } });
+      return route.fulfill({ contentType: 'text/event-stream', body: 'data: {"text":"Answered."}\n\ndata: [DONE]\n\n' });
+    });
+    await page.route('**/api/projects/*/visuals', route => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      visuals.push(route.request().postDataJSON());
+      return route.fulfill({ status: 400, json: { detail: 'Stopped by the test.' } });
+    });
+    const { project, source } = await openReader(page);
+    const assistant = page.getByTitle('Chat agent');
+    const model = page.getByRole('combobox', { name: 'Conversation model' });
+    const effort = page.getByRole('combobox', { name: 'Conversation reasoning effort' });
+    const draft = page.getByPlaceholder(/Ask (a question|about the selection)/);
+    await expect(effort.locator('option:checked')).toHaveText('Use default (Low)');
+    await draft.fill('Use the settings default');
+    await draft.press('Enter');
+    await expect(page.getByText('Answered.', { exact: true })).toBeVisible();
+    expect(asks[0]).not.toHaveProperty('effort');
+    expect(asks[0]).not.toHaveProperty('model');
+
+    await draft.fill('Send with a paper override');
+    await effort.selectOption('high');
+    await expect(draft).toHaveValue('Send with a paper override');
+    await draft.press('Enter');
+    await expect.poll(() => asks.length).toBe(2);
+    expect(asks[1]).toMatchObject({ agent: 'codex', model: 'codex-default', effort: 'high', source_id: source.id });
+
+    await model.selectOption('unsupported');
+    await expect(effort).toHaveCount(0);
+    await model.selectOption('other-model');
+    await expect(effort.locator('option:checked')).toHaveText('Use default');
+    await effort.selectOption('low');
+    await model.selectOption('');
+    await expect(effort).toHaveValue('high');
+    await assistant.selectOption('claude');
+    await expect(effort.locator('option:checked')).toHaveText('Use default');
+    await assistant.selectOption('codex');
+    await expect(effort).toHaveValue('high');
+
+    await page.reload();
+    await expect(effort).toHaveValue('high');
+    await draft.fill('Keep this draft');
+    await selectOnFirstPage(page);
+    await page.getByRole('button', { name: 'Explain', exact: true }).click();
+    await expect.poll(() => asks.length).toBe(3);
+    expect(asks[2]).toMatchObject({ agent: 'codex', model: 'codex-default', effort: 'high', selection_page: 1 });
+    await expect(draft).toHaveValue('Keep this draft');
+    await selectOnFirstPage(page);
+    await page.getByRole('button', { name: 'Explain visually', exact: true }).click();
+    await expect.poll(() => visuals[0]).toMatchObject({ agent: 'codex', model: 'codex-default', effort: 'high', selection_page: 1 });
+    await expect(draft).toHaveValue('Keep this draft');
+
+    const second = await page.request.post(`/api/projects/${project.id}/sources`, {
+      data: { url: 'test/fixtures/sample.pdf', title: 'Second effort paper' },
+    });
+    expect(second.ok()).toBeTruthy();
+    await page.goto(`/projects/${project.id}/sources/${(await second.json()).id}`);
+    await expect(effort.locator('option:checked')).toHaveText('Use default (Low)');
+    await page.goto(`/projects/${project.id}/sources/${source.id}`);
+    await expect(effort).toHaveValue('high');
+    await effort.selectOption('');
+    await draft.fill('/visual Describe this result');
+    await draft.press('Enter');
+    await expect.poll(() => visuals[1]).toMatchObject({ agent: 'codex', model: 'codex-default', effort: '' });
+
+    await effort.selectOption('high');
+    codexEfforts = ['low', 'medium'];
+    rejectEffort = true;
+    await draft.fill('Retry my exact draft');
+    await draft.press('Enter');
+    await expect(page.getByText('Choose an available reasoning effort.')).toBeVisible();
+    await expect(effort.locator('option:checked')).toHaveText('Use default (Low)');
+    await expect(draft).toHaveValue('Retry my exact draft');
+    expect(asks[3]).toMatchObject({ agent: 'codex', model: 'codex-default', effort: 'high' });
+    rejectEffort = false;
+    await draft.press('Enter');
+    await expect.poll(() => asks.length).toBe(5);
+    expect(asks[4]).not.toHaveProperty('effort');
+
+    codexModel = '';
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('pdfpal-agent-models-changed', { detail: 'codex' })));
+    await expect(model.locator('option:checked')).toHaveText('Use default');
+    await expect(effort).toHaveCount(0);
+  });
+
+  test('uses a persisted paper effort when Enter or Explain precedes CLI model discovery', async ({ page }) => {
+    let modelListPending = Promise.resolve();
+    let failDiscovery = false;
+    const asks: Record<string, unknown>[] = [];
+    await page.route('**/api/agent-models/codex', async route => {
+      await modelListPending;
+      if (failDiscovery) return route.fulfill({ status: 503, json: {} });
+      await route.fulfill({ json: {
+        model: 'default-model', models: [{ id: 'default-model', name: 'Default model', efforts: ['low', 'high'] }],
+      } });
+    });
+    await page.route('**/api/chat', route => {
+      asks.push(route.request().postDataJSON());
+      return route.fulfill({ contentType: 'text/event-stream', body: 'data: {"text":"Answered."}\n\ndata: [DONE]\n\n' });
+    });
+    await openReader(page);
+    await page.getByRole('combobox', { name: 'Conversation reasoning effort' }).selectOption('high');
+    const draft = page.getByPlaceholder(/Ask (a question|about the selection)/);
+
+    for (const action of ['enter', 'explain']) {
+      let release = () => {};
+      modelListPending = new Promise(resolve => { release = resolve; });
+      await page.reload();
+      await expect(page.locator('[data-pdf-page="1"] canvas')).toBeVisible();
+      await draft.fill('Preserve the selected effort');
+      const previous = asks.length;
+      if (action === 'enter') await draft.press('Enter');
+      else {
+        await selectOnFirstPage(page);
+        await page.getByRole('button', { name: 'Explain', exact: true }).click();
+      }
+      await expect(draft).toHaveValue('Preserve the selected effort');
+      expect(asks).toHaveLength(previous);
+      release();
+      await expect(page.getByText('Answered.', { exact: true })).toBeVisible();
+      expect(asks).toHaveLength(previous + 1);
+      expect(asks.at(-1)).toMatchObject({ agent: 'codex', model: 'default-model', effort: 'high' });
+      if (action === 'explain') await expect(draft).toHaveValue('Preserve the selected effort');
+    }
+
+    failDiscovery = true;
+    await page.reload();
+    await expect(page.getByRole('status')).toHaveText('Using default reasoning effort. Saved effort could not be verified.');
+    await draft.fill('Use automatic effort while discovery is unavailable');
+    await draft.press('Enter');
+    await expect(page.getByText('Answered.', { exact: true })).toBeVisible();
+    expect(asks.at(-1)).not.toHaveProperty('effort');
+  });
+
   test('keeps ChatGPT overrides scoped to the active desktop library and account', async ({ page }) => {
     await page.addInitScript(() => {
       window.pdfpalDesktop = {
@@ -240,7 +393,9 @@ test.describe('paper conversation models', () => {
           const active = localStorage.getItem('test-account') || 'first';
           return {
             connected: true, busy: false, active, accounts: [], message: '', model: `${active}-default`,
-            models: [{ id: `${active}-default`, name: `${active} default` }, { id: 'fast', name: 'Fast' }],
+            models: [{ id: `${active}-default`, name: `${active} default` }, {
+              id: 'fast', name: 'Fast', efforts: localStorage.getItem('test-effort-revoked') ? ['low', 'medium'] : ['low', 'high'],
+            }],
           };
         },
       };
@@ -255,10 +410,12 @@ test.describe('paper conversation models', () => {
     });
     await openReader(page);
     const model = page.getByRole('combobox', { name: 'Conversation model' });
+    const effort = page.getByRole('combobox', { name: 'Conversation reasoning effort' });
     const draft = page.getByPlaceholder('Ask a question, or type /visual…');
     await expect(model.locator('option:checked')).toHaveText('Use default (first default)');
     await expect(model.getByRole('option', { name: 'Enter a model ID…' })).toHaveCount(0);
     await model.selectOption('fast');
+    await effort.selectOption('high');
     await page.evaluate(() => localStorage.setItem('test-delay-library', 'true'));
     await page.reload();
     await draft.fill('Send after the library loads');
@@ -272,13 +429,13 @@ test.describe('paper conversation models', () => {
     await expect(model).toHaveValue('fast');
     await expect(page.getByText('Answered.', { exact: true })).toBeVisible();
     expect(asks).toHaveLength(1);
-    expect(asks[0]).toMatchObject({ agent: 'chatgpt', model: 'fast' });
+    expect(asks[0]).toMatchObject({ agent: 'chatgpt', model: 'fast', effort: 'high' });
 
     await page.getByRole('button', { name: '📝 Notes' }).click();
     await selectOnFirstPage(page);
     await page.getByRole('button', { name: 'Explain', exact: true }).click();
     await expect(page.getByText('Answered.', { exact: true })).toBeVisible();
-    expect(asks[1]).toMatchObject({ agent: 'chatgpt', model: 'fast', selection_page: 1 });
+    expect(asks[1]).toMatchObject({ agent: 'chatgpt', model: 'fast', effort: 'high', selection_page: 1 });
 
     // Simulate an account change after the picker loaded. Both accounts can run
     // the same model, so checking the active model list alone cannot detect it.
@@ -293,6 +450,8 @@ test.describe('paper conversation models', () => {
     await expect.poll(() => asks.length).toBe(3);
     expect(asks[2]).toMatchObject({ agent: 'chatgpt' });
     expect(asks[2]).not.toHaveProperty('model');
+    await model.selectOption('fast');
+    await expect(effort.locator('option:checked')).toHaveText('Use default');
 
     await page.evaluate(() => {
       localStorage.setItem('test-account', 'first');
@@ -301,6 +460,8 @@ test.describe('paper conversation models', () => {
     await page.reload();
     await expect(model.locator('option:checked')).toHaveText('Use default (first default)');
     await expect(model).toBeEnabled();
+    await model.selectOption('fast');
+    await expect(effort.locator('option:checked')).toHaveText('Use default');
     await page.evaluate(() => {
       localStorage.removeItem('test-library');
       localStorage.setItem('test-delay-library', 'true');
@@ -318,7 +479,15 @@ test.describe('paper conversation models', () => {
     await draft.press('Enter');
     await expect(page.getByText('Answered.', { exact: true })).toBeVisible();
     expect(asks).toHaveLength(4);
-    expect(asks[3]).toMatchObject({ agent: 'chatgpt', model: 'fast', message: 'Edited draft' });
+    expect(asks[3]).toMatchObject({ agent: 'chatgpt', model: 'fast', effort: 'high', message: 'Edited draft' });
+
+    await page.evaluate(() => localStorage.setItem('test-effort-revoked', 'true'));
+    await draft.fill('Retry with current effort');
+    await draft.press('Enter');
+    await expect(page.getByText(/selected reasoning effort is no longer available/)).toBeVisible();
+    await expect(draft).toHaveValue('Retry with current effort');
+    await expect(effort.locator('option:checked')).toHaveText('Use default');
+    expect(asks).toHaveLength(4);
   });
 });
 

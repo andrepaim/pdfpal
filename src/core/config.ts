@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { z } from 'zod'
 import { isCustomAgentModel, MAX_AGENT_MODEL_LENGTH } from '../shared/agent-model-id.js'
+import { reasoningEffortSchema } from '../shared/reasoning-effort.js'
 import { acquireLease } from './locking.js'
 import { defaultSenseCacheDir } from './sense-download.js'
 
@@ -10,6 +11,8 @@ export const agentModelProvider = z.enum(['claude', 'codex'])
 export type AgentModelProvider = z.infer<typeof agentModelProvider>
 export const agentModelId = z.string().trim().max(MAX_AGENT_MODEL_LENGTH).refine(id => id === '' || isCustomAgentModel(id), 'Enter a valid model ID.')
 const agentModelsSchema = z.object({ claude: agentModelId.optional(), codex: agentModelId.optional() })
+const modelEffortPatch = z.record(z.string().refine(isCustomAgentModel, 'Enter a valid model ID.'), reasoningEffortSchema)
+const agentEffortsSchema = z.object({ claude: modelEffortPatch.optional(), codex: modelEffortPatch.optional() })
 
 const ConfigSchema = z.object({
   dataDir: z.string(),
@@ -22,6 +25,7 @@ const ConfigSchema = z.object({
   agent: z.enum(['claude', 'codex', 'opencode']),
   model: z.string(),
   agentModels: agentModelsSchema,
+  agentEfforts: agentEffortsSchema,
   claudeBin: z.string(),
   codexBin: z.string(),
   opencodeBin: z.string(),
@@ -43,6 +47,7 @@ type ConfigFile = Partial<{
   agent: PdfpalConfig['agent']
   model: string
   agent_models: PdfpalConfig['agentModels']
+  agent_efforts: PdfpalConfig['agentEfforts']
   claude_bin: string
   codex_bin: string
   opencode_bin: string
@@ -113,6 +118,7 @@ export function loadConfig(overrides: Partial<PdfpalConfig> = {}): PdfpalConfig 
     agent: overrides.agent ?? process.env.PDFPAL_AGENT ?? file.agent ?? 'claude',
     model: overrides.model ?? process.env.PDFPAL_MODEL ?? file.model ?? '',
     agentModels: overrides.agentModels ?? file.agent_models ?? {},
+    agentEfforts: overrides.agentEfforts ?? file.agent_efforts ?? {},
     claudeBin: overrides.claudeBin ?? process.env.CLAUDE_BIN ?? file.claude_bin ?? 'claude',
     codexBin: overrides.codexBin ?? process.env.CODEX_BIN ?? file.codex_bin ?? 'codex',
     opencodeBin: overrides.opencodeBin ?? process.env.OPENCODE_BIN ?? file.opencode_bin ?? 'opencode',
@@ -164,24 +170,37 @@ export function saveAgentBinary(config: PdfpalConfig, agent: 'claude' | 'codex',
   } finally { release() }
 }
 
-/** Save the assistant and its optional model together under the config write lock. */
-export function saveAIModePreference(config: PdfpalConfig, selected: 'chatgpt' | PdfpalConfig['agent'], model?: string): string {
+/** Save the assistant, model, and effort preferences together under the config write lock. */
+export function saveAIModePreference(config: PdfpalConfig, selected: 'chatgpt' | PdfpalConfig['agent'], model?: string, efforts?: Record<string, string>): string {
   if (!['chatgpt', 'claude', 'codex', 'opencode'].includes(selected)) throw new Error('Unknown AI provider')
   if (process.env.PDFPAL_AGENT && selected !== process.env.PDFPAL_AGENT) throw new Error('Your startup configuration fixes the AI provider. Update PDFPAL_AGENT to change it.')
-  const modelAgent = model === undefined ? undefined : agentModelProvider.safeParse(selected)
-  if (modelAgent && !modelAgent.success) throw new Error('Model selection is unavailable for this assistant.')
-  const modelChange = modelAgent ? { [modelAgent.data]: agentModelId.parse(model) } : undefined
+  const modelAgent = agentModelProvider.safeParse(selected)
+  if (model !== undefined && !modelAgent.success) throw new Error('Model selection is unavailable for this assistant.')
+  if (efforts !== undefined && !modelAgent.success) throw new Error('Reasoning effort is unavailable for this assistant.')
+  const modelChange = model === undefined ? undefined : { [selected]: agentModelId.parse(model) }
+  const effortPatch = efforts === undefined ? undefined : modelEffortPatch.parse(efforts)
   const filename = path.join(config.dataDir, 'config.json')
   const release = acquireLease(`${filename}.write-lock`, 5000)
   try {
     const existing: ConfigFile = fs.existsSync(filename) ? JSON.parse(fs.readFileSync(filename, 'utf8')) : {}
     const aiMode = selected === 'chatgpt' ? 'chatgpt' : 'agent'
     const temporary = `${filename}.${process.pid}.tmp`
+    let updatedEfforts: PdfpalConfig['agentEfforts'] | undefined
+    if (modelAgent.success && effortPatch && Object.keys(effortPatch).length) {
+      const provider = modelAgent.data
+      const storedEfforts = { ...existing.agent_efforts?.[provider] }
+      for (const [id, effort] of Object.entries(effortPatch)) {
+        if (effort) storedEfforts[id] = effort
+        else delete storedEfforts[id]
+      }
+      updatedEfforts = { ...existing.agent_efforts, [provider]: storedEfforts }
+    }
     const updated = {
       ...existing,
       ai_mode: aiMode,
       ...(selected !== 'chatgpt' ? { agent: selected } : {}),
       ...(modelChange ? { agent_models: { ...existing.agent_models, ...modelChange } } : {}),
+      ...(updatedEfforts ? { agent_efforts: updatedEfforts } : {}),
     }
     try {
       fs.writeFileSync(temporary, JSON.stringify(updated), { mode: 0o600 })
@@ -190,6 +209,7 @@ export function saveAIModePreference(config: PdfpalConfig, selected: 'chatgpt' |
     config.aiMode = aiMode
     if (selected !== 'chatgpt') config.agent = selected
     if (modelChange) config.agentModels = { ...config.agentModels, ...modelChange }
+    if (updatedEfforts) config.agentEfforts = { ...config.agentEfforts, ...updatedEfforts }
     return selected
   } finally { release() }
 }
